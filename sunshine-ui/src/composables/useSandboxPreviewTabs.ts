@@ -14,6 +14,18 @@ export function tabFileName(path: string): string {
   return parts[parts.length - 1] || path
 }
 
+/**
+ * 预览读失败时的展示：空内容、不报错、不缓存。
+ * 写入中文件未落盘或会话忙时会出现 5xx「系统繁忙」；不应把错误文案写进编辑区。
+ */
+export function resolvePreviewReadFailureDisplay(_err?: unknown): {
+  content: string
+  meta: string
+  shouldCache: boolean
+} {
+  return { content: '', meta: '', shouldCache: false }
+}
+
 /** 去掉工作区项目根前缀的显示路径（/workspace/wt-xxx/README.md -> README.md） */
 export function stripWorkspaceRootPath(path: string, root: string | null | undefined): string {
   if (!root || !path.startsWith(root)) return path
@@ -267,14 +279,11 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
         previewMeta.value = meta
       }
     } catch (e) {
-      const meta = e instanceof Error ? e.message : '读取失败'
-      previewCache.value = {
-        ...previewCache.value,
-        [path]: { content: '', meta, offset: 0, totalSize: 0, truncated: false },
-      }
+      // 写入中读失败属预期：空预览、不报错、不缓存，等工具终态刷新后再读
+      const failure = resolvePreviewReadFailureDisplay(e)
       if (selectedPath.value === path) {
-        preview.value = ''
-        previewMeta.value = meta
+        preview.value = failure.content
+        previewMeta.value = failure.meta
       }
     } finally {
       if (selectedPath.value === path) {

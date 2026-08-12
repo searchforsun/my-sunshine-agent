@@ -114,10 +114,27 @@ public class SandboxTimelineLabelService {
         String command = vars.get("command");
         String url = vars.get("url");
         String query = vars.get("query");
+        // write/edit：无 path 时用「…」占位，参数流阶段也能显示「正在写入 …」
         String chosen = switch (toolId != null ? toolId : "") {
             case SandboxIds.READ -> hasText(path) ? tpl.getReadActive() : null;
-            case SandboxIds.WRITE -> hasText(path) ? tpl.getWriteActive() : null;
-            case SandboxIds.EDIT -> hasText(path) ? tpl.getEditActive() : null;
+            case SandboxIds.WRITE -> {
+                if (!hasText(path)) {
+                    vars.put("path", "…");
+                    vars.put("displayPath", "…");
+                    vars.put("headerPath", "…");
+                    vars.put("fileName", "…");
+                }
+                yield tpl.getWriteActive();
+            }
+            case SandboxIds.EDIT -> {
+                if (!hasText(path)) {
+                    vars.put("path", "…");
+                    vars.put("displayPath", "…");
+                    vars.put("headerPath", "…");
+                    vars.put("fileName", "…");
+                }
+                yield tpl.getEditActive();
+            }
             case SandboxIds.GLOB -> hasText(pattern) ? tpl.getGlobActive() : null;
             case SandboxIds.GREP -> hasText(pattern) ? tpl.getGrepActive() : null;
             case SandboxIds.EXEC -> hasText(command) ? tpl.getExecActive() : null;
@@ -251,7 +268,7 @@ public class SandboxTimelineLabelService {
         return m.find() ? m.group(1) : "";
     }
 
-    /** 去掉 /skills|/workspace 前缀的相对路径；裸 jail 根返回空 */
+    /** 去掉 /skills|/workspace 前缀的相对路径；任务工作区再剥 wt-xxx/ */
     static String displayPath(String path) {
         if (!hasText(path)) {
             return "";
@@ -264,7 +281,13 @@ public class SandboxTimelineLabelService {
             return normalized.substring("/skills/".length());
         }
         if (normalized.startsWith("/workspace/")) {
-            return normalized.substring("/workspace/".length());
+            String rest = normalized.substring("/workspace/".length());
+            // /workspace/wt-xxx/docs/a.md → docs/a.md
+            if (rest.matches("wt-[a-zA-Z0-9]+(/.*)?")) {
+                int slash = rest.indexOf('/');
+                return slash >= 0 ? rest.substring(slash + 1) : "";
+            }
+            return rest;
         }
         return normalized;
     }

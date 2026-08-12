@@ -55,9 +55,14 @@ public class AgentExecutionProperties {
         @Data
         public static class AsyncTool {
             private boolean enabled = true;
+            /** sandbox_exec 单次 await 默认/上限/次数 */
             private int awaitDefaultSec = 30;
             private int awaitMaxSec = 120;
             private int awaitMaxWaits = 3;
+            /** spawn_subagent 单次 await（对齐 task 墙钟 600s：3×200） */
+            private int spawnAwaitDefaultSec = 120;
+            private int spawnAwaitMaxSec = 200;
+            private int spawnAwaitMaxWaits = 3;
             private int execWallTimeoutSec = 600;
             private int maxConcurrentPerMessage = 3;
         }

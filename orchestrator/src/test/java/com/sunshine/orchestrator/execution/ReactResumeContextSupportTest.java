@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -38,6 +39,26 @@ class ReactResumeContextSupportTest {
         assertThat(blocks.get(1)).contains("search_knowledge").contains("报销需总监审批");
         assertThat(blocks.get(2)).contains("待确认写操作").contains("taskId=T1001");
         assertThat(blocks.stream().noneMatch(b -> b.contains("判定为"))).isTrue();
+    }
+
+    @Test
+    void buildInjectedBlocks_includesLoadedSkillAndTaskBoardProgress() {
+        List<ProcessingStep> steps = List.of(
+                intentStep(),
+                skillStep("brainstorming"),
+                thinkStep("think", "先列任务再探索"),
+                tasksStep());
+
+        List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(steps);
+
+        assertThat(blocks).hasSize(3);
+        assertThat(blocks.get(0)).contains("【已加载技能】").contains("brainstorming");
+        assertThat(blocks.get(1)).contains("先列任务再探索");
+        assertThat(blocks.get(2)).contains("【任务板】")
+                .contains("探索项目上下文")
+                .contains("completed")
+                .contains("理解用户优化意图")
+                .contains("in_progress");
     }
 
     @Test
@@ -75,14 +96,14 @@ class ReactResumeContextSupportTest {
         DecisionResult result = new DecisionResult(
                 "answered",
                 "选哪个方案？",
-                List.of(new DecisionAnswer("q1", List.of("plan_a"), "备注原文不截断")),
+                List.of(new DecisionAnswer("q1", List.of(DecisionOption.CUSTOM_ID), "备注原文不截断")),
                 1L);
         String block = ReactResumeContextSupport.buildResolvedDecisionBlock(result);
 
         assertThat(block).contains("【用户决策】");
         assertThat(block).contains("选哪个方案？");
         assertThat(block).contains("outcome=answered");
-        assertThat(block).contains("q.q1=plan_a");
+        assertThat(block).contains("q.q1=" + DecisionOption.CUSTOM_ID);
         assertThat(block).contains("q.q1.custom=备注原文不截断");
     }
 
@@ -102,6 +123,54 @@ class ReactResumeContextSupportTest {
                 2L,
                 "识别意图",
                 null,
+                null,
+                null,
+                null);
+    }
+
+    private static ProcessingStep skillStep(String skillId) {
+        return new ProcessingStep(
+                "skill",
+                "skill",
+                "done",
+                new StepSummary(null, null, "已加载 " + skillId),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "加载技能",
+                StepMetadata.fromSkillLoad(skillId),
+                null,
+                null,
+                null);
+    }
+
+    private static ProcessingStep tasksStep() {
+        StepMetadata meta = StepMetadata.withTasks(
+                List.of(
+                        new TaskBoardItemView("1", "探索项目上下文", "completed"),
+                        new TaskBoardItemView("2", "理解用户优化意图", "in_progress")),
+                1,
+                "1/8");
+        return new ProcessingStep(
+                "tasks",
+                "tasks",
+                "paused",
+                new StepSummary(null, "1/8 已完成", null),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "任务板",
+                meta,
                 null,
                 null,
                 null);

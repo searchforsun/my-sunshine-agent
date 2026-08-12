@@ -76,7 +76,7 @@ class ProcessingTimelineSessionTest {
     void beginEndReasoningRound_closesRunningThink() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         assertThat(session.snapshot().stream().filter(s -> "think".equals(s.id())).findFirst().orElseThrow().lifecycle())
                 .isEqualTo("done");
@@ -123,11 +123,11 @@ class ProcessingTimelineSessionTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         assertThat(session.snapshot().stream().filter(s -> ThinkStepIds.isThinkStep(s.id())).count())
                 .isEqualTo(1);
@@ -141,12 +141,12 @@ class ProcessingTimelineSessionTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("规划后建板再推理");
         session.beginReasoningRound();
-        session.appendDelta("think", "reasoning", "规划内容第一段");
+        session.ensureThinkOpen();        session.appendDelta("think", "reasoning", "规划内容第一段");
         session.endReasoningRound();
 
         // todo_write 建板：非业务 tool，toolCompletedSinceLastThink 仍 false → 复用同一 think
         session.beginReasoningRound();
-        session.appendDelta("think", "reasoning", "第二段续写");
+        session.ensureThinkOpen();        session.appendDelta("think", "reasoning", "第二段续写");
         session.endReasoningRound();
 
         ProcessingStep think = session.snapshot().stream()
@@ -161,10 +161,10 @@ class ProcessingTimelineSessionTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.recordToolCompleted("统计财务消息");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         assertThat(session.contentAnchorAfterStepId()).isEqualTo("think-2");
     }
@@ -176,14 +176,14 @@ class ProcessingTimelineSessionTest {
 
         // 规划推理 → 工具1
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.noteToolCallPending();
         session.recordToolCompleted("统计财务消息");
         session.noteToolCallDone();
 
         // 工具1 返回后综合分析
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think2 = session.snapshot().stream()
                 .filter(s -> "think-2".equals(s.id())).findFirst().orElseThrow();
         assertThat(think2.lifecycle()).isEqualTo("done");
@@ -197,7 +197,7 @@ class ProcessingTimelineSessionTest {
 
         // 工具2 返回后综合分析
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think3 = session.snapshot().stream()
                 .filter(s -> "think-3".equals(s.id())).findFirst().orElseThrow();
         assertThat(think3.summary().after()).contains("查询财务消息详情");
@@ -209,7 +209,7 @@ class ProcessingTimelineSessionTest {
 
         // 最后一轮综合分析
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think4 = session.snapshot().stream()
                 .filter(s -> "think-4".equals(s.id())).findFirst().orElseThrow();
         assertThat(think4.summary().after()).contains("检索知识库");
@@ -532,7 +532,7 @@ class ProcessingTimelineSessionTest {
     void ensurePlaceholderAfterFirstThink_emitsTasksStepImmediately() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
@@ -550,14 +550,14 @@ class ProcessingTimelineSessionTest {
     void ensurePlaceholderAfterFirstThink_skipsAfterSecondThink() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
 
         session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
         session.completeToolStep("3 条");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         support.ensurePlaceholderAfterFirstThink(session);
 
         long tasksCount = session.snapshot().stream()
@@ -590,7 +590,7 @@ class ProcessingTimelineSessionTest {
     void updateTaskBoard_anchorsAfterThinkEvenWhenManageTasksLate() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think = session.snapshot().stream()
                 .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
         long thinkEnd = think.endedAt() != null ? think.endedAt() : think.startedAt();
@@ -633,7 +633,7 @@ class ProcessingTimelineSessionTest {
     void dismissEmptyPlaceholder_completesTasksStepWithoutMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
 

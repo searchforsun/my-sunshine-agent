@@ -61,10 +61,14 @@ public class AgentWorkspaceController {
     private final com.sunshine.orchestrator.config.AgentSandboxProperties sandboxProperties;
 
     @PostMapping
-    public R<WorkspaceVO> create(@Valid @RequestBody CreateWorkspaceRequest req,
-                                  @RequestHeader("x-user-id") String userId,
-                                  @RequestHeader("x-tenant-id") String tenantId) {
-        // 硬件档位校验：命中 Nacos allowed-presets 或上限护栏；未传值用 full 档默认
+    public Mono<R<WorkspaceVO>> create(@Valid @RequestBody CreateWorkspaceRequest req,
+                                        @RequestHeader("x-user-id") String userId,
+                                        @RequestHeader("x-tenant-id") String tenantId) {
+        return ReactiveBlocking.call(() -> createAndProvision(req, userId, tenantId));
+    }
+
+    /** 同步落库 + provision（clone mirror）；失败回滚删除实体，成功才标 active 进列表 */
+    private R<WorkspaceVO> createAndProvision(CreateWorkspaceRequest req, String userId, String tenantId) {
         int[] resolved;
         try {
             resolved = sandboxProperties.validateAndResolve("full", req.memoryMb(), req.cpus());
@@ -86,19 +90,65 @@ public class AgentWorkspaceController {
         entity.setRepoBranch(req.repoBranch() != null && !req.repoBranch().isBlank() ? req.repoBranch().strip() : "");
         entity.setMemoryMb(memoryMb);
         entity.setCpus(cpus);
+        // 拉取完成前不进列表（list 仅 active）；失败硬删除，避免半成品工作区
+        entity.setStatus("provisioning");
         entity.setCreatedAt(Instant.now());
         entity.setUpdatedAt(Instant.now());
-        workspaceRepo.save(entity);
-        // 自动创建 Docker 容器并克隆默认分支代码（后台线程，避免 reactor 线程阻塞）
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
-            try {
-                workspaceSandboxLifecycle.ensureWorkspaceSession(entity.getId(), userId, tenantId);
-                log.info("[AgentWorkspace] provisioned ws={}", entity.getId());
-            } catch (Exception e) {
-                log.warn("[AgentWorkspace] provision failed ws={}: {}", entity.getId(), e.getMessage());
+        workspaceRepo.saveAndFlush(entity);
+        try {
+            workspaceSandboxLifecycle.ensureWorkspaceSession(entity.getId(), userId, tenantId);
+            String cloneState = workspaceStore.find(tenantId, entity.getId())
+                    .map(WorkspaceSandboxBinding::cloneState)
+                    .orElse(null);
+            if (!"done".equals(cloneState)) {
+                String detail = cloneState != null && cloneState.startsWith("failed:")
+                        ? cloneState.substring("failed:".length()).strip()
+                        : "代码拉取未完成";
+                rollbackFailedCreate(entity);
+                throw new BizException(new FixedErrorCode(502, "workspace_clone_failed",
+                        "工作区代码拉取失败: " + detail));
             }
-        });
-        return R.ok(WorkspaceVO.from(entity, null));
+            entity.setStatus("active");
+            entity.setUpdatedAt(Instant.now());
+            workspaceRepo.saveAndFlush(entity);
+            log.info("[AgentWorkspace] provisioned ws={} clone=done", entity.getId());
+            return R.ok(WorkspaceVO.from(entity, cloneState));
+        } catch (BizException e) {
+            // clone 失败路径已 rollback；其它 BizException 也确保不留 provisioning 行
+            if (workspaceRepo.existsById(entity.getId())) {
+                rollbackFailedCreate(entity);
+            }
+            throw e;
+        } catch (Exception e) {
+            log.warn("[AgentWorkspace] provision failed ws={}: {}", entity.getId(), e.getMessage());
+            rollbackFailedCreate(entity);
+            throw new BizException(new FixedErrorCode(502, "workspace_clone_failed",
+                    "工作区代码拉取失败: " + truncateMsg(e.getMessage(), 160)));
+        }
+    }
+
+    /** 创建阶段失败：销毁沙箱/裸库并硬删除实体（非 archive） */
+    private void rollbackFailedCreate(AgentWorkspaceEntity entity) {
+        try {
+            workspaceSandboxLifecycle.destroyWorkspaceSession(entity.getTenantId(), entity.getId());
+        } catch (Exception e) {
+            log.warn("[AgentWorkspace] rollback destroy session failed ws={}: {}", entity.getId(), e.getMessage());
+        }
+        try {
+            if (workspaceRepo.existsById(entity.getId())) {
+                workspaceRepo.deleteById(entity.getId());
+                workspaceRepo.flush();
+            }
+            log.info("[AgentWorkspace] rollback deleted ws={}", entity.getId());
+        } catch (Exception e) {
+            log.warn("[AgentWorkspace] rollback delete entity failed ws={}: {}", entity.getId(), e.getMessage());
+        }
+    }
+
+    private static String truncateMsg(String s, int maxLen) {
+        if (s == null || s.isBlank()) return "未知错误";
+        String t = s.strip();
+        return t.length() <= maxLen ? t : t.substring(0, maxLen) + "...";
     }
 
     @GetMapping

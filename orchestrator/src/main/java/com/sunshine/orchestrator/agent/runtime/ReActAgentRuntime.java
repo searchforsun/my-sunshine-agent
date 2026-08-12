@@ -17,6 +17,7 @@ import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
 import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.processing.ContentBlocksJson;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
@@ -24,6 +25,7 @@ import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
+import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +33,11 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockDeltaEvent;
+import io.agentscope.core.event.ThinkingBlockEndEvent;
+import io.agentscope.core.event.ThinkingBlockStartEvent;
+import io.agentscope.core.event.ToolCallDeltaEvent;
+import io.agentscope.core.event.ToolCallEndEvent;
+import io.agentscope.core.event.ToolCallStartEvent;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import lombok.RequiredArgsConstructor;
@@ -63,6 +70,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final ChatConversationRepository conversationRepo;
     private final ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
     private final ObjectProvider<DecisionResumeSupport> decisionResumeSupport;
+    private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -118,6 +126,14 @@ public class ReActAgentRuntime implements AgentRuntime {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
             session.bindUserQuery(query);
             session.bindTraceMessageId(assistantMessageId);
+            // 续跑：抬高 content 段号，避免 content-1 与前端残留块撞车导致新正文灌进旧锚点
+            if (assistantMessageId != null) {
+                String blocksJson = StepEventBridge.peekResumeContentBlocks(assistantMessageId);
+                int maxSeq = ContentBlocksJson.maxContentSegmentSeq(blocksJson);
+                if (maxSeq > 0) {
+                    session.contentSegments().seedSeq(maxSeq);
+                }
+            }
             int checkpointThinkIter = request.checkpointThinkIteration();
             if (checkpointThinkIter > 0) {
                 session.resumeFromCheckpoint(checkpointThinkIter);
@@ -309,17 +325,29 @@ public class ReActAgentRuntime implements AgentRuntime {
         return tokens;
     }
 
-    private static void routeDeltaToBridge(AgentEvent ev, String bridgeId) {
-        // AS2 streamEvents：reasoning/content delta 经 bridge 写 hookQueue，runtime 统一 drain。
+    private void routeDeltaToBridge(AgentEvent ev, String bridgeId) {
+        // AS2 streamEvents：reasoning/content/tool_call delta 经 bridge 写 hookQueue，runtime 统一 drain。
         if (log.isDebugEnabled()) {
             log.debug("[Runtime] routeDeltaToBridge ev={}", ev.getClass().getSimpleName());
         }
-        if (ev instanceof ThinkingBlockDeltaEvent t) {
+        if (ev instanceof ThinkingBlockStartEvent) {
+            StepEventBridge.emitReasoningBlockStart(bridgeId);
+        } else if (ev instanceof ThinkingBlockDeltaEvent t) {
             StepEventBridge.emitReasoningChunk(bridgeId, t.getDelta());
+        } else if (ev instanceof ThinkingBlockEndEvent) {
+            // reasoning 通道结束即结掉 think，不等后续 tool_call 参数生成 / onReasoning flux
+            StepEventBridge.emitReasoningBlockEnd(bridgeId);
+        } else if (ev instanceof ToolCallStartEvent start) {
+            writeEditPlaceholder.onToolCallStart(bridgeId, start.getToolCallId(), start.getToolCallName());
+        } else if (ev instanceof ToolCallDeltaEvent d) {
+            writeEditPlaceholder.onToolCallDelta(
+                    bridgeId, d.getToolCallId(), d.getToolCallName(), d.getDelta());
+        } else if (ev instanceof ToolCallEndEvent end) {
+            writeEditPlaceholder.onToolCallEnd(end.getToolCallId());
         } else if (ev instanceof TextBlockDeltaEvent d) {
             StepEventBridge.emitReasoningContentChunk(bridgeId, d.getDelta());
         }
-        // ToolCall/ToolResult 事件由 ProcessingStepMiddleware.onActing 驱动（不经此处）
+        // ToolResult 事件由 ProcessingStepMiddleware.onActing 驱动（不经此处）
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

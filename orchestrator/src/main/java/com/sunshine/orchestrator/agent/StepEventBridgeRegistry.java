@@ -48,6 +48,8 @@ public class StepEventBridgeRegistry {
     /** assistantMsgId → loop body 折叠（Agent Hook 直刷 Generation 时用） */
     private final Map<String, Function<StreamToken, List<StreamToken>>> loopBodyFolds = new ConcurrentHashMap<>();
     private final Map<String, FlushBinding> generationFlush = new ConcurrentHashMap<>();
+    /** assistantMsgId → 续跑预填的 content_blocks JSON（抬高 segment seq + accumulator 种子） */
+    private final Map<String, String> resumeContentBlocksJson = new ConcurrentHashMap<>();
     private final Map<String, Long> streamEpoch = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionStreamEpoch = new ConcurrentHashMap<>();
     /** 专家 Hub Sub-Agent：Hook 增量直出，不经主 Timeline think 锚点 */
@@ -487,9 +489,35 @@ public class StepEventBridgeRegistry {
             loopBodyFolds.remove(messageId);
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
+            resumeContentBlocksJson.remove(messageId);
             toolUseBridge.entrySet().removeIf(e -> messageId.equals(e.getValue()));
             // 清 bridge 时同步摘掉指向该 bridge 的 mainRun，避免多会话残留导致 activeBridgeId 误判
             mainRunByMessage.entrySet().removeIf(e -> messageId.equals(e.getValue()));
+        }
+    }
+
+    /** 续跑：暂存中断前 content_blocks，供 TimelineSession 抬高 seq / GenerationJob 种子合并 */
+    public void prepareResumeContentBlocks(String messageId, String contentBlocksJson) {
+        if (messageId == null || messageId.isBlank()) {
+            return;
+        }
+        if (contentBlocksJson == null || contentBlocksJson.isBlank()) {
+            resumeContentBlocksJson.remove(messageId.strip());
+            return;
+        }
+        resumeContentBlocksJson.put(messageId.strip(), contentBlocksJson);
+    }
+
+    public String peekResumeContentBlocks(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        return resumeContentBlocksJson.get(messageId.strip());
+    }
+
+    public void clearResumeContentBlocks(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            resumeContentBlocksJson.remove(messageId.strip());
         }
     }
 
@@ -559,6 +587,8 @@ public class StepEventBridgeRegistry {
         if (session == null) {
             return;
         }
+        // 首个 reasoning delta：按 pending 意图开/复用 think（无 Thinking 的轮次不开空步）
+        emitHookTokens(messageId, session, ProcessingTimelineSession::ensureThinkOpen);
         String thinkId = session.currentThinkStepId();
         boolean running = session.isThinkRunning();
         if (thinkId == null || !running) {
@@ -572,6 +602,30 @@ public class StepEventBridgeRegistry {
         if (queue != null) {
             routeHookToken(messageId, StreamToken.stepDelta(thinkId, "reasoning", incrementalText), queue);
         }
+    }
+
+    /** ThinkingBlockStart：仅开 think，尚无 delta */
+    public void emitReasoningBlockStart(String messageId) {
+        if (messageId == null) {
+            return;
+        }
+        ProcessingTimelineSession session = sessions.get(messageId);
+        if (session == null) {
+            return;
+        }
+        emitHookTokens(messageId, session, ProcessingTimelineSession::ensureThinkOpen);
+    }
+
+    /** ThinkingBlockEnd：reasoning 通道结束即结掉 think，不等 tool_call / onReasoning flux */
+    public void emitReasoningBlockEnd(String messageId) {
+        if (messageId == null) {
+            return;
+        }
+        ProcessingTimelineSession session = sessions.get(messageId);
+        if (session == null) {
+            return;
+        }
+        emitHookTokens(messageId, session, ProcessingTimelineSession::endReasoningRound);
     }
 
     public void emitSingletonReasoningChunk(String incrementalText) {

@@ -24,6 +24,68 @@ export interface ContentBlock {
   text: string
 }
 
+/** 续跑时后端 ContentSegmentCoordinator seq 重置，content-N 会与旧块冲突；按 messageId 记重映射 */
+const segmentIdRemapByMessage = new Map<string, Record<string, string>>()
+
+function segmentRemapTable(msg: Pick<ChatMessage, 'id'>): Record<string, string> {
+  const id = msg.id?.trim()
+  if (!id) return {}
+  let table = segmentIdRemapByMessage.get(id)
+  if (!table) {
+    table = {}
+    segmentIdRemapByMessage.set(id, table)
+  }
+  return table
+}
+
+/** 测试/清理：释放某消息的 segment 重映射 */
+export function clearSegmentIdRemap(messageId: string | undefined): void {
+  if (messageId) segmentIdRemapByMessage.delete(messageId)
+}
+
+/** 流式 content 事件上的 segmentId → 实际块 id（含续跑冲突重映射） */
+export function resolveSegmentId(msg: Pick<ChatMessage, 'id'>, segmentId: string): string {
+  if (!segmentId) return segmentId
+  return segmentRemapTable(msg)[segmentId] ?? segmentId
+}
+
+/**
+ * ReAct 续跑：与后端 truncateToLastCompleteThink 对齐，丢掉截断点之后（及悬空锚点）的正文块，
+ * 避免半截/将被重放的段残留，也避免 resolveVisibleContentAnchor 回退到错误步骤。
+ */
+export function pruneContentBlocksForReactResume(
+  blocks: ContentBlock[] | undefined,
+  steps: ProcessingStep[] | undefined,
+): ContentBlock[] | undefined {
+  if (!blocks?.length) return blocks
+  if (!steps?.length) return undefined
+  const stepIndex = new Map<string, number>()
+  steps.forEach((s, i) => stepIndex.set(s.id, i))
+  let anchorIdx = -1
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]
+    if (!isThinkStepId(step.id) || step.lifecycle !== 'done') continue
+    let followedByTool = false
+    for (let j = i + 1; j < steps.length; j++) {
+      const next = steps[j]
+      if (isThinkStepId(next.id) || next.id === 'tasks' || next.phase === 'tasks') continue
+      followedByTool = true
+      break
+    }
+    if (followedByTool) anchorIdx = i
+  }
+  if (anchorIdx < 0) {
+    // 尚无完整 think 锚点：仅保留仍能映射到现存步骤的块
+    const kept = blocks.filter(b => stepIndex.has(b.afterStepId))
+    return kept.length ? kept : undefined
+  }
+  const kept = blocks.filter(b => {
+    const idx = stepIndex.get(b.afterStepId)
+    return idx != null && idx <= anchorIdx
+  })
+  return kept.length ? kept : undefined
+}
+
 /**
  * ReAct 时间线隐藏步：
  * - generate：正文已 inline 穿插（后端也不再下发）
@@ -94,7 +156,18 @@ export function maybeReanchorContentBlocksToTail(
 export function beginContentSegment(msg: ChatMessage, segmentId: string, afterStepId: string): void {
   if (!segmentId || !afterStepId) return
   if (!msg.contentBlocks) msg.contentBlocks = []
-  if (findBlock(msg.contentBlocks, segmentId)) return
+  const existing = findBlock(msg.contentBlocks, segmentId)
+  if (existing) {
+    if (existing.afterStepId === afterStepId) return
+    // 续跑 seq 重置：同 id 新锚点 → 重映射，禁止把新正文灌进旧块
+    const remapped = `${segmentId}#${afterStepId}`
+    segmentRemapTable(msg)[segmentId] = remapped
+    if (findBlock(msg.contentBlocks, remapped)) return
+    msg.contentBlocks.push({ segmentId: remapped, afterStepId, text: '' })
+    return
+  }
+  const remapped = segmentRemapTable(msg)[segmentId]
+  if (remapped && findBlock(msg.contentBlocks, remapped)) return
   msg.contentBlocks.push({ segmentId, afterStepId, text: '' })
 }
 
@@ -106,15 +179,32 @@ export function appendSegmentContent(
   resume: boolean,
 ): void {
   if (!chunk || !segmentId) return
-  const block = findBlock(msg.contentBlocks, segmentId)
+  const resolved = resolveSegmentId(msg, segmentId)
+  const block = findBlock(msg.contentBlocks, resolved)
   if (!block) return
   appendMessageContent(msg, chunk, resume)
   block.text = resume ? mergeStreamChunk(block.text, chunk) : block.text + chunk
 }
 
-/** ReAct：content_end */
-export function endContentSegment(_msg: ChatMessage, _segmentId: string): void {
-  // no-op
+/** ReAct：content_end；续跑时丢掉与更早段精确重复的重放正文 */
+export function endContentSegment(msg: ChatMessage, segmentId: string): void {
+  if (!segmentId || !msg.contentBlocks?.length) return
+  const resolved = resolveSegmentId(msg, segmentId)
+  const idx = msg.contentBlocks.findIndex(b => b.segmentId === resolved)
+  if (idx < 0) return
+  const text = msg.contentBlocks[idx].text?.trim() ?? ''
+  if (text.length >= 8) {
+    for (let i = 0; i < idx; i++) {
+      if ((msg.contentBlocks[i].text?.trim() ?? '') === text) {
+        msg.contentBlocks.splice(idx, 1)
+        if (!msg.contentBlocks.length) msg.contentBlocks = undefined
+        // 冲突映射指向已删块时清掉，避免后续 append 丢字
+        const table = segmentRemapTable(msg)
+        if (table[segmentId] === resolved) delete table[segmentId]
+        return
+      }
+    }
+  }
 }
 
 /** 子 Agent node 步：content_start */

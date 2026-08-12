@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.sandbox;
 
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.exception.FixedErrorCode;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.orchestrator.client.SandboxClient;
 import lombok.RequiredArgsConstructor;
@@ -77,7 +79,13 @@ public class WorkspaceCheckoutService {
             ToolInvokeResponse resp = sandboxClient.invoke(sessionId, "exec",
                     Map.of("command", cmd, "cwd", EXEC_CWD));
             if (!resp.ok()) {
-                throw new IllegalStateException("worktree create failed: " + resp.output());
+                String out = resp.output() == null ? "" : resp.output();
+                if (out.contains("invalid reference: HEAD") || out.contains("invalid reference: 'HEAD'")) {
+                    throw new BizException(new FixedErrorCode(409, "workspace_clone_incomplete",
+                            "工作区代码尚未就绪或克隆不完整，请稍后重试或点击同步"));
+                }
+                throw new BizException(new FixedErrorCode(500, "workspace_worktree_failed",
+                        "创建分支工作区失败: " + truncateOutput(out, 160)));
             }
             return checkoutId;
         } finally {
@@ -155,5 +163,11 @@ public class WorkspaceCheckoutService {
             log.warn("[WorkspaceCheckout] currentBranch failed path={}: {}", path, e.getMessage());
             return "";
         }
+    }
+
+    private static String truncateOutput(String s, int maxLen) {
+        if (s == null) return "";
+        String t = s.strip();
+        return t.length() <= maxLen ? t : t.substring(0, maxLen) + "...";
     }
 }

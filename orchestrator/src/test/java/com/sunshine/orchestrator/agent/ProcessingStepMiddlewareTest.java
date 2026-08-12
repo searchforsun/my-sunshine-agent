@@ -6,12 +6,14 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.DecisionLabelService;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabelService;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
+import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
@@ -57,6 +59,7 @@ class ProcessingStepMiddlewareTest {
     private final AgentExecutionProperties executionProperties = mock(AgentExecutionProperties.class);
     private final TaskBoardTimelineSupport taskBoardTimelineSupport = mock(TaskBoardTimelineSupport.class);
     private final SandboxTimelineLabelService sandboxTimelineLabels = mock(SandboxTimelineLabelService.class);
+    private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder = mock(SandboxWriteEditPlaceholderSupport.class);
     private final CancellableToolRunRegistry cancellableToolRunRegistry = mock(CancellableToolRunRegistry.class);
     private final PromptCatalogHolder catalogHolder = mock(PromptCatalogHolder.class);
     private final ProcessingTimelineSession session = mock(ProcessingTimelineSession.class);
@@ -65,8 +68,8 @@ class ProcessingStepMiddlewareTest {
         when(catalogHolder.snapshot()).thenReturn(PromptCatalogSnapshot.of(0, List.of()));
         return new ProcessingStepMiddleware(
                 toolCatalogService, executionProperties,
-                taskBoardTimelineSupport, sandboxTimelineLabels, cancellableToolRunRegistry,
-                catalogHolder);
+                taskBoardTimelineSupport, sandboxTimelineLabels, writeEditPlaceholder,
+                cancellableToolRunRegistry, catalogHolder);
     }
 
     /** P2-1：bridgeId 经 RuntimeContext 注入（middleware 无状态） */
@@ -83,6 +86,7 @@ class ProcessingStepMiddlewareTest {
         StepEventBridge.resetRegistry();
         SpawnSubagentLabels.bind(null);
         DecisionLabels.bind(null);
+        AwaitToolRunLabels.bind(null);
     }
 
     @Test

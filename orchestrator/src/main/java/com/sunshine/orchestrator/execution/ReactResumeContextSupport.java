@@ -18,7 +18,10 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
-/** ReAct 暂停/HITL 续跑：从 persisted steps 提取已完成推理与工具结果，注入 Agent prompt */
+/**
+ * ReAct 暂停/HITL/继续生成：从 persisted steps 提取已完成推理、工具结果、已加载技能与任务板进度，
+ * 注入 Agent prompt，使续跑接着进度而非从头规划。
+ */
 public final class ReactResumeContextSupport {
 
     private ReactResumeContextSupport() {
@@ -45,8 +48,16 @@ public final class ReactResumeContextSupport {
             if (phase == null || isSkippedPhase(phase)) {
                 continue;
             }
+            if (isSkillPhase(phase, step.id())) {
+                appendSkillBlock(blocks, step);
+                continue;
+            }
             if (isThinkPhase(phase)) {
                 appendThinkBlock(blocks, step);
+                continue;
+            }
+            if (isTasksPhase(phase, step.id())) {
+                appendTasksBlock(blocks, step);
                 continue;
             }
             if (isDecisionPhase(phase, step.id())) {
@@ -85,13 +96,56 @@ public final class ReactResumeContextSupport {
     private static boolean isSkippedPhase(String phase) {
         return TimelineStepId.INTENT.matches(phase)
                 || TimelineStepId.PLAN.matches(phase)
-                || TimelineStepId.GENERATE.matches(phase)
-                || TimelineStepId.SKILL.matches(phase)
-                || phase.startsWith("skill");
+                || TimelineStepId.GENERATE.matches(phase);
+    }
+
+    private static boolean isSkillPhase(String phase, String stepId) {
+        return TimelineStepId.SKILL.matches(phase)
+                || TimelineStepId.SKILL.matches(stepId)
+                || (phase != null && phase.startsWith("skill"));
+    }
+
+    private static boolean isTasksPhase(String phase, String stepId) {
+        return TimelineStepId.TASKS.matches(phase) || TimelineStepId.TASKS.matches(stepId);
     }
 
     private static boolean isThinkPhase(String phase) {
         return TimelineStepId.THINK.matches(phase) || TimelineStepId.AGENT.matches(phase) || phase.startsWith("think");
+    }
+
+    private static void appendSkillBlock(List<String> blocks, ProcessingStep step) {
+        String skillId = step.metadata() != null ? step.metadata().skillId() : null;
+        if (!StringUtils.hasText(skillId)) {
+            skillId = firstNonBlank(summaryAfter(step.summary()), step.label());
+        }
+        if (!StringUtils.hasText(skillId)) {
+            return;
+        }
+        blocks.add("【已加载技能】\n" + skillId.strip()
+                + "\n技能物料已就绪；勿重新加载或从头执行该技能流程，接着已有进度继续。");
+    }
+
+    private static void appendTasksBlock(List<String> blocks, ProcessingStep step) {
+        StepMetadata meta = step.metadata();
+        if (meta == null || meta.tasks() == null || meta.tasks().isEmpty()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder("【任务板】");
+        String progress = firstNonBlank(meta.taskProgress(), summaryActive(step.summary()));
+        if (StringUtils.hasText(progress)) {
+            sb.append('\n').append("进度：").append(progress.strip());
+        }
+        for (var item : meta.tasks()) {
+            if (item == null || !StringUtils.hasText(item.content())) {
+                continue;
+            }
+            sb.append('\n').append("- [")
+                    .append(StringUtils.hasText(item.status()) ? item.status().strip() : "pending")
+                    .append("] ")
+                    .append(item.content().strip());
+        }
+        sb.append("\n接着未完成项继续；勿重建整个任务板，勿把已完成项改回待办。");
+        blocks.add(sb.toString());
     }
 
     private static void appendThinkBlock(List<String> blocks, ProcessingStep step) {
@@ -193,6 +247,10 @@ public final class ReactResumeContextSupport {
 
     private static String summaryAfter(StepSummary summary) {
         return summary != null ? summary.after() : null;
+    }
+
+    private static String summaryActive(StepSummary summary) {
+        return summary != null ? summary.active() : null;
     }
 
     private static String firstNonBlank(String... values) {

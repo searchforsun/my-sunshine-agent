@@ -241,6 +241,18 @@ public final class StepEventBridge {
         registry.clearForReactRestart(messageId);
     }
 
+    public static void prepareResumeContentBlocks(String messageId, String contentBlocksJson) {
+        registry.prepareResumeContentBlocks(messageId, contentBlocksJson);
+    }
+
+    public static String peekResumeContentBlocks(String messageId) {
+        return registry.peekResumeContentBlocks(messageId);
+    }
+
+    public static void clearResumeContentBlocks(String messageId) {
+        registry.clearResumeContentBlocks(messageId);
+    }
+
     public static void emit(String messageId, Consumer<ProcessingTimelineSession> action) {
         registry.emit(messageId, action);
     }
@@ -260,6 +272,14 @@ public final class StepEventBridge {
 
     public static void emitReasoningChunk(String messageId, String incrementalText) {
         registry.emitReasoningChunk(messageId, incrementalText);
+    }
+
+    public static void emitReasoningBlockStart(String messageId) {
+        registry.emitReasoningBlockStart(messageId);
+    }
+
+    public static void emitReasoningBlockEnd(String messageId) {
+        registry.emitReasoningBlockEnd(messageId);
     }
 
     public static void emitSingletonReasoningChunk(String incrementalText) {

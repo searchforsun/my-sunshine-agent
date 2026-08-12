@@ -8,6 +8,7 @@ import {
   hasExpandableContent,
   inferSandboxSearchRoot,
   isSandboxExecStep,
+  isSandboxFetchStep,
   isSandboxReadStep,
   isSandboxToolStep,
   parseSandboxPathList,
@@ -15,8 +16,10 @@ import {
   resolveSandboxReadLineRange,
   resolveStepExpandInner,
   resolveStepHeaderText,
+  sandboxDisplayPath,
   sandboxToolKind,
   shouldShiftSummaryOnExpand,
+  stripWorkspaceCheckoutPrefixInText,
 } from './processingStepsDisplay'
 
 function sandboxStep(partial: Partial<ProcessingStep> & { id: string }): ProcessingStep {
@@ -43,6 +46,13 @@ describe('sandbox tool timeline display', () => {
     expect(isSandboxReadStep(sandboxStep({ id: 'tool-sandbox__read@1' }))).toBe(true)
     expect(isSandboxReadStep(sandboxStep({ id: 'tool-sandbox__exec@1' }))).toBe(false)
     expect(isSandboxReadStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
+  })
+
+  it('isSandboxFetchStep：仅网页工具', () => {
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__webfetch@1' }))).toBe(true)
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__websearch@2' }))).toBe(true)
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__read@3' }))).toBe(false)
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__exec@4' }))).toBe(false)
   })
 
   it('read step: parses line range from after summary', () => {
@@ -96,6 +106,22 @@ describe('sandbox tool timeline display', () => {
       metadata: { cancellable: true },
     })
     expect(resolveStepHeaderText(step)).toBe('')
+  })
+
+  it('strips /workspace/wt-xxx from write/edit/read header display', () => {
+    expect(stripWorkspaceCheckoutPrefixInText(
+      '正在写入 /workspace/wt-123466/docs/superpowers/specs/a.md',
+    )).toBe('正在写入 docs/superpowers/specs/a.md')
+    expect(sandboxDisplayPath('/workspace/wt-123466/docs/a.md')).toBe('docs/a.md')
+    const writing = sandboxStep({
+      id: 'tool-sandbox__write@1',
+      lifecycle: 'running',
+      label: '写文件',
+      summary: { active: '正在写入 /workspace/wt-123466/docs/a.md' },
+      metadata: { sandboxPath: '/workspace/wt-123466/docs/a.md' },
+    })
+    expect(resolveStepHeaderText(writing)).toBe('正在写入 docs/a.md')
+    expect(resolveSandboxFocusPath(writing)).toBe('/workspace/wt-123466/docs/a.md')
   })
 
   it('header shows backend summary as-is; focus uses metadata.sandboxPath', () => {

@@ -1,8 +1,5 @@
 package com.sunshine.orchestrator.controller.stream;
 
-import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
-import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.ReactCheckpointService;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.conversation.ConversationService;
@@ -184,7 +181,6 @@ public class ChatStreamContextFactory {
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         ChatConversationEntity conv = conversationService.getOwned(assistant.getConversationId(), userId, tenantId);
         String kbId = resolveSessionKbId(msg.getKbId(), conv.getKbId(), tenantId);
-        List<ProcessingStep> existingSteps = ProcessingStepSerde.fromJson(assistant.getSteps());
         boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
                 assistant.getIntent() != null ? assistant.getIntent() : "");
@@ -202,13 +198,10 @@ public class ChatStreamContextFactory {
         if (reactRestartResume) {
             resumeContent = "";
             resumeReasoning = "";
-            if (hasNativeCheckpoint) {
-                stepsJson = assistant.getSteps();
-                contentBlocksJson = assistant.getContentBlocks();
-            } else {
-                stepsJson = ProcessingStepSerde.toJson(ProcessingStepLifecycleOps.retainIntentStepsOnly(existingSteps));
-                contentBlocksJson = "[]";
-            }
+            // 无论有无 native checkpoint，时间线都保留（截断在 ChatController）；
+            // 无 checkpoint 时靠 injectedBlocks 续进度，勿只留 intent
+            stepsJson = assistant.getSteps();
+            contentBlocksJson = assistant.getContentBlocks();
         } else if (planWorkflowResume) {
             resumeContent = "";
             resumeReasoning = "";
@@ -240,8 +233,8 @@ public class ChatStreamContextFactory {
 
         AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
                 userId, tenantId, assistant.getConversationId(), history, userContent, conv.getModelName()));
-        // ReAct 续跑重规划：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
-        // Near 仅含更早已完成轮次，不含本轮 tool/正文执行史；Agent 侧靠新 ReActAgent + stream epoch 隔离。
+        // ReAct 继续生成：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
+        // Near 仅含更早已完成轮次；本轮进度靠 checkpoint（若有）+ injectedBlocks（skill/tasks/think/tool）。
 
         return new ChatResumePreparation(
                 assistant.getId(),

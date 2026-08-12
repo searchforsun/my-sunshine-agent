@@ -80,7 +80,7 @@ class AwaitToolRunToolTest {
     }
 
     @Test
-    void clampsTimeoutAndFormatsRunningSnapshot() {
+    void passesRequestedTimeout_registryClampsByKind() {
         bindMainContext();
         var snapshot = new AsyncToolRunRegistry.Snapshot(
                 RUN_ID,
@@ -92,7 +92,7 @@ class AwaitToolRunToolTest {
                 null,
                 "partial-output",
                 null);
-        when(asyncRegistry.await(eq(RUN_ID), eq(120))).thenReturn(snapshot);
+        when(asyncRegistry.await(eq(RUN_ID), eq(999))).thenReturn(snapshot);
 
         String out = tool.awaitToolRun(RUN_ID, 999, "tu-1");
 
@@ -104,6 +104,26 @@ class AwaitToolRunToolTest {
         assertThat(out).contains("\"elapsedMs\":12345");
         assertThat(out).contains("\"partial\":\"partial-output\"");
         assertThat(out).doesNotContain("\"result\"");
+    }
+
+    @Test
+    void nullTimeout_passesZeroForKindDefault() {
+        bindMainContext();
+        var snapshot = new AsyncToolRunRegistry.Snapshot(
+                RUN_ID,
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT,
+                AsyncToolRunRegistry.Status.RUNNING,
+                1,
+                3,
+                100L,
+                null,
+                null,
+                null);
+        when(asyncRegistry.await(eq(RUN_ID), eq(0))).thenReturn(snapshot);
+
+        tool.awaitToolRun(RUN_ID, null, "tu-1");
+
+        verify(asyncRegistry).await(eq(RUN_ID), eq(0));
     }
 
     @Test

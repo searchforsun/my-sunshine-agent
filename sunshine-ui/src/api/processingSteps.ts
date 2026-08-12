@@ -43,6 +43,7 @@ export {
   isSandboxToolStep,
   isSandboxExecStep,
   isSandboxReadStep,
+  isSandboxFetchStep,
   isCancellableSandboxTool,
   extractSandboxExecCommand,
   formatExecCommandHeader,

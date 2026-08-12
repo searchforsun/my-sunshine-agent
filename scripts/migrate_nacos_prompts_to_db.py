@@ -28,7 +28,7 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "scope-prompt": "范围约束：限制助手只处理企业制度/业务相关问题，拒绝越权或无关请求。",
     "mode-overlay.direct": "Direct 模式叠加层：直答路径的补充行为约束（可为空，保留扩展位）。",
     "mode-overlay.react": "ReAct 模式叠加层：约束自主推理时如何选工具、写思考与最终作答。",
-    "mode-overlay.react-restart": "ReAct 重启叠加层：用户要求重跑/续跑时的行为与上下文衔接说明。",
+    "mode-overlay.react-restart": "ReAct 继续生成叠加层：中断后续跑时接着已有进度，勿从头规划。",
     "mode-overlay.subagent": "子 Agent 叠加层：spawn/workflow 子任务内的角色与工具使用约束。",
     "mode-overlay.workflow": "Workflow 模式叠加层：静态/计划工作流节点执行时的补充行为约束。",
     "intent.classifier": "意图分类：将用户问题映射为执行模式（react / workflow / plan-workflow）及可选参数。",
@@ -51,8 +51,6 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "timeline.plan-approval": "Plan 确认步骤时间线：等待用户确认执行计划时的展示文案。",
     "timeline.rag-after": "RAG 完成后文案：检索步骤结束后写入 after 的摘要模板。",
     "timeline.sandbox": "沙箱步骤时间线：沙箱相关工具/工作区步骤的展示文案。",
-    "timeline.steps": "时间线步骤整包（历史兼容）：各 phase 的 before/active/after 合集；优先用 timeline.steps.* 细项。",
-    "timeline.steps.intent": "时间线「识别意图」步骤的 before/active/after 展示文案。",
     "timeline.steps.think": "时间线「思考/推理」步骤的 before/active/after 展示文案。",
     "timeline.steps.tool": "时间线「调用工具」步骤的 before/active/after 展示文案。",
     "timeline.steps.generate": "时间线「生成答复」步骤的 before/active/after 展示文案。",
@@ -76,7 +74,7 @@ DISPLAY_NAMES: dict[str, str] = {
     "system-prompt": "系统提示词",
     "mode-overlay.direct": "模式覆盖 · Direct",
     "mode-overlay.react": "模式覆盖 · ReAct",
-    "mode-overlay.react-restart": "模式覆盖 · ReAct 重启",
+    "mode-overlay.react-restart": "模式覆盖 · ReAct 继续生成",
     "mode-overlay.subagent": "模式覆盖 · Subagent",
     "mode-overlay.workflow": "模式覆盖 · Workflow",
     "intent.classifier": "意图分类提示词",
@@ -89,7 +87,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "rewrite.planner": "改写 · Planner",
     "rewrite.timeline": "改写 · Timeline 文案",
     "timeline.intent": "时间线 · Intent",
-    "timeline.steps": "时间线 · Steps",
     "timeline.hitl": "时间线 · HITL",
     "timeline.sandbox": "时间线 · Sandbox",
     "timeline.plan-approval": "时间线 · Plan 确认",
@@ -222,16 +219,10 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
     if isinstance(timeline, dict):
         for key, value in timeline.items():
             if key == "steps" and isinstance(value, dict):
-                # 整包保留一份，便于运营总览
-                seeds.append(PromptSeed(
-                    id="timeline.steps",
-                    kind="timeline",
-                    display_name=display_name_for("timeline.steps"),
-                    content_text=None,
-                    content_json=as_json(value),
-                    description=PURPOSE_DESCRIPTIONS.get("timeline.steps", "时间线步骤整包"),
-                ))
+                # 仅细项 timeline.steps.*；intent 走 timeline.intent，不写冗余整包
                 for step_key, step_val in value.items():
+                    if step_key == "intent":
+                        continue
                     pid = f"timeline.steps.{step_key}"
                     seeds.append(PromptSeed(
                         id=pid,

@@ -330,6 +330,11 @@ public final class ProcessingTimelineSession {
         think.beginReasoningRound(this::closeContentSegment);
     }
 
+    /** 首个 ThinkingBlock：按 beginReasoningRound 的 pending 意图开/复用 think */
+    public void ensureThinkOpen() {
+        think.ensureThinkOpen();
+    }
+
     public void endReasoningRound() {
         think.endReasoningRound();
     }

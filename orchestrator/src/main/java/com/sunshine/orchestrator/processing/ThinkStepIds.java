@@ -53,12 +53,14 @@ public final class ThinkStepIds {
      * AgentScope checkpoint 只存 message 历史，think-N 流式中途的半截 reasoning 不在历史里，
      * 无法从流式断点续传；故 think done 后紧跟 tool（已完整并驱动工具调用）才可作为续接锚点，
      * think 后仅 tasks 或无后续步（中断在该 think 流式中途）则需连同该 think 一并丢弃，让其重生成。
+     * <p>截断后必须把 {@code tasks} 与 awaiting decision 卡 append 回去，否则「继续生成」会丢掉
+     * TaskBoard / 决策卡，用户感知为从头开始。
      */
     public static void truncateToLastCompleteThink(java.util.List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {
             return;
         }
-        // 决策卡常落在最后一个完整 think 之后；截断后必须 append 回去，否则续跑 UI/re-await 丢卡
+        ProcessingStep tasksStep = findTasksStep(steps);
         ProcessingStep awaitingDecision =
                 com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps.findReactAwaitingDecisionStep(steps);
         int anchorIdx = -1;
@@ -86,18 +88,30 @@ public final class ThinkStepIds {
         while (steps.size() > anchorIdx + 1) {
             steps.remove(steps.size() - 1);
         }
-        if (awaitingDecision != null) {
-            boolean present = false;
-            for (ProcessingStep step : steps) {
-                if (step != null && awaitingDecision.id().equals(step.id())) {
-                    present = true;
-                    break;
-                }
-            }
-            if (!present) {
-                steps.add(awaitingDecision);
+        appendIfMissing(steps, tasksStep);
+        appendIfMissing(steps, awaitingDecision);
+    }
+
+    private static ProcessingStep findTasksStep(java.util.List<ProcessingStep> steps) {
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep step = steps.get(i);
+            if (step != null && TimelineStepId.TASKS.matches(step.id())) {
+                return step;
             }
         }
+        return null;
+    }
+
+    private static void appendIfMissing(java.util.List<ProcessingStep> steps, ProcessingStep keep) {
+        if (keep == null || keep.id() == null) {
+            return;
+        }
+        for (ProcessingStep step : steps) {
+            if (step != null && keep.id().equals(step.id())) {
+                return;
+            }
+        }
+        steps.add(keep);
     }
 
     /**

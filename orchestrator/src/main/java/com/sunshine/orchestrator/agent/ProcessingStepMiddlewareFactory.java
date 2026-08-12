@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
+import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import io.agentscope.core.middleware.MiddlewareBase;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class ProcessingStepMiddlewareFactory {
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
     private final SandboxTimelineLabelService sandboxTimelineLabels;
+    private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final PromptCatalogHolder catalogHolder;
 
@@ -38,6 +40,7 @@ public class ProcessingStepMiddlewareFactory {
                             executionProperties,
                             taskBoardTimelineSupport,
                             sandboxTimelineLabels,
+                            writeEditPlaceholder,
                             cancellableToolRunRegistry,
                             catalogHolder);
                 }

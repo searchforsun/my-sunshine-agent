@@ -143,6 +143,12 @@ public class GenerationJob {
                 );
     }
 
+    /** 续跑：预填中断前 content_blocks，终态落库与本轮新块合并 */
+    public void seedResumeContentBlocks(String contentBlocksJson) {
+        contentBlockAccumulator.seedMessageBlocks(
+                com.sunshine.orchestrator.processing.ContentBlocksJson.parse(contentBlocksJson));
+    }
+
     public void onSubscriberGone() {
         cancelOrphanTimer();
         orphanTimer = Mono.delay(Duration.ofSeconds(properties.orphanTimeoutSec()))

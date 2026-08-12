@@ -267,6 +267,8 @@ public class ResourceDispatcher {
 
 安全模型不变：HITL / SandboxExecGuard / PathJail / 租户 / Catalog 启用池。
 
+> **Skill 跨轮 / 软链**：轨 A 的 sticky、Redis ledger + 消息完整 `RoutingResult` 双写、默认软链（overlay + L2/L3 召回；`processGraph` 可选）见 [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md)。本文只定「本轮收集 `skillIds[]`」。
+
 ---
 
 ## 11. call_scene（命名隔离，对齐 rebuild S5 v4）
@@ -354,6 +356,7 @@ public class ResourceDispatcher {
 | [multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) | 子 Agent / spawn |
 | [phase5](./phase5-operation-openness-design.md) | `call_scene` 模型路由；与 `scene` 隔离 |
 | [prompt-ops-routing-catalog](./archive/2026-07-20-prompt-ops-routing-catalog-design.md) | 规则 `resourceType`；轨 A/B 过滤 |
+| [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md) | 轨 A skill 跨轮 sticky + 默认软链；processGraph 可选；双写 ledger |
 
 ---
 

@@ -14,6 +14,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -429,6 +430,7 @@ public class OrchestratorClient {
     }
 
     public Mono<Map<String, Object>> createWorkspace(Map<String, Object> body, String userId, String tenantId) {
+        // 创建需同步等 mirror clone（上限约 5min），勿被默认短超时掐断
         return webClient.post()
                 .uri("/api/agent-workspaces")
                 .header("x-user-id", userId)
@@ -437,7 +439,9 @@ public class OrchestratorClient {
                 .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+                .onStatus(HttpStatusCode::is5xxServerError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .timeout(Duration.ofMinutes(6));
     }
 
     public Mono<Map<String, Object>> destroyWorkspace(String id, String userId, String tenantId) {
@@ -642,6 +646,31 @@ public class OrchestratorClient {
                 .header("x-tenant-id", tenantId)
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> getProjectGuide(String id, String userId, String tenantId) {
+        return webClient.get()
+                .uri("/api/agent-workspaces/{id}/project-guide", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .onStatus(HttpStatusCode::is5xxServerError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> saveProjectGuide(
+            String id, Map<String, String> body, String userId, String tenantId) {
+        return webClient.put()
+                .uri("/api/agent-workspaces/{id}/project-guide", id)
+                .header("x-user-id", userId)
+                .header("x-tenant-id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body != null ? body : Map.of())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .onStatus(HttpStatusCode::is5xxServerError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 

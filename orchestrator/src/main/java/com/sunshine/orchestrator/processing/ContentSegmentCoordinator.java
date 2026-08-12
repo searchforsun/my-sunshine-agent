@@ -21,6 +21,42 @@ public final class ContentSegmentCoordinator {
     private String openAfterStepId;
     private String segmentBaseline = "";
 
+    /**
+     * 续跑：直接抬高序号（已有 content-N 的最大 N）。
+     */
+    public void seedSeq(int maxExistingSeq) {
+        if (maxExistingSeq > seq) {
+            seq = maxExistingSeq;
+        }
+    }
+
+    /**
+     * 续跑：从已有 content-* segmentId 抬高序号，避免与前端残留块撞 id
+     * （撞 id 会导致 content_start 被忽略、新正文灌进旧 afterStepId）。
+     */
+    public void seedSeqFromExistingSegmentIds(Iterable<String> segmentIds) {
+        if (segmentIds == null) {
+            return;
+        }
+        int max = seq;
+        for (String id : segmentIds) {
+            if (id == null || !id.startsWith("content-")) {
+                continue;
+            }
+            String rest = id.substring("content-".length());
+            int hash = rest.indexOf('#');
+            if (hash >= 0) {
+                rest = rest.substring(0, hash);
+            }
+            try {
+                max = Math.max(max, Integer.parseInt(rest));
+            } catch (NumberFormatException ignored) {
+                // ignore non-numeric
+            }
+        }
+        seedSeq(max);
+    }
+
     /** 将分段 token 写入 session 辅助队列，由 {@link ProcessingTimelineSupport} 一并刷出 */
     public List<StreamToken> ingest(String incoming, String afterStepId, Consumer<StreamToken> sink) {
         List<StreamToken> out = new ArrayList<>();

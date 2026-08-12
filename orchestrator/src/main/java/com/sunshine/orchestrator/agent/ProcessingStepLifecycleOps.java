@@ -91,7 +91,7 @@ public final class ProcessingStepLifecycleOps {
         }
     }
 
-    /** ReAct 暂停续跑：仅保留意图识别步，从规划推理重新开始 */
+    /** 历史软续跑工具：仅保留意图识别步（无感续跑路径已不再调用） */
     public static List<ProcessingStep> retainIntentStepsOnly(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {
             return List.of();

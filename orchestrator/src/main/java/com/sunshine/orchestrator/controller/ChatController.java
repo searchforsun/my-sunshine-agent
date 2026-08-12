@@ -7,7 +7,6 @@ import com.sunshine.orchestrator.controller.stream.ChatStreamContext;
 import com.sunshine.orchestrator.controller.stream.ChatStreamContextFactory;
 import com.sunshine.orchestrator.controller.stream.ChatStreamExecutor;
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -166,16 +165,8 @@ public class ChatController {
                 ? new java.util.ArrayList<>(ProcessingStepSerde.fromJson(ctx.existingStepsJson()))
                 : java.util.List.of();
         if (reactRestartResume) {
-            if (!hasNativeCheckpoint) {
-                // 无 checkpoint 无法续传：仅保留 intent，从规划推理全量重来
-                initialSteps.clear();
-                initialSteps.addAll(ProcessingStepLifecycleOps.retainIntentStepsOnly(
-                        ProcessingStepSerde.fromJson(ctx.existingStepsJson())));
-            } else {
-                // AgentScope 从最后一个完整 think 之后全量重放：截断到该 think 为止，
-                // 丢弃其后的未完成 tool/rag/tasks 步，避免与重放的新步重复、或残留 running
-                truncateAfterLastDoneThink(initialSteps);
-            }
+            // 无论有无 native checkpoint：截断半截步，保留 tasks/decision；无 checkpoint 靠注入块续进度
+            truncateAfterLastDoneThink(initialSteps);
         }
         String initialContent = resume && !planWorkflowResume && !reactRestartResume
                 ? ctx.existingContent() : "";
@@ -186,6 +177,7 @@ public class ChatController {
                 flushScheduler.flushPartial(ctx.assistantMsgId(), content);
         Runnable onComplete = () -> Mono.fromRunnable(() -> {
                     StepEventBridge.unbindGenerationFlush(ctx.assistantMsgId());
+                    StepEventBridge.clearResumeContentBlocks(ctx.assistantMsgId());
                     QueryRewriteTrace.clear(ctx.assistantMsgId());
                     if (!resume) {
                         streamExecutor.maybeUpdateTitle(ctx);
@@ -196,6 +188,7 @@ public class ChatController {
                 .subscribe();
         Consumer<Throwable> onError = error -> {
             StepEventBridge.unbindGenerationFlush(ctx.assistantMsgId());
+            StepEventBridge.clearResumeContentBlocks(ctx.assistantMsgId());
             QueryRewriteTrace.clear(ctx.assistantMsgId());
             Mono.fromRunnable(() -> registry.remove(generationId))
                     .subscribeOn(Schedulers.boundedElastic())
@@ -205,6 +198,9 @@ public class ChatController {
 
         job.start(streamExecutor.prepareChunkFlux(chunkFlux), buffer, initialReasoning, initialSteps,
                 flushPartial, onComplete, onError, executionMode);
+        if (reactRestartResume) {
+            job.seedResumeContentBlocks(StepEventBridge.peekResumeContentBlocks(ctx.assistantMsgId()));
+        }
 
         return sseFluxFromRedis(ctx, generationId, job, resume);
     }
@@ -312,12 +308,25 @@ public class ChatController {
                         registry.unlockMessage(prep.assistantId());
                         throw new BizException(OrchestratorErrorCode.GENERATION_IN_PROGRESS);
                     }
+                    String contentBlocksForResume = prep.contentBlocksJson();
+                    if (prep.reactRestart()) {
+                        java.util.List<ProcessingStep> truncated = new java.util.ArrayList<>(
+                                ProcessingStepSerde.fromJson(prep.stepsJson()));
+                        truncateAfterLastDoneThink(truncated);
+                        contentBlocksForResume = com.sunshine.orchestrator.processing.ContentBlocksJson
+                                .pruneForReactResume(prep.contentBlocksJson(), truncated);
+                    }
                     conversationService.commitResumeStart(
                             prep.assistantId(),
                             prep.resumeContent(),
                             prep.resumeReasoning(),
                             prep.stepsJson(),
-                            prep.contentBlocksJson());
+                            contentBlocksForResume);
+                    // clearForReactRestart 之后再挂载：抬高 segment seq + 落库合并种子
+                    if (prep.reactRestart()) {
+                        StepEventBridge.prepareResumeContentBlocks(
+                                prep.assistantId(), contentBlocksForResume);
+                    }
                     return prep.toStreamContext();
                 })
                 .flatMapMany(ctx -> {

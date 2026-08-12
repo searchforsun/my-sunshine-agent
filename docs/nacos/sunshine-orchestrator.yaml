@@ -76,9 +76,14 @@ agent:
         timeout-sec: 300
       async-tool:
         enabled: true
+        # exec 观察窗口
         await-default-sec: 30
         await-max-sec: 120
         await-max-waits: 3
+        # spawn 观察窗口（3×200=600，对齐 task-timeout-ms）
+        spawn-await-default-sec: 120
+        spawn-await-max-sec: 200
+        spawn-await-max-waits: 3
         exec-wall-timeout-sec: 600
         max-concurrent-per-message: 3
     plan-workflow:
@@ -228,7 +233,7 @@ agent:
             description: 工作目录（可选，默认 /workspace；须在 /skills/{skillId}/... 或 /workspace）
           timeout_sec:
             type: integer
-            description: 超时秒数（可选，默认 30）
+            description: 超时秒数（可选；同步默认约 30；background=true 且未传时与墙钟对齐，约 600）
           background:
             type: boolean
             description: 可选；true=立即返回 runId，主 Agent 用 await_tool_run 收结果；默认 false

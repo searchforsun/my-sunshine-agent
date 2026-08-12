@@ -44,6 +44,12 @@ export function isSandboxReadStep(step: { id: string }): boolean {
   return catalogToolIdFromStepId(step.id) === 'sandbox__read'
 }
 
+/** 网页检索/抓取：与工作区文件无关，点击勿打开开发工作区 */
+export function isSandboxFetchStep(step: { id: string }): boolean {
+  const toolId = catalogToolIdFromStepId(step.id)
+  return toolId === 'sandbox__webfetch' || toolId === 'sandbox__websearch'
+}
+
 /** 可 hover 取消：跟 SSE metadata.cancellable（Nacos cancellable-tools） */
 export function isCancellableSandboxTool(step: {
   id: string
@@ -157,13 +163,36 @@ export function sandboxBasename(path: string): string {
   return i >= 0 ? normalized.slice(i + 1) : normalized
 }
 
-/** 去掉 /skills|/workspace 前缀的相对路径（展开列表展示用） */
+/** 去掉 /skills|/workspace 前缀的相对路径（展开列表展示用）；任务工作区再剥 wt-xxx/ */
 export function sandboxDisplayPath(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
   if (normalized.startsWith('/skills/')) return normalized.slice('/skills/'.length)
-  if (normalized.startsWith('/workspace/')) return normalized.slice('/workspace/'.length)
+  if (normalized.startsWith('/workspace/')) {
+    const rest = normalized.slice('/workspace/'.length)
+    const checkout = rest.match(/^(wt-[a-zA-Z0-9]+)(?:\/(.*))?$/)
+    if (checkout) return checkout[2] ?? ''
+    return rest
+  }
   if (normalized === '/skills' || normalized === '/workspace') return ''
   return sandboxBasename(normalized) || normalized
+}
+
+/**
+ * 主行展示：剥掉任务工作区 checkout 前缀 `/workspace/wt-xxx/`（或无前导斜杠形式），
+ * 保留项目内相对路径；聚焦跳转仍用 metadata 全路径。
+ */
+export function stripWorkspaceCheckoutPrefixInText(text: string): string {
+  if (!text) return text
+  return text
+    .replace(/\/workspace\/wt-[a-zA-Z0-9]+\//g, '')
+    .replace(/(^|[\s：:])workspace\/wt-[a-zA-Z0-9]+\//g, '$1')
+}
+
+function shouldStripCheckoutInHeader(step: { id: string }): boolean {
+  const toolId = catalogToolIdFromStepId(step.id)
+  return toolId === 'sandbox__write'
+    || toolId === 'sandbox__edit'
+    || toolId === 'sandbox__read'
 }
 
 /** 解析 glob 搜索根：末尾 · /skills… */
@@ -382,7 +411,10 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
 export function resolveStepHeaderText(step: ProcessingStep): string {
   const full = resolveStepSummaryFull(step)
   const oneLine = full.replace(/\s+/g, ' ').trim()
-  return truncateStepPreview(oneLine)
+  const display = shouldStripCheckoutInHeader(step)
+    ? stripWorkspaceCheckoutPrefixInText(oneLine)
+    : oneLine
+  return truncateStepPreview(display)
 }
 
 function extractFirstProseLine(text: string): string {

@@ -103,18 +103,17 @@ async function handleSave() {
       class="guide-input"
       type="textarea"
       :autosize="{ minRows: 18, maxRows: 30 }"
-      placeholder="类 CLAUDE.md 的项目级规范：技术栈 / 架构约束 / 编码约定 / 常用命令 / 构建验证方式…"
+      placeholder="Markdown…"
       :disabled="loading || saving"
     />
     <div v-else-if="mode === 'preview'" class="guide-preview">
       <StaticMarkdown :source="content" />
     </div>
-    <p v-if="mode === 'edit'" class="guide-tip">
-      保存后，该工作区下所有任务会话会自动读取此规范（类似 CLAUDE.md 的项目级文件），未保存时不生效。
-    </p>
     <template #footer>
-      <NButton quaternary :disabled="saving" @click="emit('update:show', false)">取消</NButton>
-      <NButton type="primary" :loading="saving" @click="handleSave">保存</NButton>
+      <div class="guide-footer">
+        <NButton quaternary :disabled="saving" @click="emit('update:show', false)">取消</NButton>
+        <NButton type="primary" :loading="saving" @click="handleSave">保存</NButton>
+      </div>
     </template>
   </NModal>
 </template>
@@ -164,9 +163,9 @@ async function handleSave() {
   max-height: 560px;
   overflow: auto;
 }
-.guide-tip {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--sun-text-muted);
+.guide-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>

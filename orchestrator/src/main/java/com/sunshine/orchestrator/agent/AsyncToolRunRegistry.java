@@ -186,11 +186,11 @@ public class AsyncToolRunRegistry {
         if (isTerminal(handle.status.get())) {
             return toSnapshot(handle, handle.status.get());
         }
-        int maxWaits = awaitMaxWaits();
+        int maxWaits = awaitMaxWaits(handle.kind);
         if (handle.waitCount.get() >= maxWaits) {
             return toSnapshot(handle, Status.BUDGET_EXHAUSTED);
         }
-        int clampedSec = clampTimeoutSec(timeoutSec);
+        int clampedSec = clampTimeoutSec(timeoutSec, handle.kind);
         handle.waitCount.incrementAndGet();
         try {
             handle.terminalSignal.get(clampedSec, TimeUnit.SECONDS);
@@ -300,25 +300,49 @@ public class AsyncToolRunRegistry {
                 handle.kind,
                 responseStatus,
                 handle.waitCount.get(),
-                awaitMaxWaits(),
+                awaitMaxWaits(handle.kind),
                 System.currentTimeMillis() - handle.startedAtMs,
                 handle.result,
                 handle.partial,
                 handle.error);
     }
 
-    private int clampTimeoutSec(int timeoutSec) {
+    /** timeoutSec≤0 → 该 kind 默认；再夹到 kind 上限；结果至少 1s。 */
+    private int clampTimeoutSec(int timeoutSec, Kind kind) {
         AgentExecutionProperties.React.AsyncTool cfg = executionProperties.getReact().getAsyncTool();
-        int effective = timeoutSec > 0 ? timeoutSec : cfg.getAwaitDefaultSec();
-        int max = cfg.getAwaitMaxSec();
+        int effective = timeoutSec > 0 ? timeoutSec : awaitDefaultSec(kind, cfg);
+        int max = awaitMaxSec(kind, cfg);
         if (max > 0 && effective > max) {
             effective = max;
         }
         return Math.max(1, effective);
     }
 
-    private int awaitMaxWaits() {
-        int n = executionProperties.getReact().getAsyncTool().getAwaitMaxWaits();
+    private int awaitDefaultSec(Kind kind, AgentExecutionProperties.React.AsyncTool cfg) {
+        if (kind == Kind.SPAWN_SUBAGENT) {
+            int n = cfg.getSpawnAwaitDefaultSec();
+            return n > 0 ? n : 120;
+        }
+        int n = cfg.getAwaitDefaultSec();
+        return n > 0 ? n : 30;
+    }
+
+    private int awaitMaxSec(Kind kind, AgentExecutionProperties.React.AsyncTool cfg) {
+        if (kind == Kind.SPAWN_SUBAGENT) {
+            int n = cfg.getSpawnAwaitMaxSec();
+            return n > 0 ? n : 200;
+        }
+        int n = cfg.getAwaitMaxSec();
+        return n > 0 ? n : 120;
+    }
+
+    private int awaitMaxWaits(Kind kind) {
+        AgentExecutionProperties.React.AsyncTool cfg = executionProperties.getReact().getAsyncTool();
+        if (kind == Kind.SPAWN_SUBAGENT) {
+            int n = cfg.getSpawnAwaitMaxWaits();
+            return n > 0 ? n : 3;
+        }
+        int n = cfg.getAwaitMaxWaits();
         return n > 0 ? n : 3;
     }
 

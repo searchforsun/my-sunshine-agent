@@ -40,6 +40,10 @@ spring:
         locator:
           enabled: true
           lower-case-service-id: true
+      # 工作区创建需同步 clone（最长约 5min）；过短会掐断 POST /api/agent-workspaces
+      httpclient:
+        connect-timeout: 10000
+        response-timeout: 360s
       routes:
         # 健康检查（StatusView 经 Gateway 统一探测，须在 /api/** 之前）
         - id: health-auth

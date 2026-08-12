@@ -120,6 +120,13 @@ public class AgentPromptProperties {
             tool.setActive("正在{displayName}");
             tool.setAfter("{displayName}完成");
             map.put("tool", tool);
+            var awaitTool = new StepTimeline();
+            awaitTool.setLabel("等待结果");
+            awaitTool.setLabelFollowUp("后台执行");
+            awaitTool.setBefore("准备等待后台任务");
+            awaitTool.setActive("正在等待后台任务");
+            awaitTool.setAfter("等待完成");
+            map.put("await-tool", awaitTool);
             var node = new StepTimeline();
             node.setBefore("准备{displayName}");
             node.setActive("正在{displayName}");
@@ -204,9 +211,9 @@ public class AgentPromptProperties {
             s.setGlobAfterWithPath("{pattern} · {path}");
             s.setGrepAfter("{pattern}");
             s.setExecAfter("{command}");
-            s.setReadActive("正在读取 {path}");
-            s.setWriteActive("正在写入 {path}");
-            s.setEditActive("正在修改 {path}");
+            s.setReadActive("正在读取 {displayPath}");
+            s.setWriteActive("正在写入 {displayPath}");
+            s.setEditActive("正在修改 {displayPath}");
             s.setGlobActive("正在查找 {pattern}");
             s.setGrepActive("正在搜索 {pattern}");
             s.setExecActive("正在执行 {command}");

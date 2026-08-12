@@ -159,6 +159,49 @@ class AsyncToolRunRegistryTest {
         assertThat(otherKill.get()).isFalse();
     }
 
+    @Test
+    void await_spawn_usesSpawnMaxAndDefault() throws Exception {
+        AgentExecutionProperties props = new AgentExecutionProperties();
+        props.getReact().getAsyncTool().setSpawnAwaitDefaultSec(2);
+        props.getReact().getAsyncTool().setSpawnAwaitMaxSec(2);
+        props.getReact().getAsyncTool().setAwaitMaxSec(120);
+        AsyncToolRunRegistry kindAware = new AsyncToolRunRegistry(props);
+
+        String spawnId = kindAware.register(
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT, "msg-s", "c1", 600_000L);
+        long t0 = System.currentTimeMillis();
+        assertThat(kindAware.await(spawnId, 999).status()).isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+        assertThat(System.currentTimeMillis() - t0).isLessThan(5_000L);
+
+        String spawnDefault = kindAware.register(
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT, "msg-s2", "c1", 600_000L);
+        long t1 = System.currentTimeMillis();
+        assertThat(kindAware.await(spawnDefault, 0).status()).isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+        assertThat(System.currentTimeMillis() - t1).isGreaterThanOrEqualTo(1_500L);
+        assertThat(System.currentTimeMillis() - t1).isLessThan(5_000L);
+
+        String execId = kindAware.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-e", "c1", 600_000L);
+        props.getReact().getAsyncTool().setAwaitDefaultSec(1);
+        props.getReact().getAsyncTool().setAwaitMaxSec(1);
+        long t2 = System.currentTimeMillis();
+        assertThat(kindAware.await(execId, 999).status()).isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+        assertThat(System.currentTimeMillis() - t2).isLessThan(3_000L);
+    }
+
+    @Test
+    void await_spawn_waitBudgetUsesSpawnMaxWaits() {
+        AgentExecutionProperties props = new AgentExecutionProperties();
+        props.getReact().getAsyncTool().setSpawnAwaitMaxWaits(2);
+        props.getReact().getAsyncTool().setAwaitMaxWaits(3);
+        AsyncToolRunRegistry kindAware = new AsyncToolRunRegistry(props);
+        String runId = kindAware.register(
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT, "msg-b", "c1", 600_000L);
+        assertThat(kindAware.await(runId, 1).waitBudget()).isEqualTo(2);
+        assertThat(kindAware.await(runId, 1).waitCount()).isEqualTo(2);
+        assertThat(kindAware.await(runId, 1).status()).isEqualTo(AsyncToolRunRegistry.Status.BUDGET_EXHAUSTED);
+    }
+
     private boolean awaitStatus(String runId, AsyncToolRunRegistry.Status expected, long timeoutMs)
             throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;

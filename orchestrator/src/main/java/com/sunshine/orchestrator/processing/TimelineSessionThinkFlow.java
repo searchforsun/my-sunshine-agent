@@ -50,45 +50,54 @@ final class TimelineSessionThinkFlow {
             if (isThinkRunning()) {
                 completeThinkIfRunning();
             }
-            openNextThink();
-            log.debug("[ThinkFlow] begin: tool-sep -> openThink={}", state.currentThinkId);
+            // 业务 tool 后：下一轮有 Thinking 再开新 think；无 Thinking（纯 tool_call）不开空步
+            state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.FRESH;
+            log.debug("[ThinkFlow] begin: pendingFresh afterTool");
             return;
         }
-        // 无业务 tool 间隔的连续 reasoning（如终态前空转多轮、todo_write 建板后再推理）复用同一 think，
-        // 避免堆叠「综合分析」。复用发 RESUME（翻回 running、保留既有 reasoning），不发 pending/start：
-        // START 会清空旧 reasoning 导致覆盖之前的思考；此处新 reasoning 应 concat 续写在旧内容后。
+        // 无业务 tool 间隔的连续 reasoning：有 Thinking 时 RESUME 复用；无 Thinking 不开空 running
         if (state.lastCompletedThinkId != null && !emitter.isStepRunning(state.lastCompletedThinkId)) {
-            state.currentThinkId = state.lastCompletedThinkId;
-            lifecycle.resume(state.currentThinkId, TimelineStepId.THINK.phase());
-            log.debug("[ThinkFlow] begin: reuseThink={}", state.currentThinkId);
+            state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.REUSE;
+            log.debug("[ThinkFlow] begin: pendingReuse think={}", state.lastCompletedThinkId);
             return;
         }
         if (isThinkRunning()) {
             completeThinkIfRunning();
         }
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.FRESH;
+        log.debug("[ThinkFlow] begin: pendingFresh");
+    }
+
+    /** 首个 ThinkingBlockStart/Delta：按 pending 意图开/复用 think */
+    void ensureThinkOpen() {
+        if (isThinkRunning()) {
+            return;
+        }
+        TimelineSessionState.PendingThinkOpen intent = state.pendingThinkOpen;
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.NONE;
+        if (intent == TimelineSessionState.PendingThinkOpen.REUSE
+                && state.lastCompletedThinkId != null) {
+            state.currentThinkId = state.lastCompletedThinkId;
+            lifecycle.resume(state.currentThinkId, TimelineStepId.THINK.phase());
+            log.debug("[ThinkFlow] ensureOpen: reuseThink={}", state.currentThinkId);
+            return;
+        }
         openNextThink();
-        log.debug("[ThinkFlow] begin: freshThink={}", state.currentThinkId);
+        log.debug("[ThinkFlow] ensureOpen: openThink={}", state.currentThinkId);
     }
 
     void endReasoningRound() {
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.NONE;
         long endedAt = System.currentTimeMillis();
         String thinkId = resolveRunningThinkId();
-        if (thinkId == null) {
+        if (thinkId == null || !emitter.isStepRunning(thinkId)) {
             log.debug("[ThinkFlow] end: noRunningThink");
             return;
         }
         state.lastCompletedThinkId = thinkId;
-        if (emitter.isStepRunning(thinkId)) {
-            lifecycle.completeAt(thinkId, null, endedAt);
-            state.lastCompletedThinkEndedAt = endedAt;
-            log.debug("[ThinkFlow] end: completeThink={}", thinkId);
-            return;
-        }
-        state.lastCompletedThinkEndedAt = state.aggregator.get(thinkId)
-                .map(ProcessingStep::endedAt)
-                .filter(ts -> ts > 0)
-                .orElse(endedAt);
-        log.debug("[ThinkFlow] end: alreadyDoneThink={}", thinkId);
+        lifecycle.completeAt(thinkId, null, endedAt);
+        state.lastCompletedThinkEndedAt = endedAt;
+        log.debug("[ThinkFlow] end: completeThink={}", thinkId);
     }
 
     private String resolveRunningThinkId() {

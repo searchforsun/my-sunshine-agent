@@ -11,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 断点续传「最后一个完整 think」锚点：
  * 仅 think done 且其后有 tool/rag 步才算完整（中断在 tool 阶段，可续接）；
- * think 后仅 tasks 或无后续步（中断在 think 流式中途）则不算，需回退重生成。
+ * think 后仅 tasks 或无后续步（中断在 think 流式中途）则不算，需回退重生成；
+ * 截断后须保留 tasks 步（无感续跑 TaskBoard）。
  */
 class ThinkStepIdsTest {
 
@@ -43,8 +44,22 @@ class ThinkStepIdsTest {
         assertThat(ThinkStepIds.lastCompleteThinkIteration(steps)).isEqualTo(1);
 
         ThinkStepIds.truncateToLastCompleteThink(steps);
+        // 回退锚点到 think，但 tasks 须 append 回去（无感续跑保留 TaskBoard）
         assertThat(steps).extracting(ProcessingStep::id)
-                .containsExactly("intent", "think");
+                .containsExactly("intent", "think", "tasks");
+    }
+
+    @Test
+    void truncateToLastCompleteThink_preservesTasksAfterToolInterrupt() {
+        List<ProcessingStep> steps = new ArrayList<>(List.of(
+                doneStep("intent"),
+                doneStep("skill"),
+                doneStep("think"),
+                doneStep("tasks"),
+                runningStep("tool-b")));
+        ThinkStepIds.truncateToLastCompleteThink(steps);
+        assertThat(steps).extracting(ProcessingStep::id)
+                .containsExactly("intent", "skill", "think", "tasks");
     }
 
     @Test

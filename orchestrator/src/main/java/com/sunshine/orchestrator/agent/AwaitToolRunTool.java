@@ -48,7 +48,7 @@ public class AwaitToolRunTool implements AgentTool {
         props.put("runId", Map.of("type", "string", "description", "异步 run 句柄（必填）"));
         props.put("timeout_sec", Map.of(
                 "type", "number",
-                "description", "可选观察窗口秒数；默认 30，上限 120"));
+                "description", "可选观察窗口秒数；exec 默认 30/上限 120，spawn 默认 120/上限 200（按 run 类型夹紧）"));
         return Map.of(
                 "type", "object",
                 "properties", props,
@@ -101,7 +101,7 @@ public class AwaitToolRunTool implements AgentTool {
             return errorJson("子 Agent 不可调用 await_tool_run");
         }
 
-        int timeout = resolveTimeoutSec(timeoutSec, cfg);
+        int timeout = resolveTimeoutSec(timeoutSec);
         AsyncToolRunRegistry.Snapshot snapshot = asyncRegistry.await(runId.strip(), timeout);
         if (snapshot == null) {
             return errorJson("未知 runId");
@@ -114,13 +114,15 @@ public class AwaitToolRunTool implements AgentTool {
         return react != null ? react.getAsyncTool() : null;
     }
 
-    private static int resolveTimeoutSec(Integer timeoutSec, AgentExecutionProperties.React.AsyncTool cfg) {
-        int effective = timeoutSec != null ? timeoutSec : cfg.getAwaitDefaultSec();
-        int max = cfg.getAwaitMaxSec();
-        if (max > 0 && effective > max) {
-            effective = max;
+    /**
+     * 仅规范化入参；上限按 run kind 在 {@link AsyncToolRunRegistry} 夹紧。
+     * null → 0（registry 用该 kind 默认）；&lt;1 → 1。
+     */
+    private static int resolveTimeoutSec(Integer timeoutSec) {
+        if (timeoutSec == null) {
+            return 0;
         }
-        return Math.max(1, effective);
+        return Math.max(1, timeoutSec);
     }
 
     static String formatSnapshot(AsyncToolRunRegistry.Snapshot snapshot) {

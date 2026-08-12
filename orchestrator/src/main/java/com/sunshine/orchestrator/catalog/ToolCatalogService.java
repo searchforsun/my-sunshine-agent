@@ -1,10 +1,12 @@
 package com.sunshine.orchestrator.catalog;
 
 import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.orchestrator.agent.AwaitToolRunTool;
 import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.sandbox.SandboxHitlPolicy;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
@@ -86,6 +88,9 @@ public class ToolCatalogService {
     public String displayName(String toolId) {
         if (RagTool.NAME.equals(toolId)) {
             return "检索知识库";
+        }
+        if (AwaitToolRunTool.NAME.equals(toolId)) {
+            return AwaitToolRunLabels.label();
         }
         if (sandboxProperties.isSandboxTool(toolId)) {
             return sandboxProperties.displayName(toolId);

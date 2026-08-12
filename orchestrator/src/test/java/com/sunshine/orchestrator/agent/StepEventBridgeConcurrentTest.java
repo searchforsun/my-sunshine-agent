@@ -159,6 +159,7 @@ class StepEventBridgeConcurrentTest {
         StepEventBridge.bindGenerationFlush("msg-stale", flushed::add);
 
         session.beginReasoningRound();
+        session.ensureThinkOpen();
         StepEventBridge.emitReasoningChunk("msg-stale", "旧推理");
         assertThat(flushed).hasSize(1);
 
@@ -177,6 +178,7 @@ class StepEventBridgeConcurrentTest {
         StepEventBridge.bindGenerationFlush("msg-flush", flushed::add);
 
         session.beginReasoningRound();
+        session.ensureThinkOpen();
         StepEventBridge.emitReasoningChunk("msg-flush", "增量推理");
 
         assertThat(flushed).hasSize(1);
@@ -249,7 +251,7 @@ class StepEventBridgeConcurrentTest {
         ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
         ProcessingTimelineSession session = bind("singleton-target", queue);
         session.beginReasoningRound();
-
+        session.ensureThinkOpen();
         StepEventBridge.emitSingleton(ProcessingTimelineSession::beginReasoningRound);
         StepEventBridge.emitSingletonReasoningChunk("不应出现");
 

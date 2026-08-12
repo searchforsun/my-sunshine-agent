@@ -30,6 +30,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.mockito.ArgumentCaptor;
+
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -201,6 +203,41 @@ class SandboxAgentToolsBackgroundTest {
                     return snap != null && snap.status() == AsyncToolRunRegistry.Status.WALL_TIMEOUT;
                 },
                 3_000)).isTrue();
+    }
+
+    @Test
+    void background_omittedTimeout_alignedToWallAndStripsBackgroundFlag() throws Exception {
+        String toolUseId = "tu-bg-timeout-wall";
+        bindToolUse(toolUseId);
+        executionProperties.getReact().getAsyncTool().setExecWallTimeoutSec(600);
+        when(sandboxClient.invoke(eq(SESSION_ID), eq("exec"), anyMap(), eq(toolUseId)))
+                .thenReturn(new ToolInvokeResponse(true, "async-frontend-ok\n", 0, Map.of()));
+
+        ToolResultBlock result = callExec(toolUseId, true, "sleep 45 && echo async-frontend-ok");
+        assertThat(resultText(result)).contains("\"status\":\"running\"");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> bodyCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(sandboxClient, timeout(2_000)).invoke(
+                eq(SESSION_ID), eq("exec"), bodyCaptor.capture(), eq(toolUseId));
+        Map<String, Object> sent = bodyCaptor.getValue();
+        assertThat(sent).doesNotContainKey("background");
+        assertThat(sent.get("timeout_sec")).isEqualTo(600);
+        assertThat(awaitCondition(() -> {
+            var snap = asyncToolRunRegistry.peek(toolUseId);
+            return snap != null && snap.status() == AsyncToolRunRegistry.Status.DONE;
+        }, 3_000)).isTrue();
+    }
+
+    @Test
+    void prepareBackgroundExecInvokeBody_keepsExplicitTimeout() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("command", "sleep 5");
+        body.put("background", true);
+        body.put("timeout_sec", 12);
+        Map<String, Object> prepared = SandboxAgentTools.prepareBackgroundExecInvokeBody(body, 600);
+        assertThat(prepared).doesNotContainKey("background");
+        assertThat(prepared.get("timeout_sec")).isEqualTo(12);
     }
 
     @Test

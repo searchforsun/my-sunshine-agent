@@ -86,6 +86,7 @@ cross-turn（跨用户问答轮次）:
 | 工具关键字段（path、*Id、exitCode、trace…） | Mid/Near **schema 行**白名单原样（**chat 见 §5.5.8**；task 见 task-scene §6.5） | 渲染规则保真，禁止「先摘要再捞回」 |
 | 失败路径（试过/为何失败/测不过/权限拒） | T0 `processTrail`（kind=attempt\|fail\|denied…） | 硬保留；重要性 ≥ 成功叙事 |
 | 证据与时效 | RAG/外网：source + queriedAt 可短解释不可抹锚；**代码**：只留 refs，实时重读（§v12） | 代码路径**不**引入 asOf 水位 |
+| Skill 绑定 / 软链焦点（sticky） | Redis `SkillSessionLedger` + 消息完整 `RoutingResult`；overlay 在 Prompt 稳定前缀 | **不进** L1 Near/Mid/Far 折叠；Mid 最多 schema 路标。见 [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md) |
 
 **明确不做**：对话窗 alone 作为唯一续跑判据（正确形态可以是瘦对话 + 胖 T0/H1）；chat 与 task 同一套「四类全留」（chat 仍 **正文为主 + 工具轮 schema**，见 §5.5.8，非 task 完整过程窗）。
 

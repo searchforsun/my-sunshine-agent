@@ -62,34 +62,15 @@ public class TimelinePromptCatalog {
         if (direct.isPresent()) {
             return direct.get();
         }
-        Optional<StepTimeline> fromPack = stepFromPack(name);
-        if (fromPack.isPresent()) {
-            return fromPack.get();
-        }
         log.warn("[TimelinePromptCatalog] catalog missing id=timeline.steps.{}", name);
         return new StepTimeline();
     }
 
+    /** 仅聚合 Catalog 细项 {@code timeline.steps.*}（意图步走 {@link #intent()}，无整包兜底）。 */
     public LinkedHashMap<String, StepTimeline> steps() {
         LinkedHashMap<String, StepTimeline> out = new LinkedHashMap<>();
-        catalogHolder.snapshot().json("timeline.steps").ifPresent(pack -> {
-            try {
-                JsonNode root = MAPPER.readTree(pack);
-                if (root != null && root.isObject()) {
-                    root.fields().forEachRemaining(e -> {
-                        try {
-                            out.put(e.getKey(), MAPPER.treeToValue(e.getValue(), StepTimeline.class));
-                        } catch (Exception ex) {
-                            log.warn("[TimelinePromptCatalog] skip pack step={}: {}", e.getKey(), ex.getMessage());
-                        }
-                    });
-                }
-            } catch (Exception e) {
-                log.warn("[TimelinePromptCatalog] timeline.steps pack parse failed: {}", e.getMessage());
-            }
-        });
         for (String id : catalogHolder.snapshot().byId().keySet()) {
-            if (id != null && id.startsWith("timeline.steps.") && !"timeline.steps".equals(id)) {
+            if (id != null && id.startsWith("timeline.steps.")) {
                 String name = id.substring("timeline.steps.".length());
                 parseJsonOpt(id, StepTimeline.class).ifPresent(s -> out.put(name, s));
             }
@@ -144,22 +125,6 @@ public class TimelinePromptCatalog {
         }
         JsonNode label = node.get(key);
         return label != null && label.isTextual() ? label.asText() : "";
-    }
-
-    private Optional<StepTimeline> stepFromPack(String name) {
-        return catalogHolder.snapshot().json("timeline.steps").flatMap(pack -> {
-            try {
-                JsonNode root = MAPPER.readTree(pack);
-                JsonNode node = root != null ? root.get(name) : null;
-                if (node == null || node.isNull()) {
-                    return Optional.empty();
-                }
-                return Optional.of(MAPPER.treeToValue(node, StepTimeline.class));
-            } catch (Exception e) {
-                log.warn("[TimelinePromptCatalog] pack step={} failed: {}", name, e.getMessage());
-                return Optional.empty();
-            }
-        });
     }
 
     private <T> T parseJson(String id, Class<T> type, Supplier<T> empty) {

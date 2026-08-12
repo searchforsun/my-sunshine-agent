@@ -106,7 +106,7 @@ class SandboxTimelineLabelServiceTest {
     @Test
     void active_includesTarget() {
         assertThat(labels.active(SandboxIds.READ, "读文件", Map.of("path", "/skills/demo/a.py")))
-                .isEqualTo("正在读取 /skills/demo/a.py");
+                .isEqualTo("正在读取 demo/a.py");
         assertThat(labels.active(SandboxIds.EXEC, "执行命令", Map.of("command", "pwd")))
                 .isEqualTo("正在执行 pwd");
     }
@@ -119,6 +119,18 @@ class SandboxTimelineLabelServiceTest {
                 .isEqualTo("/skills");
         assertThat(SandboxTimelineLabelService.inferSearchRootFromPaths(
                 "/skills/a.md\n/skills/b.py\n")).isEqualTo("/skills");
+    }
+
+    @Test
+    void displayPath_stripsWorkspaceCheckout() {
+        assertThat(SandboxTimelineLabelService.displayPath(
+                "/workspace/wt-123466/docs/superpowers/specs/a.md"))
+                .isEqualTo("docs/superpowers/specs/a.md");
+        assertThat(SandboxTimelineLabelService.displayPath("/workspace/plain.txt"))
+                .isEqualTo("plain.txt");
+        assertThat(labels.active(SandboxIds.WRITE, "写文件",
+                Map.of("path", "/workspace/wt-123466/docs/a.md")))
+                .isEqualTo("正在写入 docs/a.md");
     }
 
     @Test

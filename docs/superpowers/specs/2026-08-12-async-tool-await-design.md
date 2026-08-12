@@ -112,7 +112,7 @@ MAIN ReAct
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `runId` | string | 必填 |
-| `timeout_sec` | number | 可选；**默认 30**；**上限 120**；小于 1 按 1 |
+| `timeout_sec` | number | 可选；按 run **kind** 夹紧：exec 默认 **30**/上限 **120**；spawn 默认 **120**/上限 **200**；小于 1 按 1 |
 
 **返回（JSON，禁止散文二次加工）**：
 
@@ -166,9 +166,9 @@ MAIN ReAct
 | 层 | 配置（建议默认） | 作用 |
 |----|------------------|------|
 | Toolkit `executionConfig` | `max(chat,task)` spawn 上限 | 同步工具不被默认 5min 误杀 |
-| await `timeout_sec` | 默认 30，上限 120 | 单次观察窗口 |
-| await 次数 | **3**（硬编码 + Nacos 可调 `await-max-waits`） | 防空转 |
-| 后台 exec 墙钟 | Nacos `async.exec.wall-timeout-sec` 默认 600 | 命令级 |
+| await（exec） | 默认 30，上限 120，次数 3 | 单次观察窗口 |
+| await（spawn） | 默认 120，上限 200，次数 3（`3×200=600`） | 对齐 task 墙钟 |
+| 后台 exec 墙钟 | Nacos `async-tool.exec-wall-timeout-sec` 默认 600 | 命令级 |
 | 后台 spawn 墙钟 | 复用 `timeout-ms` / `task-timeout-ms` | 与同步分档一致 |
 
 `budget_exhausted` 与 `wall_timeout` 均可触发「向用户说明 / 换方案 / 主 Agent 接手」（对齐 `react.subagent.cancel-result` 模式，另备 Catalog 模板）。
@@ -204,6 +204,9 @@ agent:
         await-default-sec: 30
         await-max-sec: 120
         await-max-waits: 3
+        spawn-await-default-sec: 120
+        spawn-await-max-sec: 200
+        spawn-await-max-waits: 3
         exec-wall-timeout-sec: 600
       subagent:
         timeout-ms: 300000          # chat
@@ -238,7 +241,7 @@ agent:
 
 ## 11. 已锁定默认值（评审确认）
 
-1. await 默认 **30s**，单次上限 **120s**，最多 **3** 次  
+1. await **按 kind 分档**：exec 默认 **30s** / 上限 **120s** / **3** 次；spawn 默认 **120s** / 上限 **200s** / **3** 次  
 2. `background` 默认 **false**（显式才异步）  
 3. 终态 peek **不计** wait 次数  
 4. 首期仅 `sandbox__exec` + `spawn_subagent`  

@@ -19,7 +19,8 @@ function hasPlanStep(steps?: ProcessingStep[]): boolean {
 
 /** 续跑按钮模式：checkpoint / planning / regenerate */
 export function resolveResumeMode(msg: ChatMessage): ResumeMode {
-  if (isReactAssistantMessage(msg)) return 'regenerate'
+  // ReAct「继续生成」= 接着进度（同 id 重放 + 后端注入块），勿走 regenerate 清空路径
+  if (isReactAssistantMessage(msg)) return 'checkpoint'
   if (hasPausedNode(msg.steps) || hasAwaitingInteraction(msg.steps)) {
     return 'checkpoint'
   }
@@ -30,6 +31,7 @@ export function resolveResumeMode(msg: ChatMessage): ResumeMode {
 }
 
 export function resumeButtonLabel(msg: ChatMessage): string {
+  if (isReactAssistantMessage(msg)) return '继续生成'
   const mode = resolveResumeMode(msg)
   if (mode === 'checkpoint') return '继续执行'
   if (mode === 'planning') return '继续执行计划'
@@ -45,7 +47,10 @@ export function isReactAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps
   return true
 }
 
-/** 续跑时清空步骤并从意图步重跑（ReAct） */
-export function isExecutionRestartMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
-  return isReactAssistantMessage(msg)
+/**
+ * 历史：ReAct 曾走「执行重启」清空路径。产品语义改为无感接着进度后恒为 false；
+ * 保留导出以免旧调用方编译失败。
+ */
+export function isExecutionRestartMessage(_msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
+  return false
 }

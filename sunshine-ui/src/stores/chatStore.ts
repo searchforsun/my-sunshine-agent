@@ -1,7 +1,7 @@
 /**
  * 对话历史 Pinia Store — 后端 API 为主存储，localStorage 缓存兜底（含 reasoning）
  */
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAuthStore } from './authStore'
 import type { ChatMessage } from '../api/chat'
@@ -27,6 +27,7 @@ import {
   removeCachedIndex,
   upsertCachedIndex,
 } from '../api/conversationCache'
+import { purgeConversationsForWorkspace } from '../api/conversationWorkspacePurge'
 import { hydratePlanAnswerFromContent, normalizeRestoredInterleavedContent, sanitizePlanAssistantMessage } from '../api/contentInterleave'
 import { ensurePlanTimelineSteps } from '../api/planHydrate'
 import { hydrateTimelineBoundsFromMessageTimes } from '../api/timelineMessageClock'
@@ -405,6 +406,34 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * 工作区已在后端删除（含关联会话）后，同步清理前端列表/localStorage，
+   * 并在当前会话属该工作区（或新任务挂在其上）时切到最新剩余会话。
+   */
+  async function removeByWorkspace(workspaceId: string): Promise<void> {
+    if (!workspaceId) return
+    const result = purgeConversationsForWorkspace(
+      conversations.value,
+      workspaceId,
+      currentId.value,
+      pendingWorkspace.value?.wsId ?? null,
+    )
+    if (result.clearPending) {
+      pendingWorkspace.value = null
+      newTaskMode.value = false
+    }
+    for (const id of result.removedIds) {
+      removeCachedIndex(id)
+    }
+    if (result.removedIds.length) {
+      conversations.value = result.remaining
+    }
+    if (!result.didSwitch) return
+    currentId.value = result.nextCurrentId
+    persistCurrentId()
+    if (currentId.value) await loadDetail(currentId.value)
+  }
+
   async function switchTo(id: string) {
     if (!conversations.value.some(c => c.id === id)) return
     currentId.value = id
@@ -577,7 +606,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     conversations, currentId, current, sortedConversations, initializing,
-    init, create, remove, rename, switchTo, ensureConversation, recoverAfterStaleConversation,
+    init, create, remove, removeByWorkspace, rename, switchTo, ensureConversation, recoverAfterStaleConversation,
     updateTitle: updateTitleLocal,
     updateTitleFromStream,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
@@ -592,3 +621,7 @@ export const useChatStore = defineStore('chat', () => {
     newTaskMode,
   }
 })
+
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useChatStore, import.meta.hot))
+}

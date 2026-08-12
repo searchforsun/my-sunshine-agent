@@ -169,6 +169,23 @@ public class AgentWorkspaceController {
         return orchestratorClient.syncWorkspace(id, userId, tenantId);
     }
 
+    // ===== 项目规范（类 CLAUDE.md） =====
+
+    @GetMapping("/api/agent-workspaces/{id}/project-guide")
+    public Mono<Map<String, Object>> getProjectGuide(@PathVariable String id,
+                                                     @RequestHeader("x-user-id") String userId,
+                                                     @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.getProjectGuide(id, userId, tenantId);
+    }
+
+    @PutMapping("/api/agent-workspaces/{id}/project-guide")
+    public Mono<Map<String, Object>> saveProjectGuide(@PathVariable String id,
+                                                      @RequestBody Map<String, String> body,
+                                                      @RequestHeader("x-user-id") String userId,
+                                                      @RequestHeader("x-tenant-id") String tenantId) {
+        return orchestratorClient.saveProjectGuide(id, body, userId, tenantId);
+    }
+
     // ===== 工作区文件浏览（无需 conversationId） =====
 
     @GetMapping("/api/agent-workspaces/{id}/sandbox/workspace")

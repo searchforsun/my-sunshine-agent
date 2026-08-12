@@ -24,6 +24,12 @@ final class TimelineSessionState {
     /** PostReasoning 刚结束的 think — TaskBoard 首建锚点 */
     String lastCompletedThinkId;
     long lastCompletedThinkEndedAt;
+    /**
+     * beginReasoningRound 只准备开步意图，首个 ThinkingBlock 再 ensureThinkOpen 落地。
+     * NONE=无待开；FRESH=新开；REUSE=复用 lastCompletedThinkId（RESUME）。
+     */
+    enum PendingThinkOpen { NONE, FRESH, REUSE }
+    PendingThinkOpen pendingThinkOpen = PendingThinkOpen.NONE;
     int pendingToolCalls;
     String lastCompletedToolDisplayName;
     String currentToolStepId;

@@ -1364,7 +1364,7 @@ async function handleResume() {
   const resumePromise = resume(convId, last.id)
   await nextTick()
   scrollToBottom(true)
-  if (resumeMode === 'regenerate') await ensureStreamRenderer()
+  if (resumeMode === 'regenerate' || resumeMode === 'checkpoint') await ensureStreamRenderer()
   await resumePromise
   await nextTick()
   scrollToBottom(true)
@@ -1901,10 +1901,9 @@ watch(
               </button>
             </div>
           </NPopover>
-          <!-- 新任务发送前同步拉取分支代码：进行中气泡（对话前动作统一样式，复用分支切换气泡） -->
-          <div v-if="wsPreparing" class="pre-action-bubble">
+          <div v-if="wsPreparing" class="pre-action-bubble pre-action-bubble--inline">
             <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
-            <span class="pre-action-text">正在拉取分支代码到工作区</span>
+            <span class="pre-action-text">正在拉取代码</span>
           </div>
         </div>
         <div
@@ -1958,7 +1957,7 @@ watch(
             <NButton size="small" type="primary" @click="handleSend">重试</NButton>
           </div>
         </div>
-        <!-- 分支切换步骤气泡：输入框上方右侧（暂存 → 提交 → 切换），与拉取分支气泡统一样式 -->
+        <!-- 分支切换步骤气泡：输入框上方右侧（暂存 → 提交 → 切换） -->
         <div v-else-if="branchSwitchStatus" class="pre-action-bubble pre-action-bubble--float">
           <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
           <span class="pre-action-text">{{ branchSwitchStatusText }}</span>
@@ -2508,6 +2507,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 0 0 6px;
 }
 
@@ -2525,8 +2525,14 @@ watch(
   flex-shrink: 0;
 }
 
+/* 与工作区选择同一行，靠右 */
+.pre-action-bubble--inline {
+  margin-left: auto;
+}
+
 /* 分支切换气泡：独立一行，右对齐显示于输入框上方 */
 .pre-action-bubble--float {
+  align-self: flex-end;
   margin-left: auto;
   margin-bottom: 8px;
 }

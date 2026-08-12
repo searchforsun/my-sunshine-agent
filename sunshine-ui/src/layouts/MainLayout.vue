@@ -458,6 +458,7 @@ async function handleDeleteWorkspace(ws: WorkspaceVO) {
     await destroyWorkspace(ws.id)
     message.success('工作区已删除')
     if (wsGroupOpen[ws.id]) delete wsGroupOpen[ws.id]
+    await chatStore.removeByWorkspace(ws.id)
     await fetchWorkspaces()
   } catch (e) {
     message.error(friendlyErrorMessage(e, '删除失败'))
@@ -514,7 +515,7 @@ async function handleCreateWorkspace() {
   if (!url) { message.warning('请输入仓库地址'); return }
   creatingWs.value = true
   try {
-    // 只填 git 路径：clone 默认拉取远程主分支
+    // 后端同步等到 mirror clone 完成；失败会回滚，不留半成品工作区
     await createWorkspace({ name: name || undefined, repoUrl: url })
     message.success('工作区已创建')
     showCreateWorkspace.value = false
@@ -523,6 +524,7 @@ async function handleCreateWorkspace() {
     await fetchWorkspaces()
   } catch (e) {
     message.error(friendlyErrorMessage(e, '创建失败'))
+    await fetchWorkspaces()
   } finally { creatingWs.value = false }
 }
 
@@ -816,19 +818,22 @@ onMounted(() => {
       preset="card"
       title="新建工作区"
       style="width:480px"
-      @update:show="showCreateWorkspace = $event"
+      :mask-closable="!creatingWs"
+      :close-on-esc="!creatingWs"
+      @update:show="(v: boolean) => { if (!creatingWs) showCreateWorkspace = v }"
     >
       <div class="ws-create-form">
-        <label class="ws-create-label">名称 <span class="ws-create-optional">(可选，留空自动从仓库地址提取)</span></label>
+        <label class="ws-create-label">名称</label>
         <NInput v-model:value="newWsName" class="sun-field" placeholder="如 my-project" maxlength="128" :disabled="creatingWs" />
         <label class="ws-create-label">仓库地址</label>
         <NInput v-model:value="newWsRepoUrl" class="sun-field" placeholder="https://github.com/user/repo" maxlength="512" :disabled="creatingWs" />
-        <p class="ws-create-hint">clone 默认拉取远程主分支，进入任务会话时可选择其他分支。</p>
       </div>
       <template #footer>
         <div class="ws-create-footer">
           <NButton quaternary :disabled="creatingWs" @click="showCreateWorkspace = false">取消</NButton>
-          <NButton type="primary" :loading="creatingWs" @click="handleCreateWorkspace">创建</NButton>
+          <NButton type="primary" :loading="creatingWs" :disabled="creatingWs" @click="handleCreateWorkspace">
+            {{ creatingWs ? '正在拉取代码' : '创建' }}
+          </NButton>
         </div>
       </template>
     </NModal>
@@ -1463,19 +1468,6 @@ onMounted(() => {
   font-size: var(--sun-font-sm);
   font-weight: 500;
   color: var(--sun-text);
-}
-
-.ws-create-optional {
-  font-weight: 400;
-  font-size: var(--sun-font-xs);
-  color: var(--sun-text-muted);
-}
-
-.ws-create-hint {
-  margin: -4px 0 0;
-  font-size: var(--sun-font-xs);
-  color: var(--sun-text-muted);
-  line-height: 1.5;
 }
 
 .ws-create-footer {

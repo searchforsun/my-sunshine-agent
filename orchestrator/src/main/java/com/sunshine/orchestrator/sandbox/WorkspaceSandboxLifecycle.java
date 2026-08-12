@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -37,7 +38,20 @@ public class WorkspaceSandboxLifecycle {
     @Value("${sandbox.host-workspace-root:/var/lib/sunshine-sandbox}")
     private String hostWorkspaceRoot;
 
+    /** 同工作区 clone/ensure 串行，避免并发把进行中的 mirror 误判为已完成 */
+    private final ConcurrentHashMap<String, Object> repoLocks = new ConcurrentHashMap<>();
+
+    private Object repoLock(String workspaceId) {
+        return repoLocks.computeIfAbsent(workspaceId, id -> new Object());
+    }
+
     public String ensureWorkspaceSession(String workspaceId, String userId, String tenantId) {
+        synchronized (repoLock(workspaceId)) {
+            return ensureWorkspaceSessionLocked(workspaceId, userId, tenantId);
+        }
+    }
+
+    private String ensureWorkspaceSessionLocked(String workspaceId, String userId, String tenantId) {
         WorkspaceSandboxBinding binding = store.find(tenantId, workspaceId).orElse(null);
         // 已有 binding 但 clone 失败残留 → 先重试 clone --mirror，避免分支下拉/会话一直拿不到代码
         if (binding != null && binding.cloneState() != null && binding.cloneState().startsWith("failed")) {
@@ -58,11 +72,29 @@ public class WorkspaceSandboxLifecycle {
             }
         }
         if (binding != null) {
-            if (sandboxClient.sessionRunning(binding.sessionId())) {
-                store.touch(tenantId, workspaceId);
-                return binding.sessionId();
-            }
-            if (sandboxClient.sessionAlive(binding.sessionId())) {
+            if (sandboxClient.sessionRunning(binding.sessionId())
+                    || sandboxClient.sessionAlive(binding.sessionId())) {
+                Path existingRepo = repoDir(workspaceId);
+                // 误标 clone=done 的残缺裸库：会话仍在也要补全，否则 worktree 会 fatal: invalid reference: HEAD
+                if (!BareMirrorCloneProbe.isReady(existingRepo)) {
+                    try {
+                        AgentWorkspaceEntity repairWs = workspaceRepo.findById(workspaceId)
+                                .orElseThrow(() -> new IllegalStateException("工作区不存在: " + workspaceId));
+                        cloneMirrorRepo(repairWs.getRepoUrl(), userId, existingRepo);
+                        runFixPerms(existingRepo);
+                        binding = binding.withCloneState("done");
+                        store.save(binding);
+                        log.info("[WorkspaceLifecycle] repaired incomplete mirror ws={}", workspaceId);
+                    } catch (Exception e) {
+                        binding = binding.withCloneState("failed:" + truncate(e.getMessage(), 120));
+                        store.save(binding);
+                        log.warn("[WorkspaceLifecycle] repair clone failed ws={}: {}", workspaceId, e.getMessage());
+                    }
+                }
+                if (sandboxClient.sessionRunning(binding.sessionId())) {
+                    store.touch(tenantId, workspaceId);
+                    return binding.sessionId();
+                }
                 sandboxClient.startSession(binding.sessionId());
                 store.touch(tenantId, workspaceId);
                 return binding.sessionId();
@@ -119,8 +151,8 @@ public class WorkspaceSandboxLifecycle {
         Map<String, String> cred = fetchGitCredentials(userId, host);
         String token = cred.getOrDefault("token", "");
         File dir = target.toFile();
-        // bare 库存在（有 objects 目录）视为已克隆；仍刷新凭据（设置页改 PAT 后须覆盖旧 store）
-        if (dir.exists() && new File(dir, "objects").exists()) {
+        // 仅当 HEAD 可解析（无 tmp_pack）才跳过；残缺/并发中的 mirror 必须清掉重来
+        if (BareMirrorCloneProbe.isReady(dir)) {
             if (!token.isEmpty()) {
                 writeGitCredentialStore(target, repoUrl, token);
             }
@@ -338,16 +370,28 @@ public class WorkspaceSandboxLifecycle {
             sandboxClient.closeSession(b.sessionId());
             log.info("[WorkspaceLifecycle] destroyed session={} ws={}", b.sessionId(), workspaceId);
         });
+        // 归档工作区时清宿主裸库与 worktree，避免残缺 objects/ 被后续误判为已克隆
+        synchronized (repoLock(workspaceId)) {
+            deleteTreeQuietly(repoDir(workspaceId).toFile());
+            deleteTreeQuietly(Path.of(hostWorkspaceRoot, "workspaces", workspaceId).toFile());
+        }
+        repoLocks.remove(workspaceId);
     }
 
     /** 同步共享 git 裸库：已克隆则 fetch --all 更新 refs，未克隆则重新 clone --mirror；用于刷新/重试 */
     public Map<String, Object> syncWorkspaceCode(String workspaceId, String userId) {
+        synchronized (repoLock(workspaceId)) {
+            return syncWorkspaceCodeLocked(workspaceId, userId);
+        }
+    }
+
+    private Map<String, Object> syncWorkspaceCodeLocked(String workspaceId, String userId) {
         AgentWorkspaceEntity ws = workspaceRepo.findById(workspaceId)
                 .orElseThrow(() -> new IllegalStateException("工作区不存在: " + workspaceId));
         String hostDir = hostWorkspaceRoot + "/workspaces/" + workspaceId;
         Path repoPath = repoDir(workspaceId);
         String action;
-        if (repoPath.toFile().exists() && new File(repoPath.toFile(), "objects").exists()) {
+        if (BareMirrorCloneProbe.isReady(repoPath)) {
             try {
                 Map<String, Object> result = gitService.gitFetchAll(workspaceId, userId, ws.getTenantId());
                 action = "fetched";

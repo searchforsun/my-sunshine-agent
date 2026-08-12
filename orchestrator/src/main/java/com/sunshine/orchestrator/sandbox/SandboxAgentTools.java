@@ -300,7 +300,10 @@ public class SandboxAgentTools {
             }
             String runId = StringUtils.hasText(invocationId) ? invocationId : UUID.randomUUID().toString();
             String conversationId = resolveConversationId(messageId);
-            long wallMs = execWallTimeoutSec() * 1000L;
+            int wallSec = execWallTimeoutSec();
+            long wallMs = wallSec * 1000L;
+            // 编排语义勿下传 sandbox；未显式 timeout_sec 时对齐墙钟，避免默认 30s 掐死长命令
+            Map<String, Object> invokeBody = SandboxAgentTools.prepareBackgroundExecInvokeBody(body, wallSec);
             // kill 回调与 register 原子绑定，避免墙钟先于 onCancelRequest 晚绑定
             Runnable onCancel = trackCancel
                     ? () -> cancellableToolRunRegistry.cancel(invocationId)
@@ -321,7 +324,7 @@ public class SandboxAgentTools {
                         return;
                     }
                     ToolInvokeResponse resp = sandboxClient.invoke(
-                            sessionId, SandboxIds.rpcName(name), body, invocationId);
+                            sessionId, SandboxIds.rpcName(name), invokeBody, invocationId);
                     if (trackCancel && (cancellableToolRunRegistry.isCancelled(invocationId)
                             || isCancelledResponse(resp))) {
                         asyncToolRunRegistry.complete(
@@ -331,7 +334,7 @@ public class SandboxAgentTools {
                     String output = resp != null && resp.output() != null ? resp.output() : "";
                     boolean ok = resp != null && resp.ok();
                     Map<String, String> auditParams =
-                            auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
+                            auditParams(invokeBody, sessionId, resp, System.currentTimeMillis() - startMs);
                     auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
                     asyncToolRunRegistry.complete(
                             runId,
@@ -348,7 +351,7 @@ public class SandboxAgentTools {
                     String raw = e.getMessage();
                     String err = StringUtils.hasText(raw) ? raw : "沙箱工具调用失败";
                     Map<String, String> auditParams =
-                            auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
+                            auditParams(invokeBody, sessionId, null, System.currentTimeMillis() - startMs);
                     auditIfBound(name, auditParams, err, "fail");
                     asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.ERROR, err);
                 } finally {
@@ -507,6 +510,31 @@ public class SandboxAgentTools {
         AgentExecutionProperties.React.AsyncTool cfg = react != null ? react.getAsyncTool() : null;
         int sec = cfg != null ? cfg.getExecWallTimeoutSec() : 600;
         return sec > 0 ? sec : 600;
+    }
+
+    /**
+     * 后台 exec 下传 sandbox 的 body：去掉 background；未显式 timeout_sec 时对齐墙钟，
+     * 避免 sandbox 默认 30s 先于 await 预算掐断长命令。
+     */
+    static Map<String, Object> prepareBackgroundExecInvokeBody(Map<String, Object> body, int wallSec) {
+        Map<String, Object> invokeBody = body != null ? new LinkedHashMap<>(body) : new LinkedHashMap<>();
+        invokeBody.remove("background");
+        int wall = wallSec > 0 ? wallSec : 600;
+        Object rawTimeout = invokeBody.get("timeout_sec");
+        Integer timeoutSec = null;
+        if (rawTimeout instanceof Number n) {
+            timeoutSec = n.intValue();
+        } else if (rawTimeout instanceof String s && StringUtils.hasText(s)) {
+            try {
+                timeoutSec = Integer.parseInt(s.strip());
+            } catch (NumberFormatException ignored) {
+                timeoutSec = null;
+            }
+        }
+        if (timeoutSec == null || timeoutSec <= 0) {
+            invokeBody.put("timeout_sec", wall);
+        }
+        return invokeBody;
     }
 
     private static String resolveConversationId(String messageId) {

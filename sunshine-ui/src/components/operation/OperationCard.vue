@@ -15,6 +15,7 @@ import {
   resolveSandboxReadLineRange,
   isSandboxReadStep,
   isSandboxExecStep,
+  isSandboxFetchStep,
   formatExecCommandHeaderText,
   extractSandboxExecCommand,
   isCancellableSandboxTool,
@@ -61,8 +62,13 @@ const emit = defineEmits<{
 }>()
 
 function onRowActivate() {
-  // exec 步只展开详情，不跳转工作区；read 步定位文件、其余沙箱步打开工作区
-  if (isSandboxTool.value && !isSandboxExecStep(props.step) && chatStore.currentId) {
+  // exec / websearch / webfetch 只展开详情，不跳转工作区；read 定位文件，其余沙箱步打开工作区
+  if (
+    isSandboxTool.value
+    && !isSandboxExecStep(props.step)
+    && !isSandboxFetchStep(props.step)
+    && chatStore.currentId
+  ) {
     const focus = resolveSandboxFocusPath(props.step)
     // read 步骤：附带起始行，点击后工作区直接定位到对应行（不重复渲染内容）
     const lineRange = isSandboxReadStep(props.step)

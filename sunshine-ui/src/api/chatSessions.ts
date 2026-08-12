@@ -33,7 +33,12 @@ import {
   resetStepsForReactResume,
 } from './processingStepsPause'
 import { isExecutionRestartMessage, isReactAssistantMessage, resolveResumeMode } from './resumeMode'
-import { normalizeRestoredInterleavedContent, stripPlanDrawerLeakFromMessage } from './contentInterleave'
+import {
+  clearSegmentIdRemap,
+  normalizeRestoredInterleavedContent,
+  pruneContentBlocksForReactResume,
+  stripPlanDrawerLeakFromMessage,
+} from './contentInterleave'
 import { notifyCompletedIfNeeded } from './conversationAttentionNotify'
 import {
   getOrCreateSession,
@@ -370,6 +375,9 @@ export function useChatSessions(
       // resolveMergedLifecycle 会挡住后端重放的 running/done → 卡死。恢复时统一重置这些步：
       // 解除终态保护（回 pending、清 after）、清旧半截 reasoning，让重放从空白干净落地。
       target.steps = resetStepsForReactResume(target.steps)
+      // 与后端 truncateToLastCompleteThink 对齐：丢掉截断点之后的正文块，避免错位/重放重复
+      target.contentBlocks = pruneContentBlocksForReactResume(target.contentBlocks, target.steps)
+      clearSegmentIdRemap(target.id)
       // 消息级 reasoning 同样残留旧流（综合分析等 step_delta(reasoning) 会经 appendChunk 叠加到
       // lastMsg.reasoning），一并清空，避免旧（英文）与新（中文）互相覆盖。
       target.reasoning = ''

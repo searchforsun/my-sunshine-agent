@@ -4,8 +4,10 @@ import { NDataTable, NButton, NModal, NForm, NFormItem, NInput, NSelect, useMess
 import type { WorkspaceVO, CreateWorkspaceRequest } from '../api/workspaces'
 import { listWorkspaces, createWorkspace, destroyWorkspace } from '../api/workspaces'
 import { friendlyErrorMessage } from '../api/apiError'
+import { useChatStore } from '../stores/chatStore'
 
 const message = useMessage()
+const chatStore = useChatStore()
 const workspaces = ref<WorkspaceVO[]>([])
 const loading = ref(false)
 const showCreate = ref(false)
@@ -62,9 +64,12 @@ async function handleCreate() {
     await createWorkspace(req)
     message.success('工作区已创建')
     showCreate.value = false
+    newName.value = ''
+    newRepoUrl.value = ''
     await fetchWorkspaces()
   } catch (e) {
     message.error(friendlyErrorMessage(e, '创建失败'))
+    await fetchWorkspaces()
   } finally { creating.value = false }
 }
 
@@ -72,6 +77,7 @@ async function handleDestroy(ws: WorkspaceVO) {
   try {
     await destroyWorkspace(ws.id)
     message.success('工作区已归档')
+    await chatStore.removeByWorkspace(ws.id)
     await fetchWorkspaces()
   } catch (e) {
     message.error(friendlyErrorMessage(e, '归档失败'))
@@ -97,7 +103,9 @@ onMounted(fetchWorkspaces)
       preset="card"
       title="新建工作区"
       style="width:560px"
-      @update:show="showCreate = $event"
+      :mask-closable="!creating"
+      :close-on-esc="!creating"
+      @update:show="(v: boolean) => { if (!creating) showCreate = v }"
     >
       <NForm label-placement="top">
         <NFormItem label="名称">
@@ -112,7 +120,9 @@ onMounted(fetchWorkspaces)
       </NForm>
       <template #footer>
         <NButton quaternary :disabled="creating" @click="showCreate = false">取消</NButton>
-        <NButton type="primary" :loading="creating" @click="handleCreate">创建</NButton>
+        <NButton type="primary" :loading="creating" :disabled="creating" @click="handleCreate">
+          {{ creating ? '正在拉取代码' : '创建' }}
+        </NButton>
       </template>
     </NModal>
   </div>

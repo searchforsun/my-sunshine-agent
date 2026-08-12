@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
+import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
@@ -59,6 +60,8 @@ class ReActAgentRuntimeTest {
     private ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
     @Mock
     private ObjectProvider<DecisionResumeSupport> decisionResumeSupport;
+    @Mock
+    private SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
 
     private ReActAgentRuntime runtime;
 
@@ -72,7 +75,7 @@ class ReActAgentRuntimeTest {
         runtime = new ReActAgentRuntime(
                 agentHolder, promptComposer, groundingChecker, groundingProperties,
                 taskBoardService, executionProperties, sandboxSessionLifecycle,
-                conversationRepo, spawnRunRegistry, decisionResumeSupport);
+                conversationRepo, spawnRunRegistry, decisionResumeSupport, writeEditPlaceholder);
     }
 
     @Test

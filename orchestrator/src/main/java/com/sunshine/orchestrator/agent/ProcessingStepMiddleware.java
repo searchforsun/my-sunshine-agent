@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
@@ -14,6 +15,8 @@ import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxCancelExpand;
 import com.sunshine.orchestrator.sandbox.SandboxEditDiffHolder;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
+import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
+import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import com.sunshine.orchestrator.sandbox.SandboxStepContext;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
@@ -47,7 +50,9 @@ import java.util.function.Function;
 /**
  * AS2 P1：ReAct 执行步的 Middleware（spec 4.1.2，方案 A）。
  *
- * <p>onReasoning 入口开 think / 出口闭 think + TaskBoard 占位。
+ * <p>onReasoning 入口 prepare think（有 ThinkingBlock 才落地）/ 出口兜底闭 think + TaskBoard 占位。
+ * ThinkingBlockEnd 由 Runtime 路由提前结掉 think（不等 tool_call）。
+ * onActing 入口再兜底 completeThink，避免漏 End 事件时空 running 残留。
  *
  * <p>onActing：
  * <ul>
@@ -81,6 +86,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
     private final SandboxTimelineLabelService sandboxTimelineLabels;
+    private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final PromptCatalogHolder catalogHolder;
 
@@ -89,12 +95,14 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             AgentExecutionProperties executionProperties,
             TaskBoardTimelineSupport taskBoardTimelineSupport,
             SandboxTimelineLabelService sandboxTimelineLabels,
+            SandboxWriteEditPlaceholderSupport writeEditPlaceholder,
             CancellableToolRunRegistry cancellableToolRunRegistry,
             PromptCatalogHolder catalogHolder) {
         this.toolCatalogService = toolCatalogService;
         this.executionProperties = executionProperties;
         this.taskBoardTimelineSupport = taskBoardTimelineSupport;
         this.sandboxTimelineLabels = sandboxTimelineLabels;
+        this.writeEditPlaceholder = writeEditPlaceholder;
         this.cancellableToolRunRegistry = cancellableToolRunRegistry;
         this.catalogHolder = catalogHolder;
     }
@@ -284,6 +292,8 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             Agent agent, RuntimeContext ctx, ActingInput input,
             Function<ActingInput, Flux<AgentEvent>> next) {
         String bridgeId = bridgeIdOf(ctx);
+        // 兜底：ThinkingBlockEnd 未到（或本轮无 Thinking）时，acting 前结掉残留 running think
+        StepEventBridge.emit(bridgeId, ProcessingTimelineSession::completeThinkIfRunning);
         List<ToolUseBlock> toolCalls = input.toolCalls();
         // toolCallId -> 累积的结果文本（ToolResultTextDeltaEvent 按 toolCallId 分组还原 ToolResultBlock 文本）
         Map<String, StringBuilder> resultTextById = new ConcurrentHashMap<>();
@@ -394,21 +404,51 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                 .orElse(false);
     }
 
-    /** 入口开 tool 步（对齐 PreActing）：开步 + sandbox active 文案 + 取消登记 */
+    /** 入口开 tool 步（对齐 PreActing）：开步 + sandbox active 文案 + 取消登记。
+     * write/edit 可能已在 ToolCallStart/Delta 占位开步，此处复用避免双卡。 */
     private void beginToolStep(String bridgeId, ToolUseBlock toolUse) {
         String toolName = toolUse.getName();
         String toolUseId = toolUse.getId();
         StepEventBridge.bindToolUseBridge(toolUseId, bridgeId);
-        String baseStepId = toolCatalogService.timelineStepId(toolName);
-        String phase = toolCatalogService.timelinePhase(toolName);
         Map<String, Object> toolInput = toolInput(toolUse);
         String sandboxActive = sandboxActiveSummary(toolName, toolInput);
+        boolean backgroundExec = SandboxIds.EXEC.equals(toolName)
+                && Boolean.TRUE.equals(asBackgroundFlag(toolInput.get("background")));
+        boolean awaitTool = AwaitToolRunTool.NAME.equals(toolName);
         boolean cancellable = cancellableToolRunRegistry.isCancellableTool(toolName)
                 && StringUtils.hasText(toolUseId);
+        String existingStepId = StepEventBridge.stepIdForToolUse(toolUseId);
+        if (existingStepId != null) {
+            writeEditPlaceholder.clearBuffers(toolUseId);
+            final String stepId = existingStepId;
+            StepEventBridge.emit(bridgeId, session -> {
+                if (sandboxActive != null) {
+                    session.progress(stepId, sandboxActive);
+                }
+                if (cancellable) {
+                    // 占位步可能未标 cancellable；执行入口补齐
+                    session.markCurrentToolCancellable();
+                }
+            });
+            if (cancellable) {
+                registerCancellable(bridgeId, toolName, toolUseId, toolInput);
+            }
+            return;
+        }
+        String baseStepId = toolCatalogService.timelineStepId(toolName);
+        String phase = toolCatalogService.timelinePhase(toolName);
         final String[] stepHolder = new String[1];
         StepEventBridge.emit(bridgeId, session -> {
             session.noteToolCallPending();
             stepHolder[0] = session.beginToolStep(baseStepId, phase);
+            if (stepHolder[0] != null) {
+                if (awaitTool) {
+                    session.bindStepDisplayName(stepHolder[0], AwaitToolRunLabels.label());
+                    session.progressCurrentToolStep(AwaitToolRunLabels.active());
+                } else if (backgroundExec) {
+                    session.bindStepDisplayName(stepHolder[0], AwaitToolRunLabels.backgroundExecLabel());
+                }
+            }
             if (sandboxActive != null) {
                 session.progressCurrentToolStep(sandboxActive);
             }
@@ -512,19 +552,27 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                 expandDetail = !raw.isEmpty() ? raw : null;
             }
             meta = sandboxMeta;
+        } else if (AwaitToolRunTool.NAME.equals(toolName)) {
+            // 文案 SSOT = Catalog timeline.steps.await-tool；勿把工具 id / 原始 JSON 当主行
+            summaryLine = AwaitToolRunLabels.after();
+            expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            meta = null;
         } else {
             summaryLine = toolCatalogService.timelineSummary(toolName, rawText);
             expandDetail = ToolExpandDetailSupport.resolveExpandDetail(summaryLine, rawText);
             meta = null;
         }
         final StepMetadata finalMeta = meta;
+        final String completedDisplayName = AwaitToolRunTool.NAME.equals(toolName)
+                ? AwaitToolRunLabels.label()
+                : toolCatalogService.displayName(toolName);
         StepEventBridge.emit(bridgeId, session -> {
             if (finalMeta != null) {
                 session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, finalMeta);
             } else {
                 session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
             }
-            session.recordToolCompleted(toolCatalogService.displayName(toolName));
+            session.recordToolCompleted(completedDisplayName);
             session.noteToolCallDone();
         });
         StepEventBridge.unbindToolUseBridge(toolUseId);
@@ -567,6 +615,16 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             out.put(e.getKey(), String.valueOf(e.getValue()));
         }
         return out;
+    }
+
+    private static Boolean asBackgroundFlag(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof String s && StringUtils.hasText(s)) {
+            return Boolean.parseBoolean(s.strip());
+        }
+        return null;
     }
 
     private boolean isTaskBoardEnabled() {
