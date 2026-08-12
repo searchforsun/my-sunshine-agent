@@ -128,6 +128,23 @@ public class AsyncToolRunRegistry {
         handle.result = result;
         handle.terminalSignal.complete(null);
         releaseSlotOnce(handle);
+        if (terminal == Status.CANCELLED || terminal == Status.WALL_TIMEOUT) {
+            fireCancelRequest(handle);
+        }
+    }
+
+    /**
+     * 注册 WALL_TIMEOUT / cancel 时的 kill 回调（如 {@code CancellableToolRunRegistry.cancel}）。
+     * 不直接 kill；由工具侧注入。
+     */
+    public void onCancelRequest(String runId, Runnable action) {
+        if (!StringUtils.hasText(runId) || action == null) {
+            return;
+        }
+        Handle handle = byRunId.get(runId.strip());
+        if (handle != null) {
+            handle.cancelRequest = action;
+        }
     }
 
     public void updatePartial(String runId, String partial) {
@@ -233,6 +250,18 @@ public class AsyncToolRunRegistry {
         }
     }
 
+    private void fireCancelRequest(Handle handle) {
+        Runnable action = handle.cancelRequest;
+        if (action == null) {
+            return;
+        }
+        try {
+            action.run();
+        } catch (Exception e) {
+            log.warn("[AsyncToolRun] onCancelRequest failed runId={}: {}", handle.runId, e.getMessage());
+        }
+    }
+
     private Snapshot toSnapshot(Handle handle, Status responseStatus) {
         return new Snapshot(
                 handle.runId,
@@ -282,6 +311,7 @@ public class AsyncToolRunRegistry {
         private volatile String result;
         private volatile String partial;
         private volatile String error;
+        private volatile Runnable cancelRequest;
         private final CompletableFuture<Void> terminalSignal = new CompletableFuture<>();
         private final AtomicBoolean slotReleased = new AtomicBoolean(false);
 

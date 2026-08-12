@@ -1,10 +1,12 @@
 package com.sunshine.orchestrator.sandbox;
 
+import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
@@ -31,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 沙箱六工具 AgentTool 提供者 — 不进 tool-manager Catalog；T12 注入 {@link #all()}。
@@ -51,6 +54,8 @@ public class SandboxAgentTools {
     private final AgentSandboxProperties sandboxProperties;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final PromptCatalogHolder promptCatalogHolder;
+    private final AsyncToolRunRegistry asyncToolRunRegistry;
+    private final AgentExecutionProperties executionProperties;
 
     private List<AgentTool> tools = List.of();
 
@@ -222,6 +227,11 @@ public class SandboxAgentTools {
             }
             log.info("[SandboxAgentTool] {} session={} bridge={} params={}",
                     name, sessionId, bridgeId, body.keySet());
+            // background=true 仅 EXEC：立即返回 runId，invoke 在 boundedElastic 后台完成
+            if (isBackgroundExec(body)) {
+                return executeBackgroundExec(
+                        toolUseId, body, messageId, sessionId, invocationId, trackCancel);
+            }
             long startMs = System.currentTimeMillis();
             try {
                 if (trackCancel && cancellableToolRunRegistry.isCancelled(invocationId)) {
@@ -262,6 +272,92 @@ public class SandboxAgentTools {
                     cancellableToolRunRegistry.unregister(invocationId);
                 }
             }
+        }
+
+        private boolean isBackgroundExec(Map<String, Object> body) {
+            return SandboxIds.EXEC.equals(name)
+                    && asyncToolEnabled()
+                    && Boolean.TRUE.equals(asBoolean(body.get("background")));
+        }
+
+        private ToolResultBlock executeBackgroundExec(
+                String toolUseId,
+                Map<String, Object> body,
+                String messageId,
+                String sessionId,
+                String invocationId,
+                boolean trackCancel) {
+            if (!asyncToolRunRegistry.tryAcquireSlot(messageId)) {
+                if (trackCancel) {
+                    cancellableToolRunRegistry.unregister(invocationId);
+                }
+                return ToolResultBlock.of(
+                        toolUseId,
+                        name,
+                        TextBlock.builder()
+                                .text("{\"ok\":false,\"error\":\"本消息后台工具并发已达上限\"}")
+                                .build());
+            }
+            String runId = StringUtils.hasText(invocationId) ? invocationId : UUID.randomUUID().toString();
+            String conversationId = resolveConversationId(messageId);
+            long wallMs = execWallTimeoutSec() * 1000L;
+            asyncToolRunRegistry.registerWithId(
+                    runId, AsyncToolRunRegistry.Kind.SANDBOX_EXEC, messageId, conversationId, wallMs);
+            // WALL_TIMEOUT / registry.cancel → kill 沙箱进程；cancellable 句柄保留至后台结束
+            if (trackCancel) {
+                asyncToolRunRegistry.onCancelRequest(runId, () -> cancellableToolRunRegistry.cancel(invocationId));
+            }
+            long startMs = System.currentTimeMillis();
+            Schedulers.boundedElastic().schedule(() -> {
+                try {
+                    if (trackCancel && cancellableToolRunRegistry.isCancelled(invocationId)) {
+                        asyncToolRunRegistry.complete(
+                                runId, AsyncToolRunRegistry.Status.CANCELLED, "已取消");
+                        return;
+                    }
+                    ToolInvokeResponse resp = sandboxClient.invoke(
+                            sessionId, SandboxIds.rpcName(name), body, invocationId);
+                    if (trackCancel && (cancellableToolRunRegistry.isCancelled(invocationId)
+                            || isCancelledResponse(resp))) {
+                        asyncToolRunRegistry.complete(
+                                runId, AsyncToolRunRegistry.Status.CANCELLED, "已取消");
+                        return;
+                    }
+                    String output = resp != null && resp.output() != null ? resp.output() : "";
+                    boolean ok = resp != null && resp.ok();
+                    Map<String, String> auditParams =
+                            auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
+                    auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
+                    asyncToolRunRegistry.complete(
+                            runId,
+                            ok ? AsyncToolRunRegistry.Status.DONE : AsyncToolRunRegistry.Status.ERROR,
+                            output);
+                } catch (Exception e) {
+                    if (trackCancel && (cancellableToolRunRegistry.isCancelled(invocationId)
+                            || isCancelException(e))) {
+                        asyncToolRunRegistry.complete(
+                                runId, AsyncToolRunRegistry.Status.CANCELLED, "已取消");
+                        return;
+                    }
+                    log.warn("[SandboxAgentTool] {} background 调用失败: {}", name, e.getMessage());
+                    String raw = e.getMessage();
+                    String err = StringUtils.hasText(raw) ? raw : "沙箱工具调用失败";
+                    Map<String, String> auditParams =
+                            auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
+                    auditIfBound(name, auditParams, err, "fail");
+                    asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.ERROR, err);
+                } finally {
+                    if (trackCancel) {
+                        cancellableToolRunRegistry.unregister(invocationId);
+                    }
+                }
+            });
+            return ToolResultBlock.of(
+                    toolUseId,
+                    name,
+                    TextBlock.builder()
+                            .text("{\"ok\":true,\"runId\":\"" + runId + "\",\"status\":\"running\"}")
+                            .build());
         }
 
         private ToolResultBlock cancelResult(
@@ -393,6 +489,37 @@ public class SandboxAgentTools {
                 params,
                 summary != null ? summary : "",
                 status);
+    }
+
+    private boolean asyncToolEnabled() {
+        AgentExecutionProperties.React react = executionProperties != null ? executionProperties.getReact() : null;
+        AgentExecutionProperties.React.AsyncTool cfg = react != null ? react.getAsyncTool() : null;
+        return cfg == null || cfg.isEnabled();
+    }
+
+    private int execWallTimeoutSec() {
+        AgentExecutionProperties.React react = executionProperties != null ? executionProperties.getReact() : null;
+        AgentExecutionProperties.React.AsyncTool cfg = react != null ? react.getAsyncTool() : null;
+        int sec = cfg != null ? cfg.getExecWallTimeoutSec() : 600;
+        return sec > 0 ? sec : 600;
+    }
+
+    private static String resolveConversationId(String messageId) {
+        if (!StringUtils.hasText(messageId)) {
+            return null;
+        }
+        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        return ctx != null ? ctx.conversationId() : null;
+    }
+
+    private static Boolean asBoolean(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof String s && StringUtils.hasText(s)) {
+            return Boolean.parseBoolean(s.strip());
+        }
+        return null;
     }
 
     /**

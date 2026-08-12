@@ -89,4 +89,35 @@ class AsyncToolRunRegistryTest {
         assertThat(registry.peek(runId).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
         assertThat(registry.tryAcquireSlot("msg-1")).isTrue();
     }
+
+    @Test
+    void onCancelRequest_runsOnWallTimeoutAndCancel() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger kills = new java.util.concurrent.atomic.AtomicInteger();
+        String wallRun = registry.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-wall", "c1", 50L);
+        registry.onCancelRequest(wallRun, kills::incrementAndGet);
+        assertThat(awaitStatus(wallRun, AsyncToolRunRegistry.Status.WALL_TIMEOUT, 3_000)).isTrue();
+        assertThat(kills.get()).isEqualTo(1);
+
+        String cancelRun = registry.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-cancel", "c1", 600_000L);
+        registry.onCancelRequest(cancelRun, kills::incrementAndGet);
+        assertThat(registry.cancel(cancelRun)).isTrue();
+        assertThat(registry.peek(cancelRun).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
+        assertThat(kills.get()).isEqualTo(2);
+    }
+
+    private boolean awaitStatus(String runId, AsyncToolRunRegistry.Status expected, long timeoutMs)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            var snap = registry.peek(runId);
+            if (snap != null && snap.status() == expected) {
+                return true;
+            }
+            TimeUnit.MILLISECONDS.sleep(20);
+        }
+        var snap = registry.peek(runId);
+        return snap != null && snap.status() == expected;
+    }
 }
