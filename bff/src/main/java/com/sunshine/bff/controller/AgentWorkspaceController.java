@@ -23,8 +23,10 @@ public class AgentWorkspaceController {
     @GetMapping("/api/agent-workspaces")
     public Mono<Map<String, Object>> list(
             @RequestHeader("x-user-id") String userId,
-            @RequestHeader("x-tenant-id") String tenantId) {
-        return orchestratorClient.listWorkspaces(userId, tenantId);
+            @RequestHeader("x-tenant-id") String tenantId,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "offset", defaultValue = "0") int offset) {
+        return orchestratorClient.listWorkspaces(userId, tenantId, limit, offset);
     }
 
     @PostMapping("/api/agent-workspaces")

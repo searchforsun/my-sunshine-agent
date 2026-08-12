@@ -2,13 +2,13 @@
  * 对话历史 Pinia Store — 后端 API 为主存储，localStorage 缓存兜底（含 reasoning）
  */
 import { defineStore, acceptHMRUpdate } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { useAuthStore } from './authStore'
 import type { ChatMessage } from '../api/chat'
-import type { ConversationSummary, ConversationMessage } from '../api/conversations'
+import type { ConversationMessage } from '../api/conversations'
 import type { ExecutionPreference } from '../api/executionModes'
 import {
-  listConversations,
+  listConversationsPage,
   createConversation,
   getConversation,
   getConversationMessages,
@@ -16,6 +16,7 @@ import {
   updateConversationTitle,
   updateConversationCheckout,
   isValidConversationId,
+  type ConversationSummary,
 } from '../api/conversations'
 import { isConversationNotFoundError } from '../api/apiError'
 import { hydrateStreamError, isLikelyStreamFailureContent, sanitizeRestoredMessages } from '../api/streamError'
@@ -48,6 +49,8 @@ export interface Conversation {
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
 const DEFAULT_CONV_TITLE = '新对话'
+const CHAT_SIDEBAR_PAGE_SIZE = 30
+const TASK_SIDEBAR_PAGE_SIZE = 10
 
 /** 每会话历史加载状态：hasMore 表示更早消息仍存在；loading 防并发 */
 const historyHasMore = new Map<string, boolean>()
@@ -58,6 +61,43 @@ function pickConversationTitle(apiTitle: string, localTitle?: string): string {
   if (apiTitle && apiTitle !== DEFAULT_CONV_TITLE) return apiTitle
   if (localTitle && localTitle !== DEFAULT_CONV_TITLE) return localTitle
   return apiTitle || localTitle || DEFAULT_CONV_TITLE
+}
+
+/** 任务会话：显式 kind=task，或带 workspaceId（防 kind 丢失时串到对话侧栏） */
+export function isTaskConversation(c: {
+  kind?: string | null
+  workspaceId?: string | null
+}): boolean {
+  return c.kind === 'task' || !!c.workspaceId
+}
+
+function summaryToConversation(
+  c: ConversationSummary,
+  prev?: Conversation,
+  cachedTitle?: string,
+): Conversation {
+  const title = pickConversationTitle(c.title, prev?.title ?? cachedTitle)
+  upsertCachedIndex({
+    id: c.id,
+    title,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    kind: c.kind ?? prev?.kind,
+    workspaceId: c.workspaceId ?? prev?.workspaceId ?? null,
+  })
+  return {
+    id: c.id,
+    title,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    messages: prev?.messages ?? [],
+    executionPreference: c.executionPreference ?? prev?.executionPreference,
+    kbId: c.kbId ?? prev?.kbId ?? null,
+    modelName: c.modelName ?? prev?.modelName ?? null,
+    kind: c.kind ?? prev?.kind,
+    workspaceId: c.workspaceId ?? prev?.workspaceId ?? null,
+    checkoutPath: c.checkoutPath ?? prev?.checkoutPath ?? null,
+  }
 }
 
 function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
@@ -97,6 +137,15 @@ export const useChatStore = defineStore('chat', () => {
   const conversations = ref<Conversation[]>([])
   const currentId = ref<string | null>(null)
   const initializing = ref(false)
+  /** 对话侧栏分页 */
+  const chatSidebarHasMore = ref(false)
+  const chatSidebarLoadingMore = ref(false)
+  let chatSidebarOffset = 0
+  /** 工作区 → 任务会话分页 */
+  const workspaceTaskHasMore = reactive<Record<string, boolean>>({})
+  const workspaceTaskLoadingMore = reactive<Record<string, boolean>>({})
+  const workspaceTaskOffset = reactive<Record<string, number>>({})
+  const workspaceTaskLoaded = reactive<Record<string, boolean>>({})
   /** workspace selector → chart page：在对话页勾选分支后再创建 */
   const pendingWorkspace = ref<{ wsId: string; wsName: string; wsBranch?: string } | null>(null)
   /** 顶部"新任务"入口：空白页 + 项目选择器，未选项目前不创建会话 */
@@ -122,34 +171,37 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function mergeApiList(list: ConversationSummary[]): void {
+  /** 首屏：用本页 chat 列表替换非 task；保留已加载的 task */
+  function replaceChatPage(list: ConversationSummary[]): void {
     const prevById = new Map(conversations.value.map(c => [c.id, c]))
     const cachedIndex = loadCachedIndex()
-    const merged: Conversation[] = list.map(c => {
+    const tasks = conversations.value.filter(c => isTaskConversation(c))
+    const chats = list
+      .filter(c => isValidConversationId(c.id) && !isTaskConversation(c))
+      .map(c => {
+        const prev = prevById.get(c.id)
+        const cachedMeta = cachedIndex.find(m => m.id === c.id)
+        return summaryToConversation(c, prev, cachedMeta?.title)
+      })
+    conversations.value = [...chats, ...tasks]
+  }
+
+  /** 追加会话（去重合并字段） */
+  function appendSummaries(list: ConversationSummary[]): void {
+    const prevById = new Map(conversations.value.map(c => [c.id, c]))
+    const cachedIndex = loadCachedIndex()
+    for (const c of list) {
+      if (!isValidConversationId(c.id)) continue
       const prev = prevById.get(c.id)
       const cachedMeta = cachedIndex.find(m => m.id === c.id)
-      const title = pickConversationTitle(c.title, prev?.title ?? cachedMeta?.title)
-      upsertCachedIndex({
-        id: c.id,
-        title,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      })
-      return {
-        id: c.id,
-        title,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-        messages: prev?.messages ?? [],
-        executionPreference: c.executionPreference ?? prev?.executionPreference,
-        kbId: c.kbId ?? prev?.kbId ?? null,
-        modelName: c.modelName ?? prev?.modelName ?? null,
-        kind: c.kind ?? prev?.kind,
-        workspaceId: c.workspaceId ?? prev?.workspaceId ?? null,
-        checkoutPath: c.checkoutPath ?? prev?.checkoutPath ?? null,
+      const next = summaryToConversation(c, prev, cachedMeta?.title)
+      if (prev) {
+        Object.assign(prev, next, { messages: prev.messages })
+      } else {
+        conversations.value.push(next)
+        prevById.set(c.id, next)
       }
-    })
-    conversations.value = merged.filter(c => isValidConversationId(c.id))
+    }
   }
 
   /** 仅给已存在的会话补本地缓存消息，避免侧栏出现重复幽灵条目 */
@@ -189,9 +241,23 @@ export const useChatStore = defineStore('chat', () => {
           executionPreference: detail.executionPreference,
           kbId: detail.kbId ?? null,
           modelName: detail.modelName ?? null,
+          kind: detail.kind,
+          workspaceId: detail.workspaceId ?? null,
+          checkoutPath: detail.checkoutPath ?? null,
+        })
+        upsertCachedIndex({
+          id: detail.id,
+          title: pickConversationTitle(detail.title, cachedMeta?.title),
+          createdAt: detail.createdAt,
+          updatedAt: detail.updatedAt,
+          kind: detail.kind,
+          workspaceId: detail.workspaceId ?? null,
         })
         currentId.value = savedId
         persistCurrentId()
+        if (detail.workspaceId) {
+          void ensureWorkspaceTasks(detail.workspaceId)
+        }
         return
       } catch (e) {
         if (isConversationNotFoundError(e)) {
@@ -220,8 +286,14 @@ export const useChatStore = defineStore('chat', () => {
           loaded = true
           return
         }
-        const list = await listConversations()
-        mergeApiList(list)
+        const page = await listConversationsPage({
+          kind: 'chat',
+          limit: CHAT_SIDEBAR_PAGE_SIZE,
+          offset: 0,
+        })
+        replaceChatPage(page.items)
+        chatSidebarOffset = page.items.length
+        chatSidebarHasMore.value = page.hasMore
         await restoreCurrentFromSavedOrFirst()
         if (isValidConversationId(currentId.value)) {
           await loadDetail(currentId.value)
@@ -250,6 +322,91 @@ export const useChatStore = defineStore('chat', () => {
     return initPromise
   }
 
+  async function loadMoreChats(): Promise<void> {
+    if (!chatSidebarHasMore.value || chatSidebarLoadingMore.value) return
+    chatSidebarLoadingMore.value = true
+    try {
+      const page = await listConversationsPage({
+        kind: 'chat',
+        limit: CHAT_SIDEBAR_PAGE_SIZE,
+        offset: chatSidebarOffset,
+      })
+      appendSummaries(page.items)
+      chatSidebarOffset += page.items.length
+      chatSidebarHasMore.value = page.hasMore
+    } catch (e) {
+      console.warn('[chatStore] 对话侧栏加载更多失败', e)
+    } finally {
+      chatSidebarLoadingMore.value = false
+    }
+  }
+
+  /** 展开工作区时拉取首屏任务会话（每页 10） */
+  async function ensureWorkspaceTasks(workspaceId: string): Promise<void> {
+    if (!workspaceId || workspaceTaskLoaded[workspaceId]) return
+    workspaceTaskLoadingMore[workspaceId] = true
+    try {
+      const page = await listConversationsPage({
+        kind: 'task',
+        workspaceId,
+        limit: TASK_SIDEBAR_PAGE_SIZE,
+        offset: 0,
+      })
+      appendSummaries(page.items)
+      workspaceTaskOffset[workspaceId] = page.items.length
+      workspaceTaskHasMore[workspaceId] = page.hasMore
+      workspaceTaskLoaded[workspaceId] = true
+    } catch (e) {
+      console.warn('[chatStore] 工作区任务首屏失败', e)
+    } finally {
+      workspaceTaskLoadingMore[workspaceId] = false
+    }
+  }
+
+  async function loadMoreWorkspaceTasks(workspaceId: string): Promise<void> {
+    if (!workspaceId || !workspaceTaskHasMore[workspaceId] || workspaceTaskLoadingMore[workspaceId]) return
+    workspaceTaskLoadingMore[workspaceId] = true
+    try {
+      const offset = workspaceTaskOffset[workspaceId] ?? 0
+      const page = await listConversationsPage({
+        kind: 'task',
+        workspaceId,
+        limit: TASK_SIDEBAR_PAGE_SIZE,
+        offset,
+      })
+      appendSummaries(page.items)
+      workspaceTaskOffset[workspaceId] = offset + page.items.length
+      workspaceTaskHasMore[workspaceId] = page.hasMore
+    } catch (e) {
+      console.warn('[chatStore] 工作区任务加载更多失败', e)
+    } finally {
+      workspaceTaskLoadingMore[workspaceId] = false
+    }
+  }
+
+  /** 折叠工作区：侧栏任务列表收回首屏 10 条（与分页 limit 一致），再展开仍可点「更多」 */
+  function collapseWorkspaceTasks(workspaceId: string): void {
+    if (!workspaceId) return
+    const tasks = conversations.value
+      .filter(c => isTaskConversation(c) && c.workspaceId === workspaceId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    if (tasks.length <= TASK_SIDEBAR_PAGE_SIZE) {
+      workspaceTaskOffset[workspaceId] = tasks.length
+      return
+    }
+    const keepIds = new Set(tasks.slice(0, TASK_SIDEBAR_PAGE_SIZE).map(c => c.id))
+    // 当前打开的任务即使不在首屏也保留，避免折叠后主区会话从列表消失
+    if (currentId.value && tasks.some(t => t.id === currentId.value)) {
+      keepIds.add(currentId.value)
+    }
+    conversations.value = conversations.value.filter(
+      c => !(isTaskConversation(c) && c.workspaceId === workspaceId) || keepIds.has(c.id),
+    )
+    workspaceTaskOffset[workspaceId] = TASK_SIDEBAR_PAGE_SIZE
+    workspaceTaskHasMore[workspaceId] = true
+    workspaceTaskLoaded[workspaceId] = true
+  }
+
   /** 会话类型 → 消息分页条数：task 场景单轮工具调用量大，限制 5 条防溢出 */
   function pageSize(convId: string): number {
     const conv = conversations.value.find(c => c.id === convId)
@@ -270,6 +427,8 @@ export const useChatStore = defineStore('chat', () => {
             title: conv.title,
             createdAt: conv.createdAt,
             updatedAt: conv.updatedAt,
+            kind: conv.kind,
+            workspaceId: conv.workspaceId ?? null,
           })
         }
         historyHasMore.set(id, page.hasMore)
@@ -321,6 +480,8 @@ export const useChatStore = defineStore('chat', () => {
           title: conv.title,
           createdAt: conv.createdAt,
           updatedAt: conv.updatedAt,
+          kind: conv.kind,
+          workspaceId: conv.workspaceId ?? null,
         })
       }
       historyHasMore.set(id, page.hasMore)
@@ -361,9 +522,9 @@ export const useChatStore = defineStore('chat', () => {
         executionPreference: created.executionPreference,
         kbId: created.kbId ?? null,
         modelName: created.modelName ?? null,
-        kind: created.kind,
-        workspaceId: created.workspaceId ?? null,
-        checkoutPath: created.checkoutPath ?? null,
+        kind: created.kind ?? params?.kind,
+        workspaceId: created.workspaceId ?? params?.workspaceId ?? null,
+        checkoutPath: created.checkoutPath ?? params?.checkoutPath ?? null,
       }
       conversations.value.unshift(conv)
       currentId.value = conv.id
@@ -373,6 +534,8 @@ export const useChatStore = defineStore('chat', () => {
         title: conv.title,
         createdAt: conv.createdAt,
         updatedAt: conv.updatedAt,
+        kind: conv.kind,
+        workspaceId: conv.workspaceId ?? null,
       })
       return conv.id
     } catch (e) {
@@ -412,6 +575,10 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function removeByWorkspace(workspaceId: string): Promise<void> {
     if (!workspaceId) return
+    delete workspaceTaskHasMore[workspaceId]
+    delete workspaceTaskLoadingMore[workspaceId]
+    delete workspaceTaskOffset[workspaceId]
+    delete workspaceTaskLoaded[workspaceId]
     const result = purgeConversationsForWorkspace(
       conversations.value,
       workspaceId,
@@ -450,6 +617,8 @@ export const useChatStore = defineStore('chat', () => {
       title: conv.title,
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
+      kind: conv.kind,
+      workspaceId: conv.workspaceId ?? null,
     })
   }
 
@@ -463,6 +632,8 @@ export const useChatStore = defineStore('chat', () => {
       title: conv.title,
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
+      kind: conv.kind,
+      workspaceId: conv.workspaceId ?? null,
     })
   }
 
@@ -479,6 +650,8 @@ export const useChatStore = defineStore('chat', () => {
       title: conv.title,
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
+      kind: conv.kind,
+      workspaceId: conv.workspaceId ?? null,
     })
   }
 
@@ -513,6 +686,8 @@ export const useChatStore = defineStore('chat', () => {
         title: conv.title,
         createdAt: conv.createdAt,
         updatedAt: conv.updatedAt,
+        kind: conv.kind,
+        workspaceId: conv.workspaceId ?? null,
       })
     }
   }
@@ -533,7 +708,21 @@ export const useChatStore = defineStore('chat', () => {
           executionPreference: detail.executionPreference,
           kbId: detail.kbId ?? null,
           modelName: detail.modelName ?? null,
+          kind: detail.kind,
+          workspaceId: detail.workspaceId ?? null,
+          checkoutPath: detail.checkoutPath ?? null,
         })
+        upsertCachedIndex({
+          id: detail.id,
+          title: pickConversationTitle(detail.title, cachedMeta?.title),
+          createdAt: detail.createdAt,
+          updatedAt: detail.updatedAt,
+          kind: detail.kind,
+          workspaceId: detail.workspaceId ?? null,
+        })
+        if (detail.workspaceId) {
+          void ensureWorkspaceTasks(detail.workspaceId)
+        }
       } catch (e) {
         const cached = loadCachedMessages(id)
         const meta = loadCachedIndex().find(c => c.id === id)
@@ -583,6 +772,12 @@ export const useChatStore = defineStore('chat', () => {
         createdAt: oldConv?.createdAt ?? Date.now(),
         updatedAt: Date.now(),
         messages: oldConv?.messages ?? [],
+        kind: oldConv?.kind,
+        workspaceId: oldConv?.workspaceId ?? null,
+        checkoutPath: oldConv?.checkoutPath ?? null,
+        executionPreference: oldConv?.executionPreference,
+        kbId: oldConv?.kbId ?? null,
+        modelName: oldConv?.modelName ?? null,
       })
       if (oldConv?.messages.length) {
         cacheMessages(newId, oldConv.messages, oldConv)
@@ -596,17 +791,23 @@ export const useChatStore = defineStore('chat', () => {
 
     currentId.value = newId
     persistCurrentId()
+    const next = conversations.value.find(c => c.id === newId)
     upsertCachedIndex({
       id: newId,
-      title: conversations.value.find(c => c.id === newId)?.title ?? '新对话',
+      title: next?.title ?? '新对话',
       createdAt: oldConv?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
+      kind: next?.kind ?? oldConv?.kind,
+      workspaceId: next?.workspaceId ?? oldConv?.workspaceId ?? null,
     })
   }
 
   return {
     conversations, currentId, current, sortedConversations, initializing,
+    chatSidebarHasMore, chatSidebarLoadingMore,
+    workspaceTaskHasMore, workspaceTaskLoadingMore, workspaceTaskLoaded,
     init, create, remove, removeByWorkspace, rename, switchTo, ensureConversation, recoverAfterStaleConversation,
+    loadMoreChats, ensureWorkspaceTasks, loadMoreWorkspaceTasks, collapseWorkspaceTasks,
     updateTitle: updateTitleLocal,
     updateTitleFromStream,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,

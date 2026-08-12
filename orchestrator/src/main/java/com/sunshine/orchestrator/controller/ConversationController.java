@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.controller;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationPageDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationSearchDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationSummaryDto;
 import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
@@ -30,12 +31,20 @@ public class ConversationController {
     private final ConversationService conversationService;
 
     @GetMapping("/conversations")
-    public Mono<List<ConversationSummaryDto>> list(
+    public Mono<?> list(
             @RequestHeader("x-user-id") String userId,
-            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return ReactiveBlocking.call(() -> conversationService.list(userId, tenantId).stream()
-                .map(ConversationSummaryDto::from)
-                .toList());
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @RequestParam(value = "kind", required = false) String kind,
+            @RequestParam(value = "workspaceId", required = false) String workspaceId,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "offset", defaultValue = "0") int offset) {
+        if (limit == null) {
+            return ReactiveBlocking.call(() -> conversationService.list(userId, tenantId).stream()
+                    .map(ConversationSummaryDto::from)
+                    .toList());
+        }
+        return ReactiveBlocking.call(() ->
+                conversationService.listPage(userId, tenantId, kind, workspaceId, offset, limit));
     }
 
     @PostMapping("/conversations")

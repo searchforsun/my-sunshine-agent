@@ -85,13 +85,32 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<List<Map<String, Object>>> listConversations(String userId, String tenantId) {
+    public Mono<Object> listConversations(
+            String userId,
+            String tenantId,
+            String kind,
+            String workspaceId,
+            Integer limit,
+            int offset) {
         return webClient.get()
-                .uri("/conversations")
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/conversations");
+                    if (kind != null && !kind.isBlank()) {
+                        b.queryParam("kind", kind);
+                    }
+                    if (workspaceId != null && !workspaceId.isBlank()) {
+                        b.queryParam("workspaceId", workspaceId);
+                    }
+                    if (limit != null) {
+                        b.queryParam("limit", limit);
+                        b.queryParam("offset", Math.max(0, offset));
+                    }
+                    return b.build();
+                })
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+                .bodyToMono(Object.class);
     }
 
     public Mono<List<Map<String, Object>>> searchConversations(
@@ -419,9 +438,17 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
-    public Mono<Map<String, Object>> listWorkspaces(String userId, String tenantId) {
+    public Mono<Map<String, Object>> listWorkspaces(
+            String userId, String tenantId, Integer limit, int offset) {
         return webClient.get()
-                .uri("/api/agent-workspaces")
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/api/agent-workspaces");
+                    if (limit != null) {
+                        b.queryParam("limit", limit);
+                        b.queryParam("offset", Math.max(0, offset));
+                    }
+                    return b.build();
+                })
                 .header("x-user-id", userId)
                 .header("x-tenant-id", tenantId)
                 .retrieve()

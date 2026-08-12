@@ -31,6 +31,9 @@ export interface CachedConversationMeta {
   title: string
   createdAt: number
   updatedAt: number
+  /** 与库 SSOT 对齐，供刷新后侧栏横向 Tab 直接定位 */
+  kind?: string
+  workspaceId?: string | null
 }
 
 function safeParse<T>(raw: string | null): T | null {
@@ -53,8 +56,14 @@ function saveCachedIndex(list: CachedConversationMeta[]): void {
 }
 
 export function upsertCachedIndex(meta: CachedConversationMeta): void {
+  const prev = loadCachedIndex().find(c => c.id === meta.id)
   const list = loadCachedIndex().filter(c => c.id !== meta.id)
-  list.unshift(meta)
+  // 标题等局部更新勿冲掉已缓存的 kind / workspaceId
+  list.unshift({
+    ...meta,
+    kind: meta.kind ?? prev?.kind,
+    workspaceId: meta.workspaceId !== undefined ? meta.workspaceId : prev?.workspaceId,
+  })
   saveCachedIndex(list.slice(0, 80))
 }
 
@@ -74,6 +83,8 @@ export function cacheMessages(convId: string, messages: ChatMessage[], meta?: Pa
       title: meta?.title ?? '新对话',
       createdAt: meta?.createdAt ?? Date.now(),
       updatedAt: meta?.updatedAt ?? Date.now(),
+      kind: meta?.kind,
+      workspaceId: meta?.workspaceId,
     })
   } catch { /* quota */ }
 }

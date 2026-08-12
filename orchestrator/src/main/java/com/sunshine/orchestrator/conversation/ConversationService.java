@@ -3,8 +3,10 @@ package com.sunshine.orchestrator.conversation;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.audit.AuditService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.conversation.dto.ConversationPageDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationSearchDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationSummaryDto;
 import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
@@ -14,6 +16,7 @@ import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -70,6 +73,41 @@ public class ConversationService {
     public List<ChatConversationEntity> list(String userId, String tenantId) {
         return conversationRepo.findByUserIdAndTenantIdOrderByUpdatedAtDesc(
                 userId, tenantId != null ? tenantId : "default");
+    }
+
+    /**
+     * 侧栏分页：kind=chat 排除 task；kind=task 须带 workspaceId。
+     * 多取 1 条判定 hasMore；offset 按 limit 对齐（page = offset/limit）。
+     */
+    @Transactional(readOnly = true)
+    public ConversationPageDto listPage(
+            String userId,
+            String tenantId,
+            String kind,
+            String workspaceId,
+            int offset,
+            int limit) {
+        String tid = tenantId != null ? tenantId : "default";
+        int pageSize = Math.max(1, Math.min(limit <= 0 ? 30 : limit, 100));
+        int off = Math.max(0, offset);
+        int page = off / pageSize;
+        var pageable = PageRequest.of(page, pageSize + 1);
+        List<ChatConversationEntity> rows;
+        String normalizedKind = kind == null ? "" : kind.strip().toLowerCase();
+        if ("task".equals(normalizedKind)) {
+            if (!StringUtils.hasText(workspaceId)) {
+                return ConversationPageDto.builder().items(List.of()).hasMore(false).build();
+            }
+            rows = conversationRepo.findTaskPageByWorkspace(userId, tid, workspaceId.strip(), pageable);
+        } else {
+            // chat / 缺省：对话侧栏
+            rows = conversationRepo.findChatPage(userId, tid, pageable);
+        }
+        boolean hasMore = rows.size() > pageSize;
+        List<ConversationSummaryDto> items = (hasMore ? rows.subList(0, pageSize) : rows).stream()
+                .map(ConversationSummaryDto::from)
+                .toList();
+        return ConversationPageDto.builder().items(items).hasMore(hasMore).build();
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.conversation.repo;
 
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +13,31 @@ public interface ChatConversationRepository extends JpaRepository<ChatConversati
 
     List<ChatConversationEntity> findByUserIdAndTenantIdOrderByUpdatedAtDesc(
             String userId, String tenantId);
+
+    /** 对话侧栏：排除 task（含 kind 为空的历史 chat） */
+    @Query("""
+            SELECT c FROM ChatConversationEntity c
+            WHERE c.userId = :userId AND c.tenantId = :tenantId
+              AND (c.kind IS NULL OR c.kind <> 'task')
+            ORDER BY c.updatedAt DESC
+            """)
+    List<ChatConversationEntity> findChatPage(
+            @Param("userId") String userId,
+            @Param("tenantId") String tenantId,
+            Pageable pageable);
+
+    /** 任务侧栏：某工作区下的 task 会话 */
+    @Query("""
+            SELECT c FROM ChatConversationEntity c
+            WHERE c.userId = :userId AND c.tenantId = :tenantId
+              AND c.kind = 'task' AND c.workspaceId = :workspaceId
+            ORDER BY c.updatedAt DESC
+            """)
+    List<ChatConversationEntity> findTaskPageByWorkspace(
+            @Param("userId") String userId,
+            @Param("tenantId") String tenantId,
+            @Param("workspaceId") String workspaceId,
+            Pageable pageable);
 
     @Query("""
             SELECT c FROM ChatConversationEntity c

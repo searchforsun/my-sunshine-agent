@@ -317,6 +317,57 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("profile 写 sidebarSectionsLayout=horizontal 后 me 可读到；非法值回落 vertical")
+    void updateProfile_changesSidebarSectionsLayout() throws Exception {
+        registerUser("sidebar01");
+        String token = loginAndGetToken("sidebar01");
+
+        MvcResult profileResult = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Sidebar","tenantId":"default","sidebarSectionsLayout":"horizontal"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("horizontal"))
+                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andReturn();
+
+        JsonNode profileBody = objectMapper.readTree(profileResult.getResponse().getContentAsString());
+        String newToken = profileBody.path("data").path("token").asText();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("horizontal"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"sidebar01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("horizontal"));
+
+        String token2 = loginAndGetToken("sidebar01");
+        MvcResult bad = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token2)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Sidebar","tenantId":"default","sidebarSectionsLayout":"diagonal"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("vertical"))
+                .andReturn();
+        String token3 = objectMapper.readTree(bad.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token3))
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("vertical"));
+    }
+
+    @Test
     @DisplayName("profile 写 personalRules 后 me 与 login 可读到")
     void updateProfileSavesAndReturnsPersonalRules() throws Exception {
         registerUser("rules01");

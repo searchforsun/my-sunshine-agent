@@ -4,6 +4,7 @@ import * as authApi from '../api/auth'
 import { syncTenantFromAuth } from '../composables/useTenantPreference'
 import { syncWriteHitlDefaultFromAuth } from '../composables/useWriteHitlMode'
 import { isWriteHitlMode } from '../api/writeHitlModes'
+import { normalizeSidebarSectionsLayout } from '../api/sidebarSectionsLayouts'
 
 const TOKEN_KEY = 'sunshine-token'
 
@@ -16,6 +17,7 @@ function toAuthUser(res: authApi.AuthUser): authApi.AuthUser {
     defaultWriteHitlMode: isWriteHitlMode(res.defaultWriteHitlMode)
       ? res.defaultWriteHitlMode
       : 'never',
+    sidebarSectionsLayout: normalizeSidebarSectionsLayout(res.sidebarSectionsLayout),
     personalRules: res.personalRules ?? null,
     githubUrl: res.githubUrl ?? null,
     githubToken: res.githubToken ?? null,
@@ -85,9 +87,10 @@ export const useAuthStore = defineStore('auth', () => {
     githubToken?: string | null,
     gitlabUrl?: string | null,
     gitlabToken?: string | null,
+    sidebarSectionsLayout?: string,
   ) {
     const res = await authApi.updateProfile(nickname, tenantId, defaultWriteHitlMode, personalRules,
-      githubUrl, githubToken, gitlabUrl, gitlabToken)
+      githubUrl, githubToken, gitlabUrl, gitlabToken, sidebarSectionsLayout)
     if (!res.token?.trim()) {
       throw new Error('资料已保存但登录凭证刷新失败，请重新登录')
     }

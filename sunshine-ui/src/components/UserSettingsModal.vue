@@ -4,11 +4,16 @@ import { NModal, NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useAuthStore } from '../stores/authStore'
 import { useChatStore } from '../stores/chatStore'
 import ExecutionModeSelector from './chat/ExecutionModeSelector.vue'
+import SidebarSectionsLayoutSelector from './chat/SidebarSectionsLayoutSelector.vue'
 import WriteHitlModeSelector from './sandbox/WriteHitlModeSelector.vue'
 import TenantSelector from './knowledge/TenantSelector.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useWriteHitlMode } from '../composables/useWriteHitlMode'
 import { isWriteHitlMode, type WriteHitlMode } from '../api/writeHitlModes'
+import {
+  normalizeSidebarSectionsLayout,
+  type SidebarSectionsLayout,
+} from '../api/sidebarSectionsLayouts'
 import { friendlyErrorMessage } from '../api/apiError'
 import type { TenantId } from '../api/tenants'
 
@@ -35,6 +40,7 @@ const activeGroup = ref<SettingsGroup>('account')
 const nickname = ref('')
 const defaultMode = ref(globalDefault.value)
 const defaultWriteHitl = ref<WriteHitlMode>(writeHitlGlobal.value)
+const sidebarLayout = ref<SidebarSectionsLayout>('vertical')
 const tenantId = ref<TenantId>('default')
 const personalRules = ref('')
 const githubUrl = ref('')
@@ -59,6 +65,7 @@ watch(
       defaultMode.value = globalDefault.value
       const fromAuth = auth.user?.defaultWriteHitlMode
       defaultWriteHitl.value = isWriteHitlMode(fromAuth) ? fromAuth : writeHitlGlobal.value
+      sidebarLayout.value = normalizeSidebarSectionsLayout(auth.user?.sidebarSectionsLayout)
       tenantId.value = auth.user?.tenantId ?? 'default'
       personalRules.value = auth.user?.personalRules ?? ''
       githubUrl.value = auth.user?.githubUrl ?? ''
@@ -88,7 +95,8 @@ async function handleSave() {
     const nextGitlabToken = gitlabToken.value === loadedGitlabToken.value ? null : gitlabToken.value
     await auth.updateProfile(value, tenantId.value, defaultWriteHitl.value, personalRules.value,
       githubUrl.value || null, nextGithubToken,
-      gitlabUrl.value || null, nextGitlabToken)
+      gitlabUrl.value || null, nextGitlabToken,
+      sidebarLayout.value)
     setGlobalDefault(defaultMode.value)
     setWriteHitlGlobal(defaultWriteHitl.value)
     message.success('资料已更新')
@@ -143,54 +151,49 @@ async function handleSave() {
         </NForm>
         <NForm v-show="activeGroup === 'chat'" label-placement="top" :show-require-mark="false">
           <NFormItem label="当前租户">
-            <div class="settings-field">
-              <TenantSelector
-                variant="block"
-                :model-value="tenantId"
-                :disabled="saving"
-                @update:model-value="tenantId = $event"
-              />
-              <p class="settings-hint">保存后自动刷新登录凭证，无需重新登录。</p>
-            </div>
+            <TenantSelector
+              variant="block"
+              :model-value="tenantId"
+              :disabled="saving"
+              @update:model-value="tenantId = $event"
+            />
           </NFormItem>
           <NFormItem label="默认执行模式">
-            <div class="settings-field">
-              <ExecutionModeSelector
-                variant="block"
-                :model-value="defaultMode"
-                :disabled="saving"
-                @update:model-value="defaultMode = $event"
-              />
-              <p class="settings-hint">已有会话保留其最近一次选择。</p>
-            </div>
+            <ExecutionModeSelector
+              variant="block"
+              :model-value="defaultMode"
+              :disabled="saving"
+              @update:model-value="defaultMode = $event"
+            />
           </NFormItem>
           <NFormItem label="默认写操作确认">
-            <div class="settings-field">
-              <WriteHitlModeSelector
-                variant="block"
-                :model-value="defaultWriteHitl"
-                :disabled="saving"
-                @update:model-value="defaultWriteHitl = $event"
-              />
-              <p class="settings-hint">已有会话保留其最近一次选择；工作区临时覆盖不回写。</p>
-            </div>
+            <WriteHitlModeSelector
+              variant="block"
+              :model-value="defaultWriteHitl"
+              :disabled="saving"
+              @update:model-value="defaultWriteHitl = $event"
+            />
+          </NFormItem>
+          <NFormItem label="侧栏分区排布">
+            <SidebarSectionsLayoutSelector
+              :model-value="sidebarLayout"
+              :disabled="saving"
+              @update:model-value="sidebarLayout = $event"
+            />
           </NFormItem>
         </NForm>
         <NForm v-show="activeGroup === 'rules'" label-placement="top" :show-require-mark="false">
           <NFormItem label="个人规则（soul）">
-            <div class="settings-field">
-              <NInput
-                v-model:value="personalRules"
-                class="sun-field"
-                type="textarea"
-                placeholder="例：回答默认使用简体中文……"
-                maxlength="4000"
-                show-count
-                :autosize="{ minRows: 15, maxRows: 15 }"
-                :disabled="saving"
-              />
-              <p class="settings-hint">注入你的所有对话系统提示；留空不注入，子 Agent 不继承。</p>
-            </div>
+            <NInput
+              v-model:value="personalRules"
+              class="sun-field"
+              type="textarea"
+              placeholder="例：回答默认使用简体中文……"
+              maxlength="4000"
+              show-count
+              :autosize="{ minRows: 15, maxRows: 15 }"
+              :disabled="saving"
+            />
           </NFormItem>
         </NForm>
         <NForm v-show="activeGroup === 'git'" label-placement="top" :show-require-mark="false">
@@ -250,8 +253,8 @@ async function handleSave() {
 .settings-body {
   display: flex;
   gap: 16px;
-  /* 锁定弹窗高度，切换分组不抖动；按最高面板（对话偏好 3 项 + 说明）对齐 */
-  height: 460px;
+  /* 锁定弹窗高度，切换分组不抖动；按个人规则文本域高度对齐 */
+  height: 520px;
 }
 
 .settings-nav {
@@ -298,19 +301,5 @@ async function handleSave() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.settings-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-}
-
-.settings-hint {
-  margin: 0;
-  font-size: var(--sun-font-xs, 11px);
-  color: var(--sun-text-muted, #888);
-  line-height: 1.5;
 }
 </style>

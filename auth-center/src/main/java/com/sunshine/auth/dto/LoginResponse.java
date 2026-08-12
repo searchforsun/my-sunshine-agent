@@ -15,6 +15,8 @@ public class LoginResponse {
     private String tenantId;
     /** never|always|smart */
     private String defaultWriteHitlMode;
+    /** vertical|horizontal */
+    private String sidebarSectionsLayout;
     /** 用户个人规则（soul） */
     private String personalRules;
     private String githubUrl;

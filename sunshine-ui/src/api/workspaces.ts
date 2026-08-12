@@ -29,6 +29,29 @@ export async function listWorkspaces(): Promise<WorkspaceVO[]> {
   return parseApiResponse<WorkspaceVO[]>(res)
 }
 
+export interface WorkspaceListPage {
+  items: WorkspaceVO[]
+  hasMore: boolean
+}
+
+export async function listWorkspacesPage(opts?: {
+  limit?: number
+  offset?: number
+}): Promise<WorkspaceListPage> {
+  const params = new URLSearchParams()
+  params.set('limit', String(opts?.limit ?? 30))
+  params.set('offset', String(opts?.offset ?? 0))
+  const res = await fetch(
+    `${resolveApiBase()}/api/agent-workspaces?${params}`,
+    { headers: apiHeaders() },
+  )
+  const raw = await parseApiResponse<{ items?: WorkspaceVO[]; hasMore?: boolean }>(res)
+  return {
+    items: Array.isArray(raw.items) ? raw.items : [],
+    hasMore: raw.hasMore === true,
+  }
+}
+
 export async function createWorkspace(req: CreateWorkspaceRequest): Promise<WorkspaceVO> {
   const res = await fetch(`${resolveApiBase()}/api/agent-workspaces`, {
     method: 'POST',

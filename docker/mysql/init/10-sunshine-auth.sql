@@ -10,6 +10,7 @@ CREATE TABLE sys_user (
     created_at    DATETIME(3)  NOT NULL,
     updated_at    DATETIME(3)  NOT NULL,
     default_write_hitl_mode VARCHAR(16) NOT NULL DEFAULT 'never' COMMENT 'never|always|smart 沙箱写 HITL 用户默认',
+    sidebar_sections_layout VARCHAR(16) NOT NULL DEFAULT 'vertical' COMMENT 'vertical|horizontal 侧栏平台/对话/任务排布',
     personal_rules TEXT NULL COMMENT '用户个人规则（soul），注入系统提示',
     github_url     VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'GitHub 基础地址',
     github_token   VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'GitHub PAT',

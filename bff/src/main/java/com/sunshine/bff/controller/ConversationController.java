@@ -25,10 +25,14 @@ public class ConversationController {
     private final OrchestratorClient client;
 
     @GetMapping("/api/conversations")
-    public Mono<List<Map<String, Object>>> list(
+    public Mono<Object> list(
             @RequestHeader("x-user-id") String userId,
-            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.listConversations(userId, tenantId);
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @RequestParam(value = "kind", required = false) String kind,
+            @RequestParam(value = "workspaceId", required = false) String workspaceId,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "offset", defaultValue = "0") int offset) {
+        return client.listConversations(userId, tenantId, kind, workspaceId, limit, offset);
     }
 
     @GetMapping("/api/conversations/search")

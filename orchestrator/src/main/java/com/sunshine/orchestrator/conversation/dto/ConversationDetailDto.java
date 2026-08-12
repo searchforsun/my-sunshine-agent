@@ -23,6 +23,10 @@ public class ConversationDetailDto {
     private String executionPreference;
     private String kbId;
     private String modelName;
+    /** chat / task；与库表 SSOT 一致，勿在详情响应中省略 */
+    private String kind;
+    private String workspaceId;
+    private String checkoutPath;
     private List<MessageDto> messages;
 
     public static ConversationDetailDto from(ChatConversationEntity conv, List<ChatMessageEntity> messages) {
@@ -34,6 +38,9 @@ public class ConversationDetailDto {
                 .executionPreference(conv.getExecutionPreference())
                 .kbId(conv.getKbId())
                 .modelName(conv.getModelName())
+                .kind(conv.getKind())
+                .workspaceId(conv.getWorkspaceId())
+                .checkoutPath(conv.getCheckoutPath())
                 .messages(messages.stream().map(MessageDto::from).toList())
                 .build();
     }

@@ -15,11 +15,14 @@ import ConversationHoverCard from './ConversationHoverCard.vue'
 const emit = defineEmits<{
   switch: [id: string]
   menu: [key: string]
+  'load-more': []
 }>()
 
 const props = defineProps<{
   menuOptions: (id: string) => DropdownOption[]
   conversations?: import('../stores/chatStore').Conversation[]
+  hasMore?: boolean
+  loadingMore?: boolean
 }>()
 
 const route = useRoute()
@@ -69,11 +72,19 @@ function handleSwitch(id: string) {
 function handleMenu(key: string) {
   emit('menu', key)
 }
+
+function onHistoryScroll(e: Event) {
+  if (!props.hasMore || props.loadingMore) return
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+    emit('load-more')
+  }
+}
 </script>
 
 <template>
   <div class="conversation-sidebar-list">
-    <div v-if="groups.length > 0" class="history-list">
+    <div v-if="groups.length > 0" class="history-list" @scroll.passive="onHistoryScroll">
     <section v-for="group in groups" :key="group.key" class="history-group">
       <div class="history-group-label">{{ group.label }}</div>
       <div
@@ -114,6 +125,7 @@ function handleMenu(key: string) {
         </NDropdown>
       </div>
     </section>
+    <div v-if="loadingMore" class="history-load-more">加载中...</div>
   </div>
     <div v-else class="history-empty">
       <span class="history-empty-text">暂无对话</span>
@@ -159,6 +171,13 @@ function handleMenu(key: string) {
   letter-spacing: 0.02em;
   color: var(--sun-text-muted);
   user-select: none;
+}
+
+.history-load-more {
+  padding: 8px;
+  text-align: center;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
 }
 
 .history-item {

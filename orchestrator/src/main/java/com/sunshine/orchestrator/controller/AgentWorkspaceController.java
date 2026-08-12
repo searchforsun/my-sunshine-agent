@@ -12,6 +12,7 @@ import com.sunshine.orchestrator.sandbox.WorkspaceSandboxStore;
 import com.sunshine.orchestrator.sandbox.WorkspaceSandboxBinding;
 import com.sunshine.orchestrator.sandbox.SandboxWorkspaceService;
 import com.sunshine.orchestrator.workspace.dto.CreateWorkspaceRequest;
+import com.sunshine.orchestrator.workspace.dto.WorkspacePageDto;
 import com.sunshine.orchestrator.workspace.dto.WorkspaceVO;
 import com.sunshine.orchestrator.workspace.entity.AgentWorkspaceEntity;
 import com.sunshine.orchestrator.workspace.entity.WorkspaceProjectGuideEntity;
@@ -22,6 +23,7 @@ import com.sunshine.orchestrator.config.ReactiveBlocking;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -152,17 +154,33 @@ public class AgentWorkspaceController {
     }
 
     @GetMapping
-    public R<List<WorkspaceVO>> list(@RequestHeader("x-user-id") String userId,
-                                      @RequestHeader("x-tenant-id") String tenantId) {
-        List<WorkspaceVO> list = workspaceRepo
-                .findByTenantIdAndUserIdAndStatus(tenantId, userId, "active")
-                .stream().map(e -> {
-                    String cloneState = workspaceStore.find(tenantId, e.getId())
-                            .map(WorkspaceSandboxBinding::cloneState)
-                            .orElse(null);
-                    return WorkspaceVO.from(e, cloneState);
-                }).toList();
-        return R.ok(list);
+    public R<?> list(@RequestHeader("x-user-id") String userId,
+                     @RequestHeader("x-tenant-id") String tenantId,
+                     @RequestParam(value = "limit", required = false) Integer limit,
+                     @RequestParam(value = "offset", defaultValue = "0") int offset) {
+        if (limit == null) {
+            List<WorkspaceVO> list = workspaceRepo
+                    .findByTenantIdAndUserIdAndStatus(tenantId, userId, "active")
+                    .stream().map(e -> toWorkspaceVo(tenantId, e)).toList();
+            return R.ok(list);
+        }
+        int pageSize = Math.max(1, Math.min(limit, 100));
+        int off = Math.max(0, offset);
+        int page = off / pageSize;
+        var rows = workspaceRepo.findByTenantIdAndUserIdAndStatusOrderByUpdatedAtDesc(
+                tenantId, userId, "active", PageRequest.of(page, pageSize + 1));
+        boolean hasMore = rows.size() > pageSize;
+        List<WorkspaceVO> items = (hasMore ? rows.subList(0, pageSize) : rows).stream()
+                .map(e -> toWorkspaceVo(tenantId, e))
+                .toList();
+        return R.ok(WorkspacePageDto.builder().items(items).hasMore(hasMore).build());
+    }
+
+    private WorkspaceVO toWorkspaceVo(String tenantId, AgentWorkspaceEntity e) {
+        String cloneState = workspaceStore.find(tenantId, e.getId())
+                .map(WorkspaceSandboxBinding::cloneState)
+                .orElse(null);
+        return WorkspaceVO.from(e, cloneState);
     }
 
     @DeleteMapping("/{id}")

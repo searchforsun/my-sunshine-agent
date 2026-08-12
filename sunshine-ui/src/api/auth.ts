@@ -9,6 +9,8 @@ export interface AuthUser {
   tenantId: string
   /** never|always|smart */
   defaultWriteHitlMode?: string
+  /** vertical|horizontal 侧栏平台/对话/任务排布 */
+  sidebarSectionsLayout?: string
   /** 用户个人规则（soul），注入系统提示；null/缺省表示未配置 */
   personalRules?: string | null
   /** GitHub 基础地址 */
@@ -74,6 +76,7 @@ export async function updateProfile(
   githubToken?: string | null,
   gitlabUrl?: string | null,
   gitlabToken?: string | null,
+  sidebarSectionsLayout?: string,
 ): Promise<UpdateProfileResult> {
   const body: Record<string, unknown> = { nickname, tenantId }
   if (defaultWriteHitlMode !== undefined) body.defaultWriteHitlMode = defaultWriteHitlMode
@@ -82,6 +85,7 @@ export async function updateProfile(
   if (githubToken !== undefined) body.githubToken = githubToken
   if (gitlabUrl !== undefined) body.gitlabUrl = gitlabUrl
   if (gitlabToken !== undefined) body.gitlabToken = gitlabToken
+  if (sidebarSectionsLayout !== undefined) body.sidebarSectionsLayout = sidebarSectionsLayout
   const res = await fetch(`${resolveApiBase()}/api/auth/profile`, {
     method: 'PATCH',
     headers: apiHeaders(),

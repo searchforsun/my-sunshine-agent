@@ -179,6 +179,31 @@ export async function listConversations(): Promise<ConversationSummary[]> {
   return unwrapList(await parseBffPayload(res)).map(mapSummary)
 }
 
+export interface ConversationListPage {
+  items: ConversationSummary[]
+  hasMore: boolean
+}
+
+/** 侧栏分页：kind=chat 排除 task；kind=task 需 workspaceId */
+export async function listConversationsPage(opts: {
+  kind?: 'chat' | 'task'
+  workspaceId?: string
+  limit?: number
+  offset?: number
+}): Promise<ConversationListPage> {
+  const params = new URLSearchParams()
+  if (opts.kind) params.set('kind', opts.kind)
+  if (opts.workspaceId) params.set('workspaceId', opts.workspaceId)
+  params.set('limit', String(opts.limit ?? 30))
+  params.set('offset', String(opts.offset ?? 0))
+  const res = await fetch(`${API_BASE()}/api/conversations?${params}`, { headers: apiHeaders() })
+  const raw = unwrapObject(await parseBffPayload(res))
+  const items = Array.isArray(raw.items)
+    ? (raw.items as Record<string, unknown>[]).map(mapSummary)
+    : []
+  return { items, hasMore: raw.hasMore === true }
+}
+
 function mapSearchItem(raw: Record<string, unknown>): ConversationSearchItem {
   return {
     id: requireConversationId(raw),

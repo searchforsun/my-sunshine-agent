@@ -21,6 +21,10 @@ public class UpdateProfileRequest {
     @Size(max = 16, message = "写确认模式最长 16 字符")
     private String defaultWriteHitlMode;
 
+    /** vertical|horizontal；缺省 / 非法由服务端回落 vertical */
+    @Size(max = 16, message = "侧栏排布最长 16 字符")
+    private String sidebarSectionsLayout;
+
     /** 个人规则（soul）；null=不修改，空串=清空，最长 4000 字符 */
     @Size(max = 4000, message = "个人规则最长 4000 字符")
     private String personalRules;

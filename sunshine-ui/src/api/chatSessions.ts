@@ -446,8 +446,11 @@ export function useChatSessions(
     afterSeq: number,
     conversationId: string,
   ): Promise<void> {
-    ensureActive(conversationId)
-    const s = activeSession.value ?? getOrCreateSession(conversationId)
+    // 后台续连：不抢占用户已切走的会话 DOM；仅无活跃会话或正看本会话时 ensureActive
+    const s = getOrCreateSession(conversationId)
+    if (!activeId.value || activeId.value === conversationId) {
+      ensureActive(conversationId)
+    }
     if (s.loading) return
 
     const active = loadActiveGeneration()

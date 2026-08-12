@@ -10,6 +10,7 @@ import com.sunshine.auth.dto.UserBriefVO;
 import com.sunshine.auth.entity.UserEntity;
 import com.sunshine.auth.repo.UserRepository;
 import com.sunshine.auth.exception.AuthErrorCode;
+import com.sunshine.auth.support.SidebarSectionsLayoutSupport;
 import com.sunshine.auth.support.WriteHitlModeSupport;
 import com.sunshine.common.core.exception.BizException;
 import cn.dev33.satoken.stp.SaLoginModel;
@@ -49,6 +50,7 @@ public class UserService {
         user.setNickname(resolveNickname(request.getNickname(), request.getUsername()));
         user.setTenantId(resolveTenantId(request.getTenantId()));
         user.setDefaultWriteHitlMode(WriteHitlModeSupport.NEVER);
+        user.setSidebarSectionsLayout(SidebarSectionsLayoutSupport.VERTICAL);
         user.setStatus(STATUS_ACTIVE);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
@@ -76,6 +78,7 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
                 .githubToken(blankToNull(user.getGithubToken()))
@@ -106,6 +109,9 @@ public class UserService {
         user.setTenantId(resolveTenantId(request.getTenantId()));
         if (request.getDefaultWriteHitlMode() != null && !request.getDefaultWriteHitlMode().isBlank()) {
             user.setDefaultWriteHitlMode(WriteHitlModeSupport.from(request.getDefaultWriteHitlMode()));
+        }
+        if (request.getSidebarSectionsLayout() != null && !request.getSidebarSectionsLayout().isBlank()) {
+            user.setSidebarSectionsLayout(SidebarSectionsLayoutSupport.from(request.getSidebarSectionsLayout()));
         }
         // 个人规则三态：null=不修改；空白=清空；其余 trim 保存
         if (request.getPersonalRules() != null) {
@@ -247,6 +253,7 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
                 .githubToken(blankToNull(user.getGithubToken()))
@@ -264,6 +271,7 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
                 .githubToken(blankToNull(user.getGithubToken()))

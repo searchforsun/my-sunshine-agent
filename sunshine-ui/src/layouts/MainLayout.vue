@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, type MenuOption, type DropdownOption } from 'naive-ui'
+import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, NTabs, NTabPane, type MenuOption, type DropdownOption } from 'naive-ui'
 import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, AppsOutline, HardwareChipOutline, ConstructOutline, CubeOutline, CodeSlashOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../composables/useSidebar'
-import { useChatStore } from '../stores/chatStore'
+import { useChatStore, isTaskConversation } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { friendlyErrorMessage } from '../api/apiError'
-import { listWorkspaces, createWorkspace, destroyWorkspace } from '../api/workspaces'
+import { normalizeSidebarSectionsLayout } from '../api/sidebarSectionsLayouts'
+import { loadCachedIndex } from '../api/conversationCache'
+import { listWorkspacesPage, createWorkspace, destroyWorkspace } from '../api/workspaces'
 import type { WorkspaceVO } from '../api/workspaces'
 import BrandMark from '../components/BrandMark.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
@@ -25,6 +27,11 @@ import type { Conversation } from '../stores/chatStore'
 
 type SectionKey = 'platform' | 'chat' | 'workspace'
 const sectionKeys: readonly SectionKey[] = ['platform', 'chat', 'workspace']
+const SECTION_TAB_META: Record<SectionKey, { label: string; icon: Component }> = {
+  platform: { label: '平台', icon: AppsOutline },
+  chat: { label: '对话', icon: ChatbubblesOutline },
+  workspace: { label: '任务', icon: CodeSlashOutline },
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -38,24 +45,94 @@ const {
   requestScrollToBottom,
 } = useConversationAttention()
 
-// 各分组的展开/折叠状态：对话默认展开
+const sidebarSectionsHorizontal = computed(
+  () => normalizeSidebarSectionsLayout(authStore.user?.sidebarSectionsLayout) === 'horizontal',
+)
+
+// 各分组的展开/折叠状态：无会话锚点时默认对话；有 URL/本地 cid 时按 kind 首帧定位
 const expanded = reactive<Record<SectionKey, boolean>>({
   platform: false,
   chat: true,
   workspace: false,
 })
 
+/** URL cid 已给出但 kind 尚未可知：勿先高亮「对话」再切「任务」 */
+const sectionAwaitingKind = ref(false)
+/** 工作区分组折叠展开（须早于 bootstrap，便于首帧展开对应组） */
+const wsGroupOpen = reactive<Record<string, boolean>>({})
+
+const activeSection = computed<SectionKey | ''>(() => {
+  for (const k of sectionKeys) {
+    if (expanded[k]) return k
+  }
+  return sectionAwaitingKind.value ? '' : 'chat'
+})
+
+/** 纵向：手风琴可全部折叠；横向：始终选中一个分区 */
 function toggleSection(key: SectionKey) {
+  sectionAwaitingKind.value = false
   const wasExpanded = expanded[key]
-  // accordion: close all first
   for (const k of sectionKeys) {
     expanded[k] = false
   }
-  // then toggle the clicked one (open if it was closed; close if it was open)
   if (!wasExpanded) {
     expanded[key] = true
   }
 }
+
+function selectSection(key: SectionKey) {
+  sectionAwaitingKind.value = false
+  for (const k of sectionKeys) {
+    expanded[k] = false
+  }
+  expanded[key] = true
+}
+
+function applySectionForConversation(c: {
+  kind?: string | null
+  workspaceId?: string | null
+} | null | undefined): boolean {
+  if (!c) return false
+  if (isTaskConversation(c)) {
+    selectSection('workspace')
+    if (c.workspaceId) wsGroupOpen[c.workspaceId] = true
+    return true
+  }
+  if (c.kind === 'chat') {
+    selectSection('chat')
+    return true
+  }
+  return false
+}
+
+/** 首帧：按 URL ?cid= / 本地当前 id 的缓存 kind 直接落在对应横向 Tab */
+function bootstrapSidebarSectionFromCid() {
+  if (chatStore.newTaskMode || chatStore.pendingWorkspace) {
+    selectSection('workspace')
+    return
+  }
+  const urlCid = typeof route.query.cid === 'string' ? route.query.cid.trim() : ''
+  const savedId = localStorage.getItem('sunshine-current-conversation-id')
+  const cid = urlCid || (savedId && savedId.trim()) || ''
+  if (!cid) return
+  const fromStore = chatStore.conversations.find(c => c.id === cid)
+  if (applySectionForConversation(fromStore)) return
+  const fromCache = loadCachedIndex().find(c => c.id === cid)
+  if (applySectionForConversation(fromCache)) return
+  // 有会话锚点但尚无 kind：清空默认「对话」，等 current 就绪再定
+  expanded.chat = false
+  expanded.workspace = false
+  expanded.platform = false
+  sectionAwaitingKind.value = true
+}
+
+bootstrapSidebarSectionFromCid()
+
+watch(sidebarSectionsHorizontal, (horizontal) => {
+  if (horizontal && !sectionKeys.some(k => expanded[k]) && !sectionAwaitingKind.value) {
+    expanded.chat = true
+  }
+})
 
 const platformMenuOptions: MenuOption[] = [
   { label: '知识库', key: 'knowledge', icon: renderIcon(BookOutline) },
@@ -150,6 +227,7 @@ function handleLogout() {
 function handleNewChat() {
   chatStore.pendingWorkspace = null
   chatStore.newTaskMode = false
+  selectSection('chat')
   void (async () => {
     try {
       await chatStore.create()
@@ -163,9 +241,7 @@ function handleNewChat() {
 async function handleNewTask() {
   chatStore.newTaskMode = true
   chatStore.currentId = null
-  expanded.workspace = true
-  expanded.chat = false
-  expanded.platform = false
+  selectSection('workspace')
   // 自动选择第一个工作区；分支由 GitBranchSelector 继承最后会话分支
   if (workspaces.value.length === 0) await fetchWorkspaces()
   const first = workspaces.value[0]
@@ -283,12 +359,14 @@ function handleDeleteConversation(id: string) {
 // ===== 工作区 =====
 const workspaces = ref<WorkspaceVO[]>([])
 const loadingWorkspaces = ref(false)
+const workspaceListHasMore = ref(false)
+const workspaceListLoadingMore = ref(false)
+let workspaceListOffset = 0
+const WS_PAGE_SIZE = 30
 const showCreateWorkspace = ref(false)
 const newWsName = ref('')
 const newWsRepoUrl = ref('')
 const creatingWs = ref(false)
-/** 工作区分组折叠展开 */
-const wsGroupOpen = reactive<Record<string, boolean>>({})
 
 /** 任务侧栏状态图标 */
 const { resolveIndicator } = useConversationSidebarIndicator()
@@ -301,10 +379,10 @@ onUnmounted(() => { if (nowTimer) clearInterval(nowTimer) })
 
 /** 按工作区聚合任务会话，并按天分组 */
 const chatSidebarConversations = computed(() =>
-  chatStore.conversations.filter(c => c.kind !== 'task')
+  chatStore.conversations.filter(c => !isTaskConversation(c))
 )
 const wsTaskGroups = computed(() => {
-  const tasks = chatStore.conversations.filter(c => c.kind === 'task' && c.workspaceId)
+  const tasks = chatStore.conversations.filter(c => isTaskConversation(c) && c.workspaceId)
   const byWs = new Map<string, { key: string; label: string; sortOrder: number; items: Conversation[] }[]>()
   for (const conv of tasks) {
     const wsId = conv.workspaceId!
@@ -320,9 +398,12 @@ const wsTaskGroups = computed(() => {
     group.items.push(conv)
     if (!byWs.has(wsId)) byWs.set(wsId, groups)
   }
-  // sort groups within each workspace
+  // sort groups within each workspace；组内按更新时间倒序（与列表 API 一致）
   for (const groups of byWs.values()) {
     groups.sort((a, b) => a.sortOrder - b.sortOrder)
+    for (const g of groups) {
+      g.items.sort((a, b) => b.updatedAt - a.updatedAt)
+    }
   }
   return byWs
 })
@@ -400,8 +481,57 @@ function taskMenuOptions(id: string): DropdownOption[] {
 }
 
 function toggleWsGroup(wsId: string) {
-  wsGroupOpen[wsId] = !wsGroupOpen[wsId]
+  const next = !wsGroupOpen[wsId]
+  wsGroupOpen[wsId] = next
+  if (next) {
+    void chatStore.ensureWorkspaceTasks(wsId)
+  } else {
+    chatStore.collapseWorkspaceTasks(wsId)
+  }
 }
+
+async function fetchWorkspaces(reset = true) {
+  if (reset) {
+    loadingWorkspaces.value = true
+    workspaceListOffset = 0
+  } else {
+    if (!workspaceListHasMore.value || workspaceListLoadingMore.value) return
+    workspaceListLoadingMore.value = true
+  }
+  try {
+    const page = await listWorkspacesPage({
+      limit: WS_PAGE_SIZE,
+      offset: reset ? 0 : workspaceListOffset,
+    })
+    if (reset) {
+      workspaces.value = page.items
+    } else {
+      const seen = new Set(workspaces.value.map(w => w.id))
+      for (const w of page.items) {
+        if (!seen.has(w.id)) workspaces.value.push(w)
+      }
+    }
+    workspaceListOffset = workspaces.value.length
+    workspaceListHasMore.value = page.hasMore
+  } catch { /* silently fail */ }
+  finally {
+    loadingWorkspaces.value = false
+    workspaceListLoadingMore.value = false
+  }
+}
+
+function onWsListScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+    void fetchWorkspaces(false)
+  }
+}
+
+watch(() => expanded.workspace, (open) => {
+  if (open && workspaces.value.length === 0 && !loadingWorkspaces.value) {
+    void fetchWorkspaces(true)
+  }
+}, { immediate: true })
 
 function wsMenuOptions(ws: WorkspaceVO): DropdownOption[] {
   return [
@@ -444,10 +574,9 @@ function handleWsNewTask(ws: WorkspaceVO) {
   chatStore.pendingWorkspace = { wsId: ws.id, wsName: ws.name }
   chatStore.newTaskMode = true
   chatStore.currentId = null
-  expanded.workspace = true
-  expanded.chat = false
-  expanded.platform = false
+  selectSection('workspace')
   wsGroupOpen[ws.id] = true
+  void chatStore.ensureWorkspaceTasks(ws.id)
   if (route.name !== 'chat') router.push('/chat')
 }
 
@@ -479,34 +608,36 @@ function confirmDeleteWorkspace(ws: WorkspaceVO) {
   })
 }
 
-async function fetchWorkspaces() {
-  loadingWorkspaces.value = true
-  try { workspaces.value = await listWorkspaces() }
-  catch { /* silently fail */ }
-  finally { loadingWorkspaces.value = false }
-}
-
-watch(() => expanded.workspace, (open) => {
-  if (open && workspaces.value.length === 0 && !loadingWorkspaces.value) {
-    fetchWorkspaces()
-  }
-})
-
-/** 当前会话变化（含刷新后 ChatView 恢复会话）→ 侧栏展开对应分区与工作区分组：task → 任务、chat → 对话 */
+/** 当前会话 / 新任务态变化 → 侧栏直接落在对应分区（task→任务、chat→对话），勿默认对话后再切 */
 watch(
-  () => [chatStore.current?.kind, chatStore.current?.workspaceId] as const,
-  ([kind, wsId]) => {
-    if (kind === 'task') {
-      expanded.workspace = true
-      expanded.chat = false
-      expanded.platform = false
-      if (wsId) wsGroupOpen[wsId] = true
-    } else if (kind === 'chat') {
-      expanded.chat = true
-      expanded.workspace = false
-      expanded.platform = false
+  () => [
+    chatStore.current?.kind,
+    chatStore.current?.workspaceId,
+    chatStore.newTaskMode,
+    chatStore.pendingWorkspace?.wsId,
+  ] as const,
+  ([kind, wsId, newTask, pendingWsId]) => {
+    if (newTask || pendingWsId) {
+      selectSection('workspace')
+      if (pendingWsId) {
+        wsGroupOpen[pendingWsId] = true
+        void chatStore.ensureWorkspaceTasks(pendingWsId)
+      }
+      return
+    }
+    if (isTaskConversation({ kind, workspaceId: wsId })) {
+      selectSection('workspace')
+      if (wsId) {
+        wsGroupOpen[wsId] = true
+        void chatStore.ensureWorkspaceTasks(wsId)
+      }
+      return
+    }
+    if (kind === 'chat') {
+      selectSection('chat')
     }
   },
+  { immediate: true },
 )
 
 async function handleCreateWorkspace() {
@@ -573,11 +704,35 @@ onMounted(() => {
       </div>
 
       <!-- 可折叠面板容器 -->
-      <div class="sections-scroll">
+      <div class="sections-scroll" :class="{ 'sections-scroll--horizontal': sidebarSectionsHorizontal }">
+
+        <NTabs
+          v-if="sidebarSectionsHorizontal"
+          :value="activeSection"
+          type="segment"
+          size="small"
+          :animated="false"
+          class="sections-segment-tabs"
+          @update:value="(v: string | number) => selectSection(String(v) as SectionKey)"
+        >
+          <NTabPane v-for="key in sectionKeys" :key="key" :name="key">
+            <template #tab>
+              <span class="sections-segment-tab">
+                <NIcon :size="14" :component="SECTION_TAB_META[key].icon" />
+                <span>{{ SECTION_TAB_META[key].label }}</span>
+              </span>
+            </template>
+          </NTabPane>
+        </NTabs>
 
         <!-- 平台 -->
-        <section class="section">
+        <section
+          v-show="!sidebarSectionsHorizontal || expanded.platform"
+          class="section"
+          :class="{ 'section--tab-panel': sidebarSectionsHorizontal }"
+        >
           <button
+            v-if="!sidebarSectionsHorizontal"
             type="button"
             class="section-header"
             @click="toggleSection('platform')"
@@ -599,8 +754,13 @@ onMounted(() => {
         </section>
 
         <!-- 对话 -->
-        <section class="section">
+        <section
+          v-show="!sidebarSectionsHorizontal || expanded.chat"
+          class="section"
+          :class="{ 'section--tab-panel': sidebarSectionsHorizontal }"
+        >
           <button
+            v-if="!sidebarSectionsHorizontal"
             type="button"
             class="section-header"
             @click="toggleSection('chat')"
@@ -615,15 +775,22 @@ onMounted(() => {
             <ConversationSidebarList
               :conversations="chatSidebarConversations"
               :menu-options="conversationMenuOptions"
+              :has-more="chatStore.chatSidebarHasMore"
+              :loading-more="chatStore.chatSidebarLoadingMore"
               @switch="handleSwitchConversation"
               @menu="handleConversationMenu"
+              @load-more="chatStore.loadMoreChats()"
             />
           </div>
         </section>
 
         <!-- 任务（工作区） -->
-        <section class="section">
-          <div class="section-header-row">
+        <section
+          v-show="!sidebarSectionsHorizontal || expanded.workspace"
+          class="section"
+          :class="{ 'section--tab-panel': sidebarSectionsHorizontal }"
+        >
+          <div v-if="!sidebarSectionsHorizontal" class="section-header-row">
             <button
               type="button"
               class="section-header section-header--grow"
@@ -645,12 +812,22 @@ onMounted(() => {
             </button>
           </div>
           <div v-show="expanded.workspace" class="section-body ws-body">
+            <div v-if="sidebarSectionsHorizontal" class="ws-panel-toolbar">
+              <button
+                type="button"
+                class="section-add-btn"
+                title="添加工作区"
+                @click="showCreateWorkspace = true"
+              >
+                <NIcon :size="16" :component="AddOutline" />
+              </button>
+            </div>
             <div v-if="loadingWorkspaces" class="ws-loading">加载中...</div>
             <div v-else-if="workspaces.length === 0" class="ws-empty">
               <span class="ws-empty-text">暂无工作区</span>
               <NButton size="tiny" quaternary @click="showCreateWorkspace = true">创建</NButton>
             </div>
-            <div v-else class="ws-list">
+            <div v-else class="ws-list" @scroll.passive="onWsListScroll">
               <!-- 工作区分组，支持折叠展开 -->
               <div
                 v-for="ws in workspaces"
@@ -687,7 +864,8 @@ onMounted(() => {
                 </div>
                 <!-- 该工作区下的任务会话（按时段分组，样式对齐对话列表） -->
                 <div v-if="wsGroupOpen[ws.id]" class="ws-group-body task-conv-list">
-                  <div v-if="wsTaskGroups.has(ws.id)">
+                  <div v-if="chatStore.workspaceTaskLoadingMore[ws.id] && !wsTaskGroups.has(ws.id)" class="task-conv-empty">加载中...</div>
+                  <div v-else-if="wsTaskGroups.has(ws.id)">
                     <div v-for="group in wsTaskGroups.get(ws.id)!" :key="group.key" class="task-conv-group">
                       <div class="task-conv-group-label">{{ group.label }}</div>
                       <div
@@ -729,10 +907,20 @@ onMounted(() => {
                         </NDropdown>
                       </div>
                     </div>
+                    <button
+                      v-if="chatStore.workspaceTaskHasMore[ws.id]"
+                      type="button"
+                      class="task-conv-load-more"
+                      :disabled="!!chatStore.workspaceTaskLoadingMore[ws.id]"
+                      @click.stop="chatStore.loadMoreWorkspaceTasks(ws.id)"
+                    >
+                      {{ chatStore.workspaceTaskLoadingMore[ws.id] ? '加载中...' : '更多' }}
+                    </button>
                   </div>
                   <div v-else class="task-conv-empty">暂无任务</div>
                 </div>
               </div>
+              <div v-if="workspaceListLoadingMore" class="ws-loading">加载中...</div>
             </div>
           </div>
         </section>
@@ -1013,6 +1201,77 @@ onMounted(() => {
   gap: 1px;
 }
 
+.sections-scroll--horizontal {
+  gap: 8px;
+  overflow: hidden;
+}
+
+.sections-segment-tabs {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.sections-segment-tabs :deep(.n-tabs-pane-wrapper) {
+  display: none;
+}
+
+.sections-segment-tabs :deep(.n-tabs-nav) {
+  width: 100%;
+}
+
+.sections-segment-tabs :deep(.n-tabs-rail) {
+  width: 100%;
+  min-height: 38px;
+  padding: 3px;
+  background: var(--sun-row-hover) !important;
+}
+
+.sections-segment-tabs :deep(.n-tabs-tab-wrapper) {
+  flex: 1;
+}
+
+.sections-segment-tabs :deep(.n-tabs-tab) {
+  flex: 1;
+  justify-content: center;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 4px;
+}
+
+.sections-segment-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: var(--sun-font-sm, 13px);
+  font-weight: 600;
+}
+
+.section--tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.section--tab-panel > .section-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ws-panel-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 4px 4px;
+}
+
+.ws-panel-toolbar .section-add-btn {
+  margin-right: 0;
+}
+
 .section {
   flex-shrink: 0;
 }
@@ -1201,6 +1460,9 @@ onMounted(() => {
 /* --- Workspace Body --- */
 .ws-body {
   padding: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .ws-loading {
@@ -1224,6 +1486,9 @@ onMounted(() => {
 }
 
 .ws-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1455,6 +1720,31 @@ onMounted(() => {
   padding: 8px 24px;
   font-size: var(--sun-font-xs);
   color: var(--sun-text-muted);
+}
+
+.task-conv-load-more {
+  display: block;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-xs);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.task-conv-load-more:hover:not(:disabled) {
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
+}
+
+.task-conv-load-more:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 
 /* --- Create Workspace Modal --- */

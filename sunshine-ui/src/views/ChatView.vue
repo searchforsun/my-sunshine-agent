@@ -1438,6 +1438,10 @@ onMounted(async () => {
       settleScrollToBottom()
     }
   }
+  let reconnectAfterHydrate: {
+    cid: string
+    active: NonNullable<ReturnType<typeof loadActiveGeneration>>
+  } | null = null
   try {
     await chatStore.init()
     // URL ?cid= 优先：刷新后定位回用户打开的那个会话（URL 是唯一能跨刷新保留的会话锚点）
@@ -1479,11 +1483,12 @@ onMounted(async () => {
     const pendingReconnect = !!(active?.conversationId === cid)
     if (cid) {
       await hydrateSessionFromStore(cid, { skipApiLoad: pendingReconnect })
-      if (active && active.conversationId === cid) {
-        await tryAutoReconnect(cid, active)
-        syncSessionToStore(cid)
-      }
     }
+    // 续连不放进 sessionHydrating 临界区：await 整段 SSE 会长时间挡住 currentId watch，
+    // 刷新后工作区流式中无法切到其它会话。hydrate 完成后即放开切换，续连后台跑。
+    reconnectAfterHydrate = (cid && active && active.conversationId === cid)
+      ? { cid, active }
+      : null
   } finally {
     sessionHydrating.value = false
   }
@@ -1493,6 +1498,12 @@ onMounted(async () => {
   // 空会话与新任务模式（无消息）跳过
   if (chatStore.currentId && messages.value.length) {
     settleScrollToBottom()
+  }
+  if (reconnectAfterHydrate) {
+    const { cid, active } = reconnectAfterHydrate
+    void tryAutoReconnect(cid, active).then(() => {
+      if (chatStore.currentId === cid) syncSessionToStore(cid)
+    })
   }
   applyChatDeepLink()
   inputRef.value?.focus()

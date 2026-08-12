@@ -34,6 +34,10 @@ public class UserEntity {
     @Column(name = "default_write_hitl_mode", nullable = false, length = 16)
     private String defaultWriteHitlMode = "never";
 
+    /** vertical|horizontal 侧栏平台/对话/任务排布 */
+    @Column(name = "sidebar_sections_layout", nullable = false, length = 16)
+    private String sidebarSectionsLayout = "vertical";
+
     /** 用户个人规则（soul），注入系统提示；null 表示未配置 */
     @Column(name = "personal_rules", columnDefinition = "TEXT")
     private String personalRules;
