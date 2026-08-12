@@ -35,6 +35,7 @@ import {
 import { isExecutionRestartMessage, isReactAssistantMessage, resolveResumeMode } from './resumeMode'
 import {
   clearSegmentIdRemap,
+  joinedContentBlocks,
   normalizeRestoredInterleavedContent,
   pruneContentBlocksForReactResume,
   stripPlanDrawerLeakFromMessage,
@@ -377,6 +378,8 @@ export function useChatSessions(
       target.steps = resetStepsForReactResume(target.steps)
       // 与后端 truncateToLastCompleteThink 对齐：丢掉截断点之后的正文块，避免错位/重放重复
       target.contentBlocks = pruneContentBlocksForReactResume(target.contentBlocks, target.steps)
+      // content 与 blocks 同 SSOT，避免裁块后 content 仍含半截/将被重放的正文
+      target.content = joinedContentBlocks(target.contentBlocks)
       clearSegmentIdRemap(target.id)
       // 消息级 reasoning 同样残留旧流（综合分析等 step_delta(reasoning) 会经 appendChunk 叠加到
       // lastMsg.reasoning），一并清空，避免旧（英文）与新（中文）互相覆盖。

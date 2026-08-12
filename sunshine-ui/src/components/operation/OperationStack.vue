@@ -550,16 +550,15 @@ function pushCollapsedWithSticky(result: DisplayRow[], rows: DisplayRow[]): void
   flush()
 }
 
-/** 正文间多轮操作折叠：在两组 ContentBlock 之间，若 grouped 行数 >=2 且 think 不足 2 个时，
- * 折叠除最后一行外的多余行（覆盖不同种类工具未合并的散列场景）。think >=2 按原有轮次折叠。
+/** 正文间多轮操作折叠：以 ContentBlock 为段边界；无正文时整段视为单一操作段，
+ * 达到折叠条件即收起（不必等首段正文出现）。段内若 grouped 行数 >=2 且 think 不足 2 个时，
+ * 折叠除最后一行外的多余行；think >=2 按原有轮次折叠。
  * intent/skill/tasks 与 think1（整个时间线首个 think）始终不进入折叠。
  * 折叠区不足 2 行时不包 roundGroup（避免单 toolGroup 双层折叠）。 */
 function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
-  if (!props.contentBlocks?.length) return inputRows
-
-  // 收集 contentBlock stepping 信息
+  // 收集 contentBlock stepping 信息；无正文 → 空集 → 整段单 segment 仍走折叠
   const blockAfterStepIds = new Set<string>()
-  for (const cb of props.contentBlocks) {
+  for (const cb of props.contentBlocks ?? []) {
     if (cb.afterStepId) blockAfterStepIds.add(cb.afterStepId)
   }
 

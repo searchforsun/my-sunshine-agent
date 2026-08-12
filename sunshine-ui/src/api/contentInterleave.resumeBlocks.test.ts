@@ -7,6 +7,7 @@ import {
   endContentSegment,
   pruneContentBlocksForReactResume,
   resolveSegmentId,
+  clearSegmentIdRemap,
 } from './contentInterleave'
 
 function think(id: string, lifecycle: ProcessingStep['lifecycle'] = 'done'): ProcessingStep {
@@ -49,12 +50,12 @@ describe('pruneContentBlocksForReactResume', () => {
   })
 })
 
-describe('beginContentSegment · 续跑 segmentId 冲突', () => {
+describe('beginContentSegment · 一锚点一段', () => {
   it('同 segmentId 不同 afterStepId 时重映射，避免新正文灌进旧锚点', () => {
     const msg: ChatMessage = {
       id: 'a1',
       role: 'assistant',
-      content: '',
+      content: '旧段',
       contentBlocks: [
         { segmentId: 'content-1', afterStepId: 'think', text: '旧段' },
       ],
@@ -72,25 +73,50 @@ describe('beginContentSegment · 续跑 segmentId 冲突', () => {
     expect(msg.contentBlocks![0].text).toBe('旧段')
     const newBlock = msg.contentBlocks!.find(b => b.segmentId === remapped)
     expect(newBlock?.text).toBe('新段正文')
+    clearSegmentIdRemap(msg.id)
   })
 
-  it('content_end 去掉与更早段精确重复的续跑重放正文', () => {
+  it('同 afterStepId 新 segment 占领锚点并清空旧文（续跑不双段）', () => {
+    const msg: ChatMessage = {
+      id: 'a2',
+      role: 'assistant',
+      content: '沙箱无 Node.js 且无权限安装。检查是否有其他 JS 运行时：',
+      contentBlocks: [
+        {
+          segmentId: 'content-3',
+          afterStepId: 'think-2',
+          text: '沙箱无 Node.js 且无权限安装。检查是否有其他 JS 运行时：',
+        },
+      ],
+    }
+    beginContentSegment(msg, 'content-4', 'think-2')
+    expect(msg.contentBlocks).toEqual([
+      { segmentId: 'content-4', afterStepId: 'think-2', text: '' },
+    ])
+    expect(msg.content).toBe('')
+    appendSegmentContent(msg, 'content-4', '改用 bun 运行：', false)
+    expect(msg.contentBlocks).toEqual([
+      { segmentId: 'content-4', afterStepId: 'think-2', text: '改用 bun 运行：' },
+    ])
+    expect(msg.content).toBe('改用 bun 运行：')
+  })
+
+  it('content_end 去掉与更早段精确重复的误放正文', () => {
+    clearSegmentIdRemap('a1')
     const msg: ChatMessage = {
       id: 'a1',
       role: 'assistant',
-      content: '',
+      content: '构建成功。验证合并产物质量：',
       contentBlocks: [
         { segmentId: 'content-1', afterStepId: 'think', text: '构建成功。验证合并产物质量：' },
-        { segmentId: 'content-1#think-2', afterStepId: 'think-2', text: '构建成功。验证合并产物质量：' },
       ],
     }
-    // 模拟 remap 表
-    ;(msg as ChatMessage & { segmentIdRemap?: Record<string, string> }).segmentIdRemap = {
-      'content-1': 'content-1#think-2',
-    }
+    beginContentSegment(msg, 'content-1', 'think-2')
+    appendSegmentContent(msg, 'content-1', '构建成功。验证合并产物质量：')
     endContentSegment(msg, 'content-1')
     expect(msg.contentBlocks).toEqual([
       { segmentId: 'content-1', afterStepId: 'think', text: '构建成功。验证合并产物质量：' },
     ])
+    clearSegmentIdRemap(msg.id)
   })
 })

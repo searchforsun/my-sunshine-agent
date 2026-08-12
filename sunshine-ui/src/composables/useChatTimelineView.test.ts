@@ -64,3 +64,30 @@ describe('useChatTimelineView 历史消息时间线缓存', () => {
     expect(q2).toBe(q1)
   })
 })
+
+describe('useChatTimelineView showStreamWaiting', () => {
+  it('已有时间线步骤时不挂底部三点（避免与 OperationStack 空档三点叠两行）', async () => {
+    const messages = ref<ChatMessage[]>([
+      makeMsg({
+        status: 'streaming',
+        content: '',
+        steps: [makeStep('think', 'think')],
+      }),
+    ])
+    const loading = ref(true)
+    const view = useChatTimelineView(messages, loading)
+    await new Promise(r => setTimeout(r, 2100))
+    expect(view.showStreamWaiting.value).toBe(false)
+  })
+
+  it('尚无 steps/正文时，静默满 2s 后显示底部三点', async () => {
+    const messages = ref<ChatMessage[]>([
+      makeMsg({ status: 'streaming', content: '', steps: [] }),
+    ])
+    const loading = ref(true)
+    const view = useChatTimelineView(messages, loading)
+    expect(view.showStreamWaiting.value).toBe(false)
+    await new Promise(r => setTimeout(r, 2100))
+    expect(view.showStreamWaiting.value).toBe(true)
+  })
+})

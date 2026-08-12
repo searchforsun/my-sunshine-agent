@@ -2,19 +2,14 @@
  * 正文穿插：
  * - ReAct：content_start → content(segmentId) → content_end
  * - Plan answer / legacy：plain content 自动锚定 timeline 末步，渲染时 node-* 回退到 plan
+ *
+ * 契约：同一 afterStepId 至多一段正文；续跑新 segment 占领锚点并清空旧文。
+ * 段内 chunk 由后端 ContentSegmentCoordinator 保证为增量，前端只做追加，不做字符重叠截断。
  */
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
 import { formatStepLabel } from './processingStepsDisplay'
 import { isThinkStepId } from './processingStepsNormalize'
-
-function mergeStreamChunk(existing: string, chunk: string): string {
-  const maxOverlap = Math.min(existing.length, chunk.length, 64)
-  for (let n = maxOverlap; n > 0; n--) {
-    if (existing.endsWith(chunk.slice(0, n))) return existing + chunk.slice(n)
-  }
-  return existing + chunk
-}
 
 export interface ContentBlock {
   /** ReAct 分段 id；Plan 自动锚定为 tail:{stepId} */
@@ -99,14 +94,31 @@ export function isHiddenReactTimelineStep(step: ProcessingStep): boolean {
   return true
 }
 
-function appendMessageContent(msg: ChatMessage, chunk: string, resume: boolean): void {
-  msg.content = resume
-    ? mergeStreamChunk(msg.content ?? '', chunk)
-    : (msg.content ?? '') + chunk
-}
-
 function findBlock(blocks: ContentBlock[] | undefined, segmentId: string): ContentBlock | undefined {
   return blocks?.find(b => b.segmentId === segmentId)
+}
+
+/** message.content 与 contentBlocks 对齐（锚点被新段占领清空后必须回写） */
+function syncMessageContentFromBlocks(msg: ChatMessage): void {
+  msg.content = msg.contentBlocks?.map(b => b.text).join('') ?? ''
+}
+
+/**
+ * 同一 afterStepId 仅一段：新 segment 占领锚点并清空正文。
+ * 续跑抬高 seq 后 content-(N+1) 与旧 content-N 同锚点时，禁止双段并存。
+ */
+function claimContentAnchor(msg: ChatMessage, segmentId: string, afterStepId: string): void {
+  const blocks = msg.contentBlocks!
+  const anchorIdx = blocks.findIndex(b => b.afterStepId === afterStepId)
+  if (anchorIdx >= 0) {
+    const cur = blocks[anchorIdx]
+    if (cur.segmentId === segmentId) return
+    blocks[anchorIdx] = { segmentId, afterStepId, text: '' }
+    syncMessageContentFromBlocks(msg)
+    return
+  }
+  if (findBlock(blocks, segmentId)) return
+  blocks.push({ segmentId, afterStepId, text: '' })
 }
 
 /** 隐藏步的正文块改挂到 timeline 中前一个可见步骤之后 */
@@ -152,41 +164,50 @@ export function maybeReanchorContentBlocksToTail(
   }
 }
 
-/** ReAct：content_start */
+/** ReAct：content_start。同一 afterStepId 至多一段，续跑新段占领锚点。 */
 export function beginContentSegment(msg: ChatMessage, segmentId: string, afterStepId: string): void {
   if (!segmentId || !afterStepId) return
   if (!msg.contentBlocks) msg.contentBlocks = []
-  const existing = findBlock(msg.contentBlocks, segmentId)
-  if (existing) {
-    if (existing.afterStepId === afterStepId) return
-    // 续跑 seq 重置：同 id 新锚点 → 重映射，禁止把新正文灌进旧块
+  const blocks = msg.contentBlocks
+  const table = segmentRemapTable(msg)
+
+  const existingById = findBlock(blocks, segmentId)
+  if (existingById) {
+    if (existingById.afterStepId === afterStepId) return
+    // 同 id 新锚点 → 重映射，禁止把新正文灌进旧 afterStepId
     const remapped = `${segmentId}#${afterStepId}`
-    segmentRemapTable(msg)[segmentId] = remapped
-    if (findBlock(msg.contentBlocks, remapped)) return
-    msg.contentBlocks.push({ segmentId: remapped, afterStepId, text: '' })
+    table[segmentId] = remapped
+    if (findBlock(blocks, remapped)?.afterStepId === afterStepId) return
+    claimContentAnchor(msg, remapped, afterStepId)
     return
   }
-  const remapped = segmentRemapTable(msg)[segmentId]
-  if (remapped && findBlock(msg.contentBlocks, remapped)) return
-  msg.contentBlocks.push({ segmentId, afterStepId, text: '' })
+
+  const remapped = table[segmentId]
+  if (remapped) {
+    if (findBlock(blocks, remapped)?.afterStepId === afterStepId) return
+    claimContentAnchor(msg, remapped, afterStepId)
+    return
+  }
+
+  claimContentAnchor(msg, segmentId, afterStepId)
 }
 
-/** ReAct：段内 content */
+/** ReAct：段内 content。后端已保证增量，前端只追加。 */
 export function appendSegmentContent(
   msg: ChatMessage,
   segmentId: string,
   chunk: string,
-  resume: boolean,
+  _resume = false,
 ): void {
   if (!chunk || !segmentId) return
   const resolved = resolveSegmentId(msg, segmentId)
   const block = findBlock(msg.contentBlocks, resolved)
   if (!block) return
-  appendMessageContent(msg, chunk, resume)
-  block.text = resume ? mergeStreamChunk(block.text, chunk) : block.text + chunk
+  block.text += chunk
+  msg.content = (msg.content ?? '') + chunk
 }
 
-/** ReAct：content_end；续跑时丢掉与更早段精确重复的重放正文 */
+/** ReAct：content_end；丢掉与更早段精确重复的误放正文（跨锚点残留） */
 export function endContentSegment(msg: ChatMessage, segmentId: string): void {
   if (!segmentId || !msg.contentBlocks?.length) return
   const resolved = resolveSegmentId(msg, segmentId)
@@ -198,34 +219,46 @@ export function endContentSegment(msg: ChatMessage, segmentId: string): void {
       if ((msg.contentBlocks[i].text?.trim() ?? '') === text) {
         msg.contentBlocks.splice(idx, 1)
         if (!msg.contentBlocks.length) msg.contentBlocks = undefined
-        // 冲突映射指向已删块时清掉，避免后续 append 丢字
         const table = segmentRemapTable(msg)
         if (table[segmentId] === resolved) delete table[segmentId]
+        syncMessageContentFromBlocks(msg)
         return
       }
     }
   }
 }
 
-/** 子 Agent node 步：content_start */
+/** 子 Agent node 步：content_start（同锚点只一段） */
 export function beginStepContentSegment(step: ProcessingStep, segmentId: string, afterStepId: string): void {
   if (!segmentId || !afterStepId) return
   if (!step.contentBlocks) step.contentBlocks = []
-  if (findBlock(step.contentBlocks, segmentId)) return
-  step.contentBlocks.push({ segmentId, afterStepId, text: '' })
+  const blocks = step.contentBlocks
+  const byId = findBlock(blocks, segmentId)
+  if (byId) {
+    if (byId.afterStepId === afterStepId) return
+    byId.afterStepId = afterStepId
+    byId.text = ''
+    return
+  }
+  const anchorIdx = blocks.findIndex(b => b.afterStepId === afterStepId)
+  if (anchorIdx >= 0) {
+    blocks[anchorIdx] = { segmentId, afterStepId, text: '' }
+    return
+  }
+  blocks.push({ segmentId, afterStepId, text: '' })
 }
 
-/** 子 Agent node 步：段内 content */
+/** 子 Agent node 步：段内 content（只追加） */
 export function appendStepSegmentContent(
   step: ProcessingStep,
   segmentId: string,
   chunk: string,
-  resume: boolean,
+  _resume = false,
 ): void {
   if (!chunk || !segmentId) return
   const block = findBlock(step.contentBlocks, segmentId)
   if (!block) return
-  block.text = resume ? mergeStreamChunk(block.text, chunk) : block.text + chunk
+  block.text += chunk
 }
 
 /** 子 Agent node 步：content_end */
@@ -240,13 +273,13 @@ export function appendInterleavedContent(
   msg: ChatMessage,
   chunk: string,
   afterStepId: string | null | undefined,
-  resume: boolean,
+  _resume = false,
 ): void {
   if (!chunk) return
   const steps = msg.steps
   // answer / plan 正文 SSOT：node-answer.result（step_delta）；plain content 会破坏表格换行
   if (steps?.some(s => s.phase === 'plan' || s.id === 'node-answer')) return
-  appendMessageContent(msg, chunk, resume)
+  msg.content = (msg.content ?? '') + chunk
   if (!steps?.length) return
   if (!msg.contentBlocks) msg.contentBlocks = []
   const blocks = msg.contentBlocks
@@ -255,9 +288,16 @@ export function appendInterleavedContent(
   const tailId = `tail:${anchor}`
   const last = blocks[blocks.length - 1]
   if (last && last.segmentId === tailId && last.afterStepId === anchor) {
-    last.text = resume ? mergeStreamChunk(last.text, chunk) : last.text + chunk
+    last.text += chunk
   } else {
-    blocks.push({ segmentId: tailId, afterStepId: anchor, text: chunk })
+    // 同锚点已有非 tail 段时占领清空；否则追加 tail
+    const anchorIdx = blocks.findIndex(b => b.afterStepId === anchor)
+    if (anchorIdx >= 0) {
+      blocks[anchorIdx] = { segmentId: tailId, afterStepId: anchor, text: chunk }
+      syncMessageContentFromBlocks(msg)
+    } else {
+      blocks.push({ segmentId: tailId, afterStepId: anchor, text: chunk })
+    }
   }
 }
 

@@ -92,16 +92,17 @@ export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<b
     return hasActiveStep(resolveTimelineSteps(msg))
   }
 
-  /** 无正文/活动步时的即时空档条件（尚未施加 2s 静默） */
+  /** 无正文/时间线时的即时空档条件（尚未施加 2s 静默）。
+   * 仅覆盖「首步尚未到达」；一旦有 steps，空档三点由 OperationStack 独占，
+   * 避免与折叠/展开态 op-answer-dots 叠成两行。 */
   function isStreamWaitingGap(): boolean {
     if (!loading.value) return false
     const last = messages.value[messages.value.length - 1]
     if (last?.role !== 'assistant') return true
     if (last.content?.trim()) return false
     if (last.reasoning?.trim()) return false
-    // 穿插正文已在 OperationStack 输出时勿再挂底部三点（避免与最终正文三点重复）
     if (last.contentBlocks?.some(b => !!b.text?.trim())) return false
-    if (hasActiveStep(resolveTimelineSteps(last))) return false
+    if (resolveTimelineSteps(last).length > 0) return false
     return true
   }
 
