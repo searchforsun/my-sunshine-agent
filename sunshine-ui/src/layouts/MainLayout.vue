@@ -362,7 +362,11 @@ const loadingWorkspaces = ref(false)
 const workspaceListHasMore = ref(false)
 const workspaceListLoadingMore = ref(false)
 let workspaceListOffset = 0
-const WS_PAGE_SIZE = 30
+const WS_PAGE_SIZE_VERTICAL = 10
+const WS_PAGE_SIZE_HORIZONTAL = 30
+const wsPageSize = computed(() =>
+  sidebarSectionsHorizontal.value ? WS_PAGE_SIZE_HORIZONTAL : WS_PAGE_SIZE_VERTICAL,
+)
 const showCreateWorkspace = ref(false)
 const newWsName = ref('')
 const newWsRepoUrl = ref('')
@@ -500,7 +504,7 @@ async function fetchWorkspaces(reset = true) {
   }
   try {
     const page = await listWorkspacesPage({
-      limit: WS_PAGE_SIZE,
+      limit: wsPageSize.value,
       offset: reset ? 0 : workspaceListOffset,
     })
     if (reset) {
@@ -521,6 +525,7 @@ async function fetchWorkspaces(reset = true) {
 }
 
 function onWsListScroll(e: Event) {
+  if (!sidebarSectionsHorizontal.value) return
   const el = e.target as HTMLElement
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
     void fetchWorkspaces(false)
@@ -532,6 +537,14 @@ watch(() => expanded.workspace, (open) => {
     void fetchWorkspaces(true)
   }
 }, { immediate: true })
+
+/** 纵向折叠对话分区：已加载的「更多」收回首屏 10 条 */
+watch(() => expanded.chat, (open, wasOpen) => {
+  if (sidebarSectionsHorizontal.value) return
+  if (wasOpen && !open) {
+    chatStore.collapseChats()
+  }
+})
 
 function wsMenuOptions(ws: WorkspaceVO): DropdownOption[] {
   return [
@@ -777,6 +790,7 @@ onMounted(() => {
               :menu-options="conversationMenuOptions"
               :has-more="chatStore.chatSidebarHasMore"
               :loading-more="chatStore.chatSidebarLoadingMore"
+              :load-more-mode="sidebarSectionsHorizontal ? 'scroll' : 'button'"
               @switch="handleSwitchConversation"
               @menu="handleConversationMenu"
               @load-more="chatStore.loadMoreChats()"
@@ -920,7 +934,16 @@ onMounted(() => {
                   <div v-else class="task-conv-empty">暂无任务</div>
                 </div>
               </div>
-              <div v-if="workspaceListLoadingMore" class="ws-loading">加载中...</div>
+              <button
+                v-if="!sidebarSectionsHorizontal && workspaceListHasMore"
+                type="button"
+                class="task-conv-load-more"
+                :disabled="workspaceListLoadingMore"
+                @click.stop="fetchWorkspaces(false)"
+              >
+                {{ workspaceListLoadingMore ? '加载中...' : '更多' }}
+              </button>
+              <div v-else-if="workspaceListLoadingMore" class="ws-loading">加载中...</div>
             </div>
           </div>
         </section>
@@ -1725,13 +1748,14 @@ onMounted(() => {
 .task-conv-load-more {
   display: block;
   width: 100%;
-  margin: 4px 0 2px;
-  padding: 6px 8px;
+  margin: 0;
+  padding: 2px 8px;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--sun-text-muted);
   font-size: var(--sun-font-xs);
+  line-height: 1.3;
   font-family: inherit;
   cursor: pointer;
   text-align: center;

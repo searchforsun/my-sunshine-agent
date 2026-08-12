@@ -23,7 +23,11 @@ const props = defineProps<{
   conversations?: import('../stores/chatStore').Conversation[]
   hasMore?: boolean
   loadingMore?: boolean
+  /** scroll：横向滚底加载；button：纵向点「更多」 */
+  loadMoreMode?: 'scroll' | 'button'
 }>()
+
+const loadMoreMode = computed(() => props.loadMoreMode ?? 'button')
 
 const route = useRoute()
 const chatStore = useChatStore()
@@ -74,6 +78,7 @@ function handleMenu(key: string) {
 }
 
 function onHistoryScroll(e: Event) {
+  if (loadMoreMode.value !== 'scroll') return
   if (!props.hasMore || props.loadingMore) return
   const el = e.target as HTMLElement
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
@@ -83,7 +88,10 @@ function onHistoryScroll(e: Event) {
 </script>
 
 <template>
-  <div class="conversation-sidebar-list">
+  <div
+    class="conversation-sidebar-list"
+    :class="{ 'conversation-sidebar-list--fill': loadMoreMode === 'scroll' }"
+  >
     <div v-if="groups.length > 0" class="history-list" @scroll.passive="onHistoryScroll">
     <section v-for="group in groups" :key="group.key" class="history-group">
       <div class="history-group-label">{{ group.label }}</div>
@@ -125,7 +133,16 @@ function onHistoryScroll(e: Event) {
         </NDropdown>
       </div>
     </section>
-    <div v-if="loadingMore" class="history-load-more">加载中...</div>
+    <button
+      v-if="loadMoreMode === 'button' && hasMore"
+      type="button"
+      class="history-load-more-btn"
+      :disabled="!!loadingMore"
+      @click.stop="emit('load-more')"
+    >
+      {{ loadingMore ? '加载中...' : '更多' }}
+    </button>
+    <div v-else-if="loadMoreMode === 'scroll' && loadingMore" class="history-load-more">加载中...</div>
   </div>
     <div v-else class="history-empty">
       <span class="history-empty-text">暂无对话</span>
@@ -141,21 +158,31 @@ function onHistoryScroll(e: Event) {
 
 <style scoped>
 .conversation-sidebar-list {
-  flex: 1;
+  /* 纵向：随内容高度，避免 flex 撑开导致「更多」上下大块空白 */
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.history-list {
+.conversation-sidebar-list--fill {
   flex: 1;
+}
+
+.history-list {
+  flex: 0 1 auto;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   margin-top: 2px;
-  padding-top: 4px;
+  padding-top: 2px;
+}
+
+.conversation-sidebar-list--fill .history-list {
+  flex: 1;
+  min-height: 0;
 }
 
 .history-group {
@@ -178,6 +205,33 @@ function onHistoryScroll(e: Event) {
   text-align: center;
   font-size: var(--sun-font-xs);
   color: var(--sun-text-muted);
+}
+
+.history-load-more-btn {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-xs);
+  line-height: 1.3;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.history-load-more-btn:hover:not(:disabled) {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
+}
+
+.history-load-more-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .history-item {

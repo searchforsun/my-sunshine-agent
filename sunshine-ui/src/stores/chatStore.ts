@@ -4,6 +4,7 @@
 import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed, reactive } from 'vue'
 import { useAuthStore } from './authStore'
+import { normalizeSidebarSectionsLayout } from '../api/sidebarSectionsLayouts'
 import type { ChatMessage } from '../api/chat'
 import type { ConversationMessage } from '../api/conversations'
 import type { ExecutionPreference } from '../api/executionModes'
@@ -49,8 +50,16 @@ export interface Conversation {
 
 const CURRENT_ID_KEY = 'sunshine-current-conversation-id'
 const DEFAULT_CONV_TITLE = '新对话'
-const CHAT_SIDEBAR_PAGE_SIZE = 30
+/** 纵向点「更多」：10；横向滚底加载：30 */
+const CHAT_SIDEBAR_PAGE_SIZE_VERTICAL = 10
+const CHAT_SIDEBAR_PAGE_SIZE_HORIZONTAL = 30
 const TASK_SIDEBAR_PAGE_SIZE = 10
+
+function chatSidebarPageSize(): number {
+  return normalizeSidebarSectionsLayout(useAuthStore().user?.sidebarSectionsLayout) === 'horizontal'
+    ? CHAT_SIDEBAR_PAGE_SIZE_HORIZONTAL
+    : CHAT_SIDEBAR_PAGE_SIZE_VERTICAL
+}
 
 /** 每会话历史加载状态：hasMore 表示更早消息仍存在；loading 防并发 */
 const historyHasMore = new Map<string, boolean>()
@@ -288,7 +297,7 @@ export const useChatStore = defineStore('chat', () => {
         }
         const page = await listConversationsPage({
           kind: 'chat',
-          limit: CHAT_SIDEBAR_PAGE_SIZE,
+          limit: chatSidebarPageSize(),
           offset: 0,
         })
         replaceChatPage(page.items)
@@ -328,7 +337,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const page = await listConversationsPage({
         kind: 'chat',
-        limit: CHAT_SIDEBAR_PAGE_SIZE,
+        limit: chatSidebarPageSize(),
         offset: chatSidebarOffset,
       })
       appendSummaries(page.items)
@@ -339,6 +348,27 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       chatSidebarLoadingMore.value = false
     }
+  }
+
+  /** 纵向折叠对话：侧栏收回首屏 10 条，再展开仍可点「更多」 */
+  function collapseChats(): void {
+    const pageSize = CHAT_SIDEBAR_PAGE_SIZE_VERTICAL
+    const chats = conversations.value
+      .filter(c => !isTaskConversation(c))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    if (chats.length <= pageSize) {
+      chatSidebarOffset = chats.length
+      return
+    }
+    const keepIds = new Set(chats.slice(0, pageSize).map(c => c.id))
+    if (currentId.value && chats.some(c => c.id === currentId.value)) {
+      keepIds.add(currentId.value)
+    }
+    conversations.value = conversations.value.filter(
+      c => isTaskConversation(c) || keepIds.has(c.id),
+    )
+    chatSidebarOffset = pageSize
+    chatSidebarHasMore.value = true
   }
 
   /** 展开工作区时拉取首屏任务会话（每页 10） */
@@ -510,7 +540,31 @@ export const useChatStore = defineStore('chat', () => {
     [...conversations.value].sort((a, b) => b.updatedAt - a.updatedAt)
   )
 
+  /** 可复用的空白对话：已确认无消息（含本地缓存）；不看标题。
+   * historyHasMore 有记录表示已拉过消息页或本端刚创建，避免列表项未 hydrate 时误判为空。 */
+  function findBlankChat(): Conversation | undefined {
+    const blanks = conversations.value.filter(c => {
+      if (isTaskConversation(c)) return false
+      if (!historyHasMore.has(c.id)) return false
+      if (c.messages?.length) return false
+      const cached = loadCachedMessages(c.id)
+      return !cached?.length
+    })
+    return blanks.sort((a, b) => b.updatedAt - a.updatedAt)[0]
+  }
+
   async function create(params?: { kind?: string; workspaceId?: string; checkoutPath?: string }): Promise<string> {
+    const kind = params?.kind ?? 'chat'
+    // 点「新对话」：已有空白会话则直接定位，避免侧栏堆多个空会话
+    if (kind === 'chat' && !params?.workspaceId) {
+      const blank = findBlankChat()
+      if (blank) {
+        if (currentId.value !== blank.id) {
+          await switchTo(blank.id)
+        }
+        return blank.id
+      }
+    }
     try {
       const created = await createConversation(params)
       const conv: Conversation = {
@@ -529,6 +583,7 @@ export const useChatStore = defineStore('chat', () => {
       conversations.value.unshift(conv)
       currentId.value = conv.id
       persistCurrentId()
+      historyHasMore.set(conv.id, false)
       upsertCachedIndex({
         id: conv.id,
         title: conv.title,
@@ -807,7 +862,7 @@ export const useChatStore = defineStore('chat', () => {
     chatSidebarHasMore, chatSidebarLoadingMore,
     workspaceTaskHasMore, workspaceTaskLoadingMore, workspaceTaskLoaded,
     init, create, remove, removeByWorkspace, rename, switchTo, ensureConversation, recoverAfterStaleConversation,
-    loadMoreChats, ensureWorkspaceTasks, loadMoreWorkspaceTasks, collapseWorkspaceTasks,
+    loadMoreChats, collapseChats, ensureWorkspaceTasks, loadMoreWorkspaceTasks, collapseWorkspaceTasks,
     updateTitle: updateTitleLocal,
     updateTitleFromStream,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
