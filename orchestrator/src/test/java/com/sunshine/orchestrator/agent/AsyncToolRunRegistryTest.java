@@ -128,16 +128,35 @@ class AsyncToolRunRegistryTest {
 
     @Test
     void cancelByMessage_marksAllRunningCancelled() {
-        String a = registry.register(
-                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "m", "c1", 600_000L);
-        String b = registry.register(
-                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT, "m", "c1", 600_000L);
-        String other = registry.register(
-                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "other", "c1", 600_000L);
+        java.util.concurrent.atomic.AtomicInteger kills = new java.util.concurrent.atomic.AtomicInteger();
+        String a = registry.registerWithId(
+                "run-a",
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                "m",
+                "c1",
+                600_000L,
+                kills::incrementAndGet);
+        String b = registry.registerWithId(
+                "run-b",
+                AsyncToolRunRegistry.Kind.SPAWN_SUBAGENT,
+                "m",
+                "c1",
+                600_000L,
+                kills::incrementAndGet);
+        java.util.concurrent.atomic.AtomicBoolean otherKill = new java.util.concurrent.atomic.AtomicBoolean();
+        String other = registry.registerWithId(
+                "run-other",
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                "other",
+                "c1",
+                600_000L,
+                () -> otherKill.set(true));
         assertThat(registry.cancelByMessage("m")).isEqualTo(2);
         assertThat(registry.peek(a).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
         assertThat(registry.peek(b).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
         assertThat(registry.peek(other).status()).isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+        assertThat(kills.get()).isEqualTo(2);
+        assertThat(otherKill.get()).isFalse();
     }
 
     private boolean awaitStatus(String runId, AsyncToolRunRegistry.Status expected, long timeoutMs)
