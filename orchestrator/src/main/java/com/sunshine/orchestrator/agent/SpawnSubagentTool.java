@@ -292,11 +292,14 @@ public class SpawnSubagentTool implements AgentTool {
                 conversationId,
                 timeoutMs,
                 () -> spawnRunRegistry.cancel(runId));
-        // 用户取消子卡 → 立即 complete，避免 await 永久 RUNNING
-        spawnRunRegistry.bindOnUserCancel(runId, () -> asyncToolRunRegistry.complete(
-                runId,
-                AsyncToolRunRegistry.Status.CANCELLED,
-                spawnRunRegistry.formatCancelResult(promptText)));
+        // 用户取消子卡 / 墙钟 onCancel→cancel → complete + 释放 SpawnRunRegistry（Flux 可能仍挂起）
+        spawnRunRegistry.bindOnUserCancel(runId, () -> {
+            asyncToolRunRegistry.complete(
+                    runId,
+                    AsyncToolRunRegistry.Status.CANCELLED,
+                    spawnRunRegistry.formatCancelResult(promptText));
+            spawnRunRegistry.unregister(runId);
+        });
         agentExecutorRouter.dispatch(agentEntry, request, promptText, List.of())
                 .doOnNext(token -> {
                     appendAnswerContent(answer, token);
@@ -323,6 +326,10 @@ public class SpawnSubagentTool implements AgentTool {
             long timeoutMs,
             Throwable subscribeError) {
         try {
+            // 墙钟/用户取消已终态：禁止再写 success/fail 时间线
+            if (isAsyncAlreadyTerminal(runId)) {
+                return;
+            }
             Throwable err = subscribeError != null ? subscribeError : failure.get();
             if (spawnRunRegistry.isCancelled(runId) || isInterrupted(err)) {
                 String result = spawnRunRegistry.formatCancelResult(promptText);
@@ -336,23 +343,51 @@ public class SpawnSubagentTool implements AgentTool {
                 Throwable cause = err.getCause() != null ? err.getCause() : err;
                 if (isTimeout(cause) || isTimeout(err)) {
                     String msg = "子 Agent 执行超时（" + timeoutMs + "ms）";
-                    timelineSupport.fail(mainBridge, subTimeline, msg);
+                    // 先 claim WALL_TIMEOUT；胜者由 onCancel→spawn.cancel 写取消时间线，勿再 fail
                     asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.WALL_TIMEOUT, msg);
                     return;
                 }
-                String msg = failAndReturn(mainBridge, subTimeline, cause != null ? cause : err);
+                String msg = errMessage(cause != null ? cause : err);
                 asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.ERROR, msg);
+                // 仅 ERROR 胜者写 fail 时间线
+                if (isAsyncStatus(runId, AsyncToolRunRegistry.Status.ERROR)) {
+                    timelineSupport.fail(mainBridge, subTimeline, msg);
+                }
+                return;
+            }
+            if (spawnRunRegistry.isCancelled(runId) || isAsyncAlreadyTerminal(runId)) {
                 return;
             }
             String result = answer.toString();
+            // 先 claim DONE；仅胜者写 success 时间线，避免与 WALL_TIMEOUT/CANCELLED 竞态双写
+            asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.DONE, result);
+            if (!isAsyncStatus(runId, AsyncToolRunRegistry.Status.DONE)) {
+                return;
+            }
             timelineSupport.complete(mainBridge, subTimeline, result);
             if (!StringUtils.hasText(result)) {
                 log.warn("[SpawnSubagentTool] 子 Agent 未产出正文 content runId={}", runId);
             }
-            asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.DONE, result);
         } finally {
             spawnRunRegistry.unregister(runId);
         }
+    }
+
+    private boolean isAsyncAlreadyTerminal(String runId) {
+        AsyncToolRunRegistry.Snapshot snap = asyncToolRunRegistry.peek(runId);
+        return snap != null && snap.status() != AsyncToolRunRegistry.Status.RUNNING;
+    }
+
+    private boolean isAsyncStatus(String runId, AsyncToolRunRegistry.Status expected) {
+        AsyncToolRunRegistry.Snapshot snap = asyncToolRunRegistry.peek(runId);
+        return snap != null && snap.status() == expected;
+    }
+
+    private static String errMessage(Throwable error) {
+        if (error != null && StringUtils.hasText(error.getMessage())) {
+            return error.getMessage().strip();
+        }
+        return "子 Agent 执行失败";
     }
 
     private boolean asyncToolEnabled() {

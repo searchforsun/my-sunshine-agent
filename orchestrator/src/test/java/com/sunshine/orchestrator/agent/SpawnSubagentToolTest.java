@@ -259,6 +259,89 @@ class SpawnSubagentToolTest {
         assertThat(awaitCondition(() -> spawnRunRegistry.get(runId) == null, 2_000)).isTrue();
     }
 
+    @Test
+    void background_userCancel_completesAsyncCancelled_withoutSuccessTimeline() throws Exception {
+        bindMainSession();
+        CountDownLatch dispatchEntered = new CountDownLatch(1);
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenReturn(
+                Flux.<StreamToken>defer(() -> {
+                    dispatchEntered.countDown();
+                    return Flux.never();
+                }).subscribeOn(Schedulers.boundedElastic()));
+
+        String out = tool.spawnSubagent("取消后台子任务", null, "取消卡", null, true);
+        assertThat(out).contains("\"status\":\"running\"");
+        String runId = extractRunId(out);
+        assertThat(dispatchEntered.await(3, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(spawnRunRegistry.cancel(runId)).isTrue();
+        assertThat(awaitCondition(() -> {
+            var snap = asyncToolRunRegistry.peek(runId);
+            return snap != null && snap.status() == AsyncToolRunRegistry.Status.CANCELLED;
+        }, 3_000)).isTrue();
+        assertThat(asyncToolRunRegistry.peek(runId).result()).contains("用户已取消子任务");
+        verify(timelineSupport, never()).complete(any(), any(), any());
+        assertThat(awaitCondition(() -> spawnRunRegistry.get(runId) == null, 2_000)).isTrue();
+    }
+
+    @Test
+    void background_wallTimeout_completesWallTimeout_withoutSuccessTimeline() throws Exception {
+        AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
+        sub.setEnabled(true);
+        sub.setMaxIters(8);
+        sub.setTimeoutMs(200L);
+        lenient().when(reactProps.getSubagent()).thenReturn(sub);
+
+        bindMainSession();
+        CountDownLatch dispatchEntered = new CountDownLatch(1);
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenReturn(
+                Flux.<StreamToken>defer(() -> {
+                    dispatchEntered.countDown();
+                    return Flux.never();
+                }).subscribeOn(Schedulers.boundedElastic()));
+
+        String out = tool.spawnSubagent("墙钟超时子任务", null, "超时卡", null, true);
+        assertThat(out).contains("\"status\":\"running\"");
+        String runId = extractRunId(out);
+        assertThat(dispatchEntered.await(3, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(awaitCondition(() -> {
+            var snap = asyncToolRunRegistry.peek(runId);
+            return snap != null && snap.status() == AsyncToolRunRegistry.Status.WALL_TIMEOUT;
+        }, 3_000)).isTrue();
+        verify(timelineSupport, never()).complete(any(), any(), any());
+        assertThat(awaitCondition(() -> spawnRunRegistry.get(runId) == null, 2_000)).isTrue();
+    }
+
+    @Test
+    void background_slotFull_rejectsAndUnregistersSpawn() {
+        bindMainSession();
+        assertThat(asyncToolRunRegistry.tryAcquireSlot(MSG)).isTrue();
+        assertThat(asyncToolRunRegistry.tryAcquireSlot(MSG)).isTrue();
+        assertThat(asyncToolRunRegistry.tryAcquireSlot(MSG)).isTrue();
+
+        String out = tool.spawnSubagent("槽位已满", null, "拒卡", null, true);
+
+        assertThat(out).contains("\"ok\":false");
+        assertThat(out).contains("并发已达上限");
+        ArgumentCaptor<String> runIdCaptor = ArgumentCaptor.forClass(String.class);
+        verify(timelineSupport).begin(eq(BRIDGE), runIdCaptor.capture(), eq("拒卡"), eq("槽位已满"));
+        String runId = runIdCaptor.getValue();
+        assertThat(spawnRunRegistry.get(runId)).isNull();
+        assertThat(asyncToolRunRegistry.peek(runId)).isNull();
+        verify(timelineSupport).fail(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("本消息后台工具并发已达上限"));
+        verify(agentExecutorRouter, never()).dispatch(any(), any(), any(), any());
+    }
+
+    private void bindMainSession() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        registry.bind(BRIDGE, session, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
+        StepEventBridge.registerMainRun(MSG, BRIDGE);
+        StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+    }
+
     private static String extractRunId(String json) {
         Matcher m = Pattern.compile("\"runId\":\"([^\"]+)\"").matcher(json);
         return m.find() ? m.group(1) : null;
