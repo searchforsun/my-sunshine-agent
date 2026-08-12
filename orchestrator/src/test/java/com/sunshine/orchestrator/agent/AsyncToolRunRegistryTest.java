@@ -68,4 +68,25 @@ class AsyncToolRunRegistryTest {
     void unknownRunId_peekReturnsNull() {
         assertThat(registry.peek("nope")).isNull();
     }
+
+    @Test
+    void await_interrupted_releasesSlotForMessage() throws Exception {
+        assertThat(registry.tryAcquireSlot("msg-1")).isTrue();
+        assertThat(registry.tryAcquireSlot("msg-1")).isTrue();
+        assertThat(registry.tryAcquireSlot("msg-1")).isTrue();
+        assertThat(registry.tryAcquireSlot("msg-1")).isFalse();
+
+        String runId = registry.register(
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC, "msg-1", "c1", 600_000L);
+
+        Thread waiter = new Thread(() -> registry.await(runId, 30));
+        waiter.start();
+        Thread.sleep(200);
+        waiter.interrupt();
+        waiter.join(5000);
+
+        assertThat(waiter.isAlive()).isFalse();
+        assertThat(registry.peek(runId).status()).isEqualTo(AsyncToolRunRegistry.Status.CANCELLED);
+        assertThat(registry.tryAcquireSlot("msg-1")).isTrue();
+    }
 }

@@ -163,9 +163,8 @@ public class AsyncToolRunRegistry {
             return toSnapshot(handle, Status.RUNNING);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            handle.status.compareAndSet(Status.RUNNING, Status.CANCELLED);
-            handle.terminalSignal.complete(null);
-            return toSnapshot(handle, Status.CANCELLED);
+            complete(runId, Status.CANCELLED, handle.partial);
+            return peek(runId);
         } catch (Exception e) {
             log.warn("[AsyncToolRun] await failed runId={}: {}", runId, e.getMessage());
             return toSnapshot(handle, handle.status.get());
