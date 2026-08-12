@@ -1,6 +1,6 @@
 # 异步长工具 + await_tool_run（exec / spawn）
 
-> **状态**：✅ 已实现 · Live：`scripts/verify_async_tool_await_live.py`（S-EXEC / S-SPAWN）· 实施计划见 [`../plans/2026-08-12-async-tool-await.md`](../plans/2026-08-12-async-tool-await.md)  
+> **状态**：✅ 已实现 · **已归档**（2026-08-12 tech-debt-refactor）· Live：`scripts/verify_async_tool_await_live.py`（S-EXEC / S-SPAWN）· 实施计划见 [`../../plans/archive/2026-08-12-async-tool-await.md`](../../plans/archive/2026-08-12-async-tool-await.md)  
 > **日期**：2026-08-12  
 > **编号**：阶段四增量（工具执行模型）  
 > **相关**：`SpawnRunRegistry` · `CancellableToolRunRegistry` · `DynamicToolkitFactory` · spawn-subagent · sandbox-tool-cancel · Catalog `mode-overlay.react`  

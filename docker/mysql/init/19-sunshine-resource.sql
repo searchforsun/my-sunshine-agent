@@ -433,6 +433,11 @@ INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabl
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.decision', 1, 'published',
 NULL,
 '{"label":"用户决策","before":"正在等待用户决策","active":"等待决策：{question}","after":"用户已选择：{choice}","after-fail":"决策失败","after-cancel":"已取消","after-timeout":"决策已超时","after-skip":"已跳过"}', '4.7.9 after-timeout/after-skip', 'agent');
+-- v2：显式 after-timeout / after-skip（既有库若 v1 缺键则升 active）
+INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.decision', 2, 'published',
+NULL,
+'{"label":"用户决策","before":"正在等待用户决策","active":"等待决策：{question}","after":"用户已选择：{choice}","after-fail":"决策失败","after-cancel":"已取消","after-timeout":"决策已超时","after-skip":"已跳过"}', 'wire after-timeout/after-skip to StepTimeline', 'agent');
+UPDATE prompt_definition SET active_version = 2, catalog_version = catalog_version + 1, updated_at = CURRENT_TIMESTAMP(3) WHERE id = 'timeline.steps.decision' AND active_version < 2;
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.steps.generate', 'timeline', '时间线 · Steps · generate', '时间线「生成答复」步骤的 before/active/after 展示文案。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.steps.generate', 1, 'published',

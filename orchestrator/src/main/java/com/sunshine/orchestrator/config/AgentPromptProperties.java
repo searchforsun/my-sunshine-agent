@@ -127,6 +127,16 @@ public class AgentPromptProperties {
             awaitTool.setActive("正在等待后台任务");
             awaitTool.setAfter("等待完成");
             map.put("await-tool", awaitTool);
+            var decision = new StepTimeline();
+            decision.setLabel("用户决策");
+            decision.setBefore("正在等待用户决策");
+            decision.setActive("等待决策：{question}");
+            decision.setAfter("用户已选择：{choice}");
+            decision.setAfterFail("决策失败");
+            decision.setAfterCancel("已取消");
+            decision.setAfterTimeout("决策已超时");
+            decision.setAfterSkip("已跳过");
+            map.put("decision", decision);
             var node = new StepTimeline();
             node.setBefore("准备{displayName}");
             node.setActive("正在{displayName}");
@@ -261,6 +271,8 @@ public class AgentPromptProperties {
         private String allDone;
         private String afterFail;
         private String afterCancel;
+        private String afterTimeout;
+        private String afterSkip;
     }
 
     @Getter

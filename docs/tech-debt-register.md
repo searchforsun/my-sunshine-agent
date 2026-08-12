@@ -35,6 +35,9 @@
 | TD-170 | P2 | open | `useModelsPage.ts` / `ModelsView.vue` / `ModelSceneResolver` | 上帝类拆分（按 Provider/Definition/Scene；Resolver Fetch vs Resolve） |
 | TD-171 | P2 | open | `ModelWindowCache` + `ModelWindowCacheBridge` | 窗口双路径；应只信 Catalog |
 | TD-172 | P3 | open | `model.crypto.aes-key` 默认串 | 生产应 fail-fast / 强制 env，禁默认材料 |
+| TD-184 | P2 | open | `DecisionCard.vue` (~847 行) | 状态机+多题 UI+CSS 上帝组件；拆 `useDecisionForm` / QuestionList（R5 延后） |
+| TD-185 | P2 | open | `DecisionLabels` `{choice}` 旧模板键 | Catalog 改 `{answers}` 后删兼容键 |
+| TD-186 | P3 | open | Labels.bind 样板（17×） | 中期统一 `TimelineLabelFacade`；本轮不合并 |
 
 ### 文档债
 
@@ -43,6 +46,7 @@
 | DOC-101 | P3 | open | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 仍写 TenantUserStore/`/mock-data`；实现期清单，可读但非 SSOT |
 | DOC-102 | P3 | open | `specs/plans/2026-07-29-multi-agent-unified.*` | 历史对照仍大量使用 expert/peer 措辞（peer-collab 已删、spawn_subagent 已落地）；非本轮代码范围，建议后续文档轮次收敛术语 |
 | DOC-103 | P1 | open | `CLAUDE.md` vs `executionModes.ts` | 已纠偏为「routing v6 设计中 / 现状 auto\|react…」；落地 fast/pro/workflow 时删本条 |
+| DOC-104 | P3 | open | `specs/2026-08-12-skill-sticky-process-chain-design.md` | 随 async/decision 切片捎带进仓；未纳入本轮归档，待 skill sticky 落地后再治理 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 
@@ -215,6 +219,9 @@
 | TD-161 | 2026-08-04 | `WorkspaceSandboxLifecycle` `auth-service.base-url` 默认值 `8210`→`8100`（配置漂移） |
 | TD-165 | 2026-08-07 | peer-collab/expert 移除后遗留物全量清理：孤儿注解污染 `RoutingGoldenSetTest`、BFF `/api/audit/peer-run` 死端点 + `peerAudit.ts` 孤儿、`peer_run` 死表 DDL、`UnifiedRuleEngine.peer_phrase` 死分支、前端 peer/expert 展示 Map 与 `peer_phrase` 选项、`verify_prompt_catalog_live` 失效 peer 门禁、测试 fixture 与文案残留；服务端删 `sunshine_expert` 库 + `peer_run` 表；golden-set 文档 §E/§K 修订 |
 | TD-166 | 2026-08-07 | 运行时硬编码提示词迁 Catalog：`ProcessingStepMiddleware` 收尾轮/软限额收束指令 → `mode-overlay.react-summary-turn`/`mode-overlay.react-soft-limit`；`ReactExecutor` spawn 委派提示 → `react.spawn-hint`（`{agents}`/`{agentId}` 模板）；`RagContextFormatter`/`RagTool` 工具结果格式与失败提示 → `rag.tool-result`（content_json，`{count}`/`{reason}` 模板）；`AgentGroundingProperties.rejectionMessage` 代码默认值去重（Nacos SSOT）；live DB catalog_version 67；前端 `PROMPT_KIND_LABELS` 补 `rag` |
+| TD-180 | 2026-08-12 | decision/async 文档去双轨：删 active 重复 plan；✅ specs/plans 归档；D12 短 open stub |
+| TD-181 | 2026-08-12 | `DecisionCard` 状态行删本地「决策 · *」表，只信 `summary.*`（缺省 title） |
+| TD-182 | 2026-08-12 | `StepTimeline.afterTimeout/afterSkip` + `DecisionLabelService` 读 Catalog；decision seed v2 |
 
 ### 文档债（DOC）
 

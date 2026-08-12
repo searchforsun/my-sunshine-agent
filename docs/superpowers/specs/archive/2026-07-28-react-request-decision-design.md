@@ -1,9 +1,10 @@
 # 4.7.9 ReAct Request Decision（主 Agent 主动向用户出选择题 / 需求澄清）
 
-> **状态**：✅ Chat ReAct MAIN 已实现 · ⬜ Planner MAIN / D12 延后 · **✅ Cursor 对齐已实施**（[2026-08-11-request-decision-cursor-align-design.md](./archive/2026-08-11-request-decision-cursor-align-design.md) 替换 §3–§6 契约）  
-> **日期**：2026-07-28 · **修订**：2026-08-11（Chat MAIN 落地；同日启动 Cursor align 设计）  
+> **状态**：✅ Chat ReAct MAIN 已实现 · **已归档**（2026-08-12 tech-debt-refactor）· ⬜ Planner MAIN / D12 见 [../2026-08-12-react-request-decision-planner-d12.md](../2026-08-12-react-request-decision-planner-d12.md)  
+> **契约 SSOT**：[2026-08-11-request-decision-cursor-align-design.md](./2026-08-11-request-decision-cursor-align-design.md)（替换下文 §3–§6 旧 `choice`/`customInput` 叙述；以代码与 cursor-align 为准）  
+> **日期**：2026-07-28 · **修订**：2026-08-11（Chat MAIN + Cursor align）· 2026-08-12（归档）  
 > **编号**：阶段四 **4.7.9**（原 4.7.7 占号冲突，goal-alignment 已用 4.7.7）  
-> **相关**：`AgentRuntime` / `HitlTokenRegistry`（阻塞唤醒）· [spawn-subagent](./archive/2026-07-18-react-spawn-subagent-design.md) · [taskboard](./archive/2026-06-24-react-taskboard-design.md) · [goal-alignment](./2026-07-27-react-goal-alignment-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)  
+> **相关**：`AgentRuntime` / `HitlTokenRegistry`（阻塞唤醒）· [spawn-subagent](./2026-07-18-react-spawn-subagent-design.md) · [taskboard](./2026-06-24-react-taskboard-design.md) · [goal-alignment](../2026-07-27-react-goal-alignment-design.md) · [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md)  
 > **灰度**：Nacos `agent.execution.react.decision.enabled` 默认 **false**（D21）；Live 见 `scripts/verify_decision_live.py` 前置说明
 
 ---

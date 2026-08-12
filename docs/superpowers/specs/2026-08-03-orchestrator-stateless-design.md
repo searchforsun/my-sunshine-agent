@@ -1,560 +1,445 @@
-# orchestrator 纯无状态化方案设计
+# orchestrator 完全无状态 + Activity 调度（三高）设计
 
-> 日期：2026-08-03 · 状态：**待评审** · 类型：架构重构
+> **日期**：2026-08-03 · **修订**：2026-08-12（v2：从「generation 粘连可续跑」升级为「Activity 任意实例调度」）  
+> **状态**：📋 设计评审中 · **类型**：架构重构 · **编排层唯一 SSOT（无状态 / 扩缩）**  
+> **对齐**：[planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./2026-07-29-unified-routing-design.md) · [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md)
 
-## 1. 目标
+---
 
-让 orchestrator 成为**纯无状态服务**：任意实例可处理任意请求，任意实例可随时重启/缩容，会话可在任意节点继续执行，不依赖任何进程内内存态。唯一保留的进程内资源是"当前在飞的 LLM HTTP 连接"，但它被视为**可抛弃的瞬态资源**——连接断了从 Redis checkpoint 在任意节点接管续跑。
+## 0. 目标与非目标
 
-## 2. 核心约束分析
+### 0.1 目标
 
-### 2.1 物理不可迁（唯一硬约束）
+1. **完全无状态**：执行态、句柄、锁、阻塞等待全部外置于 Redis/MySQL；进程内仅允许「当前 Activity 在飞的 LLM/工具连接」（可抛弃瞬态）。
+2. **三高任意扩展**：同构 Worker 池水平扩缩；**每个可调度单元（Activity）可被任意实例领取执行**；失败/崩溃后 lease 过期回队，换机重跑，无需 sticky session。
+3. **职责清晰的物理三层**：`orchestrator-router`（意图+路由+投递）· `orchestrator-worker`（Activity Runner 池）· `context-service`（异步上下文治理）。
 
-活跃的 LLM 流式 HTTP 连接绑定在发起它的进程上（Reactor `Disposable` 持有 OkHttp 连接）。没有任何技术手段能把活跃 TCP 连接搬到另一进程。
+### 0.2 成功判据（验收语言）
 
-**应对策略**：不迁移连接，而是让连接**可断可续**。`agent.streamEvents()` 是冷流（`Flux.defer`，每次 subscribe 重新发起 HTTP），且 `doFinally` 在 CANCEL/ON_ERROR 时保存 checkpoint 到 Redis（`ReActAgentRuntime.java:180-199`）。续跑时从 checkpoint 重建 Agent（`RedisAgentStateStore`，TTL 7d），在任意节点重新 subscribe。代价是"重做最后一个 think 迭代"——可接受的断点粒度。
+| # | 判据 |
+|---|------|
+| S1 | 任意 Worker 被 SIGKILL：进行中 Activity lease 过期后，**下一节点/下一任务在其他实例继续**（WF / Harness 默认自动续；策略可配） |
+| S2 | 同一 Run 内相邻 `WF_NODE` / `AGENT_WORKER` 的 `workerId` 允许不同 |
+| S3 | cancel / HITL confirm / Decision resolve / sandbox cancel 打到**非执行实例**均成功 |
+| S4 | router / context-service 杀实例不影响进行中的 Activity |
+| S5 | SSE 只读 Redis Stream；与执行实例无亲和 |
 
-### 2.2 当前实现的内存态（全部可改造）
+### 0.3 非目标
 
-| 内存态 | 类 | 迁移方案 |
-|--------|----|---------| 
-| GenerationJob 注册表 | `GenerationRegistry.running` | 去掉，改为 Redis meta 驱动 |
-| 消息并发锁 | `GenerationRegistry.messageLocks` | Redis 分布式锁 |
-| Hook↔Timeline 绑定（15 个 Map） | `StepEventBridgeRegistry` | per-call 重建，不跨请求驻留 |
-| HITL/Plan/Recovery 阻塞 Future | `HitlTokenRegistry.waiters` 等 3 处 | Redis pub/sub 唤醒 |
-| spawn_subagent 取消句柄 | `SpawnRunRegistry.byRunId` | Redis 句柄表 + Agent 重建 interrupt |
-| 沙箱工具取消句柄 | `CancellableToolRunRegistry` 6 个 Map | Redis 句柄表 |
-| Workflow 暂停状态 | `WorkflowPauseService.byMessage` | Redis Hash |
-| HarnessAgent 缓存 | `HarnessAgentHolder` Caffeine | 保留（纯缓存，丢失可重建） |
-
-## 3. 总体架构
-
-```
-                          ┌─────────────────────────┐
-   客户端 ──SSE 读──>     │  任意 orchestrator 实例  │  （无状态，全等价）
-                          │  - 接收请求              │
-                          │  - 从 Redis 读会话上下文 │
-                          │  - 发起 LLM 流式调用     │
-                          │  - chunk 写 Redis Stream │
-                          │  - 周期检查取消标记      │
-                          └───────────┬─────────────┘
-                                      │
-                          ┌───────────▼─────────────┐
-                          │        Redis            │
-                          │  - 会话/消息/Plan (MySQL)│
-                          │  - AgentState checkpoint│
-                          │  - Generation Stream    │
-                          │  - 取消标记 / 句柄表    │
-                          │  - pub/sub 通知通道     │
-                          └─────────────────────────┘
-```
-
-**关键变化**：当前是"执行态在内存、缓冲在 Redis"，改为"**执行态全部在 Redis，内存只持有一过性的 Reactor 订阅句柄**"。
-
-## 4. 详细设计
-
-### 4.1 取消机制：内存 dispose -> Redis 取消标记 + 执行哨兵
-
-这是整个方案的关键。当前 `cancel` 依赖 `registry.get(generationId).ifPresent(GenerationJob::cancel)` 在本实例 dispose subscription。改为**生产端哨兵轮询取消标记**。
-
-**Redis 数据结构**：
-```
-key:  sunshine:gen:{id}:cancel
-val:  { "reason": "user_cancel", "ts": 1691065234 }
-TTL:  300s（终态后自动清理）
-```
-
-**GenerationJob 改造**：在 `chunkEmitter.onChunk` 调用链中插入取消检查点：
-
-```java
-// GenerationJob.start 内的 subscribe 回调
-llmSubscription = llmFlux
-    .subscribeOn(Schedulers.boundedElastic())
-    .subscribe(
-        chunk -> {
-            if (cancelSignalChecker.shouldCancel(generationId)) {
-                // 检测到取消标记，主动 dispose，触发 doFinally 保存 checkpoint
-                disposeLlmSubscription();
-                finishOnce(() -> handleCancelFromSignal());
-                return;
-            }
-            chunkEmitter.onChunk(chunk, mysqlBuffer, guardedFlush, lastFlush);
-        },
-        ...
-    );
-```
-
-`CancelSignalChecker` 周期性（每 N 个 chunk 或每 200ms）读 Redis cancel key。检测到则主动中断。
-
-**cancel API 改造**（任意节点可调）：
-
-```java
-@PostMapping("/generations/{id}/cancel")
-public Mono<Map<String, String>> cancel(...) {
-    return ReactiveBlocking.call(() -> {
-        streamService.assertOwned(id, userId, tenantId);
-        // 写取消标记，而非 dispose 内存 subscription
-        cancelMarkerService.markCancel(id, "user_cancel");
-        return Map.of("status", "CANCEL_PENDING");
-    });
-}
-```
-
-**兜底**：若执行实例还活着，哨兵在 200ms 内检测到标记并自行 dispose；若执行实例已死，标记不会被消费，但 Redis Stream TTL 到期后 meta 自动消失，前端 reconnect 时读到 `INTERRUPTED` 终态。为加快"实例崩溃"场景的终态写入，增加心跳机制（见 4.6）。
-
-### 4.2 spawn_subagent 取消：内存 Agent -> Redis 标记 + 重建 interrupt
-
-当前 `SpawnRunRegistry.cancel` 调 `agent.interrupt()` 内存 Agent 对象。改为：
-
-1. `register` 时把句柄元数据（runId/messageId/prompt/mainBridgeId）写入 Redis Hash `sunshine:spawn:{runId}`。
-2. `cancel` 时写 Redis 标记 `sunshine:spawn:{runId}:cancel`，而非内存 interrupt。
-3. `SpawnSubagentTool` 执行循环在每个 think 迭代间检查标记（复用 4.1 的哨兵机制），检测到则主动 interrupt 当前 agent（内存内，因为 agent 在本实例运行中）并下发 paused SSE。
-
-**关键洞察**：spawn cancel 的"目标 agent"就在执行实例本地运行，所以 interrupt 仍在本地生效。区别只是 cancel 请求可以打到任意实例——任意实例写 Redis 标记，执行实例的哨兵读到后本地 interrupt。这和 4.1 是同一套机制。
-
-### 4.3 沙箱工具取消：完全可跨实例
-
-当前 `CancellableToolRunRegistry.cancel` 调 `sandboxClient.cancelInvocation(sessionId, invocationId)`。这是 HTTP 调用到 sandbox-service，**任意节点都能调**。改造：
-
-- `register` 时把 Handle（toolUseId/messageId/sessionId/invocationId/toolName）序列化进 Redis Hash `sunshine:toolrun:{toolUseId}`。
-- `cancel` 时任意节点从 Redis 读 Handle，直接调 `sandboxClient.cancelInvocation`。
-- `followupBudget` 改 Redis 原子计数（`DECR`）。
-- `pendingCancelStepIds` 改 Redis Hash，register 时 `HEXISTS` 检查。
-
-**无需哨兵**：sandbox cancel 直接生效（HTTP kill 容器进程），不需要执行实例配合。
-
-### 4.4 HITL/Recovery/Decision 阻塞：Future -> Redis pub/sub
-
-两处结构相同（`HitlTokenRegistry`/`WorkflowNodeRecoveryService`），统一用 `RedisBlockingNotifier` 抽象；`request_decision`（4.7.9）复用 `HitlTokenRegistry` 的阻塞唤醒模式，无需新抽象。~~`PlanApprovalService`~~ **已删除**（[planner-executor-rebuild D5](./2026-08-05-planner-executor-rebuild-design.md) 废弃 PlanApproval，HITL 阻塞复用 `DecisionRegistry`/`HitlTokenRegistry`）：
-
-```java
-public class RedisBlockingNotifier {
-    // 阻塞当前线程，等待 channel 的通知；超时由 Redis key TTL 兜底
-    public CompletableFuture<Boolean> await(String channel, long timeoutSec) {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
-        // 订阅 channel，收到消息后 future.complete
-        redisSubscriber.subscribe(channel, msg -> future.complete(Boolean.valueOf(msg)));
-        // 超时兜底
-        scheduleTimeout(future, timeoutSec);
-        return future;
-    }
-
-    // 任意节点调用，发布通知
-    public void notify(String channel, boolean approved) {
-        redis.convertAndSend(channel, String.valueOf(approved));
-    }
-}
-```
-
-**HitlTokenRegistry 改造**：
-
-```java
-public HitlRegistration register(String messageId, String toolId, String userId) {
-    String token = UUID.randomUUID().toString();
-    String channel = "sunshine:hitl:notify:" + token;
-    CompletableFuture<Boolean> future = notifier.await(channel, properties.getTimeoutSec());
-    storeToken(token, messageId, toolId, userId, expiresAt, channel);  // channel 存入 Redis
-    return new HitlRegistration(token, future, expiresAt);
-}
-
-public boolean confirm(String token, boolean approved, String currentUserId) {
-    HitlTokenMeta meta = loadTokenFromRedis(token);  // 任意节点可读
-    if (meta == null) return false;
-    if (meta.userId() != null && !meta.userId().equals(currentUserId)) return false;
-    notifier.notify(meta.channel(), approved);  // 广播到执行实例
-    redis.delete(redisKey(token));
-    return true;
-}
-```
-
-阻塞线程在执行实例上等 pub/sub，但 `confirm` 请求可以打到任意实例。`WorkflowNodeRecoveryService` 同理。
-
-### 4.5 StepEventBridgeRegistry：从"跨请求驻留"到"per-call 重建"
-
-当前 15 个 Map 试图跨请求维持绑定（如 main bridge、HITL 预审批、token wrapper）。分析发现这些绑定**仅在单次生成的生命周期内有效**，生成结束即 `clear`。改造为**per-call 局部对象**：
-
-```java
-// 不再是 @Component 单例，改为 per-generation 创建
-public class StepEventBridgeContext {
-    private final Map<String, ProcessingTimelineSession> sessions = new HashMap<>();
-    private final Map<String, Queue<StreamToken>> hookTokenQueues = new HashMap<>();
-    // ... 其余 13 个 Map 同理
-
-    public void clear(String messageId) { ... }  // 生命周期与 GenerationJob 绑定
-}
-```
-
-`GenerationJob` 持有 `StepEventBridgeContext` 引用，Job 结束时整体丢弃。`StepEventBridge` 静态门面改为从 `ThreadLocal` 或 Reactor `Context` 取当前 `StepEventBridgeContext`。
-
-**HITL 预审批等需跨步骤状态**：存 Redis（`sunshine:hitl:preapprove:{messageId}`），不存内存。
-
-### 4.6 心跳与崩溃检测
-
-当前缺陷：执行实例进程崩溃且未写终态时，消费端 SSE 挂住最多 1 小时。增加心跳：
-
-```
-key:  sunshine:gen:{id}:heartbeat
-val:  { ts }  每个活跃 chunk 写入时刷新
-TTL:  15s
-```
-
-- **生产端**：`chunkEmitter.onChunk` 顺带刷新 heartbeat。
-- **消费端**：`subscribe` 轮询时检查 heartbeat，若 `now - ts > 30s` 且 status 仍为 RUNNING，判定生产端崩溃，写 `INTERRUPTED` 终态并下发错误 SSE。
-- **哨兵 worker**（可选，用 `@Scheduled`）：周期扫描 `status=RUNNING` 但 heartbeat 过期的 generation，补写终态。任意实例都可跑，用 `SETNX` 防重复。
-
-### 4.7 messageLocks：内存 Map -> Redis 分布式锁
-
-```java
-public boolean tryLockMessage(String messageId, String generationId) {
-    String key = "sunshine:gen:lock:msg:" + messageId;
-    Boolean ok = redis.opsForValue().setIfAbsent(key, generationId,
-            Duration.ofSeconds(properties.messageLockTtlSec()));
-    return Boolean.TRUE.equals(ok) || generationId.equals(redis.opsForValue().get(key));
-}
-```
-
-实例崩溃后 TTL 自动释放，续跑请求可在任意节点抢锁。
-
-### 4.8 WorkflowPauseService：内存 Map -> Redis Hash
-
-```
-key:  sunshine:workflow:pause:{messageId}
-hash: pauseRequested=1, planId=xxx, currentNodeId=node-3, committedCtxJson={...}
-TTL:  与 generation 生命周期一致
-```
-
-`consumePauseRequested` 用 Lua 脚本保证 `HGET + HSET 0` 原子。
-
-### 4.9 SSE reconnect：纯 Redis
-
-`GenerationController.buildReconnectFlux` 去掉 `registry.get(generationId)` 依赖：
-- `onSubscriberAttached`/`onSubscriberGone` 改为更新 Redis heartbeat，不操作内存 Job。
-- orphan timer 改为 Redis 侧判定：heartbeat 超时即标记 `INTERRUPTED`。
-
-## 5. 会话路由
-
-**无需 sticky session**。任意 orchestrator 实例都能：
-- 发起新生成（从 Redis/MySQL 读会话上下文）
-- 读 SSE / reconnect（纯读 Redis Stream）
-- cancel / confirm（写 Redis 标记或 pub/sub）
-- 续跑（从 Redis checkpoint 重建 Agent）
-
-生成期间若执行实例崩溃：
-1. 心跳超时，哨兵/消费端写 `INTERRUPTED` 终态
-2. 前端收到终态，用户可点"继续"
-3. 续跑请求打到任意实例，从 checkpoint 接管
-
-## 6. 改造影响面
-
-| 改造对象 | 变更类型 | 风险 |
-|---------|---------|------|
-| `GenerationJob` | 增加取消哨兵 + 心跳 | 中（核心路径） |
-| `GenerationRegistry` | `messageLocks` 转 Redis，`running` 弱化为缓存 | 中 |
-| `GenerationController` | cancel/reconnect 去 Job 依赖 | 低 |
-| `CancelSignalChecker` | 新增 | 低 |
-| `RedisBlockingNotifier` | 新增 | 低 |
-| `HitlTokenRegistry` | Future -> pub/sub | 中 |
-| `WorkflowNodeRecoveryService` | 同上 | 中 |
-| `CancellableToolRunRegistry` | 6 个 Map -> Redis | 中 |
-| `SpawnRunRegistry` | 句柄转 Redis + 哨兵 | 中 |
-| `WorkflowPauseService` | Map -> Redis Hash | 低 |
-| `StepEventBridgeRegistry` | 单例 -> per-call context | 高（贯穿 SSE 链路） |
-| `ConversationSandboxStore` | 无变化（已在 Redis） | 无 |
-| `DistributedGenerationLock` | 无变化 | 无 |
-| 前端 | 无变化 | 无 |
-
-## 7. 迁移步骤
-
-### 第一批：解锁"确认/取消跨实例"（低风险高收益）
-
-1. `RedisBlockingNotifier` 抽象
-2. `HitlTokenRegistry` / `WorkflowNodeRecoveryService` 两处 Future -> pub/sub（`request_decision` 4.7.9 复用 HitlTokenRegistry 模式，届时一并覆盖）
-3. `WorkflowPauseService` -> Redis Hash
-4. `GenerationRegistry.messageLocks` -> Redis 锁
-
-验收：HITL 确认、Decision 决议（4.7.9）、节点 Recovery 可打到非执行实例成功。
-
-### 第二批：解锁"取消跨实例"
-
-5. `CancellableToolRunRegistry` 6 个 Map -> Redis 句柄表
-6. `CancelSignalChecker` + `GenerationJob` 取消哨兵
-7. `GenerationController.cancel` 改写 Redis 标记
-8. `SpawnRunRegistry` 句柄转 Redis + 哨兵
-
-验收：cancel generation / cancel subagent / cancel tool 可打到非执行实例成功。
-
-### 第三批：消除执行注册表依赖
-
-9. `StepEventBridgeRegistry` 单例 -> per-call context
-10. `GenerationController.reconnect` 去 Job 依赖
-11. heartbeat + 崩溃检测 + 哨兵 worker
-
-验收：杀死执行实例，前端 reconnect 后收到 `INTERRUPTED`，续跑可在新实例成功。
-
-## 8. 风险与对策
-
-| 风险 | 影响 | 对策 |
-|------|------|------|
-| 取消哨兵延迟 | cancel 后最多 200ms+ 才生效 | 哨兵频率可配；cancel API 返回 `CANCEL_PENDING`，前端轮询终态 |
-| `StepEventBridgeRegistry` 改造范围大 | 贯穿 SSE 链路，回归风险高 | 放第三批；先做单测覆盖，灰度切换 |
-| 实例崩溃续跑粒度 | 重做最后一个 think 迭代 | 可接受；checkpoint 每 think 存，非每 token |
-| Redis pub/sub 消息丢失 | HITL 确认丢失，阻塞超时 | TTL 兜底超时；confirm 时双写 Redis key + pub/sub，重试 confirm 可查 key |
-| 哨兵 worker 重复写终态 | 数据冲突 | `SETNX` 防重复；终态写入幂等 |
-
-## 9. orchestrator 三层物理拆分
-
-无状态化（§4-§8）是拆分的前提：先把内存态外迁到 Redis，让"活跃 LLM 连接"成为唯一残留的进程内资源，再按职责物理拆分为三个独立部署的服务。
-
-### 9.1 拆分依据
-
-orchestrator 现有 435 个文件、约 42,550 行，职责可按状态特征清晰归类：
-
-| 层 | 职责包 | 行数 | 状态特征 |
-|----|--------|:----:|----------|
-| **router** | controller / routing / client / rewrite / grounding / audit / conversation / config | ~8.8K | 全部无状态 |
-| **worker** | generation / agent / execution / processing / hitl / plan / sandbox / taskboard | ~27.9K | 13 处内存态（无状态化后仅剩活跃 LLM 连接） |
-| **context-service** | context / catalog / prompt / skill | ~5.8K | 缓存可重建 + 1 处内存锁 |
-
-### 9.2 目标架构
-
-```
-                          ┌──────────────────┐
-   gateway ──lb://──>     │  orchestrator    │  无状态 · 可任意扩缩容
-   (8000)                 │  -router (8200)  │  接收请求 / 路由 / 会话读写
-                          └────────┬─────────┘
-                                   │ 内部调用（同 K8s 集群）
-                          ┌────────▼─────────┐
-                          │  orchestrator    │  持活跃连接 · 可扩缩容
-                          │  -worker (8201)  │  LLM 流式 / 工具执行 / HITL 阻塞
-                          └────────┬─────────┘
-                                   │ 异步事件
-                          ┌────────▼─────────┐
-                          │  orchestrator    │  纯异步 · 可任意扩缩容
-                          │  -context (8202) │  L1 压缩 / L2 提取 / L3 摄入
-                          └──────────────────┘
-```
-
-### 9.3 router 层（orchestrator-router，端口 8200）
-
-**职责**：无状态接入与路由。
-
-| 模块 | 来源包 | 说明 |
-|------|--------|------|
-| HTTP 端点 | `controller/` | `/chat/stream` 入口（转发到 worker）、`/generations/*` 查询、`/conversations/*` CRUD |
-| 意图路由 | `routing/` | 统一资源路由 v3：Pre-Routing + Policy Chain（L0 显式绑定 -> L1 规则 -> L2 语义 -> L3 LLM 兜底），对齐 [unified-routing](./2026-07-29-unified-routing-design.md)；`RoutingResult{type, planMode, scene}` 落 Redis 供 worker 消费 |
-| 会话管理 | `conversation/` | 纯 MySQL 读写 |
-| 查询改写 | `rewrite/` | 纯计算 |
-| RAG 客户端 | `rag/` | WebClient 调 rag-service |
-| 审计 | `audit/` | 异步写 RocketMQ/ES |
-| Catalog 缓存 | `catalog/`（只读） | 从 resource-manager 拉取，本地缓存可丢失重建 |
-
-**关键设计**：`/chat/stream` 收到请求后，从 Redis/MySQL 组装会话上下文，再通过**内部 HTTP 调用**转发到 worker 执行。router 不持有任何执行态，即使重启也不影响进行中的生成（worker 持有活跃连接）。
-
-```java
-// router 的 ChatController
-@PostMapping("/chat/stream")
-public Flux<ServerSentEvent<String>> chatStream(...) {
-    // 1. 读会话上下文（MySQL）
-    // 2. 选 worker 实例（lb://orchestrator-worker）
-    // 3. 转发请求到 worker，透传 SSE
-    return workerClient.streamChat(request, userId, tenantId);
-}
-```
-
-cancel/confirm 类请求：router 直接写 Redis 标记或发 pub/sub（见 §4），不需转发到 worker。
-
-### 9.4 worker 层（orchestrator-worker，端口 8201）
-
-**职责**：持有活跃 LLM 连接，执行编排。
-
-| 模块 | 来源包 | 说明 |
-|------|--------|------|
-| 流式生成 | `generation/` | GenerationJob + Redis Stream 写入 |
-| ReAct 编排 | `agent/` | ReActAgentRuntime + StepEventBridgeContext（per-call） |
-| 执行引擎 | `execution/` | 三种 Executor：`ReactExecutor`（通用 ReAct / planMode=none）、`PlannerHarnessExecutor`（Planner-Worker / planMode=harness）、`WorkflowExecutor`（静态 Workflow）——对齐 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)，动态 Plan-Workflow 已删 |
-| Timeline 聚合 | `processing/` | per-call，生命周期与 GenerationJob 绑定 |
-| HITL | `hitl/` | 阻塞线程等 Redis pub/sub |
-| Decision 阻塞 | `decision/`（4.7.9） | 复用 HitlTokenRegistry 模式；`plan/` 审批已随 PlanApproval 删除 |
-| 沙箱工具 | `sandbox/`（orchestrator 侧） | CancellableToolRunRegistry（Redis 句柄表） |
-| TaskBoard | `taskboard/` | Redis 存储 |
-| Prompt 组装 | `prompt/` | 从 prompt-manager 拉取 Catalog |
-
-**关键设计**：worker 收到 router 转发的请求后，创建 GenerationJob 并 subscribe LLM Flux。chunk 写 Redis Stream（router 和前端都从 Redis Stream 读）。无状态化改造后，worker 实例崩溃时：
-
-1. 活跃 LLM 连接断开，checkpoint 已由 `doFinally` 保存到 Redis
-2. heartbeat 超时，哨兵写 `INTERRUPTED` 终态
-3. 前端收到终态，用户点继续
-4. router 将续跑请求转发到**任意存活 worker**，从 checkpoint 接管
-
-**扩缩容**：worker 按"活跃生成数"指标扩缩。缩容前等待活跃生成结束或通过 Redis 取消标记优雅中断。
-
-### 9.5 context-service 层（orchestrator-context，端口 8202）
-
-**职责**：纯异步上下文治理，无会话亲和。
-
-| 模块 | 来源包 | 说明 |
-|------|--------|------|
-| L1 压缩 | `context/l1/` | Mid/Far 压缩（MySQL），`compressLocks` 改 Redis 分布式锁 |
-| L2 提取 | `context/l2/` | 用户状态抽取（MySQL） |
-| L3 召回/摄入 | `context/l3/` | 历史向量（Milvus） |
-| 定时治理 | `context/job/` | `@Scheduled` GC（加分布式锁防多实例重复） |
-| Catalog 全量缓存 | `catalog/`（读写） | ToolCatalog/AgentCatalog/SkillCatalog |
-| Prompt Catalog | `prompt/`（全量） | PromptComposer + Catalog 刷新调度 |
-
-**关键设计**：worker 完成一轮生成后，通过 Redis Stream 或 RocketMQ 发异步事件给 context-service。context-service 消费事件执行 L1/L2/L3 治理。这把耗时的压缩/检索从编排链路彻底剥离，不再与流式生成争抢线程。
-
-**触发方式**：当前 `ContextLifecycle.onTurnCompleted` 是 worker 内 `@Async` 调用。拆分后改为发消息：
-
-```java
-// worker 完成生成后
-contextEventPublisher.publishTurnCompleted(messageId, userId, tenantId);
-
-// context-service 消费
-@RocketMQMessageListener(topic = "sunshine-context-turn-completed")
-public class TurnCompletedConsumer {
-    public void onMessage(TurnCompletedEvent event) {
-        contextLifecycle.onTurnCompleted(event.messageId(), ...);
-    }
-}
-```
-
-### 9.6 三层间的通信契约
-
-| 调用方 | 被调方 | 通信方式 | 说明 |
-|--------|--------|----------|------|
-| router | worker | HTTP + SSE 透传 | `/chat/stream` 转发，WebClient `bodyToFlux` |
-| router | Redis | 直连 | cancel 标记 / pub/sub 通知 |
-| router | MySQL | 直连 | 会话/消息读写 |
-| worker | Redis | 直连 | Stream / checkpoint / 句柄表 / 心跳 |
-| worker | context-service | RocketMQ 异步 | turn-completed 事件 |
-| worker | llm-gateway | HTTP | LLM 调用 |
-| worker | rag-service | HTTP | RAG 检索 |
-| worker | sandbox-service | HTTP | 沙箱操作 |
-| worker | resource-manager | HTTP | Catalog 查询 |
-
-## 10. 其他服务调整
-
-### 10.1 sandbox-service 无状态化（硬亲和性改造）
-
-`sandbox-service` 是唯一有硬亲和性的 AI 能力服务。`SandboxSessionStore`（`sandbox-service/.../session/SandboxSessionStore.java:13`）是纯内存 `ConcurrentHashMap`，容器句柄只在创建实例的内存中。多实例部署时，实例 B 收到对实例 A 创建的 session 的操作会报 `SESSION_NOT_FOUND`。
-
-**改造方案**：Docker 操作与实例解耦，session 句柄外迁到 Redis。
-
-```
-Redis Key:  sunshine:sandbox:session:{sessionId}
-Value:      { containerName, hostRoot, policy, createdAt }
-TTL:        跟随 purge 时间
-```
-
-- `create`：创建容器后写 Redis（而非内存 Map）
-- `exec`/`mountSkill`/`close`/`start`/`stop`：从 Redis 读 containerName，直接调 `docker` CLI（`docker exec`/`docker stop`），不依赖本地 session 对象
-- `SandboxSessionStore` 降级为可重建的本地缓存（`docker ps` 恢复），实例重启后自动重建
-- `SandboxInvocationRegistry`（容器内进程取消句柄）也外迁 Redis
-
-**多实例容器亲和**：Docker daemon 是本地的，容器创建在哪个实例的宿主机上。两种选择：
-- **方案 A（推荐）**：sandbox-service 与 Docker daemon 同宿主机，多实例对应多宿主机。Redis 记录 `sessionId -> host`，操作时用 Docker remote API 跨宿主机调用。
-- **方案 B**：sandbox-service 单实例，不拆分。简单但牺牲沙箱层的水平扩展。
-
-### 10.2 llm-gateway 调整
-
-基本支持无状态多实例。唯一内存态 `AdapterCircuitBreaker`（`router/AdapterCircuitBreaker.java:23`，内存熔断器）可接受各实例独立计数。可选优化：熔断状态外迁 Redis（共享计数），但非必须。
-
-**结论**：无需改造即可多实例。
-
-### 10.3 rag-service 调整
-
-完全无状态：Milvus/ES/MySQL/MinIO 均为外部存储，进程内无会话状态。
-
-**结论**：无需改造即可多实例。
-
-### 10.4 接入层调整
-
-| 服务 | 调整 |
+| 不做 | 原因 |
 |------|------|
-| **gateway** (8000) | 无需改动。已用 `lb://` + Nacos 发现，多实例自动负载均衡。无需 sticky session |
-| **bff** (8001) | 无需改动。完全无状态（11 个 Controller 纯 WebClient 透传）。下游 `*.base-url` 从指向 `localhost:8200` 改为 `lb://sunshine-orchestrator-router` |
-| **auth-center** (8100) | 无需改动。Sa-Token JWT + Redis，天然无状态 |
+| 按角色拆「Planner 舰队 / Executor 舰队」两套部署 | 伪亲和，扩缩僵硬；应用同构池 + `activityType` |
+| 把单次 LLM token 流拆到多机 | TCP 连接物理不可迁 |
+| Activity 之间传未序列化 Java 对象 / 跨机 ThreadLocal bridge | 破坏无状态 |
+| 将子 Agent 内部每个 think/tool 拆成 Activity | 过碎；整次 spawn = 一个 `AGENT_SUB` |
+| 第一波就上 Temporal | 先 Redis 自研调度；`ActivityScheduler` 接口可替换 |
+| 恢复 PlanApproval | 已由 [rebuild D5](./2026-08-05-planner-executor-rebuild-design.md) 废弃 |
 
-### 10.5 start.py 多实例支持
+### 0.4 与 v1（2026-08-03）的差异
 
-当前 `start.py` 端口硬编码、按 JAR 名 kill，不支持多实例。改造：
+| | v1 | v2（本文） |
+|--|----|-----------|
+| 调度粒度 | **整次 generation** 粘在一台；崩溃后用户续跑换机 | **Activity** 正常路径即可跨机 |
+| Worker 职责 | 收整段 chat 请求并跑完 | 只 claim/跑 Activity |
+| Router 职责 | HTTP 转发整段流到某 Worker | 意图路由 + **创建 Run + enqueue**；SSE 读 Stream |
+| 逻辑 Planner/Worker | 仍同进程工具调用 | 逻辑角色不变；物理上各是（或挂在）Activity |
 
-```python
-# 端口分配：base_port + instance_index
-def start_service(name, module, nacos_name, base_port, instances=1):
-    for i in range(instances):
-        port = base_port + i
-        start_java_detached(module, nacos_name, port)
+---
+
+## 1. 硬约束与原则
+
+### 1.1 物理不可迁（唯一硬约束）
+
+活跃 LLM 流式 HTTP 连接绑定发起进程。策略：**不迁连接，缩短连接生命周期到单个 Activity**；Activity 结束释放连接；状态已落 Redis 后，后继 Activity 任意机领取。
+
+`agent.streamEvents()` 冷流 + `doFinally` checkpoint（既有 AgentScope StateStore，TTL 7d）仍然有效——粒度从「整段 ReAct」收束为「本 Activity 内最后一次 think」。
+
+### 1.2 设计原则
+
+1. **状态外置**：Run / Activity / Notebook / WF checkpoint / 取消 / lease / SSE Stream 均在 Redis（冷审计 MySQL/ES 照旧）。
+2. **同构可调度**：任意 Worker 可跑任意已声明的 `activityType`（可用标签做能力过滤，不是异构舰队）。
+3. **至少一次 + 幂等**：lease 过期回队；同一 `activityId` 重跑必须安全。
+4. **逻辑分层 ≠ 物理分层**：Planner / AgentRole.WORKER / SUB 是逻辑角色；物理只有 Router + Worker 池 + Context。
+5. **先外置内存，再细粒度调度，再拆进程**：迁移波次见 §10。
+
+---
+
+## 2. 总体架构
+
+```
+ Client ──SSE──► Gateway ──► orchestrator-router (:8200)
+                              │ 意图识别 / 统一路由 (fast|pro|workflow)
+                              │ 创建 Run、写 meta、enqueue 首个 Activity
+                              │ cancel/confirm 只写 Redis
+                              │ SSE：订阅 Redis Stream（不绑执行机）
+                              ▼
+                           Redis
+                           · run:{runId} meta / 取消 / 锁
+                           · activity 队列 + lease + 结果
+                           · PlanNotebook / WF checkpoint / AgentState
+                           · gen:{runId}:stream（SSE）
+                              ▲
+                              │ claim / heartbeat / complete / fail
+                 ┌────────────┴────────────┐
+                 │ orchestrator-worker ×N  │  同构 Activity Runner 池 (:8201)
+                 │ 仅持有当前 Activity 的  │
+                 │ LLM/工具连接（瞬态）    │
+                 └────────────┬────────────┘
+                              │ Run 终态 → RocketMQ
+                              ▼
+                      context-service (:8202)
+                      L1/L2/L3 异步治理
 ```
 
-- **进程识别**：`stop` 改为按 `nacos_name + port` 精确 kill，不再按 JAR 名批量 kill
-- **Nacos 注册**：多实例用不同端口，Nacos 自动生成不同 instanceId
-- **配置**：每个实例可覆盖 `server.port`，其余配置共享同一 Nacos dataId
+**关键变化**：
 
-## 11. 改造全景与迁移步骤（修订）
+- 当前：「执行态在内存、缓冲在 Redis」+ generation 粘连。
+- 目标：「**调度与状态全在 Redis**；Worker 只是可随时杀死的 Activity 执行器」。
 
-在原三批无状态化基础上，增加三层拆分和服务调整。
+---
 
-### 第一批：无状态化 - 确认/取消跨实例（§7 原第一批）
+## 3. 核心模型：Run + Activity
 
-1. `RedisBlockingNotifier` 抽象
-2. HITL/Decision/Recovery 阻塞 Future -> pub/sub（`PlanApproval` 已随 planner-executor-rebuild 删除，Decision 4.7.9 复用 HitlTokenRegistry 模式）
-3. `WorkflowPauseService` -> Redis Hash
-4. `messageLocks` -> Redis 锁
+### 3.1 概念
 
-### 第二批：无状态化 - 取消跨实例（§7 原第二批）
+| 概念 | 含义 |
+|------|------|
+| **Run** | 一次用户生成（对应现有 `generationId` / message 执行），含模式、scene、路由结果 |
+| **Activity** | 可调度单元；**任意 Worker 可领取**；输入输出可序列化 |
+| **Lease** | Worker 对 Activity 的租约；心跳续期；过期回队 |
 
-5. `CancellableToolRunRegistry` -> Redis 句柄表
-6. `CancelSignalChecker` + 取消哨兵
-7. `SpawnRunRegistry` -> Redis + 哨兵
+### 3.2 Activity 类型
 
-### 第三批：无状态化 - 消除执行注册表（§7 原第三批）
+| type | 对应逻辑 | 输入（引用） | 输出 | 落地优先级 |
+|------|----------|--------------|------|:----------:|
+| `WF_NODE` | 静态 Workflow 单节点 | planId, nodeId, ctx 版本 | nodeResult；调度器 enqueue 后继 | **P0** |
+| `AGENT_WORKER` | Harness `AgentRole.WORKER` 一任务 | taskId, H1 引用, toolWhitelist | handoff → H1 | **P1** |
+| `AGENT_SUB` | `spawn_subagent` **整次** run | prompt, agentId?, parent refs | 子结果摘要 | **P1** |
+| `PLAN_ROUND` | Harness 一轮规划/自判/综合 | H1 引用, trigger | 更新 taskQueue；enqueue Workers 或终答 | **P2** |
+| `REACT_TURN` | 普通 ReAct 一轮（可选） | StateStore checkpoint | 更新 checkpoint / 终态 | **P3** |
 
-8. `StepEventBridgeRegistry` 单例 -> per-call context
-9. `GenerationController.reconnect` 去 Job 依赖
-10. heartbeat + 崩溃检测 + 哨兵 worker
+> **粒度红线**：`AGENT_SUB` = 一次 spawn 全过程，**禁止**把子 Agent 内 think/tool 再拆 Activity。`REACT_TURN` 未就绪前，fast 模式可暂保留「单 Activity 包整段 ReAct」（仍外置状态，崩溃换机续跑），但不阻塞 P0–P2。
 
-### 第四批：orchestrator 三层物理拆分
+### 3.3 调度接口（实现可 Redis，可日后 Temporal）
 
-11. 抽取 `orchestrator-router` 模块（controller/routing/conversation/rewrite/audit/client）
-12. 抽取 `orchestrator-context` 模块（context/catalog/prompt），对外服务名 `context-service`
-13. `orchestrator` 重命名为 `orchestrator-worker`（保留 generation/agent/execution/processing/hitl/plan/sandbox/taskboard）
-14. router <-> worker 通信契约（HTTP SSE 透传）
-15. worker -> context-service 异步事件（RocketMQ `sunshine-context-turn-completed`）
-16. BFF `*.base-url` 改指向 `lb://sunshine-orchestrator-router`
+```java
+public interface ActivityScheduler {
+    String enqueue(ActivitySpec spec);
+    Optional<ActivityLease> claim(String workerId, Duration lease, Set<String> types);
+    void heartbeat(String activityId, String workerId);
+    void complete(String activityId, ActivityResult result);
+    void fail(String activityId, ActivityError error);
+}
+```
 
-验收：router/context-service 各杀一个实例不影响进行中的生成；worker 杀一个实例，heartbeat 超时后前端收到 `INTERRUPTED`，续跑在新 worker 成功。
+**后继怎么来**：
 
-### 第五批：sandbox-service 无状态化
+- `WF_NODE` complete → `WorkflowScheduler` 根据拓扑算 ready 节点，批量 `enqueue`（网关后可并行多 Activity）。
+- `PLAN_ROUND` complete → 按 H1 taskQueue enqueue 多个 `AGENT_WORKER`；全部完成后由屏障（Redis 计数 / 父 Activity 等待）触发下一 `PLAN_ROUND`。
+- 父 Activity 需要子结果时：**enqueue 子 Activity + 等待完成通知**（Redis key / pub/sub），禁止本进程同步嵌套长跑导致粘连（HITL 等待除外，见 §6）。
 
-17. `SandboxSessionStore` 内存 -> Redis
-18. `SandboxInvocationRegistry` 内存 -> Redis
-19. Docker 操作解耦本地 session 对象
-20. `ConversationSandboxStore` 补充 `sessionId -> host` 映射
+### 3.4 Redis 键（最小集）
 
-验收：sandbox-service 实例 A 创建容器后，实例 B 可执行 exec/close 操作。
+```
+sunshine:run:{runId}                         Hash   meta/status/mode/scene
+sunshine:run:{runId}:cancel                  String 取消标记
+sunshine:run:{runId}:lock:msg                String 消息互斥
+sunshine:run:{runId}:stream                  Stream SSE
+sunshine:run:{runId}:heartbeat               String Run 级存活（可选，聚合展示）
 
-### 第六批：部署与运维
+sunshine:activity:queue                      List/ZSET  待领取
+sunshine:activity:{activityId}               Hash   spec/status/type/runId
+sunshine:activity:{activityId}:lease         String workerId + TTL
+sunshine:activity:{activityId}:cancel        String 单 Activity 取消（含 SUB）
+sunshine:activity:{activityId}:result        String/Hash 完成结果
 
-21. `start.py` 支持多实例（端口偏移 + 精确 kill）
-22. Gateway/BFF 验证 lb 自动发现（无需改代码）
-23. CLAUDE.md 服务端口表更新（orchestrator 拆为 3 服务）
+sunshine:plan:notebook:{sessionId}           String PlanNotebook JSON（对齐 rebuild）
+sunshine:workflow:ckpt:{planId}              Hash   节点进度 + ctx
+sunshine:agent:state:{...}                   既有 StateStore
+sunshine:hitl:... / sunshine:toolrun:...     见 §6
+```
 
-## 12. 改造后服务全景
+---
 
-| 类别 | 服务 | 端口 | 实例数 | 状态 |
-|------|------|:----:|:------:|------|
-| 接入层 | gateway | 8000 | 多 | 无状态 |
-| 接入层 | bff | 8001 | 多 | 无状态 |
-| 接入层 | auth-center | 8100 | 多 | 无状态（Redis） |
-| 编排-router | orchestrator-router | 8200 | 多 | 无状态 |
-| 编排-worker | orchestrator-worker | 8201 | 多 | 仅活跃 LLM 连接（可断可续） |
-| 编排-context | context-service | 8202 | 多 | 无状态 |
-| 管理类 | resource-manager | 8210 | 多 | 无状态（MySQL） |
-| AI 能力 | llm-gateway | 8300 | 多 | 基本无状态 |
-| AI 能力 | rag-service | 8400 | 多 | 无状态 |
-| AI 能力 | sandbox-service | 8226 | 多 | Redis 句柄（方案 A 需 Docker remote API） |
-| AI 能力 | workflow-manager | 8230 | 多 | 无状态（MySQL） |
-| 业务模拟 | biz-simulator | 8700 | 多 | 无状态（MySQL） |
+## 4. 执行流（按模式）
 
-**编排层从 1 个 42K 行单进程演变为 3 个各司其职的服务**，全部支持无状态多实例水平扩展。
+### 4.1 公共入口（router）
+
+```
+用户请求 → orchestrator-router
+  → 鉴权透传 x-user-id（只读）
+  → 统一资源路由（L0–L3）→ RoutingResult
+  → 用户显式 executionMode：fast | pro | workflow（routing v6）
+  → 创建 Run meta + 消息锁
+  → enqueue 首个 Activity：
+       workflow → 首个 ready WF_NODE（可多个）
+       pro      → PLAN_ROUND
+       fast     → REACT_TURN（或过渡期 SINGLE_REACT 包整段）
+  → 返回 SSE：订阅 sunshine:run:{runId}:stream
+```
+
+Router **不**持有 LLM 连接，**不**转发「整段执行」到固定 Worker。
+
+### 4.2 workflow：节点级跨实例（P0）
+
+```
+claim WF_NODE → 读 ckpt → 执行单节点 → 写结果/推进 schedule
+  → enqueue 下一波 ready 节点 → complete
+```
+
+暂停 / 节点 Recovery / HITL：节点边界落 Redis；resume = 再 enqueue（对齐现有 pause Hash，键迁到 run/plan 维度）。
+
+**验收**：node-1 在 Worker-A，node-2 在 Worker-B；杀 A 不影响已入队的 node-2，进行中 node 回队后换机。
+
+### 4.3 pro（Planner-Executor）：跨实例（P1+P2）
+
+对齐 [rebuild](./2026-08-05-planner-executor-rebuild-design.md) 单一循环，物理映射为：
+
+```
+PLAN_ROUND (任意机)
+  → enqueue AGENT_WORKER×N（dependsOn 波次；任意机，可并行）
+  → （Worker 内 spawn）enqueue AGENT_SUB（任意机）
+  → 屏障：波次全部 complete
+  → PLAN_ROUND 自判 / 重规划 / 综合回答
+  → 写 Stream → Run 终态
+```
+
+H1 PlanNotebook **仅 Redis**（rebuild S2）；handoff 双写规则不变，但写入方是完成 `AGENT_WORKER` 的任意实例。
+
+### 4.4 fast（ReAct）
+
+- **目标态**：可选 `REACT_TURN` 细切。
+- **过渡态**：一个 Activity 跑完整段 ReAct + 既有 StateStore checkpoint；崩溃 = lease 过期换机续跑（等同 v1 generation 续跑，但已纳入调度器）。
+
+### 4.5 子 Agent（`AGENT_SUB`）
+
+- **是**：整次 spawn = 一个 Activity。
+- **否**：不拆内部 think/tool。
+- 父（`AGENT_WORKER` 或过渡期 ReAct）`enqueue` + await；取消写 `activity:{id}:cancel`（吸收现 `SpawnRunRegistry` 语义）。
+- 深度与预算：沿用 `max-sub-agents` / 沙箱同族预算。
+
+---
+
+## 5. 物理三层
+
+### 5.1 orchestrator-router（:8200）
+
+| 职责 | 模块 |
+|------|------|
+| HTTP：会话 CRUD、`/chat/stream`（建 Run+SSE）、`/generations/*` 查询 | `controller/` `conversation/` |
+| **意图识别与统一路由**（L0–L3） | `routing/` |
+| 查询改写、审计投递、只读 Catalog 缓存 | `rewrite/` `audit/` `catalog/` |
+| **Activity 投递**（enqueue）、cancel/confirm 写 Redis | 调度客户端 |
+
+**不包含**：LLM 长连接、Activity 执行循环、PlanNotebook 业务写入（只读查询可）。
+
+### 5.2 orchestrator-worker（:8201）
+
+| 职责 | 模块 |
+|------|------|
+| Activity claim 循环 + lease 心跳 | 新增 `activity/` |
+| `WF_NODE` / `PLAN_ROUND` / `AGENT_WORKER` / `AGENT_SUB` /（后）`REACT_TURN` Runner | `execution/` `agent/` `plan/` |
+| 事件写入 Run Stream、Timeline per-activity 上下文 | `generation/`（演化为 Stream 聚合）`processing/` |
+| HITL / Decision 阻塞（等 pub/sub） | `hitl/` `decision/` |
+| 沙箱工具句柄（Redis） | `sandbox/` |
+| TaskBoard 投影写 Redis | `taskboard/` |
+
+**扩缩容指标**：进行中 Activity 数 / lease 数 / 队列积压。缩容：停 claim → 等本机 Activity 结束或取消。
+
+### 5.3 context-service（:8202）
+
+L1 压缩 / L2 提取 / L3 摄入 / Catalog·Prompt 刷新；消费 `sunshine-context-turn-completed`（Run 终态后）。与流式路径解耦。
+
+### 5.4 层间契约
+
+| 调用方 | 被调方 | 方式 |
+|--------|--------|------|
+| router | Redis | 建 Run、enqueue、cancel、SSE 读 Stream |
+| worker | Redis | claim、lease、结果、checkpoint、Stream 写 |
+| worker | llm-gateway / rag / sandbox / resource-manager | HTTP |
+| worker | context-service | RocketMQ 异步（Run 完成） |
+| BFF | router | `lb://sunshine-orchestrator-router` |
+
+**删除 v1 的「router HTTP 透传整段 SSE 到固定 worker」**——改为「router 只读 Stream」。
+
+---
+
+## 6. 跨实例控制面（由 v1 保留并升到 Activity）
+
+### 6.1 Run / Activity 取消
+
+```
+sunshine:run:{runId}:cancel
+sunshine:activity:{activityId}:cancel
+```
+
+- 任意实例写标记；执行机哨兵（每 N chunk / 200ms）检测后 dispose 本机连接并 `fail`/`complete(cancelled)`。
+- Run 取消：级联标记所有未完成子 Activity。
+- 沙箱取消：句柄在 Redis，任意机直接调 sandbox-service（无需哨兵）。
+
+### 6.2 HITL / Decision / Recovery
+
+`RedisBlockingNotifier`：执行机 await channel；confirm/resolve 任意机 `publish` + 结果 key 双写防丢。`request_decision`（含未来 Planner D12）复用同一模式。~~PlanApproval~~ 不恢复。
+
+### 6.3 锁与暂停
+
+- 消息锁：`run:{runId}:lock:msg` Redis SETNX。
+- Workflow 暂停：Redis Hash（plan/run 维度）；resume enqueue。
+
+### 6.4 StepEventBridge
+
+禁止跨请求单例驻留。**per-Activity**（或 per-Run 但存 Redis）上下文；跨 Activity 只共享 Redis 中的 timeline/seq 约定，不共享堆内 Map。
+
+### 6.5 心跳
+
+| 级别 | 用途 |
+|------|------|
+| Activity lease TTL | **调度正确性**（过期回队） |
+| Run heartbeat（可选） | 前端「仍在跑」与孤儿检测 |
+| SSE orphan | Stream 侧超时 → 可标 INTERRUPTED；自动续跑由调度器回队完成时可不依赖用户点击（WF/Harness 默认） |
+
+---
+
+## 7. 幂等、失败与降级
+
+| 场景 | 行为 |
+|------|------|
+| Worker 崩溃 | lease 过期 → Activity 回队 → 他机重跑（at-least-once） |
+| Activity 业务失败 | 按类型重试上限 → fail → 父级屏障感知 → WF 补偿 / Harness replan / Run `completed_with_errors` |
+| Planner 全失败 | 对齐 rebuild：`degraded_react`（enqueue fast 路径或标记降级） |
+| Redis 队列不可用 | 拒绝新 Run；进行中尽量落盘审计；不静默改模式 |
+| 重复 complete | 幂等：已终态忽略 |
+
+**幂等要点**：`activityId` 稳定；WF 节点写结果用节点版本号；Worker handoff 写 H1 用 taskId 占位，重复执行覆盖或跳过 `done`。
+
+---
+
+## 8. 逻辑角色 ↔ Activity（防混淆）
+
+| 逻辑（4.14 / ReAct） | 物理 |
+|---------------------|------|
+| Planner | 通常跑在 `PLAN_ROUND` Activity 内 |
+| AgentRole.WORKER | `AGENT_WORKER` Activity |
+| AgentRole.SUB | `AGENT_SUB` Activity |
+| 静态 WF 节点 | `WF_NODE` Activity |
+| orchestrator-worker **服务** | 同构进程池，可跑上述任意类型 |
+
+跨任务共享记忆仍是 **H1 PlanNotebook**（rebuild S4：无第三份 KV）；与「Activity 跨机」正交。
+
+---
+
+## 9. 周边服务
+
+| 服务 | 要求 |
+|------|------|
+| **sandbox-service** | Session/Invocation 句柄 → Redis；推荐 Docker remote + `sessionId→host`（多实例） |
+| **llm-gateway / rag / workflow-manager / biz-simulator** | 已基本无状态，多实例即可 |
+| **gateway / bff / auth-center** | BFF 下游改 `lb://sunshine-orchestrator-router`；无需 sticky |
+| **start.py** | 多实例端口偏移 + 按 `nacos_name+port` 精确 stop |
+
+---
+
+## 10. 迁移波次
+
+### 波次 A — 内存外置（原 v1 §7，仍为前置）
+
+1. `RedisBlockingNotifier`；HITL / Decision / Recovery  
+2. WorkflowPause / messageLocks → Redis  
+3. 工具取消 / Spawn 取消句柄 → Redis + 哨兵  
+4. Bridge per-call；Run 级 heartbeat / 孤儿检测  
+
+**出口**：控制面跨实例；崩溃可续跑（仍可 generation 粘连）。
+
+### 波次 B1 — Activity 骨架 + `WF_NODE`
+
+5. `ActivityScheduler`（Redis）+ Worker claim 循环  
+6. `WorkflowExecutor` 改为「单节点 Activity」；router 改 enqueue + Stream SSE  
+7. Live：`verify_workflow_studio_live` / 节点跨机专项  
+
+**出口**：S1/S2 对静态 WF 成立。
+
+### 波次 B2 — `AGENT_WORKER` + `AGENT_SUB`
+
+8. Harness 执行路径改为 enqueue Worker/Sub；取消对齐 activity cancel  
+9. Live：spawn / harness 跨机  
+
+### 波次 B3 — `PLAN_ROUND`
+
+10. Planner 循环 Activity 化；对齐 rebuild 预算与重规划  
+11. Live：`verify_planner_executor_live`（跨实例）  
+
+### 波次 C — 物理拆分与周边
+
+12. 拆 `orchestrator-router` / `orchestrator-worker` / `context-service`  
+13. sandbox-service Redis 化；start.py 多实例；更新 CLAUDE.md 端口表  
+
+### 波次 D（可选）
+
+14. `REACT_TURN` 细切；或 `ActivityScheduler` 换 Temporal，业务 Runner 不动  
+
+**顺序约束**：A → B1 → B2/B3 → C；禁止未外置内存就拆进程；禁止未 Activity 化就按角色拆舰队。
+
+---
+
+## 11. 配置（Nacos 草案）
+
+```yaml
+agent:
+  activity:
+    enabled: false
+    claim-batch-size: 1
+    lease-ttl-ms: 30000
+    heartbeat-interval-ms: 5000
+    max-retries-per-activity: 2
+    queue-key: sunshine:activity:queue
+    auto-requeue-on-worker-death: true   # WF/Harness 默认 true
+  execution:
+    harness:
+      # 沿用 rebuild §8.1；物理执行改为 Activity 后语义不变
+      enabled: false
+```
+
+灰度：`agent.activity.enabled`；WF 可先开，Harness/ReAct 后开。
+
+---
+
+## 12. 风险与对策
+
+| 风险 | 对策 |
+|------|------|
+| 调度实现变成二次 Temporal | 接口窄；B 波只做清单语义；复杂度爆则波次 D 换引擎 |
+| at-least-once 双写业务副作用 | 节点/task 级幂等；工具侧尽量自然幂等或幂等键 |
+| SSE 与执行脱节导致「假死」 | Run 级聚合状态 + 队列积压指标；lease 回队要写 Stream 提示 |
+| Bridge/Timeline seq 跨机乱序 | seq 分配改 Redis INCR；禁止本机单调假设 |
+| 过早物理拆分 | 波次 C 必须在 B1 验收后 |
+
+---
+
+## 13. 改造后服务全景
+
+| 类别 | 服务 | 端口 | 实例 | 状态特征 |
+|------|------|:----:|:----:|----------|
+| 接入 | gateway / bff / auth-center | 8000/8001/8100 | 多 | 无状态 |
+| 编排 | **orchestrator-router** | 8200 | 多 | 无状态（意图+路由+投递） |
+| 编排 | **orchestrator-worker** | 8201 | 多 | 仅当前 Activity 连接 |
+| 编排 | **context-service** | 8202 | 多 | 无状态异步 |
+| 能力 | tool-service / resource-manager / sandbox / workflow-manager / llm-gateway / rag | 8210/8240/8226/8230/8300/8400 | 多 | 见 §9 |
+| 模拟 | biz-simulator | 8700 | 多 | 无状态 |
+
+---
+
+## 14. 关联文档
+
+| 文档 | 关系 |
+|------|------|
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 逻辑 Planner/Worker/H1；本文提供物理 Activity 映射 |
+| [unified-routing v6](./2026-07-29-unified-routing-design.md) | router 侧 fast/pro/workflow；本文负责投递哪种首 Activity |
+| [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md) | Planner HITL；阻塞走 §6.2 |
+| 本文 v1 段落 | 控制面细节（cancel/HITL/sandbox）并入 §6；generation 粘连模型废弃 |
+
+---
+
+## 15. 一句话
+
+**完全无状态 = 状态全在外部；三高 = 同构 Worker 对 Activity 任意领取。**  
+Router 做意图与路由；Worker 只跑可调度单元；Workflow 节点、Harness Worker、子 Agent 均为 Activity——不是 Plan/Execute 两套服务。

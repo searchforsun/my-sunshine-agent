@@ -263,21 +263,18 @@ const collapsedPairs = computed((): Array<{ prompt: string; choice: string }> =>
   return pairs
 })
 
-/** 展开头 / 无答案折叠：短状态行 */
+/** 展开头 / 无答案折叠：只信后端 summary；缺省退到 title，再无则空（禁止本地状态话术表） */
 const summaryLine = computed(() => {
-  if (lifecycle.value === 'paused') {
-    return props.step.summary?.after?.trim() || '决策 · 已暂停'
+  const after = props.step.summary?.after?.trim() || ''
+  const active = props.step.summary?.active?.trim() || ''
+  if (lifecycle.value === 'paused'
+    || lifecycle.value === 'error'
+    || isSkippedOutcome.value
+    || isResolved.value
+    || localSubmitted.value) {
+    return after || title.value
   }
-  if (lifecycle.value === 'error') {
-    return props.step.summary?.after?.trim() || '决策 · 失败'
-  }
-  if (isSkippedOutcome.value) {
-    return props.step.summary?.after?.trim() || '决策 · 已跳过'
-  }
-  if (isResolved.value || localSubmitted.value) {
-    return title.value ? `决策 · ${title.value}` : '决策 · 已提交'
-  }
-  return props.step.summary?.active?.trim() || '决策 · 等待选择'
+  return active || title.value
 })
 
 /** 等待折叠：状态 + 标题/问题 */
@@ -394,9 +391,7 @@ async function skip(): Promise<void> {
               :key="index"
               class="decision-collapsed-pair"
             >
-              <span class="decision-collapsed-q">
-                {{ index === 0 ? `决策 · ${pair.prompt || '已提交'}` : pair.prompt }}
-              </span>
+              <span class="decision-collapsed-q">{{ pair.prompt }}</span>
               <span v-if="pair.choice" class="decision-collapsed-a">{{ pair.choice }}</span>
             </div>
           </template>

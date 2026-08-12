@@ -1,5 +1,7 @@
 # Async Tool Await Implementation Plan
 
+> **状态**：✅ 已实现 · **已归档**（2026-08-12 tech-debt-refactor）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 长工具（`sandbox__exec` / `spawn_subagent`）可 `background=true` 立即返回 `runId`；MAIN 用元工具 `await_tool_run` 分片等待；每 run 最多 3 次 await，超限结构化 `budget_exhausted`。
@@ -8,7 +10,7 @@
 
 **Tech Stack:** AgentScope-Java `AgentTool` · Reactor · Spring `@ConfigurationProperties` · Nacos `docs/nacos/sunshine-orchestrator.yaml` · Prompt Catalog（`docker/mysql/init/19-sunshine-resource.sql`）· Live `scripts/verify_async_tool_await_live.py`
 
-**Spec:** [2026-08-12-async-tool-await-design.md](../specs/2026-08-12-async-tool-await-design.md)
+**Spec:** [2026-08-12-async-tool-await-design.md](../../specs/archive/2026-08-12-async-tool-await-design.md)
 
 ## Global Constraints
 

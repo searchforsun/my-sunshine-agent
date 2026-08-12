@@ -45,9 +45,8 @@ public class DecisionLabelService {
         return TimelineLabelTemplates.textOrDefault(step().getAfterFail(), "决策失败");
     }
 
-    /** Catalog 无独立 after-timeout 字段；缺省固定文案 */
     public String afterTimeout() {
-        return "决策已超时";
+        return TimelineLabelTemplates.textOrDefault(step().getAfterTimeout(), "决策已超时");
     }
 
     public String afterCancel() {
@@ -55,7 +54,7 @@ public class DecisionLabelService {
     }
 
     public String afterSkip() {
-        return "已跳过";
+        return TimelineLabelTemplates.textOrDefault(step().getAfterSkip(), "已跳过");
     }
 
     private AgentPromptProperties.StepTimeline step() {

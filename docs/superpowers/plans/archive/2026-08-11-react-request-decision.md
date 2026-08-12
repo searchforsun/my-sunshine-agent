@@ -10,7 +10,7 @@
 
 **Tech Stack:** AgentScope-Java Toolkit/Middleware · Spring WebFlux · Redis · Vue3/Naive UI · Nacos `docs/nacos/sunshine-orchestrator.yaml` · Prompt Catalog `docker/mysql/init/19-sunshine-resource.sql` · Live `scripts/verify_decision_live.py`
 
-**Spec:** [2026-07-28-react-request-decision-design.md](../specs/2026-07-28-react-request-decision-design.md)
+**Spec:** [2026-07-28-react-request-decision-design.md](../../specs/archive/2026-07-28-react-request-decision-design.md)
 
 ## Global Constraints
 
