@@ -67,13 +67,22 @@ agent:
         enabled: true
         # 子 Agent 单 run 轮数上限：能拆就拆后子任务可能含多步工具调用（8 太紧），放宽到 30
         max-iters: 30
-        timeout-ms: 180000
+        # chat / task 分档；须 ≥ AgentScope Toolkit 工具超时（见 DynamicToolkitFactory）
+        timeout-ms: 300000
+        task-timeout-ms: 600000
         # cancel-result → Catalog id=react.subagent.cancel-result
       decision:
         # D21：默认关。Live：临时改 true → sync_nacos.py → restart orchestrator/bff；
         # 验收后务必改回 false（勿把生产默认翻 true）。D7 超时套件可临时 timeout-sec: 5。
         enabled: true
         timeout-sec: 300
+      async-tool:
+        enabled: true
+        await-default-sec: 30
+        await-max-sec: 120
+        await-max-waits: 3
+        exec-wall-timeout-sec: 600
+        max-concurrent-per-message: 3
     plan-workflow:
       replan:
         max-attempts: 2
@@ -125,6 +134,7 @@ agent:
         - "ls *"
         - "pwd"
         - "python -m pytest *"
+      writable-tmpfs: []
     # 工作区级完全体沙箱硬件档位（task-workspace-codex §4.4）- 创建工作区时校验 memoryMb/cpus 须命中 allowed-presets
     profiles:
       full:
@@ -135,6 +145,9 @@ agent:
           - { memoryMb: 2048, cpus: 2.0 }
           - { memoryMb: 4096, cpus: 4.0 }
         image: sunshine-sandbox-full:latest
+        # npm/pip 等需写 HOME；仅 exec 可写，PathJail 仍只认 /workspace
+        writable-tmpfs:
+          - /home/sandbox
     # 六工具 displayName / description / JSON Schema — TD-111 SSOT
     tools:
       sandbox__read:
@@ -222,6 +235,9 @@ agent:
           timeout_sec:
             type: integer
             description: 超时秒数（可选，默认 30）
+          background:
+            type: boolean
+            description: 可选；true=立即返回 runId，主 Agent 用 await_tool_run 收结果；默认 false
         required:
           - command
       sandbox__webfetch:

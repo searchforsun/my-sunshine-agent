@@ -29,6 +29,8 @@ public class AgentExecutionProperties {
         private Subagent subagent = new Subagent();
         /** 4.7.9 request_decision — SSOT：Nacos agent.execution.react.decision */
         private Decision decision = new Decision();
+        /** 异步长工具 + await_tool_run — SSOT：Nacos agent.execution.react.async-tool */
+        private AsyncTool asyncTool = new AsyncTool();
 
         @Data
         public static class Taskboard {
@@ -40,7 +42,10 @@ public class AgentExecutionProperties {
         public static class Subagent {
             private boolean enabled = true;
             private int maxIters = 30;
-            private long timeoutMs = 180_000L;
+            /** chat 会话 spawn 超时（SSOT：Nacos …subagent.timeout-ms） */
+            private long timeoutMs = 300_000L;
+            /** task 会话 spawn 超时（SSOT：Nacos …subagent.task-timeout-ms） */
+            private long taskTimeoutMs = 600_000L;
         }
 
         @Data
@@ -48,6 +53,16 @@ public class AgentExecutionProperties {
             /** D21：默认关，Live/灰度再开 */
             private boolean enabled = false;
             private int timeoutSec = 300;
+        }
+
+        @Data
+        public static class AsyncTool {
+            private boolean enabled = true;
+            private int awaitDefaultSec = 30;
+            private int awaitMaxSec = 120;
+            private int awaitMaxWaits = 3;
+            private int execWallTimeoutSec = 600;
+            private int maxConcurrentPerMessage = 3;
         }
     }
 
