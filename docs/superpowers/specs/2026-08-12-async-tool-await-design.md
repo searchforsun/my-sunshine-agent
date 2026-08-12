@@ -149,11 +149,13 @@ MAIN ReAct
 
 | 事件 | 表现 |
 |------|------|
-| 异步 start | exec：工具步 `lifecycle=running`；spawn：既有 subagent 卡 |
-| await 进行中 | `step_delta` 更新 `summary.active`（如等待进度）；**不**新开假 think |
+| 异步 start（ack） | `background=true` 时工具调用**立即**返回 JSON：`{ ok:true, runId, status:"running" }`；对应 MAIN **`tool-*` 步随即 `lifecycle=done`**，result 为该 ack（**不**为 UI 暂停按钮保持 `running`） |
+| 后台 exec | ack 后主时间线 exec 步已终态；命令在 `AsyncToolRunRegistry` 后台继续；终态由后续 `await_tool_run` 或 registry peek 获知，**不**回写原 exec 步 lifecycle |
+| 后台 spawn | 同上 ack 完成 MAIN `tool-*` 步；**另**发既有 `subagent-{runId}` 卡（`lifecycle=running` → 终态），subSteps 抽屉照旧 |
+| await 进行中 | `await_tool_run` 上正常 `tool-*` 步；`step_delta` 可更新 `summary.active`（如等待进度）；**不**新开假 think |
 | await 计次 | metadata 可带 `asyncWait: { count, budget }`（可选，供抽屉） |
-| 终态 | `done` / `error` / `paused`（取消）与现契约一致 |
-| 预算耗尽 | 工具步/`subagent` 卡 `error` 或明确 after；result 为结构化 JSON 字符串 |
+| 终态 | spawn 子卡 / await 步 / 同步路径：`done` / `error` / `paused`（取消）与现契约一致 |
+| 预算耗尽 | `await_tool_run` 工具步 `error` 或明确 after；result 为结构化 JSON 字符串 |
 
 主时间线仍禁止本地步骤话术 Map；子 Agent 抽屉 subSteps 不变。
 
@@ -177,10 +179,15 @@ MAIN ReAct
 
 | 入口 | 行为 |
 |------|------|
-| 用户取消子 Agent 卡 | 既有 `SpawnRunRegistry.cancel`；registry 状态 `cancelled` |
-| 用户取消沙箱工具步 | 既有 cancellable cancel + sandbox kill |
-| 主会话 stop | 取消该 message 下所有 async runs |
+| 用户取消子 Agent 卡 | 既有 `SpawnRunRegistry.cancel`；registry 状态 `cancelled`；子卡 `lifecycle=paused` |
+| 用户取消沙箱工具步（同步） | 既有 cancellable cancel + sandbox kill |
+| 主会话 stop | `AsyncToolRunRegistry.cancelByMessage` → 取消该 message 下所有 async runs（EXEC kill + SPAWN interrupt） |
 | await 中取消 | Future/ sink 完成；await 返回 `cancelled` |
+
+**exec ack 与 spawn 卡取消（与 §5 对齐）：**
+
+- **exec `background=true`**：ack 后 MAIN `tool-*` 步已 `done`，单步暂停/取消按钮**通常不再适用**；后台 run 仍可通过**主会话 stop** 或 registry `cancelByMessage` / onCancel 链路 kill。
+- **spawn `background=true`**：MAIN `tool-*` 步同样 ack 即 `done`；**子 Agent 卡**仍独立 `lifecycle=running`，用户可点卡上取消 → `SpawnRunRegistry`（与 4.7.6 一致）。
 
 禁止因单 run 取消 bump 整轮 stream epoch（保持 4.7.6 约束）。
 
