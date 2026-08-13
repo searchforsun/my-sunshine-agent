@@ -105,4 +105,11 @@ public record ProcessingStep(
                 null
         );
     }
+
+    public ProcessingStep withMetadata(StepMetadata metadata) {
+        return new ProcessingStep(
+                id, phase, lifecycle, summary, startedAt, endedAt, durationMs,
+                detail, reasoning, output, result, ts, label, metadata,
+                contentBlocks, subSteps, stepSummary);
+    }
 }

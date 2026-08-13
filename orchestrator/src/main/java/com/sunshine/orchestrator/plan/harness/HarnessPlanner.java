@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.plan.harness;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
@@ -79,7 +80,13 @@ public class HarnessPlanner {
         AgentRunRequest request = buildRequest(notebook, ctx, HINT_ANSWER);
         return Flux.defer(() -> {
             WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, request.runId());
-            return agentRuntime.run(request)
+            StreamToken start = StreamToken.step(ProcessingStep.running(
+                    "planner-answer", "answer", "综合回答"));
+            StreamToken end = StreamToken.step(ProcessingStep.done(
+                    "planner-answer", "answer", "综合回答", "完成"));
+            return Flux.just(start)
+                    .concatWith(agentRuntime.run(request))
+                    .concatWith(Flux.just(end))
                     .doFinally(sig -> WorkerDispatchTool.clearSession(session));
         });
     }

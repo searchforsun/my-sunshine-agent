@@ -170,7 +170,10 @@ class HarnessPlannerTest {
         List<StreamToken> tokens = planner.synthesizeAnswer(nb, streamCtx()).collectList().block();
 
         assertThat(tokens).isNotEmpty();
-        assertThat(tokens.get(0).text()).contains("综合结论");
+        assertThat(tokens.stream().anyMatch(t -> t.isStep() && "planner-answer".equals(t.step().id())))
+                .isTrue();
+        assertThat(tokens.stream().anyMatch(t -> t.text() != null && t.text().contains("综合结论")))
+                .isTrue();
         assertThat(nb.getRounds()).isEmpty();
         assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();
     }

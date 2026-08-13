@@ -27,8 +27,11 @@ import java.util.List;
  */
 @Getter
 public class PlanNotebook {
-    private final String originalGoal;
-    private final String userQuery;
+    /** follow-up 目标变更可写（S6 ③） */
+    @Setter
+    private String originalGoal;
+    @Setter
+    private String userQuery;
     /** 会话形态 chat/task（routing 四轴 `kind`；JSON 过渡可读旧键 scene） */
     @Setter
     private String kind;
