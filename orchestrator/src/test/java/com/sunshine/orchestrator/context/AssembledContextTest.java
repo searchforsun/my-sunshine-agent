@@ -19,6 +19,18 @@ class AssembledContextTest {
     }
 
     @Test
+    void forWorker_putsStablePrefixInProjectGuide_andClearsLayers() {
+        AssembledContext ctx = AssembledContext.forWorker("STABLE_PREFIX", "dynamic-unused");
+        assertThat(ctx.projectGuideBlock()).isEqualTo("STABLE_PREFIX");
+        assertThat(ctx.l2SystemBlock()).isEmpty();
+        assertThat(ctx.farSummaryBlock()).isEmpty();
+        assertThat(ctx.l3MaterialBlock()).isEmpty();
+        assertThat(ctx.midTurns()).isEmpty();
+        assertThat(ctx.nearTurns()).isEmpty();
+        assertThat(ctx.hasAnyLayer()).isTrue();
+    }
+
+    @Test
     void hasAnyLayer_trueWhenNearPresent() {
         var ctx = new AssembledContext("", "", List.of(), List.of(new ChatTurn("user", "hi")), "");
         assertThat(ctx.hasAnyLayer()).isTrue();

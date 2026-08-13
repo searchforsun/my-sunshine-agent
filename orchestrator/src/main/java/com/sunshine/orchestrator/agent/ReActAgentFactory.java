@@ -148,7 +148,8 @@ public class ReActAgentFactory {
             }
             return modelSceneResolver.resolveChat(override);
         }
-        if (role == AgentRole.SUB) {
+        if (role == AgentRole.SUB || role == AgentRole.WORKER) {
+            // WORKER 暂复用 subagent scene（无独立 worker scene）；避免落入 planner
             return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), override);
         }
         return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), override);
@@ -188,7 +189,7 @@ public class ReActAgentFactory {
     }
 
     Toolkit resolveToolkit(AgentRunRequest request) {
-        if (request.role() == AgentRole.SUB) {
+        if (request.role() == AgentRole.SUB || request.role() == AgentRole.WORKER) {
             return dynamicToolkitFactory.buildForSubAgent(
                     request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
         }
@@ -196,12 +197,21 @@ public class ReActAgentFactory {
     }
 
     public int resolveMaxIters(AgentRunRequest request) {
-        return request.maxIters() > 0 ? request.maxIters() : executionProperties.getReact().getMaxIters();
+        if (request.maxIters() > 0) {
+            return request.maxIters();
+        }
+        if (request.role() == AgentRole.WORKER) {
+            return executionProperties.getReact().getTaskMaxIters();
+        }
+        return executionProperties.getReact().getMaxIters();
     }
 
     private static String resolveAgentName(AgentRunRequest request) {
         if (request.role() == AgentRole.SUB) {
             return "Sunshine-SubAgent";
+        }
+        if (request.role() == AgentRole.WORKER) {
+            return "Sunshine-Worker";
         }
         return "Sunshine-Assistant";
     }

@@ -7,5 +7,7 @@ public enum TimelineBinding {
     /** 子 Agent：独立 bridge，主 Timeline 仅 node-{id} 一步 */
     SUB_COMPRESSED,
     /** Planner：仅 plan 步（3.10.4） */
-    PLANNER_ONLY
+    PLANNER_ONLY,
+    /** Worker：嵌套于 Planner 时间线（worker-* 行 + subSteps；与 SUB_COMPRESSED 区分便于前端） */
+    WORKER_NESTED
 }

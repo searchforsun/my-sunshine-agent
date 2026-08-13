@@ -122,4 +122,21 @@ class AgentRunRequestTest {
         assertThat(req.memory()).isEqualTo(AssembledContext.empty());
         assertThat(req.injectedBlocks()).isEmpty();
     }
+
+    @Test
+    void workerFactorySetsRoleAndWhitelist() {
+        AgentRunRequest req = AgentRunRequest.worker(
+                AssembledContext.forWorker("STABLE", ""),
+                "do task", java.util.List.of("sandbox__exec"), "u", "t", "a1", "c1", 100, "parent");
+        assertThat(req.role()).isEqualTo(AgentRole.WORKER);
+        assertThat(req.toolWhitelist()).containsExactly("sandbox__exec");
+        assertThat(req.memory().projectGuideBlock()).isEqualTo("STABLE");
+        assertThat(req.memory().l2SystemBlock()).isEmpty();
+        assertThat(req.timeline()).isEqualTo(TimelineBinding.WORKER_NESTED);
+        assertThat(req.parentRunId()).isEqualTo("parent");
+        assertThat(req.conversationId()).isEqualTo("c1");
+        assertThat(req.maxIters()).isEqualTo(100);
+        assertThat(req.assistantMessageId()).isEqualTo("a1");
+        assertThat(req.resolveBridgeId()).isEqualTo("worker-" + req.runId());
+    }
 }

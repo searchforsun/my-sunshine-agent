@@ -84,6 +84,24 @@ class SandboxSessionLifecycleTest {
     }
 
     @Test
+    void prepareRun_worker_registersContext_andEnsureBoundUsesConversation() {
+        when(sandboxClient.createSession(any())).thenReturn("sess-worker");
+        when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());
+
+        AgentRunRequest req = AgentRunRequest.worker(
+                AssembledContext.forWorker("STABLE", ""),
+                "do task", List.of("sandbox__exec"), "u1", "default",
+                "msg-1", "conv-w", 100, "parent");
+        lifecycle.prepareRun(req);
+        verify(sandboxClient, never()).createSession(any());
+        assertThat(req.resolveBridgeId()).startsWith("worker-");
+        assertThat(lifecycle.ensureBound(req.resolveBridgeId())).isEqualTo("sess-worker");
+        verify(conversationSandboxStore).save(any());
+        lifecycle.closeQuietly(req);
+        verify(sandboxClient, never()).closeSession(anyString());
+    }
+
+    @Test
     void ensureBound_withoutSkill_createsEmptySession() {
         when(sandboxClient.createSession(any())).thenReturn("sess-1");
         when(conversationSandboxStore.find(anyString(), anyString())).thenReturn(Optional.empty());

@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import java.util.List;
 
-/** L1 Mid/Near 轮次 + L2/Far/L3 system 块。SUB/PLANNER 用 empty/forSubAgent。 */
+/** L1 Mid/Near 轮次 + L2/Far/L3 system 块。SUB/PLANNER 用 empty/forSubAgent；WORKER 用 forWorker。 */
 public record AssembledContext(
         String l2SystemBlock,
         String farSummaryBlock,
@@ -18,6 +18,15 @@ public record AssembledContext(
 
     public static AssembledContext forSubAgent() {
         return empty();
+    }
+
+    /**
+     * Worker 上下文：l2/far/mid/near/l3 全空；稳定前缀进 projectGuideBlock（同 plan run 字节不变）。
+     * {@code dynamicQueryBlock} 保留 API 稳定；动态 upstream 现由调用方拼进 query / injectedBlocks。
+     */
+    public static AssembledContext forWorker(String stablePrefixBlock, String dynamicQueryBlock) {
+        String guide = stablePrefixBlock != null ? stablePrefixBlock : "";
+        return new AssembledContext("", "", List.of(), List.of(), "", guide);
     }
 
     /** 5 参便捷构造：无项目规范块（测试/直连路径用）。 */

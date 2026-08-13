@@ -54,7 +54,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** ReAct 模式 Agent 运行时 — MAIN / SUB 共用 */
+/** ReAct 模式 Agent 运行时 — MAIN / SUB / WORKER 共用；PLANNER 由 Facade 路由 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -352,13 +352,19 @@ public class ReActAgentRuntime implements AgentRuntime {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** 与 ReActAgentFactory.resolveMaxIters 一致：request 显式携带优先，否则取 Nacos 默认 */
+    /** 与 ReActAgentFactory.resolveMaxIters 一致：request 显式优先；WORKER 默认 taskMaxIters */
     private int resolveMaxIters(AgentRunRequest request) {
         if (request != null && request.maxIters() > 0) {
             return request.maxIters();
         }
         AgentExecutionProperties.React react = executionProperties.getReact();
-        return react != null ? react.getMaxIters() : 0;
+        if (react == null) {
+            return 0;
+        }
+        if (request != null && request.role() == AgentRole.WORKER) {
+            return react.getTaskMaxIters();
+        }
+        return react.getMaxIters();
     }
 
     private static boolean resolveHitlEnabled(AgentRunRequest request) {

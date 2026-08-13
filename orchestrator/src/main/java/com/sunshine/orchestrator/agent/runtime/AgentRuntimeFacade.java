@@ -20,6 +20,7 @@ public class AgentRuntimeFacade implements AgentRuntime {
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
+        // PLANNER → PlannerAgentRuntime；MAIN / SUB / WORKER → ReAct
         if (request.role() == AgentRole.PLANNER) {
             return plannerAgentRuntime.run(request);
         }

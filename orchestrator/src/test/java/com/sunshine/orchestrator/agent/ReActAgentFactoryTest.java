@@ -134,6 +134,31 @@ class ReActAgentFactoryTest {
         assertThat(factory.resolveMaxIters(req)).isEqualTo(5);
     }
 
+    @Test
+    void resolveToolkit_workerUsesWhitelistLikeSub() {
+        AgentRunRequest req = AgentRunRequest.worker(
+                AssembledContext.forWorker("STABLE", ""),
+                "do task", List.of("sandbox__exec"), "u1", "default", "a1", "c1", 100, "parent");
+        when(dynamicToolkitFactory.buildForSubAgent(
+                List.of("sandbox__exec"), "default", null, "u1"))
+                .thenReturn(subToolkit);
+        assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
+        verify(dynamicToolkitFactory).buildForSubAgent(
+                List.of("sandbox__exec"), "default", null, "u1");
+    }
+
+    @Test
+    void resolveMaxIters_workerPrefersRequestThenTaskMaxIters() {
+        AgentRunRequest withExplicit = AgentRunRequest.worker(
+                AssembledContext.forWorker("S", ""),
+                "q", List.of("sandbox__exec"), "u1", "default", "a1", "c1", 42, "parent");
+        assertThat(factory.resolveMaxIters(withExplicit)).isEqualTo(42);
+        AgentRunRequest fallback = AgentRunRequest.worker(
+                AssembledContext.forWorker("S", ""),
+                "q", List.of("sandbox__exec"), "u1", "default", "a1", "c1", 0, "parent");
+        assertThat(factory.resolveMaxIters(fallback)).isEqualTo(100);
+    }
+
     private static AgentRunRequest subRequest(String skillId, List<String> tools, String overlay) {
         return new AgentRunRequest(
                 AgentRole.SUB,

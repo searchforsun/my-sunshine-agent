@@ -45,10 +45,12 @@ public class SandboxSessionLifecycle {
     private final ConcurrentHashMap<String, Set<String>> workspaceSessionMountedSkills = new ConcurrentHashMap<>();
 
     /**
-     * MAIN / SUB 开跑登记上下文（不创建 Docker）。PLANNER 忽略。
+     * MAIN / SUB / WORKER 开跑登记上下文（不创建 Docker）。PLANNER 忽略。
      */
     public void prepareRun(AgentRunRequest req) {
-        if (req == null || (req.role() != AgentRole.MAIN && req.role() != AgentRole.SUB)) {
+        if (req == null || (req.role() != AgentRole.MAIN
+                && req.role() != AgentRole.SUB
+                && req.role() != AgentRole.WORKER)) {
             return;
         }
         String bridgeId = req.resolveBridgeId();

@@ -52,10 +52,13 @@ public record AgentRunRequest(
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride);
     }
 
-    /** MAIN 每 run 独立 main-{runId}；SUB 用 sub-{runId}（SSE 经 bindHitlBridge 映射 assistantMessageId） */
+    /** MAIN 每 run 独立 main-{runId}；SUB/WORKER 用角色前缀（SSE 经 bindHitlBridge 映射 assistantMessageId） */
     public String resolveBridgeId() {
         if (role == AgentRole.SUB) {
             return "sub-" + runId;
+        }
+        if (role == AgentRole.WORKER) {
+            return "worker-" + runId;
         }
         return "main-" + runId;
     }
@@ -297,6 +300,43 @@ public record AgentRunRequest(
                 false,
                 null,
                 null,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /** Planner-Executor Worker — forWorker 记忆 + 工具白名单 + WORKER_NESTED Timeline */
+    public static AgentRunRequest worker(
+            AssembledContext memory,
+            String query,
+            List<String> toolWhitelist,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            String conversationId,
+            int maxIters,
+            String parentRunId) {
+        return new AgentRunRequest(
+                AgentRole.WORKER,
+                UUID.randomUUID().toString(),
+                parentRunId,
+                memory,
+                query,
+                List.of(),
+                userId,
+                tenantId,
+                assistantMessageId,
+                null,
+                toolWhitelist,
+                null,
+                maxIters,
+                TimelineBinding.WORKER_NESTED,
+                false,
+                null,
+                conversationId,
                 0,
                 null,
                 null,
