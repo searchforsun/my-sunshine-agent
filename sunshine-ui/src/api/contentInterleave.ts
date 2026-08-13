@@ -7,6 +7,7 @@
  * 段内 chunk 由后端 ContentSegmentCoordinator 保证为增量，前端只做追加，不做字符重叠截断。
  */
 import type { ChatMessage } from './chat'
+import { isHarnessTimelineMessage, isPlanDagMessage } from './harnessTimeline'
 import type { ProcessingStep } from './processingSteps'
 import { formatStepLabel } from './processingStepsDisplay'
 import { isThinkStepId } from './processingStepsNormalize'
@@ -277,8 +278,9 @@ export function appendInterleavedContent(
 ): void {
   if (!chunk) return
   const steps = msg.steps
-  // answer / plan 正文 SSOT：node-answer.result（step_delta）；plain content 会破坏表格换行
-  if (steps?.some(s => s.phase === 'plan' || s.id === 'node-answer')) return
+  // 旧 plan-workflow / 静态 DAG：answer SSOT 在 node-answer.result；plain content 会破坏表格换行
+  // harness（有 worker 无 graph）走 ReAct 式穿插，不在此丢弃
+  if (steps?.length && isPlanWorkflowSteps(steps, msg.executionPlanId)) return
   msg.content = (msg.content ?? '') + chunk
   if (!steps?.length) return
   if (!msg.contentBlocks) msg.contentBlocks = []
@@ -315,9 +317,9 @@ function joinedPlanAnswerBlocks(blocks: ContentBlock[] | undefined): string {
 
 /** Plan answer 正文 SSOT：优先 node-answer.result（与抽屉一致） */
 export function resolvePlanAnswerText(
-  msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): string {
-  if (!msg.steps?.some(s => s.phase === 'plan')) {
+  if (!msg.steps?.length || !isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
     return msg.content?.trim() ?? ''
   }
   const fromStep = msg.steps.find(s => s.id === 'node-answer')?.result?.trim()
@@ -331,9 +333,9 @@ export function resolvePlanAnswerText(
  * 多轮会话折叠时不再只露最后一段终稿，中间穿插分析一并展示；
  * Plan 走 answer SSOT；无 think 或 think 后无正文时退化为仅最后一段 */
 export function resolveCollapsedAnswerText(
-  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): string {
-  if (msg.steps?.some(s => s.phase === 'plan')) {
+  if (msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
     return resolvePlanAnswerText(msg).trim()
   }
   const steps = msg.steps ?? []
@@ -372,9 +374,10 @@ export function resolveCollapsedAnswerText(
 
 /** node-answer.result 落步后，同步主时间线 contentBlocks / message.content（plan + 静态 workflow 共用） */
 export function syncPlanAnswerContentFromStep(
-  msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
-  const fromStep = msg.steps?.find(s => s.id === 'node-answer')?.result
+  if (!msg.steps?.length || !isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
+  const fromStep = msg.steps.find(s => s.id === 'node-answer')?.result
   if (fromStep == null || fromStep === '') return
   msg.content = fromStep
   msg.contentBlocks = [{
@@ -386,17 +389,21 @@ export function syncPlanAnswerContentFromStep(
 
 /** 刷新 / 加载：Plan 消息统一剔除误入正文的 node 摘要（不依赖 node-answer 是否已存在） */
 export function sanitizePlanAssistantMessage(
-  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
   if (msg.role !== 'assistant' || !msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps)) return
+  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
   stripPlanDrawerLeakFromMessage(msg)
 }
 
 /** Plan 业务 node 摘要是否不应出现在主时间线正文 */
-export function isPlanNodeLeakText(text: string, steps: ProcessingStep[]): boolean {
+export function isPlanNodeLeakText(
+  text: string,
+  steps: ProcessingStep[],
+  executionPlanId?: string | null,
+): boolean {
   const content = text.trim()
-  if (!content || !isPlanWorkflowSteps(steps)) return false
+  if (!content || !isPlanWorkflowSteps(steps, executionPlanId)) return false
   for (const step of steps) {
     if (!step.id.startsWith('node-') || step.id === 'node-answer') continue
     const label = formatStepLabel(step)
@@ -410,10 +417,12 @@ export function isPlanNodeLeakText(text: string, steps: ProcessingStep[]): boole
   return false
 }
 /** Plan 业务 node 摘要/HITL 文案误入 message.content（非 answer 正文） */
-export function isPlanDrawerLeakContent(msg: Pick<ChatMessage, 'content' | 'steps'>): boolean {
+export function isPlanDrawerLeakContent(
+  msg: Pick<ChatMessage, 'content' | 'steps' | 'executionPlanId'>,
+): boolean {
   const content = msg.content?.trim()
-  if (!content || !msg.steps?.length || !isPlanWorkflowSteps(msg.steps)) return false
-  if (isPlanNodeLeakText(content, msg.steps)) return true
+  if (!content || !msg.steps?.length || !isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return false
+  if (isPlanNodeLeakText(content, msg.steps, msg.executionPlanId)) return true
   const answerText = msg.steps.find(s => s.id === 'node-answer')?.result?.trim()
   if (answerText && content === answerText) return false
   for (const step of msg.steps) {
@@ -426,17 +435,19 @@ export function isPlanDrawerLeakContent(msg: Pick<ChatMessage, 'content' | 'step
 
 /** 清除 Plan 抽屉级摘要误入的正文（保留 node-answer） */
 export function stripPlanDrawerLeakFromMessage(
-  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
   if (msg.role !== 'assistant') return
   stripNonAnswerPlanContentBlocks(msg)
   if (!msg.content?.trim() || !msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps)) return
+  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
   const answerText = msg.steps.find(s => s.id === 'node-answer')?.result?.trim() ?? ''
   if (isPlanDrawerLeakContent(msg)) {
     msg.content = answerText
     if (msg.contentBlocks?.length) {
-      const kept = msg.contentBlocks.filter(b => shouldRenderPlanMainContentBlock(b, msg.steps!))
+      const kept = msg.contentBlocks.filter(b =>
+        shouldRenderPlanMainContentBlock(b, msg.steps!, msg.executionPlanId),
+      )
       msg.contentBlocks = kept.length ? kept : undefined
     }
     return
@@ -462,12 +473,14 @@ export function stripPlanDrawerLeakFromMessage(
 
 /** Plan 消息落库/刷新：剔除误锚到业务 node 的正文块，避免主时间线透出抽屉内容 */
 export function stripNonAnswerPlanContentBlocks(
-  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
   if (msg.role !== 'assistant' || !msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps)) return
+  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
   if (!msg.contentBlocks?.length) return
-  const kept = msg.contentBlocks.filter(b => shouldRenderPlanMainContentBlock(b, msg.steps!))
+  const kept = msg.contentBlocks.filter(b =>
+    shouldRenderPlanMainContentBlock(b, msg.steps!, msg.executionPlanId),
+  )
   if (kept.length === msg.contentBlocks.length) return
   msg.contentBlocks = kept.length ? kept : undefined
   const answerIdx = msg.steps.findIndex(s => s.id === 'node-answer')
@@ -481,12 +494,12 @@ export function stripNonAnswerPlanContentBlocks(
  */
 export function normalizeRestoredInterleavedContent(msg: ChatMessage): void {
   if (msg.role !== 'assistant') return
-  if (msg.steps?.some(s => s.phase === 'plan')) {
+  if (msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
     syncPlanAnswerContentFromStep(msg)
   }
   if (!msg.contentBlocks?.length) return
   stripPlanDrawerLeakFromMessage(msg)
-  const joinedRaw = msg.steps?.some(s => s.phase === 'plan')
+  const joinedRaw = msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)
     ? joinedPlanAnswerBlocks(msg.contentBlocks)
     : joinedContentBlocks(msg.contentBlocks)
   const joined = joinedRaw.trim()
@@ -527,7 +540,7 @@ export function shouldShowAssistantBottomContent(
 export function isContentFullyInterleaved(msg: ChatMessage): boolean {
   if (isPlanDrawerLeakContent(msg)) return true
   if (!msg.steps?.length) return false
-  if (isPlanWorkflowSteps(msg.steps)) {
+  if (isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
     const answerText = resolvePlanAnswerText(msg).trim()
     if (!answerText) return !msg.content?.trim()
     const content = (msg.content ?? '').trim()
@@ -546,7 +559,7 @@ export function isContentFullyInterleaved(msg: ChatMessage): boolean {
 }
 
 export function resolveStreamingContentText(msg: ChatMessage): string {
-  if (msg.steps?.some(s => s.phase === 'plan')) {
+  if (msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
     return resolvePlanAnswerText(msg)
   }
   const blocks = msg.contentBlocks
@@ -561,16 +574,22 @@ export type TimelineContentRow = {
   streaming: boolean
 }
 
-/** Plan 主时间线仅穿插 answer 正文；业务 node 的 detail/result 只在抽屉展示 */
-function isPlanWorkflowSteps(steps: ProcessingStep[]): boolean {
-  return steps.some(s => s.phase === 'plan')
+/** Plan 主时间线仅穿插 answer 正文；业务 node 的 detail/result 只在抽屉展示。
+ * 与 harness 互斥：有 worker 无 graph → 非 plan-workflow，走 ReAct 式穿插。 */
+function isPlanWorkflowSteps(
+  steps: ProcessingStep[],
+  executionPlanId?: string | null,
+): boolean {
+  if (isHarnessTimelineMessage(steps, executionPlanId)) return false
+  return isPlanDagMessage(steps, executionPlanId)
 }
 
 export function shouldRenderPlanMainContentBlock(
   block: ContentBlock,
   steps: ProcessingStep[],
+  executionPlanId?: string | null,
 ): boolean {
-  if (!isPlanWorkflowSteps(steps)) return true
+  if (!isPlanWorkflowSteps(steps, executionPlanId)) return true
   const anchor = block.afterStepId
   if (anchor === 'node-answer' || block.segmentId === 'tail:node-answer') return true
   if (anchor.startsWith('node-') && anchor !== 'node-answer') return false
@@ -584,20 +603,21 @@ export function contentRowsAfterStep(
   visibleStepIds: ReadonlySet<string>,
   blocks: ContentBlock[] | undefined,
   opts: { live: boolean; lastBlockIndex: number },
+  executionPlanId?: string | null,
 ): TimelineContentRow[] {
   if (!blocks?.length) return []
-  const planAnswerText = isPlanWorkflowSteps(steps)
+  const planAnswerText = isPlanWorkflowSteps(steps, executionPlanId)
     ? steps.find(s => s.id === 'node-answer')?.result?.trim()
     : ''
   const rows: TimelineContentRow[] = []
   blocks.forEach((block, idx) => {
     if (!block.text && !planAnswerText) return
-    if (!shouldRenderPlanMainContentBlock(block, steps)) return
+    if (!shouldRenderPlanMainContentBlock(block, steps, executionPlanId)) return
     const text = (planAnswerText && (block.afterStepId === 'node-answer' || block.segmentId === 'tail:node-answer'))
       ? planAnswerText
       : block.text
     if (!text) return
-    if (isPlanNodeLeakText(text, steps)) return
+    if (isPlanNodeLeakText(text, steps, executionPlanId)) return
     const displayAnchor = resolveVisibleContentAnchor(block.afterStepId, steps, visibleStepIds)
     if (displayAnchor !== stepId) return
     rows.push({
@@ -629,11 +649,11 @@ export function resolveLastContentBlockIndex(blocks: ContentBlock[] | undefined)
  * 刷新后重建 contentBlocks 并修复 node-answer.result（后端 result delta 历史 bug）。
  */
 export function hydratePlanAnswerFromContent(
-  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks'>,
+  msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
   if (msg.role !== 'assistant') return
   if (!msg.steps?.length) return
-  if (!msg.steps.some(s => s.phase === 'plan')) return
+  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
   sanitizePlanAssistantMessage(msg)
   const answerIdx = msg.steps.findIndex(s => s.id === 'node-answer')
   if (answerIdx < 0) return
@@ -700,20 +720,21 @@ export function orphanContentRows(
   visibleStepIds: ReadonlySet<string>,
   blocks: ContentBlock[] | undefined,
   opts: { live: boolean; lastBlockIndex: number },
+  executionPlanId?: string | null,
 ): TimelineContentRow[] {
   if (!blocks?.length) return []
-  const planAnswerText = isPlanWorkflowSteps(steps)
+  const planAnswerText = isPlanWorkflowSteps(steps, executionPlanId)
     ? steps.find(s => s.id === 'node-answer')?.result?.trim()
     : ''
   const rows: TimelineContentRow[] = []
   blocks.forEach((block, idx) => {
     if (!block.text && !planAnswerText) return
-    if (!shouldRenderPlanMainContentBlock(block, steps)) return
+    if (!shouldRenderPlanMainContentBlock(block, steps, executionPlanId)) return
     const text = (planAnswerText && (block.afterStepId === 'node-answer' || block.segmentId === 'tail:node-answer'))
       ? planAnswerText
       : block.text
     if (!text) return
-    if (isPlanNodeLeakText(text, steps)) return
+    if (isPlanNodeLeakText(text, steps, executionPlanId)) return
     const displayAnchor = resolveVisibleContentAnchor(block.afterStepId, steps, visibleStepIds)
     if (displayAnchor !== null) return
     rows.push({

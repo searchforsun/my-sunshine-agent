@@ -48,7 +48,19 @@ describe('resolveCollapsedAnswerText', () => {
     expect(resolveCollapsedAnswerText(msg({
       content: '误入',
       steps: [
-        { id: 'plan', phase: 'plan', lifecycle: 'done' },
+        {
+          id: 'plan',
+          phase: 'plan',
+          lifecycle: 'done',
+          metadata: {
+            planApproval: {
+              planGraph: {
+                nodes: [{ id: 'n1', type: 'llm', displayName: 'A' }],
+                edges: [],
+              },
+            },
+          },
+        },
         { id: 'node-answer', phase: 'node', lifecycle: 'done', result: '计划终稿' },
       ],
       contentBlocks: [{ segmentId: 'tail:node-answer', afterStepId: 'node-answer', text: '块' }],

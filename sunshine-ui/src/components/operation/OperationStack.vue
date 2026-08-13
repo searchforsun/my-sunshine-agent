@@ -759,6 +759,7 @@ function rowsAfterStep(stepId: string) {
     visibleStepIds.value,
     props.contentBlocks,
     contentRowOpts.value,
+    props.executionPlanId,
   )
 }
 
@@ -787,6 +788,7 @@ const orphanContent = computed(() => {
     visibleStepIds.value,
     props.contentBlocks,
     contentRowOpts.value,
+    props.executionPlanId,
   )
 })
 
