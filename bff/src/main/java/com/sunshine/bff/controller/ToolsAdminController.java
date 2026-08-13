@@ -134,11 +134,11 @@ public class ToolsAdminController {
         return toolManagerAdminClient.removeToolSetMembers(kind, tenantId, body);
     }
 
-    @PatchMapping("/api/admin/tools/sets/plan-workflow/members/{toolId}")
-    public Mono<R<Void>> patchPlanWorkflowMemberCritical(
+    @PatchMapping("/api/admin/tools/sets/task/members/{toolId}")
+    public Mono<R<Void>> patchTaskMemberCritical(
             @PathVariable String toolId,
             @RequestParam(required = false) String tenantId,
             @RequestBody ToolSetMemberCriticalPatchRequest body) {
-        return toolManagerAdminClient.patchPlanWorkflowMemberCritical(tenantId, toolId, body);
+        return toolManagerAdminClient.patchTaskMemberCritical(tenantId, toolId, body);
     }
 }

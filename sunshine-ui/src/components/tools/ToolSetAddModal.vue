@@ -41,7 +41,7 @@ const groups = ref<ToolSetPickerGroup[]>([])
 const selected = ref<Map<string, { critical: boolean }>>(new Map())
 
 const modalTitle = computed(() =>
-  props.kind === 'react-default' ? '添加到 ReAct 工具集' : '添加到 Planner Workflow 工具集',
+  props.kind === 'chat' ? '添加到对话默认工具集' : '添加到任务默认工具集',
 )
 
 const allTools = computed(() =>

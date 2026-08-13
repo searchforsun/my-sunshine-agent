@@ -22,7 +22,7 @@ import TenantSelector from '../knowledge/TenantSelector.vue'
 import ToolSetAddModal from './ToolSetAddModal.vue'
 import {
   pageToolSetMembers,
-  patchPlanWorkflowMemberCritical,
+  patchTaskMemberCritical,
   removeToolSetMembers,
   type ToolSetKindPath,
   type ToolSetMemberItem,
@@ -37,7 +37,7 @@ const { tenantId: toolsetTenant, setTenantId: setToolsetTenant } = useTenantPref
 
 let membersRequestSeq = 0
 
-const subTab = ref<'react' | 'plan-workflow'>('react')
+const subTab = ref<'chat' | 'task'>('chat')
 const loading = ref(false)
 const searchQuery = ref('')
 const page = ref(1)
@@ -47,15 +47,13 @@ const members = ref<ToolSetMemberItem[]>([])
 const selectedRowKeys = ref<string[]>([])
 const showAddModal = ref(false)
 
-const kind = computed<ToolSetKindPath>(() =>
-  subTab.value === 'react' ? 'react-default' : 'plan-workflow',
-)
+const kind = computed<ToolSetKindPath>(() => subTab.value)
 
 const tenantParam = computed(() =>
   toolsetTenant.value === 'default' ? undefined : toolsetTenant.value,
 )
 
-const tableScrollX = computed(() => (subTab.value === 'plan-workflow' ? 920 : 840))
+const tableScrollX = computed(() => (subTab.value === 'task' ? 920 : 840))
 
 function renderCellText(text: string) {
   return h('span', { class: 'toolset-cell-text' }, text)
@@ -90,7 +88,7 @@ const columns = computed((): DataTableColumns<ToolSetMemberItem> => {
       }, { default: () => (row.sideEffect === 'write' ? '写' : '读') }),
     },
   ]
-  if (subTab.value === 'plan-workflow') {
+  if (subTab.value === 'task') {
     base.push({
       title: '关键',
       key: 'critical',
@@ -186,7 +184,7 @@ async function handleRemove(toolIds: string[]) {
 
 async function handlePatchCritical(row: ToolSetMemberItem, critical: boolean) {
   try {
-    await patchPlanWorkflowMemberCritical(row.toolId, critical, tenantParam.value)
+    await patchTaskMemberCritical(row.toolId, critical, tenantParam.value)
     row.critical = critical
     message.success(critical ? '已设为关键工具' : '已取消关键工具')
   } catch (e) {
@@ -233,8 +231,8 @@ defineExpose({ refresh: refreshAll })
 <template>
   <main class="toolset-panel detail-panel full-width">
     <NTabs v-model:value="subTab" type="line" animated class="toolset-subtabs">
-      <NTabPane name="react" tab="ReAct" />
-      <NTabPane name="plan-workflow" tab="Planner Workflow" />
+      <NTabPane name="chat" tab="对话默认" />
+      <NTabPane name="task" tab="任务默认" />
     </NTabs>
     <div class="toolset-toolbar">
       <div class="toolset-toolbar-head">
@@ -308,7 +306,7 @@ defineExpose({ refresh: refreshAll })
       v-model:show="showAddModal"
       :kind="kind"
       :tenant-id="toolsetTenant"
-      :allow-critical="subTab === 'plan-workflow'"
+      :allow-critical="subTab === 'task'"
       @added="refreshMembers"
     />
   </main>

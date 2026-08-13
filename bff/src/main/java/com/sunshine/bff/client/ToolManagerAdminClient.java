@@ -192,11 +192,11 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<R<Void>> patchPlanWorkflowMemberCritical(
+    public Mono<R<Void>> patchTaskMemberCritical(
             String tenantId, String toolId, ToolSetMemberCriticalPatchRequest body) {
         return webClient.patch()
                 .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/plan-workflow/members/" + toolId);
+                    var builder = uri.path("/api/admin/tools/sets/task/members/" + toolId);
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
                     }

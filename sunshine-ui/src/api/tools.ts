@@ -191,7 +191,7 @@ export async function patchTool(toolId: string, body: ToolPatchBody): Promise<To
   return parseApiResponse<ToolDefinition>(res)
 }
 
-export type ToolSetKindPath = 'react-default' | 'plan-workflow'
+export type ToolSetKindPath = 'chat' | 'task'
 
 export interface ToolSetMemberItem {
   toolId: string
@@ -297,13 +297,14 @@ export async function removeToolSetMembers(
   await parseApiResponse<void>(res, { allowEmptyData: true })
 }
 
-export async function patchPlanWorkflowMemberCritical(
+/** critical 仅对 task 默认集有意义 */
+export async function patchTaskMemberCritical(
   toolId: string,
   critical: boolean,
   tenantId?: TenantId,
 ): Promise<void> {
   const res = await fetch(
-    apiUrl(`/api/admin/tools/sets/plan-workflow/members/${encodeURIComponent(toolId)}${toolSetTenantQs(tenantId)}`),
+    apiUrl(`/api/admin/tools/sets/task/members/${encodeURIComponent(toolId)}${toolSetTenantQs(tenantId)}`),
     {
       method: 'PATCH',
       headers: { ...apiHeaders(), 'Content-Type': 'application/json' },

@@ -174,8 +174,8 @@ public class ToolsAdminController {
         return R.ok();
     }
 
-    @PatchMapping("/tools/sets/plan-workflow/members/{toolId}")
-    public R<Void> patchPlanWorkflowMemberCritical(
+    @PatchMapping("/tools/sets/task/members/{toolId}")
+    public R<Void> patchTaskMemberCritical(
             @PathVariable String toolId,
             @RequestParam(required = false) String tenantId,
             @RequestBody ToolSetMemberCriticalPatchRequest request) {
