@@ -39,6 +39,13 @@ const selectedCode = ref<string | null>(null)
 const selectedScene = computed(() =>
   scenes.value.find(s => s.bizScene === selectedCode.value) ?? null,
 )
+/** description 可空；v-model 目标须为可写成员，用 getter/setter 归一化 */
+const sceneDescription = computed({
+  get: () => selectedScene.value?.description ?? '',
+  set: (v: string) => {
+    if (selectedScene.value) selectedScene.value.description = v
+  },
+})
 const scenePolicies = computed(() =>
   policies.value.filter(p => p.bizScene === selectedCode.value),
 )
@@ -175,7 +182,7 @@ onMounted(() => {
                 <NInput v-model:value="selectedScene.displayName" class="sun-field" />
               </NFormItem>
               <NFormItem label="描述">
-                <NInput v-model:value="selectedScene.description ?? ''" class="sun-field" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
+                <NInput v-model:value="sceneDescription" class="sun-field" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
               </NFormItem>
               <NFormItem label="状态">
                 <NSelect v-model:value="selectedScene.status" class="sun-field" :options="statusOptions" size="small" />
