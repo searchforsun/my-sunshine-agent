@@ -38,9 +38,35 @@ public class PlannerHarnessExecutor {
         if (!StringUtils.hasText(notebook.getSessionId())) {
             notebook.setSessionId(sessionId);
         }
+        applyFollowUpGoalChange(notebook, resolveQuery(ctx));
         return loop.run(ctx, notebook)
                 .doFinally(signal -> store.renewTtl(sessionId))
                 .onErrorResume(e -> fallbackOrPropagate(ctx, e));
+    }
+
+    /**
+     * S6 ③：本轮 query 与 notebook 目标不一致 → 更新 goal，非 done 任务标 obsolete。
+     */
+    static void applyFollowUpGoalChange(PlanNotebook notebook, String newQuery) {
+        if (notebook == null) {
+            return;
+        }
+        String next = newQuery != null ? newQuery.strip() : "";
+        String prev = StringUtils.hasText(notebook.getOriginalGoal())
+                ? notebook.getOriginalGoal().strip()
+                : (notebook.getUserQuery() != null ? notebook.getUserQuery().strip() : "");
+        if (next.isEmpty() || next.equals(prev)) {
+            return;
+        }
+        notebook.setOriginalGoal(next);
+        notebook.setUserQuery(next);
+        for (TaskItem item : List.copyOf(notebook.getTaskQueue())) {
+            if (item == null || "done".equals(item.status())) {
+                continue;
+            }
+            WorkerDispatchTool.replaceTaskStatus(notebook, item.taskId(), "obsolete");
+        }
+        notebook.setReplanCount(notebook.getReplanCount() + 1);
     }
 
     private Flux<StreamToken> fallbackOrPropagate(ExecutionStreamContext ctx, Throwable error) {

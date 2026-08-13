@@ -106,6 +106,45 @@ public class PlanExecutionAuditService {
                 "reason", reason));
     }
 
+    public void workerStarted(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String taskId,
+            String label) {
+        publish(conversationId, messageId, userId, tenantId, "plan.worker_started", planId, Map.of(
+                "taskId", taskId != null ? taskId : "",
+                "label", label != null ? label : ""));
+    }
+
+    public void workerCompleted(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String taskId,
+            String summary) {
+        publish(conversationId, messageId, userId, tenantId, "plan.worker_completed", planId, Map.of(
+                "taskId", taskId != null ? taskId : "",
+                "summary", summary != null ? summary : ""));
+    }
+
+    public void workerFailed(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String taskId,
+            String error) {
+        publish(conversationId, messageId, userId, tenantId, "plan.worker_failed", planId, Map.of(
+                "taskId", taskId != null ? taskId : "",
+                "error", error != null ? error : ""));
+    }
+
     private void publish(
             String conversationId,
             String messageId,

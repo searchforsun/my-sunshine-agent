@@ -5,8 +5,10 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +41,8 @@ class PlannerHarnessLoopTest {
     private PlanNotebookStore store;
     @Mock
     private ToolSetResolver toolSetResolver;
+    @Mock
+    private PlanExecutionAuditService planExecutionAuditService;
 
     private AgentExecutionProperties executionProperties;
     private PlannerHarnessLoop loop;
@@ -52,7 +56,8 @@ class PlannerHarnessLoopTest {
         org.mockito.Mockito.lenient().when(toolSetResolver.resolveReactTools(any()))
                 .thenReturn(List.of("sandbox__exec"));
         loop = new PlannerHarnessLoop(
-                planner, workerDispatchTool, store, executionProperties, toolSetResolver);
+                planner, workerDispatchTool, store, executionProperties, toolSetResolver,
+                planExecutionAuditService);
     }
 
     @AfterEach
@@ -286,6 +291,87 @@ class PlannerHarnessLoopTest {
         nb.setGoalCompletion(1.0);
         assertThat(PlannerHarnessLoop.resolveAssessDecision(nb))
                 .isEqualTo(PlannerHarnessLoop.AssessDecision.ANSWER);
+    }
+
+    @Test
+    void emitsTasksStepAfterPlanWithMetadata() {
+        PlanNotebook notebook = PlanNotebook.create("goal", "用户问", "task", 12, 24);
+        notebook.setSessionId("sess-tasks");
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.getTaskQueue().clear();
+            nb.getTaskQueue().add(new TaskItem(
+                    "t1", "一步", "pending", List.of(), "", "", ""));
+            return null;
+        }).when(planner).planNext(any(), any());
+        doAnswer(inv -> {
+            String taskId = inv.getArgument(0);
+            WorkerDispatchTool.DispatchSession session = inv.getArgument(1);
+            WorkerDispatchTool.replaceTaskStatus(session.notebook(), taskId, "done");
+            session.notebook().setTotalTasksCompleted(1);
+            return "handoff：完成摘要";
+        }).when(workerDispatchTool).dispatchWorker(anyString(), any(WorkerDispatchTool.DispatchSession.class));
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.setGoalCompletion(1.0);
+            nb.setNextDirection("answer");
+            return null;
+        }).when(planner).selfAssess(any(), any());
+        when(planner.synthesizeAnswer(any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("综合")));
+
+        List<StreamToken> tokens = loop.run(streamCtx(), notebook).collectList().block();
+        ProcessingStep tasks = tokens.stream()
+                .filter(StreamToken::isStep)
+                .map(StreamToken::step)
+                .filter(s -> "tasks".equals(s.id()))
+                .findFirst()
+                .orElse(null);
+        assertThat(tasks).isNotNull();
+        assertThat(tasks.phase()).isEqualTo("tasks");
+        assertThat(tasks.metadata()).isNotNull();
+        assertThat(tasks.metadata().tasks()).isNotEmpty();
+        assertThat(tasks.metadata().taskRevision()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void workerDoneStepCarriesHandoffNotBareStatus() {
+        PlanNotebook notebook = PlanNotebook.create("goal", "用户问", "task", 12, 24);
+        notebook.setSessionId("sess-handoff");
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.getTaskQueue().clear();
+            nb.getTaskQueue().add(new TaskItem(
+                    "t1", "一步", "pending", List.of(), "", "", ""));
+            return null;
+        }).when(planner).planNext(any(), any());
+        doAnswer(inv -> {
+            String taskId = inv.getArgument(0);
+            WorkerDispatchTool.DispatchSession session = inv.getArgument(1);
+            WorkerDispatchTool.replaceTaskStatus(session.notebook(), taskId, "done");
+            session.notebook().setTotalTasksCompleted(1);
+            return "handoff：完成摘要";
+        }).when(workerDispatchTool).dispatchWorker(anyString(), any(WorkerDispatchTool.DispatchSession.class));
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.setGoalCompletion(1.0);
+            nb.setNextDirection("answer");
+            return null;
+        }).when(planner).selfAssess(any(), any());
+        when(planner.synthesizeAnswer(any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("综合")));
+
+        List<StreamToken> tokens = loop.run(streamCtx(), notebook).collectList().block();
+        ProcessingStep w = tokens.stream()
+                .filter(StreamToken::isStep)
+                .map(StreamToken::step)
+                .filter(s -> "worker-t1".equals(s.id()))
+                .filter(s -> "done".equals(s.lifecycle()))
+                .findFirst()
+                .orElse(null);
+        assertThat(w).isNotNull();
+        assertThat(w.detail()).isNotEqualTo("done");
+        assertThat(w.detail()).contains("摘要");
     }
 
     private static ExecutionStreamContext streamCtx() {

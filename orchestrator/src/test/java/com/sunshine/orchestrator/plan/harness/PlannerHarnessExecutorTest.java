@@ -89,7 +89,7 @@ class PlannerHarnessExecutorTest {
 
     @Test
     void execute_reusesLoadedNotebook() {
-        PlanNotebook existing = PlanNotebook.create("旧目标", "旧目标", null, 8, 16);
+        PlanNotebook existing = PlanNotebook.create("分两步规划", "分两步规划", null, 8, 16);
         existing.setSessionId("conv-1");
         when(store.load("conv-1")).thenReturn(Optional.of(existing));
         when(loop.run(any(), eq(existing))).thenReturn(Flux.just(StreamToken.content("resume")));
@@ -98,6 +98,24 @@ class PlannerHarnessExecutorTest {
 
         verify(loop).run(any(), eq(existing));
         verify(store).renewTtl("conv-1");
+        assertThat(existing.getOriginalGoal()).isEqualTo("分两步规划");
+    }
+
+    @Test
+    void followUpQueryMarksPendingObsoleteAndUpdatesGoal() {
+        PlanNotebook existing = PlanNotebook.create("旧目标", "旧目标", "chat", 12, 24);
+        existing.setSessionId("c1");
+        existing.getTaskQueue().add(new TaskItem("t1", "A", "done", List.of(), null, null, null));
+        existing.getTaskQueue().add(new TaskItem("t2", "B", "pending", List.of(), null, null, null));
+        when(store.load("c1")).thenReturn(Optional.of(existing));
+        when(loop.run(any(), eq(existing))).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        executor.execute(ctxWithQuery("c1", "msg-1", "新目标：竞品改为 B 公司")).collectList().block();
+
+        assertThat(existing.getOriginalGoal()).contains("新目标");
+        assertThat(findStatus(existing, "t1")).isEqualTo("done");
+        assertThat(findStatus(existing, "t2")).isEqualTo("obsolete");
+        assertThat(existing.getReplanCount()).isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -133,15 +151,29 @@ class PlannerHarnessExecutorTest {
     }
 
     private static ExecutionStreamContext ctx(String conversationId, String assistantMsgId) {
+        return ctxWithQuery(conversationId, assistantMsgId, "分两步规划");
+    }
+
+    private static ExecutionStreamContext ctxWithQuery(
+            String conversationId, String assistantMsgId, String query) {
         return new ExecutionStreamContext(
                 conversationId,
                 assistantMsgId,
-                "分两步规划",
+                query,
                 AssembledContext.empty(),
                 null,
                 null,
                 "u1",
                 "default",
                 new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "test"));
+    }
+
+    private static String findStatus(PlanNotebook nb, String taskId) {
+        for (TaskItem item : nb.getTaskQueue()) {
+            if (taskId.equals(item.taskId())) {
+                return item.status();
+            }
+        }
+        return null;
     }
 }

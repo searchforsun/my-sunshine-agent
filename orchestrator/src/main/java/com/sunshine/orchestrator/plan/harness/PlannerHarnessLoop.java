@@ -5,6 +5,9 @@ import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
+import com.sunshine.orchestrator.plan.PlanExecutionAuditService;
+import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,6 +23,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Planner-Executor 单一循环：Plan → Validate → Execute → Assess + 预算熔断。
@@ -41,18 +45,22 @@ public class PlannerHarnessLoop {
     private final PlanNotebookStore store;
     private final AgentExecutionProperties executionProperties;
     private final ToolSetResolver toolSetResolver;
+    private final PlanExecutionAuditService planExecutionAuditService;
 
     public Flux<StreamToken> run(ExecutionStreamContext ctx, PlanNotebook notebook) {
         return Flux.defer(() -> {
             Instant startedAt = Instant.now();
             int wave = 0;
+            AtomicInteger taskBoardRevision = new AtomicInteger(0);
             List<StreamToken> emitted = new ArrayList<>();
             GoalAlignmentValidator alignmentValidator = new GoalAlignmentValidator(
                     executionProperties.getHarness().getStaleRoundsThreshold());
-            // 与 HarnessPlanner.runId 区分：Loop 直调 Worker 用独立 parentRunId，避免与 assistantMsgId 碰撞
             String loopRunId = "harness-loop-" + (ctx != null && StringUtils.hasText(ctx.assistantMsgId())
                     ? ctx.assistantMsgId()
                     : UUID.randomUUID());
+            String auditPlanId = "harness:" + (StringUtils.hasText(notebook.getSessionId())
+                    ? notebook.getSessionId()
+                    : loopRunId);
             while (true) {
                 if (budgetExhausted(notebook, startedAt, wave)) {
                     log.info("[PlannerHarnessLoop] 预算熔断 session={} wave={} round={} replans={} tasks={}",
@@ -87,17 +95,27 @@ public class PlannerHarnessLoop {
                 emitted.add(StreamToken.step(ProcessingStep.done(
                         planStepId, "plan", "规划 R" + wave,
                         summarizeQueue(notebook))));
+                emitted.add(tasksSnapshot(notebook, taskBoardRevision.incrementAndGet()));
                 boolean workerFailedExhausted = false;
                 for (TaskItem ready : selectReadyPendingTasks(notebook)) {
                     String workerStepId = "worker-" + ready.taskId();
                     emitted.add(StreamToken.step(ProcessingStep.running(
                             workerStepId, "worker", ready.label())));
-                    boolean ok = executeTaskWithRetries(notebook, ctx, ready.taskId(), loopRunId);
-                    TaskItem after = findTask(notebook, ready.taskId());
-                    String detail = after != null ? after.status() : "missing";
+                    auditWorkerStarted(ctx, auditPlanId, ready);
+                    WorkerOutcome outcome = executeTaskWithRetries(
+                            notebook, ctx, ready.taskId(), loopRunId);
+                    String detail = StringUtils.hasText(outcome.detail())
+                            ? outcome.detail()
+                            : (findTask(notebook, ready.taskId()) != null
+                            ? findTask(notebook, ready.taskId()).status()
+                            : "missing");
                     emitted.add(StreamToken.step(ProcessingStep.done(
                             workerStepId, "worker", ready.label(), detail)));
-                    if (!ok) {
+                    emitted.add(tasksSnapshot(notebook, taskBoardRevision.incrementAndGet()));
+                    if (outcome.ok()) {
+                        auditWorkerCompleted(ctx, auditPlanId, ready.taskId(), detail);
+                    } else {
+                        auditWorkerFailed(ctx, auditPlanId, ready.taskId(), detail);
                         workerFailedExhausted = true;
                         break;
                     }
@@ -122,7 +140,6 @@ public class PlannerHarnessLoop {
                 } else {
                     notebook.setStaleRounds(0);
                 }
-                // DEVIATED/STUCK 必须在 Execute+Assess 之后：历史低完成度不能饿死本波 Worker
                 GoalAlignmentValidator.Alignment alignment = alignmentValidator.assess(notebook);
                 if (alignment == GoalAlignmentValidator.Alignment.STUCK) {
                     log.info("[PlannerHarnessLoop] GoalAlignment STUCK → synthesize");
@@ -159,6 +176,9 @@ public class PlannerHarnessLoop {
         ANSWER
     }
 
+    record WorkerOutcome(boolean ok, String detail) {
+    }
+
     /**
      * Catalog 契约：{@code nextDirection = continue|replan|answer}；
      * {@code done} 视为 answer 别名；空白时仅当 goalCompletion≥1.0 视为完成。
@@ -178,35 +198,47 @@ public class PlannerHarnessLoop {
         return AssessDecision.CONTINUE;
     }
 
-    private boolean executeTaskWithRetries(
+    private StreamToken tasksSnapshot(PlanNotebook nb, int revision) {
+        List<TaskBoardItemView> items = HarnessTaskBoardProjector.project(nb);
+        String progress = revision + ":" + items.size();
+        StepMetadata meta = StepMetadata.withTasks(items, revision, progress);
+        return StreamToken.step(ProcessingStep.done("tasks", "tasks", "任务看板", null)
+                .withMetadata(meta));
+    }
+
+    private WorkerOutcome executeTaskWithRetries(
             PlanNotebook notebook, ExecutionStreamContext ctx, String taskId, String loopRunId) {
         int maxRetries = Math.max(0, executionProperties.getHarness().getTask().getMaxRetries());
         int maxAttempts = maxRetries + 1;
         WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, loopRunId);
+        String lastDetail = null;
         try {
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 TaskItem current = findTask(notebook, taskId);
                 if (current == null) {
-                    return false;
+                    return new WorkerOutcome(false, "missing");
                 }
                 if ("done".equals(current.status())) {
-                    return true;
+                    return new WorkerOutcome(true,
+                            StringUtils.hasText(lastDetail) ? lastDetail : "done");
                 }
                 if (!"pending".equals(current.status()) && !"fail".equals(current.status())) {
-                    return "done".equals(current.status());
+                    return new WorkerOutcome(
+                            "done".equals(current.status()),
+                            current.status());
                 }
                 if ("fail".equals(current.status())) {
                     WorkerDispatchTool.replaceTaskStatus(notebook, taskId, "pending");
                 }
-                workerDispatchTool.dispatchWorker(taskId, session);
+                lastDetail = workerDispatchTool.dispatchWorker(taskId, session);
                 TaskItem after = findTask(notebook, taskId);
                 if (after != null && "done".equals(after.status())) {
-                    return true;
+                    return new WorkerOutcome(true, lastDetail);
                 }
                 log.warn("[PlannerHarnessLoop] Worker 失败 taskId={} attempt={}/{}",
                         taskId, attempt, maxAttempts);
             }
-            return false;
+            return new WorkerOutcome(false, lastDetail != null ? lastDetail : "fail");
         } finally {
             WorkerDispatchTool.clearSession(session);
         }
@@ -227,6 +259,50 @@ public class PlannerHarnessLoop {
                 0);
         WorkerDispatchTool.bindSession(session);
         return session;
+    }
+
+    private void auditWorkerStarted(ExecutionStreamContext ctx, String planId, TaskItem task) {
+        if (planExecutionAuditService == null || task == null) {
+            return;
+        }
+        planExecutionAuditService.workerStarted(
+                ctx != null ? ctx.conversationId() : null,
+                ctx != null ? ctx.assistantMsgId() : null,
+                ctx != null ? ctx.userId() : null,
+                ctx != null ? ctx.tenantId() : null,
+                planId,
+                task.taskId(),
+                task.label());
+    }
+
+    private void auditWorkerCompleted(
+            ExecutionStreamContext ctx, String planId, String taskId, String summary) {
+        if (planExecutionAuditService == null) {
+            return;
+        }
+        planExecutionAuditService.workerCompleted(
+                ctx != null ? ctx.conversationId() : null,
+                ctx != null ? ctx.assistantMsgId() : null,
+                ctx != null ? ctx.userId() : null,
+                ctx != null ? ctx.tenantId() : null,
+                planId,
+                taskId,
+                summary);
+    }
+
+    private void auditWorkerFailed(
+            ExecutionStreamContext ctx, String planId, String taskId, String error) {
+        if (planExecutionAuditService == null) {
+            return;
+        }
+        planExecutionAuditService.workerFailed(
+                ctx != null ? ctx.conversationId() : null,
+                ctx != null ? ctx.assistantMsgId() : null,
+                ctx != null ? ctx.userId() : null,
+                ctx != null ? ctx.tenantId() : null,
+                planId,
+                taskId,
+                error);
     }
 
     static List<TaskItem> selectReadyPendingTasks(PlanNotebook notebook) {
@@ -262,7 +338,6 @@ public class PlannerHarnessLoop {
                 && Duration.between(startedAt, Instant.now()).toMillis() >= harness.getMaxDurationMs()) {
             return true;
         }
-        // maxRounds = Plan 波次上限（wave），非 Worker RoundRecord 条数
         int maxRounds = notebook.getMaxRounds() > 0 ? notebook.getMaxRounds() : harness.getMaxRounds();
         if (maxRounds > 0 && wave >= maxRounds) {
             return true;
