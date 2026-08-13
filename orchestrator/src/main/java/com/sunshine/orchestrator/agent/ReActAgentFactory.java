@@ -193,6 +193,8 @@ public class ReActAgentFactory {
             return dynamicToolkitFactory.buildForSubAgent(
                     request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
         }
+        // Task 8：PLANNER toolkit 组装后须调用 WorkerDispatchTool.registerIntoPlannerToolkit(tk)
+        // （dispatch_worker 仅 PLANNER；勿注入 MAIN/SUB）
         return dynamicToolkitFactory.build(request.tenantId(), request.skillId(), request.userId());
     }
 
