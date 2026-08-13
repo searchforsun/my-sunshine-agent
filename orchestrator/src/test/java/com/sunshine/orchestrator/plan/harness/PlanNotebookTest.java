@@ -34,11 +34,24 @@ class PlanNotebookTest {
         nb.setSessionId("sess-1");
         nb.setGoalCompletion(0.5);
         nb.getTaskQueue().add(new TaskItem("t1", "label", "pending", List.of(), null, null, null));
-        PlanNotebook restored = mapper.readValue(mapper.writeValueAsString(nb), PlanNotebook.class);
+        String json = mapper.writeValueAsString(nb);
+        assertThat(json).contains("\"kind\"").doesNotContain("\"scene\"");
+        PlanNotebook restored = mapper.readValue(json, PlanNotebook.class);
         assertThat(restored.getOriginalGoal()).isEqualTo("goal");
+        assertThat(restored.getKind()).isEqualTo("task");
         assertThat(restored.getSessionId()).isEqualTo("sess-1");
         assertThat(restored.getTaskQueue()).hasSize(1);
         assertThat(restored.getCreatedAt()).isEqualTo(nb.getCreatedAt());
+    }
+
+    @Test
+    void jsonDeserializesLegacySceneAliasAsKind() throws Exception {
+        String legacy = "{\"originalGoal\":\"g\",\"userQuery\":\"q\",\"scene\":\"chat\","
+                + "\"taskQueue\":[],\"rounds\":[],\"goalCompletion\":0.0,\"maxRounds\":12,"
+                + "\"maxTotalTasks\":24,\"currentRound\":0,\"totalTasksCompleted\":0,"
+                + "\"staleRounds\":0,\"replanCount\":0}";
+        PlanNotebook restored = new ObjectMapper().readValue(legacy, PlanNotebook.class);
+        assertThat(restored.getKind()).isEqualTo("chat");
     }
 
     private static TaskItem task(String taskId) {

@@ -3,7 +3,7 @@
 > **日期**：2026-08-13  
 > **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
-> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`scene`/`executionMode`/`call_scene` 命名）
+> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）
 
 ---
 
@@ -31,16 +31,16 @@
 
 ---
 
-## 2. 命名三轴（硬隔离）
+## 2. 命名四轴（硬隔离）
 
 | 字段 | 取值示例 | 含义 | 定责 |
 |------|----------|------|------|
-| 产品 `scene` / `kind` | `chat` \| `task` | 会话类型 | 用户选择 |
+| **`kind`** | `chat` \| `task` | 会话形态（记忆闸门） | 用户 / 会话；**旧名 `scene` 废弃** |
 | `executionMode` | `fast` \| `pro` \| `workflow` | 执行器 | 用户选择 |
-| **`biz_scene`** | `refund` / `contract_approve` / `ticket` / … | **业务场景编码** | **由被召回的 Skill / 子 Agent 元数据带出**（见 §2.1）；禁止运行时 AI 发明新码 |
-| `call_scene` | `plan` / `rewrite` / … | LLM 调用点 | orchestrator 注入 |
+| **`biz_scene`** | `refund` / `contract_approve` / `ticket` / … | **业务域编码** | **由被召回的 Skill / 子 Agent 元数据带出**（见 §2.1）；禁止运行时 AI 发明新码 |
+| **`callSite`**（`call_site`） | `plan` / `rewrite` / … | LLM 调用点 | orchestrator 注入；**旧名 `call_scene` 废弃** |
 
-**禁止**把 `biz_scene` 写入 `scene` 或 `call_scene` 字段。
+**禁止**把 `biz_scene` 写入 `kind` 或 `callSite`。**禁止**再用裸词「scene」同时指会话形态、业务域或调用点。
 
 ### 2.1 `biz_scene` 解析（简化 · 无用户介入）
 
@@ -77,7 +77,7 @@
 
 > **现状缺口**：`ChatStreamContextFactory` 在路由**之前**同步跑完 `ContextAssembler`（L1+L2+L3+guide），预召回几乎全串行。本层要求 **先 Skill/Agent，再结构化业务记忆**，必须改时序；并行组用于降延迟，不改变依赖边。
 
-**命名勿混**：意图链 L0–L3（收资源）≠ 记忆 L1–L5（装上下文）≠ 产品 `scene` ≠ `biz_scene`。
+**命名勿混**：意图链 L0–L3（收资源）≠ 记忆 L1–L5（装上下文）≠ 产品 `kind` ≠ `biz_scene` ≠ `callSite`。
 
 **目标顺序**：
 
@@ -131,7 +131,7 @@
 1. **Policy / 场景偏好**：视为低频结构化块（类 Tier 0/1），**不进** L1 Near/Mid/Far 折叠；渲染顺序固定，禁止每轮重排中段。  
 2. **任务板详情**：随工具回写会变 → 按 **content-hash** 仅在变更时改块（对齐 T0 降频）；或置于 query 前动态尾段，避免无意义打穿整段 KV。  
 3. **L3**：保持「绝对尾部动态段」语义（五层 §7.5）；§2.2 方案 A（路由后再召回）与此一致，优于路由前灌 L3。  
-4. **Skill sticky**：同 skill 粘连 → `biz_scene` 稳定 → Policy/偏好前缀可命中缓存；换 skill 导致 scene 变属**允许的一次 prefix 重建**（类 overlay 切换，C3），禁止无 sticky 时每轮乱跳 scene。  
+4. **Skill 触发态轻 sticky**（[v3.1](./2026-08-12-skill-sticky-process-chain-design.md)）：粘的是 **triggered** `skillIds`（非可发现全集）→ `biz_scene` 更稳；换**触发** skill 导致 **biz_scene** 变属**允许的一次 prefix 重建**（C3）。可发现目录变化不视为业务域切换。  
 5. **Budget**：超限时仍 L3→Far→Mid；**Policy 与活跃任务权威字段不因 Budget 静默丢弃**（可截任务目录，不可丢 Policy 红线）。
 
 **分期关系**：压缩点机制一期优先 task（五层 v17）；本层一期优先 **企业 chat**。chat 二期若上压缩点，直接复用上表挂载位，不必重做业务权威模型。

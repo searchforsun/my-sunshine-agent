@@ -89,10 +89,10 @@
 | 子任务 | 内容 |
 |--------|------|
 | **5.2.1** | `TokenUsageCollector`（llm-gateway）：非流式直接取 `usage`；流式从末尾 chunk `usage` 提取，缺失时按 messages 估算（标记 `estimated=true`） |
-| **5.2.2** | 写 RocketMQ topic `llm-usage`（复用现有 MQ 基建，与审计同模式）；消费端 `llm_usage_record` 落 MySQL（新增 `19-sunshine-ops.sql`，一项目一文件）。**v2：记录 `call_scene`（来自 5.3 注入，见 §5.3.2）+ `run_id`/`round_id`**（harness 多次 LLM 调用归集到同一 run） |
-| **5.2.3** | 聚合任务（xxl-job，复用 `03-xxl-job-tables.sql` 基建）：小时/日 级 `llm_usage_daily`（tenant/model/call_scene → tokens、calls、成本估算） |
+| **5.2.2** | 写 RocketMQ topic `llm-usage`；消费端 `llm_usage_record` 落 MySQL（`19-sunshine-ops.sql`）。记录 **`call_site`**（旧称 call_scene；来自 5.3）+ `run_id`/`round_id` |
+| **5.2.3** | 聚合任务：小时/日级 `llm_usage_daily`（tenant/model/`call_site` → tokens、calls、成本估算） |
 | **5.2.4** | 租户配额表 `tenant_quota`（月 token 上限/模型白名单）+ llm-gateway 请求前校验切面（超限 429 + 明确错误码） |
-| **5.2.5** | `/ops` 用量 Tab：租户×模型用量排行、日趋势、成本估算（每模型 单价配置存 Nacos 非提示词参数）；**v2：加 call_scene × run 维度**（harness 单次任务总成本可查） |
+| **5.2.5** | `/ops` 用量 Tab：租户×模型用量排行、日趋势、成本估算；加 **call_site × run** 维度 |
 
 **检查门**：一次 ReAct 对话后 `llm_usage_record` 有全链路各次调用记录（含 tool 循环内多次 LLM 调用）；超限租户收到 429；用量页数据与记录一致。
 
@@ -103,19 +103,19 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：`call_scene`（chat\|plan\|plan-phase\|worker\|tool-call\|rewrite\|summarize\|subagent）→ 模型池（按优先级 + 权重）+ 约束（max_cost_per_1k、max_latency_ms）。**v2：命名用 `call_scene`，与用户场景 `scene` 隔离**（见 §5.3.2 注记）；枚举**扩展 `worker`**（harness 分层模型，见下）；**v8：扩展 `plan-phase`**（HIERARCHICAL 阶段细拆，见 §5.3.2 注记）；**v9（S1）：删除 `evaluator` 枚举**——独立 Evaluator 不实现，自判走 `call_scene=plan` |
-| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`call_scene`** 扩展字段（来源：ExecutionDispatcher 模式 + 调用点，如 QueryRewriteService=rewrite、Planner=plan、阶段细拆=plan-phase、Worker=worker、**Planner 自判=plan**）；BFF/Gateway 透传，客户端不得自填（同 `x-user-id` 约定） |
+| **5.3.1** | `model_route_policy` 表（`19-sunshine-ops.sql`）：主键列 **`call_site`**（旧稿 `call_scene`；取值 chat\|plan\|worker\|tool-call\|rewrite\|summarize\|subagent；**无** plan-phase/evaluator）→ 模型池 + 约束。与会话形态 **`kind`**、业务域 `biz_scene` 隔离（见 [routing 命名四轴](./2026-07-29-unified-routing-design.md)） |
+| **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`callSite`**（JSON 亦可 `call_site`；来源：调用点，如 rewrite / plan / worker / self-assess）；BFF/Gateway 透传，客户端不得自填。过渡期可读旧键 `call_scene` |
 | **5.3.3** | `ModelRouter` 扩展：`model=auto` 或缺省时查策略表选模型，选中结果写 trace 头便于观测；保留显式指定 model 直路由 + 现有降级链 |
 | **5.3.4** | `/tools` 或 `/ops` 增加路由策略编辑页（复用 `execution_mode_policy` 编辑模式） |
-| **5.3.5** | Grafana 面板：`call_scene` × model 的调用量/时延/成本（接 5.2 数据） |
+| **5.3.5** | Grafana 面板：`call_site` × model 的调用量/时延/成本（接 5.2 数据） |
 
-> **v2 注记（scene 命名隔离）**：路由链已有 `RoutingResult.scene`（用户选择 chat/task，见 [unified-routing](./2026-07-29-unified-routing-design.md)），与 llm-gateway 的调用点语义**互不冲突但不可同名**。本 spec 明确：`scene` = 用户场景（用户选择，贯穿链路），`call_scene` = LLM 调用点（orchestrator 注入，用于模型路由）。**禁止**复用 `scene` 字段承载调用点，避免 harness 上线后（需同时传 task + worker 两个维度）字段冲突。
+> **v2 注记（命名隔离 · 2026-08-13 更新）**：会话形态用 **`kind`**（chat/task；旧 `RoutingResult.scene` 废弃）；llm-gateway 模型路由用 **`callSite` / `call_site`**（旧 `call_scene` 废弃）。业务域用 `biz_scene`。三者 + `executionMode` 硬隔离。**禁止**复用任一字段承载另一轴语义。
 >
 > **v2 注记（harness 模型分层）**：harness 有 4 类 LLM 调用——Planner（=plan，强模型）、Worker（**forWorker 内部多次 LLM 调用**，中等快模型）、Evaluator（Chat 模式独立 LLM，快模型）、普通 tool-call。5.3.1 枚举扩展 `worker`/`evaluator` 后，策略表可配置「Planner → 强模型、Worker → 快模型」，实现 harness 的模型成本分层；否则 Worker 只能沿用 `plan` 场景，无法按成本分流。
 >
 > **v9 注记（S1/S5 修正 harness 模型分层）**：[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator——调用点收敛为 **Planner（=plan，强模型）、Worker（=worker，快模型）、阶段细拆（=plan-phase，快模型）、Planner 自判（=plan，与规划同调用点）**。策略表配置「Planner → 强模型、Worker/plan-phase → 快模型」即可覆盖 harness 全部调用；`evaluator` 枚举不建。
 >
-> **v9 注记（取代 v8 `plan-phase`）**：rebuild S5 v4 **不建** `call_scene=plan-phase`；Planner 统一 `call_scene=plan`。若需强弱模型分层，走本文件 5.3 场景路由策略表（按角色/负载），**不**绑分解模式。
+> **v9 注记（取代 v8 `plan-phase`）**：rebuild S5 v4 **不建** `callSite=plan-phase`；Planner 统一 `callSite=plan`。若需强弱模型分层，走本文件 5.3 策略表（按角色/负载），**不**绑分解模式。
 
 **检查门**：`model=auto` 时 rewrite 请求路由到轻量模型、plan 请求路由到强模型（策略表驱动）；改策略表热生效；显式 model 行为不回归（`phase2_agent_demo.py --suite all` PASS）。
 
@@ -236,10 +236,10 @@
 |------|------|
 | `chat_message_feedback`（含 `run_id`/`round_id` v2） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
 | `harness_eval_result`（v2：task PASS/FAIL 落库；**v9 S1：数据源改为 Planner 自判**） | `docker/mysql/init/11-sunshine-orchestrator.sql` 追加 |
-| `19-sunshine-ops.sql`（新建）：`llm_usage_record`（含 `call_scene`/`run_id`/`round_id` v2）/ `llm_usage_daily` / `tenant_quota` / `model_route_policy`（`call_scene` 主键）/ `api_key` / `optimization_proposal` | `docker/mysql/init/`（一项目一文件，禁 Flyway） |
+| `19-sunshine-ops.sql`（新建）：`llm_usage_record`（含 `call_site`/`run_id`/`round_id`）/ `llm_usage_daily` / `tenant_quota` / `model_route_policy`（`call_site` 主键）/ `api_key` / `optimization_proposal` | `docker/mysql/init/`（一项目一文件，禁 Flyway） |
 | 前端新页 `/ops`（Badcase/用量/密钥/优化 Tab）+ 路由策略编辑 | `sunshine-ui/src/views/OpsView.vue`（Codex 简约风格，`--sun-*` 变量） |
-| llm-gateway | `TokenUsageCollector`、MQ 生产者、配额切面、`ModelRouter` 场景路由（`call_scene`） |
-| orchestrator | Badcase API、`call_scene` 注入、`ToolSetResolver` retrieval 分层模式、`PromptComposer` 灰度分流 |
+| llm-gateway | `TokenUsageCollector`、MQ 生产者、配额切面、`ModelRouter`（按 `call_site`） |
+| orchestrator | Badcase API、`callSite` 注入、`ToolSetResolver` retrieval 分层模式、`PromptComposer` 灰度分流 |
 | 新 Nacos 配置 | 模型单价、限流规则、`agent.tool.inject` 模式开关（非提示词参数，走 `docs/nacos/*.yaml` + `sync_nacos.py`） |
 
 ---
@@ -254,7 +254,7 @@
 | 5.7 分流不稳定导致指标不可比 | conversation_id 哈希稳定分流；同会话/同 run 不换版本 |
 | 5.4 自动优化引入回归 | MVP 强制人工确认发布；提案必须附复评对比报告 |
 | 开放 API 鉴权攻击面扩大 | key 哈希存储、scope 最小化、Sentinel 按 key 限流、全量审计 |
-| `call_scene` 与用户 `scene` 混用（v2） | 命名隔离（§5.3.2 注记）；BFF/Gateway 只透传不自填 |
+| `call_scene` 与用户 `scene` 混用（v2） | **已决议改名**：`kind` + `callSite`；过渡读旧键后删除（§5.3.2 注记 / D6） |
 | harness 计量粒度不足导致点踩无法归因（v2） | feedback/usage 预置 `run_id`+`round_id` + 自判结果落库（§5.1 注记；**v9 S1 数据源为 Planner 自判**） |
 
 ---
@@ -266,8 +266,8 @@
 - **D3（不做通用多 Agent 通信总线）**：委派（spawn_subagent）/ 会诊（peer-collab）/ 编排（workflow）三范式已覆盖当前场景；通用消息总线在出现真实"数十 Agent 自由组网"需求前不预建。
 - **D4（Optimizer 半自动）**：MVP 每次发布必须人工确认，与平台 HITL 哲学一致；全自动调优待 5.4 闭环稳定后再评估。
 - **D5（AS2 遗留先行）**：启动 5.x 前需先人工验收 AS2 迁移遗留项（e2e 3 例选择器漂移修复、ReAct 停→续跑 / kill-15 重启恢复交互式验收）。
-- **D6（scene / call_scene 命名隔离，v2）**：`scene` 保留用户场景语义（unified-routing `RoutingResult.scene`）；llm-gateway 模型路由用 **`call_scene`**（调用点）。避免 harness 上线后同名字段承载两义。
+- **D6（kind / callSite 命名隔离，v2→2026-08-13）**：会话形态用 `kind`（废 `scene=chat|task`）；llm-gateway 模型路由用 **`callSite`/`call_site`**（废 `call_scene`）。避免同名字段两义；与 `biz_scene`、`executionMode` 四轴正交（见 [routing v6](./2026-07-29-unified-routing-design.md) 命名四轴）。
 - **D7（5.5 工具分层注入，v2）**：工具名列表进 Tier 0 静态 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 二选一不并存。对齐五层 spec §5.5.3 前缀稳定性。
 - **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，task 评估结果落 `harness_eval_result`（**v9 S1：数据源为 Planner 自判，字段语义不变**）；phase5 阶段定死字段，harness 直接写入。
 - **D9（phase5 触发拆分，v2）**：5.2/5.3/5.5 随 harness 前置启动，5.1/5.4/5.7 等 harness 稳定后接，5.6 按需。
-- **D10（`plan-phase` · v8 历史 · v9 作废）**：原 HIERARCHICAL 细拆调用点；rebuild S5 v4 后 **不实现** `plan-phase`，统一 `call_scene=plan`（强弱分层见 5.3）。
+- **D10（`plan-phase` · v8 历史 · v9 作废）**：原 HIERARCHICAL 细拆调用点；rebuild S5 v4 后 **不实现** `plan-phase`，统一 `callSite=plan`（强弱分层见 5.3）。

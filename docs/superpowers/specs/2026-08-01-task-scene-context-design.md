@@ -4,9 +4,10 @@
 > **v9（2026-08-10）**：Mid「过程骨架」**schema 组装优先**（工具调用结构化压缩存储），LLM 仅补决策句；禁止默认对 tool_result 再做语义摘要（§6.5 / §6.6）。
 > **v10（2026-08-10）**：**状态保真**（§2.0）——对齐五层 §2.1；失败路径硬进 processTrail；工具关键字段 schema 白名单；`goalEpoch` 建议字段；续跑补充验收。
 > **v11（2026-08-10）**：chat 侧 Near/Mid schema **SSOT 在五层 §5.5.8**（正文为主 + 工具轮一行；非本节完整过程窗）；本节 §6.5/§6.6 仅约束 task。
-> **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 scene 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
+> **v12（2026-08-13）**：命名对齐 routing **四轴**——会话形态 SSOT=`kind`（废 `scene`）；LLM 调用点=`callSite`（废 `call_scene`）；L3 元数据列 `scene`→`kind` 迁移。正文若仍写 `scene=chat|task` 均读作 `kind`。
+> **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 kind 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
 > **v3–v7**：T0 双块 / 压缩点 / 引用化 / Near 场景差异 / `sunshine_session_search` 撞名区分等（正文仍有效，启用面以 v8 §2.2 为准）
-> **定位**：为 `kind=task` 编码场景建立区别于 chat 的上下文治理体系——对齐 Cursor Dynamic Context Discovery 与 KV Cache 经济学；压缩主目标为**续跑状态保真**（§2.0）；「项目规范」已先行落地 ✅；**执行模式轴**见 routing v6（与 `kind` 正交）
+> **定位**：为 `kind=task` 编码会话建立区别于 chat 的上下文治理体系——对齐 Cursor Dynamic Context Discovery 与 KV Cache 经济学；压缩主目标为**续跑状态保真**（§2.0）；「项目规范」已先行落地 ✅；**执行模式轴**见 routing v6（与 `kind` 正交）
 > **关联**：[unified-context-compression-design](./2026-07-31-unified-context-compression-design.md)（五层基线 ✅ / §4.5 方案 A = run 内 SSOT；§2.1 状态保真；§5.5 压缩点仍为设计稿）· [unified-routing v6](./2026-07-29-unified-routing-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板/Policy；一期主挂 chat，与本文 task 编码闸门正交）· [task-workspace-codex](./archive/2026-07-28-task-workspace-codex-design.md) · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内正交能力见五层 §4.5）
 
 ---
@@ -113,7 +114,7 @@ chat 会话（kind=chat）:
   L3 ingest → 执行（scene=chat，§6.3）
 ```
 
-**读路由（防串闸门）**——`ContextAssembler.assemble` 按 `AssembleRequest.scene` + `executionMode` 选源：
+**读路由（防串闸门）**——`ContextAssembler.assemble` 按 `AssembleRequest.kind` + `executionMode` 选源：
 
 ```
 task × fast:  W0 + T0 + P0；不注入用户 L2；不自动召回 L3
@@ -136,7 +137,7 @@ chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
 
 | 轴 | 取值 | 管什么 |
 |----|------|--------|
-| **kind / scene** | chat / task | 记忆读写闸门（§2.1）：L2 / W0 / T0 / L3 / P0 |
+| **kind / scene（过渡）** | chat / task | 记忆读写闸门（§2.1）。**SSOT 字段名 = `kind`**；`AssembleRequest.scene` / 向量元数据旧列 `scene` 迁为 `kind`（见 [routing 命名四轴](./2026-07-29-unified-routing-design.md)） |
 | **executionMode** | fast / pro / workflow | 执行器 + Tier0 overlay + 是否注入 H1；**不**改记忆库选型 |
 
 **启用面（本方案工程范围）**：
@@ -157,7 +158,7 @@ chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
 2. **工作流模式退出**本套跨轮记忆工程（无 T0/W0/processTrail/`session_search`/2+2+Far）；Near 按 chat 终态或节点抽屉语义，不套 task 过程窗。  
 3. **专业 `pro` + task**：计划/调度状态以 **H1** 为唯一 SSOT（rebuild）；**不做**与 H1 重复的重型 T0（goal/todo/processTrail 全套）。可选极薄会话备注，默认关闭。  
 4. **压缩点启用面收窄**：**优先** `kind=task` × (`fast`|`pro`)；不再以「全域同走 ReAct」为由强推 chat/workflow 同时上压缩点。  
-5. **AssembleRequest**：`scene`/`kind`/`workspaceId` 管记忆；`executionMode` 管 overlay（`mode-overlay.react` vs `planner.harness`）与 H1 开关——两字段都要透传，职责不混。
+5. **AssembleRequest**：`kind`/`workspaceId` 管记忆（废 `scene` 别名）；`executionMode` 管 overlay 与 H1——与 `callSite`、`biz_scene` 勿混。
 
 **实施优先级（v8）**：P0 隔离闸门（§2.1）→ P1 `executionMode`→overlay/H1 → P2 task×fast 压缩点（+ 可选 T0）→ P3 明确 pro 禁用重型 T0 → P4 W0 / session_search / 重组规则 / tools 分层（增强，workflow 默认不做）。
 
@@ -682,5 +683,5 @@ assistant: 短结论
 | [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | `pro`→H1 SSOT；与 T0 互斥（§6.1 v8） |
 | [task-workspace-codex](./archive/2026-07-28-task-workspace-codex-design.md) | 工作区/`kind=task` 载体 |
 | [archive/4.7.8 harness-loop](./archive/2026-07-28-harness-loop-enhancement-design.md) | **已归档**；run 内见五层 §4.5 |
-| [phase5](./phase5-operation-openness-design.md) | tools 分层注入（增强）；`call_scene`≠`scene` |
+| [phase5](./phase5-operation-openness-design.md) | tools 分层注入（增强）；`callSite`≠`kind`（旧 call_scene≠scene） |
 | `docs/implementation-plan.md` | 落地后同步进度 |

@@ -395,11 +395,12 @@ agent:
     auto-requeue-on-worker-death: true   # WF/Harness 默认 true
   execution:
     harness:
-      # 沿用 rebuild §8.1；物理执行改为 Activity 后语义不变
+      # 沿用 rebuild §8.1（v7 长负载档：4h 墙钟 / Worker 1h 等）；物理执行改为 Activity 后语义不变
       enabled: false
 ```
 
-灰度：`agent.activity.enabled`；WF 可先开，Harness/ReAct 后开。
+灰度：`agent.activity.enabled`；WF 可先开，Harness/ReAct 后开。  
+Notebook 键：`sunshine:plan:notebook:{sessionId}`（与 rebuild §5.1 v7 一致）。
 
 ---
 

@@ -1,286 +1,216 @@
-# Skill 跨轮粘性 + 软链式接续（双写 SSOT）
+# Skill 可发现 / 触发分离 + 绑定保真（行业对齐）
 
-> **状态**：📋 设计评审中 · **v2（2026-08-12）**  
-> **日期**：2026-08-12  
+> **状态**：📋 设计评审中 · **v3.1（2026-08-13）**  
+> **日期**：2026-08-12（v3 收缩 → **v3.1 加载≠触发**）  
 > **编号**：阶段四增量（路由 / Skill 会话态）  
-> **前置**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [unified-context-compression](./2026-07-31-unified-context-compression-design.md)（§5.5 压缩点 / §2.1 状态保真）· [conversation-sandbox-multi-skill](./archive/2026-07-16-conversation-sandbox-multi-skill-design.md)  
-> **一句话**：轨 A 下 Skill **跨轮 sticky**（Redis ledger + 消息完整 `RoutingResult` 双写）；**默认软链**（overlay 文案 + L2/L3 上下文召回切下一 skill，对齐 Cursor/Superpowers）；`processGraph` / `advance_skill_phase` 为**可选增强**。绑定态**不进** L1 Near/Mid/Far。
+> **前置**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) · [task-scene §7 插件/Skill 分层](./2026-08-01-task-scene-context-design.md)（名+描述静态 / 正文按需）  
+> **一句话**：**可发现**（Catalog 名+description）与 **触发**（本轮注入 overlay 的 `skillIds`）分离；**物料加载**（sandbox）与触发正交。消息存完整 `RoutingResult` + 上轮**已触发** id 轻 sticky。对齐 Cursor：context discovered, not dumped。
 
-### v2 相对 v1
+### 相对 v2 / v3
 
-| v1 | v2 |
-|----|-----|
-| Catalog `processGraph` + 元工具为接续主路径 | **默认软链**；图与元工具降为可选（§4.3） |
-| 管理页必须维护过程图 | **普通/方法包 skill 无需画图**；仅强门控场景可选配图 |
-| `skillPhase` 一等字段强依赖图 | 默认可空；仅启用可选增强时使用 |
-
-### 调研结论（Cursor / Claude Code / Superpowers）
-
-| 维度 | 业界做法 | 本设计取舍 |
-|------|----------|------------|
-| 发现/触发 | description 匹配 + 显式点名；无平台过程图 | L0 `/` + L1/L2/L3；**另增**会话 sticky ledger |
-| 跨轮延续 | 对话历史 + 每轮重匹配 | **结构化 sticky**（A+B），不靠 Mid 散文单独撑 |
-| 多 skill 链 | 正文 terminal /「invoke X」；模型自觉；**无** Cursor 内核特殊处理 | **同构软链** + L3/召回；可选图仅企业强门控 |
-| 压缩后 | 外部文件 ledger / 对话易失 | sticky ledger ∉ L1 折叠；切链信号优先结构化会话态 + description，不只靠散文 |
+| 口径 | 取舍 |
+|------|------|
+| v2 Redis ledger / 软链 / processGraph | **不做**（同 v3） |
+| v3「租户固定 ∪ 意图召回 → 一律 overlay」 | **纠正**：固定/召回默认只进**可发现集**；overlay 仅对**已触发** `skillIds` |
+| 现状 `PromptComposer.resolveSkillOverlay(skillId)` 开场灌全文 | **目标**：仅触发集灌 overlay；目录摘要另层注入 |
 
 ---
 
-## 1. 目标与非目标
+## 1. 三层语义（行业同构）
 
-### 1.1 目标
+| 层 | 含义 | 进 Prompt？ | 典型来源 |
+|----|------|-------------|----------|
+| **可发现 Discover** | Agent 知道有哪些 skill、何时该用 | **仅** `id + displayName + description`（「Use when…」） | 租户/场景启用 Catalog；可选 L2 提权排序 |
+| **触发 Trigger** | 本轮按该 skill **正文**行动 | **全文** `systemOverlay` / SKILL 正文（稳定前缀或 Tier 2） | L0 `/`；上轮已触发 sticky；极少数合规强制；高置信单点（可选） |
+| **物料 Load** | 文件在沙箱可读 | 不进 prompt；`mountSkill` → `/skills/{id}/` | 随**触发**懒挂；或工具读路径时挂；**≠** 触发 |
 
-1. **Sticky**：上一轮绑定的 skill，本轮延续时无需再 `/`，自动注入 overlay。  
-2. **软链式接续**：类 Superpowers——当前 skill overlay 写明终态下一步；下轮靠 **会话态 + description/L2/L3 召回** 绑上下一 skill（**不强制**管理页维护图）。  
-3. **双写 SSOT**：Redis 热态 + 消息级完整 `RoutingResult`；对齐 routing v6 Pre-Routing / 续跑。  
-4. **压缩点对齐**：绑定态为独立 L-state；overlay 在 Prompt 稳定前缀。
+```
+Discover ──（用户 / 、高置信、sticky 续）──► Trigger ──► Overlay 注入
+                │                                │
+                └──── 可选提权排序 ───────────────┘
+                                                 │
+                                            Sandbox mount（正交）
+```
 
-### 1.2 非目标
-
-- 不在 orchestrator 硬编码技能名或边表。  
-- 不要求每个 skill 在管理页配置 `processGraph`。  
-- 不恢复 `auto`；L3 **禁止**改写 `executionMode`。  
-- 不做「用户未发消息时后台自动开下一 skill 轮」。  
-- 不把完整 workflow 摘要塞进 Catalog `description`（SDO：description 只写触发条件）。  
-- workflow 轨不做 skill sticky / 链式。  
-- 不为 skill 新建平行压缩点 / H1 基建。
+**禁止**：把「L1/L2 召回命中」直接等价为「开场强制触发 overlay」（现状+ v3 初稿的主要偏差）。
 
 ---
 
-## 2. 数据模型与双写契约
+## 2. 目标与非目标
 
-### 2.1 扩展 `RoutingResult`（轨 A）
+### 2.1 目标
 
-在 [unified-routing v6 §4](./2026-07-29-unified-routing-design.md) 基础上增量：
+1. **行业对齐**：静态可发现 = 名+描述；正文按需/按触发注入（对齐 Cursor / task-scene §7）。  
+2. **续跑保真**：HITL / reconnect 复用完整 `RoutingResult`，不丢**已触发** `skillIds`。  
+3. **轻 Sticky**：粘的是**触发集**，不是可发现全集；无 `/` 续聊时保持 overlay，直到退出/换题/L0 覆盖。  
+4. **装配纪律**：`PromptComposer` 只对 `skillIds`（触发集）调用 overlay；可发现集走目录摘要层。
+
+### 2.2 非目标
+
+- 不建 Redis ledger / 软链一等 source / `processGraph`。  
+- 不扩展 `RoutingResult` 为双数组（见 §3.1：可发现不进 RoutingResult）。  
+- 不在 orchestrator 硬编码技能名。  
+- L3 **禁止**改写 `executionMode`；workflow 轨不做 skill sticky。  
+- 不做「未发消息后台自动开下一 skill」。  
+- 不要求模型必须经工具读 SKILL.md 才触发（允许平台在 Trigger 时直接灌 overlay；与「可读沙箱副本」并存）。
+
+---
+
+## 3. 默认模型（覆盖大多数场景）
+
+### 3.1 可发现集（每轮，轻）
+
+```
+discoverable =
+  租户启用 Catalog ∩ 场景可见
+  （可选）L2 Top-K 提到摘要前列，仍只暴露名+描述
+```
+
+- **租户/场景「固定」= 固定可发现**，不是固定触发。  
+- 合规红线若必须每轮约束行为 → 标为 **force-trigger**（极少数），与「方法包常驻可发现」分开配置；禁止把整个方法包 Catalog 当 force-trigger。
+
+### 3.2 触发集 `skillIds`（进 RoutingResult）
+
+```
+triggered skillIds =
+  L0 显式（/skill、clientSkillIds）        // 最高优先，可整表替换
+  ∪ 上轮 triggered sticky（无退出/换题/L0）
+  ∪ （可选）L3 高置信「本轮唯一应执行」的 ≤1 个 skill
+  ∪ force-trigger（租户合规例外）
+
+L1/L2 召回 → 默认只影响 discoverable 排序 / 给 L3 候选
+           → 禁止无门槛写入 triggered
+```
+
+| 来源 | 进 discover | 进 triggered（overlay） |
+|------|:-----------:|:----------------------:|
+| 租户/场景启用 Catalog | ✅ | ❌（除非 force-trigger） |
+| L0 `/` / 客户端点名 | ✅ | ✅ |
+| L1 规则 / L2 embedding | 排序/候选 | ❌ 默认；经 L3 高置信才可 ✅ |
+| 轻 sticky（上轮 triggered） | — | ✅ 继承 |
+| 沙箱已 mount 的历史文件 | 物料层 | ❌ 不单独构成触发 |
+
+**软链（产品语义）**：overlay 可写「完成后使用 X」；下轮靠 **description 可发现 + 用户推进/L0/高置信** 再触发 X——平台不建 `SOFT_CHAIN`。
+
+### 3.3 装配（相对现状的根因修正）
+
+| 步骤 | 现状（偏差） | 目标（行业） |
+|------|--------------|--------------|
+| 路由 | 召回 id ≈ 绑定 | 产出 discover 上下文 + **triggered** `skillIds` |
+| Prompt | `resolveSkillOverlay(skillId)` 开场灌全文 | 目录摘要（名+描述）+ **仅 triggered** overlay |
+| 沙箱 | 绑定时 mount | 触发时懒 mount；与 loadedSkillIds 累积解耦 |
+
+对齐 [task-scene §7](./2026-08-01-task-scene-context-design.md)：目录摘要稳定前缀；命中正文进动态段 / skill-overlay。
+
+---
+
+## 4. 数据契约
+
+### 4.1 `RoutingResult.skillIds` = **本轮已触发**
 
 ```java
-public record RoutingResult(
-    ExecutionMode executionMode,   // 用户钉死，路由不改写
-    String scene,
-    String workflowId,             // 轨 B；轨 A 为 null
-    List<String> agentIds,
-    List<String> skillIds,         // 本轮生效 skills（可多；含当前主 skill）
-    String primarySkillId,         // 可选：本轮主 skill（sticky / 软链焦点）；缺省取 skillIds[0]
-    String skillPhase,             // 可选增强：仅 processGraph 启用时
-    List<String> skillArtifacts,   // 可选：sandbox 相对路径（spec/plan/progress）
-    SkillBindSource skillBindSource,
-    Map<String, Object> params,
-    String reason
-) {
-    public enum SkillBindSource {
-        L0_EXPLICIT, STICKY, L1_RULE, L2_RECALL, L3, SOFT_CHAIN, PROCESS_ADVANCE, STICKY_MERGED
-    }
-}
+List<String> skillIds;   // triggered only；轨 A；可空
+// 不把 discoverable 全量写入 RoutingResult（避免续跑把「目录」当成「触发」）
 ```
 
-- **默认路径**只用 `skillIds` / `primarySkillId` + sticky / `SOFT_CHAIN`；`skillPhase` 可空。  
-- v1 的 `processSkillId` **合并进** `primarySkillId`（不再强制区分 process/implementation 两套绑定字段；`skillKind` 仍可在 Catalog 标注供 L3 process-first）。
+可发现集由 Catalog + 租户策略 **运行时解析**，不落消息 SSOT（除非日后要审计「当时可见集」，另开字段，非本版）。
 
-### 2.2 Redis `SkillSessionLedger`（热态）
+### 4.2 消息完整 `RoutingResult`（S-0）
 
-- Key：`skill:ledger:{tenantId}:{conversationId}`  
-- TTL：与会话沙箱同量级（建议 7d）  
-- 字段：`skillIds`、`primarySkillId`、可选 `skillPhase` / `skillArtifacts`、`updatedAt`、`sourceMessageId`
+- 存完整 JSON；修续跑丢 skill。  
+- HITL / 同消息续跑：复用已存 **triggered** `skillIds`，不重跑收集、不重触发决策。
 
-与沙箱 `loadedSkillIds` **解耦**：ledger = 绑定焦点；sandbox = 文件物料累积。
+### 4.3 轻 Sticky（S-1）— 只粘触发
 
-### 2.3 消息级完整 `RoutingResult`
+```
+seed ← 上条 assistant.RoutingResult.skillIds   // 已触发
 
-- `chat_message` 存完整 JSON（新建列或 `execution_plan_json`）。  
-- **修复**现状：仅写 `intent=react` 导致续跑丢 `params.skill`。
+L0 → 替换 triggered
+退出技能 / 明确换题 → 清空 seed
+否则 → triggered 至少含 seed；L3 可追加高置信，禁止低置信清空 seed
+discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
+```
 
-### 2.4 双写表
+- SSOT = 消息 RoutingResult；无 Redis。  
+- triggered **不进** L1 Near/Mid/Far；Mid 最多路标。  
+- Overlay 仅 triggered，落 Prompt 稳定前缀 / Tier 2（与压缩点一致）。
 
-| 事件 | Redis ledger | 消息 RoutingResult |
-|------|--------------|-------------------|
-| 新消息路由定稿 | upsert | 写入本轮 assistant |
-| HITL / 同消息续跑 | 不变 | 复用已存 |
-| L0 / 软链切换 / 可选 advance | upsert | 新轮写新结果 |
-| Redis miss | 从上条 assistant 回填 | 权威回退源 |
+### 4.4 沙箱
 
-### 2.5 与压缩点的边界
+- `skillIds`（triggered）→ 懒 `mountSkill`。  
+- `loadedSkillIds` = 物料累积；sticky 不强制 umount。  
+- **仅 mount 不注入 overlay** ≠ 已触发。
 
-| 状态 | 存放 | 进 L1 Near/Mid/Far？ |
-|------|------|----------------------|
-| skill overlay | PromptComposer 稳定前缀 | ❌ |
-| sticky 焦点 | Redis + 消息 RoutingResult | ❌ |
-| Mid schema 可选路标 | `primarySkillId=…` | ✅ 仅路标，非 SSOT |
+### 4.5 SUB
 
-软链召回时：L3 **必须先读 ledger 会话态**，再结合用户话与候选 description；**禁止**在压缩后只靠 Mid 散文猜「还在用哪个 skill」。
+- SUB 不继承父 triggered sticky。  
+- Spawn 可显式带一个 `skillId`（视为该 SUB 的 triggered）。
 
 ---
 
-## 3. 跨轮 Sticky 规则（轨 A · L0–L3）
+## 5. 相对 unified-routing v6
 
-仅 `executionMode ∈ {fast, pro}`。workflow **禁用**。
-
-### 3.1 每轮输入
-
-| 输入 | 来源 | 用途 |
-|------|------|------|
-| `clientSkillIds` / `/skill` | L0 | 最高优先级覆盖 |
-| `ledger` | Redis；miss → 上条 assistant | 默认继承种子 |
-| L1 / L2 | 规则 / embedding 召回 | 累积候选；软链切换的主要候选源 |
-| L3 | 合并裁决 | 保留 sticky **或**软切换到召回命中的下一 skill |
-| `recentHistory` | 深层兜底 | 辅助语义；**不**单独当 sticky SSOT |
-
-### 3.2 合并算法
-
-```
-acc ← ledger（可空）
-
-L0 命中 → 替换；source = L0_EXPLICIT
-
-L1/L2 → add 候选（含 description「Use when…」匹配）
-
-L3 →
-  无强切换且用户在延续 → 保留 sticky（可追加 implementation）
-  用户话/候选表明进入下一方法 skill（软链）→ 替换 primarySkillId；source = SOFT_CHAIN
-  强切换/否定/换题 → 替换或清空；reason 必填
-  禁止因低置信清空 sticky
-```
-
-### 3.3 继承 / 清除
-
-同 v1 精神：同会话、非 workflow、无 L0/清除、L3 未强切换 → `STICKY`。  
-「退出技能」、另选 `/`、换题无关 → 覆盖或清空（sandbox 可不 umount）。
-
-### 3.4 L3 输入契约
-
-```text
-【会话 skill 态】primarySkillId=…; skillIds=…; artifacts=…
-【软链提示】若当前 skill overlay 已达终态且用户在推进，可在候选中选用其「下一步」skill（见 overlay，勿发明未在 Catalog 的 id）
-```
-
----
-
-## 4. 接续模型：默认软链 + 可选强图
-
-### 4.1 默认：软链（对齐 Cursor / Superpowers）
-
-**谁定义「下一个」？** Skill **作者写在 overlay 正文**（terminal state / 「完成后使用 writing-plans」），**不是**管理页过程图。
-
-**怎么启用下一个？**
-
-| 时刻 | 行为 |
-|------|------|
-| 本轮 | 模型按 overlay 做完；可在回复/工具结果中留下产物路径（写入 `skillArtifacts` 更佳） |
-| **下一轮** | sticky 仍带当前 skill **或** L2/L3 根据用户意图 + description 命中「下一步」skill → `source=SOFT_CHAIN`，注入新 overlay |
-| 用户 `/` 点名 | L0 覆盖 |
-
-同一时刻仍以 **一个 primarySkillId** 为主 overlay；同轮可额外挂若干 implementation `skillIds`。
-
-**管理页**：只需维护 skill 条目、`description`（触发条件）、`systemOverlay`（含软链文案）。**无需**画 `processGraph`。
-
-### 4.2 软链可靠性底线（相对纯上下文）
-
-仅靠对话召回在压缩后不可靠。默认软链仍要求：
-
-1. **sticky ledger** 保住「当前焦点」；  
-2. L3 输入带 **结构化会话态**；  
-3. 候选来自 **Catalog description / L2**，禁止模型编造未启用 skill id；  
-4. overlay 内 next 名称与 Catalog id **一致**（导入 Superpowers 时做一次 id 映射）。
-
-### 4.3 可选增强：`processGraph` + `advance_skill_phase`
-
-仅当产品需要 **可校验相位 / 强制用户批准门 / 合规审计「必须过某 gate」** 时启用：
-
-- Catalog 可选字段 `processGraph`（phases / gate / next）  
-- 元工具 `advance_skill_phase` 改 ledger，`source=PROCESS_ADVANCE`  
-- `gate=user_approval` → 复用 `request_decision`  
-
-**默认关闭**；未配置图的 skill 走 §4.1，行为与 Cursor 同构。  
-实施上 **S-3 可选、可延期**，不阻塞 sticky / 软链。
-
-### 4.4 SUB 隔离
-
-- 主 Agent 持 sticky / 软链焦点。  
-- SUB `forSubAgent()` 不继承父会话 process/软链 ledger（对齐 `<SUBAGENT-STOP>`）。  
-- Spawn 可显式带单个 `skillId`。
-
----
-
-## 5. 装配与写路径
-
-### 5.1 读路径（轨 A）
-
-```
-RoutingResult
-  → PromptComposer 稳定前缀：
-       mode-overlay → react/planner
-       → primarySkill overlay
-       → 其余 skillIds overlays（克制数量）
-       → scene / L1–L3
-  → Sandbox：skillIds ∪ loadedSkillIds 懒挂载
-  → AgentRuntime.run(MAIN|PLANNER)
-```
-
-### 5.2 写路径（assistant 终态）
-
-1. 落盘完整 `RoutingResult`  
-2. Upsert Redis ledger  
-3. L1 压缩照旧；**禁止**把 ledger 折进 `far_summary`
-
----
-
-## 6. 相对 unified-routing v6 的增量
-
-| v6 | 本设计（v2） |
+| v6 | 本设计（v3.1） |
 |----|----------------|
-| `skillIds[]` 收集 | + sticky 种子 + `primarySkillId` + 软链切换 |
-| Pre-Routing 复用 RoutingResult | 消息必须存完整结果 |
-| skill 挂载 | 多 overlay（主 + 可选附加） |
-| — | Redis `SkillSessionLedger` |
-| — | **可选** `processGraph` / `advance_skill_phase` |
+| 轨 A 收集 `skillIds[]` | 语义收窄为 **triggered**；装配禁止「召回即 overlay」 |
+| §10「skillIds → overlays + 沙箱」 | 改为：discover 摘要 + triggered overlays + 触发时 mount |
+| Pre-Routing 复用 | S-0 保真 |
+| — | S-1 轻 sticky（触发集） |
+| — | 不做 ledger / 软链 / processGraph |
 
 ---
 
-## 7. 风险与对策
-
-| 风险 | 对策 |
-|------|------|
-| 软链漏切 / 跳步 | overlay 写清终态；L3 带会话态；live 抽检；必要再开 §4.3 |
-| L3 误清 sticky | 禁止低置信清空；切换必填 reason |
-| Redis / 消息不一致 | 先消息后 Redis；miss 回填 |
-| overlay 过大 | 控制正文体积；大物料走 sandbox 文件 |
-| 与压缩点混淆 | ledger ∉ L1；文档标明 |
-
----
-
-## 8. 实施切片
+## 6. 实施切片
 
 | 阶段 | 内容 | 出口 |
 |------|------|------|
-| **S-0** | 消息存完整 RoutingResult；续跑不丢 skill | 单测 + 续跑 live |
-| **S-1** | Redis ledger + §3 sticky | 无 `/` 次轮仍有 overlay |
-| **S-2** | PromptComposer 多 `skillIds`；主 overlay = primary | 双 skill 冒烟 |
-| **S-2.5** | 软链：L3 + L2 召回切下一 skill（`SOFT_CHAIN`） | Superpowers 风格 E2E（无图） |
-| **S-3** | （可选）`processGraph` + `advance_skill_phase` | 强门控 E2E |
-| **S-4** | 压缩点后 sticky / 软链回归 | 压缩后仍可续 |
+| **S-0** | 消息存完整 `RoutingResult`；续跑复用 triggered | live：不丢 skill |
+| **S-D** | 可发现层：Prompt 注入租户可见 **名+描述**目录；**召回默认不灌 overlay** | 无 L0 时不应出现无关 skill 全文 |
+| **S-T** | 触发：仅 L0 / sticky / force-trigger /（可选）L3 高置信 → `resolveSkillOverlay` | `/` 与续聊行为正确；L2 命中 alone 不触发 |
+| **S-1** | 上轮 triggered 轻 sticky（依赖 S-0） | 「继续」无 `/` 仍有 overlay |
+| **延期** | Redis、SOFT_CHAIN、processGraph、模型强制读 SKILL.md 才触发 | YAGNI |
+
+**顺序建议**：S-0 → S-D + S-T（可同 PR 纪律）→ S-1。S-D/S-T 是相对 v3 的**根因修正**，优先于加厚 sticky 算法。
 
 ---
 
-## 9. 验收标准
+## 7. 验收标准
 
 | # | 场景 | 预期 |
 |---|------|------|
-| V1 | 上轮 `/skill-A`，本轮「继续」无 `/` | overlay=A，source=STICKY |
-| V2 | 本轮 `/skill-B` | 覆盖为 B |
-| V3 | 「退出技能」 | skillIds 空 |
-| V4 | overlay 终态后用户推进；Catalog 有下一 skill | 下轮可 `SOFT_CHAIN` 绑上下一 skill（**无** processGraph） |
-| V5 | 压缩点前移后续聊 | sticky 仍在 |
-| V6 | HITL 续跑 | 不重绑、不丢 skill |
-| V7 | workflow 模式 | 无 skill sticky |
-| V8 | SUB | 不继承父软链 ledger |
-| V9 | （可选）配置了 graph 的 skill | advance + gate 行为符合图 |
+| V0 | 仅租户启用、无 `/`、无高置信 | Prompt 有目录名+描述；**无**任意 skill 全文 overlay |
+| V1 | `/skill-A` | triggered=A，全文 overlay；可 mount |
+| V2 | 上轮已触发 A，本轮「继续」无 `/` | 仍 triggered=A（sticky） |
+| V3 | L2 召回 B 但未 L0/未高置信 | B 可出现在目录/排序；**不**自动全文 overlay |
+| V4 | 「退出技能」/ 换题 | 清空 triggered；目录仍可发现 |
+| V5 | HITL / 续跑 | 复用 triggered，不丢 |
+| V6 | workflow / SUB | 无父 sticky；SUB 不继承 |
+| V7 | 软链自动切下一 skill | **不验收** |
 
 ---
 
-## 10. 关联文档
+## 8. 风险与对策
+
+| 风险 | 对策 |
+|------|------|
+| 目录过长占前缀 | Top-N + 「更多经 / 或检索」；对齐 task-scene 字节稳定 |
+| L3 乱触发 | 默认关高置信自动触发；先 L0+sticky |
+| 误以 mount=触发 | 文档+单测：仅 mount 无 overlay |
+| 压缩后丢触发态 | S-0 消息 SSOT；∉ L1 折叠 |
+| 与旧「召回即绑定」习惯冲突 | 验收 V0/V3；改 routing §10 文案 |
+
+---
+
+## 9. 关联文档
 
 | 文档 | 关系 |
 |------|------|
-| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 轨 A 收集；本设计为 sticky / 软链增量 |
-| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 压缩点；ledger 为 L-state 外部载体 |
-| [multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) | spawn / SUB 隔离 |
-| [request_decision / 4.7.9](../implementation-plan.md) | 仅可选 §4.3 gate |
-| [sandbox multi-skill](./archive/2026-07-16-conversation-sandbox-multi-skill-design.md) | loadedSkillIds 物料层 |
+| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 轨 A；`skillIds`=triggered；装配改 discover/trigger |
+| [task-scene](./2026-08-01-task-scene-context-design.md) §7 | 名+描述 / 正文按需的直接依据 |
+| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 触发态不进 L1 |
+| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 触发稳定有助于 biz_scene；可发现≠ scene 乱跳 |
+| [sandbox multi-skill](./archive/2026-07-16-conversation-sandbox-multi-skill-design.md) | 物料层 |
+
+### 归档备注
+
+v1 过程图、v2 软链+ledger、v3「固定∪召回→一律 overlay」均废弃；以本 v3.1 为准。

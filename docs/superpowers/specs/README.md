@@ -72,6 +72,89 @@
 
 ---
 
+## 活跃增量方案：依赖与落地顺序（2026-08-13）
+
+> 仅覆盖**未归档、仍在评审/实施**的增量稿。归档稿见 `archive/`，不进主链排期。  
+> 4.14 SSOT：[planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)。
+
+```mermaid
+flowchart TB
+  subgraph done [已基本落地]
+    MA[multi-agent-unified]
+    CTX_BASE[五层压缩基线]
+    AS2[AS2 / spawn / decision Chat]
+  end
+
+  subgraph hub [中枢]
+    R[routing v6<br/>fast/pro/workflow]
+    PE[4.14 rebuild<br/>Planner-Executor]
+  end
+
+  subgraph ctx [上下文增强]
+    CP[五层 §5.5 压缩点]
+    TS[task-scene]
+    BIZ[business-context]
+  end
+
+  subgraph infra [基础设施]
+    ST[orchestrator-stateless]
+    GA[goal-alignment]
+    SK[skill-sticky]
+    D12[decision D12]
+  end
+
+  subgraph later [后置]
+    P5[phase5 5.1/5.4…]
+    OBS[observability 6.x]
+  end
+
+  MA --> R
+  R <-->|H-5 接线互锁| PE
+  CTX_BASE --> CP
+  CTX_BASE --> TS
+  R --> TS
+  PE -->|pro→H1 SSOT| TS
+  R --> SK
+  CP --> SK
+  R --> BIZ
+  CTX_BASE --> BIZ
+  GA -.->|S6 Validator| PE
+  PE --> D12
+  PE --> ST
+  R --> ST
+  ST -->|波次 B2/B3| PE
+  PE --> P5
+  AS2 --> OBS
+```
+
+| Spec | 角色 | 硬依赖 | 被谁依赖 |
+|------|------|--------|----------|
+| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 执行模式中枢 | multi-agent（主体 ✅） | 4.14 H-5、task-scene、skill-sticky、biz、stateless 分发 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | H-5 要 routing；GoalAlignment 文档写复用实则未做 | task-scene（H1）、D12、stateless B2/B3、phase5 长任务 |
+| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ | — | task-scene、skill-sticky、biz 挂载纪律 |
+| [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 | routing + 压缩点；pro 边界要 H1 | — |
+| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat） |
+| [skill-sticky](./2026-08-12-skill-sticky-process-chain-design.md) | 可发现≠触发；触发保真 + 轻 sticky（v3.1） | routing 轨 A | — |
+| [goal-alignment](./2026-07-27-react-goal-alignment-design.md) | 机械门禁 | TaskBoard/AS2（已有） | rebuild S6（可同批） |
+| [orchestrator-stateless](./2026-08-03-orchestrator-stateless-design.md) | 物理无状态 | 波次 A 独立；B2/B3 要 harness | 多实例生产 |
+| [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md) | Planner decision | 4.14 Planner MAIN | — |
+| [phase5](./phase5-operation-openness-design.md) / [observability](./2026-07-27-observability-enhancement-design.md) | 运营/观测 | 部分可前置；5.1 等长任务样本 | — |
+
+**推荐落地顺序**
+
+1. **现在可开**：4.14 **H-0～H-4** — 实施计划 [planner-executor-kernel](../plans/2026-08-13-planner-executor-kernel.md)（过渡入口 + 长负载预算）∥ stateless **波次 A** ∥ goal-alignment 薄实现 ∥ 观测 6.2/6.4、phase5 **5.2**
+2. **第二波**：routing v6 三模式 → 4.14 **H-5～H-7** + 前端分层时间线 → **阶段 D** 删动态 Plan-Workflow → skill-sticky（**S-0 保真 → S-D/S-T 可发现≠触发 → S-1 轻 sticky**）→ D12
+3. **第三波**：五层 §5.5 压缩点（优先 task）→ task-scene → business-context（可与 task-scene 并行）
+4. **刻意后置**：stateless B2/B3/拆进程、phase5 5.1/5.4/5.7、压缩点全面铺 chat
+
+**解开 routing ↔ 4.14 互锁**：先 harness 内核 + 过渡映射，再切 `fast`/`pro`/`workflow`；勿空等三模式前端。
+
+**现状提醒（2026-08-13）**：代码仍为 `auto|react|workflow|plan-workflow` + 完整动态 Plan-Workflow；CLAUDE 进度行「4.14 设计中」为准，架构表勿写「PlanWorkflow 已删」直至阶段 D。
+
+**命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**；执行模式 **`executionMode`**。详见 [routing v6 命名四轴](./2026-07-29-unified-routing-design.md)。
+
+---
+
 ## 实施计划（plans/）
 
 | 阶段 | 计划 |

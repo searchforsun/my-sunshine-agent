@@ -14,7 +14,7 @@
 | `ExecutionPreference=auto` / `plan-workflow` | **删除**；改为 `fast` / `pro` / `workflow` |
 | 「Plan-Workflow 保留代码仅去路由」 | 对齐 rebuild **D1：整套删除** |
 | Pre-Routing 含 Plan Approval | 对齐 **D5**：仅 HITL / 续跑等等待态 |
-| `call_scene=plan-phase` / 两态·INCREMENTAL | 对齐 rebuild **S5 v4**：无分解模式；调用点 `plan` / `worker` / `self-assess` |
+| `call_scene=plan-phase` / 两态·INCREMENTAL | 对齐 rebuild **S5 v4**：无分解模式；调用点 `callSite=plan` / `worker` / `self-assess` |
 | ResourceDispatcher 保留 `PlanWorkflowExecutor` | **删除**该分支 |
 | 前端删除执行模式选择器 | **保留**三模式选择器（改选项）；`#` 仅 workflow 模式 |
 
@@ -29,8 +29,20 @@
 | **资源（Resource）** | workflow / agent / skill |
 | **主 Agent** | 通用 ReAct（快速）或 Planner（专业）；路由命中的 agent **一律子 Agent**，经 `spawn_subagent` 委派 |
 | **Pre-Routing** | HITL / 续跑等系统等待态复用上次路由结果；**不含** Plan Approval（D5） |
-| **scene** | 会话场景 `chat` / `task`（产品选择，正交于执行模式；影响工具集与上下文组装） |
-| **call_scene** | LLM 调用点（`plan` / `worker` / `self-assess` / `rewrite`…）；与 `scene` **禁止合并** |
+| **kind**（会话形态） | `chat` / `task`（产品选择；记忆闸门 / 工作区；**正交于**执行模式）。**弃用**字段名 `scene` 承载本语义 |
+| **callSite**（LLM 调用点） | `plan` / `worker` / `self-assess` / `rewrite`…（orchestrator 注入，供模型路由/用量）。**弃用** `call_scene` |
+| **biz_scene** | 业务域编码（Policy/任务板；随 Skill/Agent 元数据）。**禁止**写入 `kind` 或 `callSite` |
+
+### 命名四轴（2026-08-13 · 去 scene  overload）
+
+| 轴 | 协议字段 | 旧名（废弃） | 取值 | 定责 |
+|----|----------|--------------|------|------|
+| 会话形态 | `kind` | `scene`（chat/task） | `chat` \| `task` | 用户 / 会话 |
+| 执行模式 | `executionMode` | — | `fast` \| `pro` \| `workflow` | 用户 |
+| 业务域 | `biz_scene` | —（可二期 `bizDomain`） | 闭集码 | Catalog 资源元数据 |
+| LLM 调用点 | `callSite`（JSON/DB：`call_site`） | `call_scene` | `plan` \| `worker` \| … | orchestrator 注入 |
+
+**禁止**四轴同名字段互写。L3 向量元数据里旧列 `scene=chat|task` → 迁为 `kind`（或过渡双读）。
 
 ---
 
@@ -78,7 +90,7 @@
 ## 3. 总览架构
 
 ```
-用户选择 executionMode + scene + userMessage
+用户选择 executionMode + kind + userMessage
         │
         ├── Pre-Routing（HITL / 续跑…）→ 复用上次 RoutingResult，不进收集链
         │
@@ -91,8 +103,8 @@
                                           （忽略 $ / @；仅 workflow 候选）
         │
         └── ResourceDispatcher（只读 executionMode，不改写）
-                ├── fast      → ReactExecutor(agentIds, skillIds, scene)
-                ├── pro       → PlannerHarnessExecutor(agentIds, skillIds, scene)
+                ├── fast      → ReactExecutor(agentIds, skillIds, kind)
+                ├── pro       → PlannerHarnessExecutor(agentIds, skillIds, kind)
                 └── workflow  → WorkflowExecutor(workflowId)
 ```
 
@@ -105,10 +117,10 @@
 ```java
 public record RoutingResult(
     ExecutionMode executionMode, // fast | pro | workflow — 用户选择，路由不改写
-    String scene,                // chat | task
+    String kind,                 // chat | task（会话形态；旧字段名 scene 废弃）
     String workflowId,           // 轨 B；轨 A 为 null
     List<String> agentIds,       // 轨 A；轨 B 为空
-    List<String> skillIds,       // 轨 A；轨 B 为空
+    List<String> skillIds,       // 轨 A：**已触发**（全文 overlay）；非可发现全集；轨 B 为空
     Map<String, Object> params,
     String reason
 ) {
@@ -122,7 +134,7 @@ public record RoutingContext(
     String tenantId,
     String conversationId,
     String userMessage,
-    String scene,                 // chat | task
+    String kind,                  // chat | task
     ExecutionMode executionMode,  // 必填，来自请求
     List<ChatTurn> recentHistory  // L3 深层兜底用
 ) {
@@ -237,7 +249,7 @@ public class ResourceDispatcher {
 | `#` 工作流补全 | **仅** `executionMode=workflow` 时显示与解析 |
 | `$` / `@` | 仅 `fast` / `pro` 显示（与轨 A 一致） |
 | 默认值 | 建议 `fast`（会话级可记忆） |
-| scene | 仍可保留 chat/task（工作区）；与执行模式正交 |
+| kind | 会话形态 chat/task（工作区）；与执行模式正交；**勿再叫 scene** |
 
 底栏示意：
 
@@ -262,23 +274,28 @@ public class ResourceDispatcher {
 
 1. 加载通用系统提示（`mode-overlay.react` 或 `planner.harness`，按模式）。  
 2. `agentIds` 非空 → 注入 Agent Catalog 摘要（供 spawn），**不**把业务 agent 提成主系统提示。  
-3. `skillIds` 非空 → overlays + 沙箱挂载。  
-4. `AgentRuntime.run(MAIN|PLANNER)`；spawn → `AgentRunRequest.sub` / Worker 内 spawn。
+3. **Skill 可发现**：租户/场景启用 Catalog → 注入 **名+description** 目录（L2 至多提权排序）；**禁止**召回命中即灌全文。  
+4. **Skill 触发**：`skillIds`（本字段 = **已触发**）→ 全文 overlay；触发时懒挂沙箱。L0 `/`、上轮 sticky、极少 force-trigger；（可选）L3 高置信。  
+5. `AgentRuntime.run(MAIN|PLANNER)`；spawn → `AgentRunRequest.sub` / Worker 内 spawn。
 
 安全模型不变：HITL / SandboxExecGuard / PathJail / 租户 / Catalog 启用池。
 
-> **Skill 跨轮 / 软链**：轨 A 的 sticky、Redis ledger + 消息完整 `RoutingResult` 双写、默认软链（overlay + L2/L3 召回；`processGraph` 可选）见 [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md)。本文只定「本轮收集 `skillIds[]`」。
+> **Skill 可发现≠触发**（[skill-sticky v3.1](./2026-08-12-skill-sticky-process-chain-design.md)）：`skillIds` 只表示 triggered；消息完整 `RoutingResult` + 触发集轻 sticky。租户「固定」= 固定可发现，不是固定 overlay。不做 Redis ledger / 软链 / `processGraph`。
 
 ---
 
-## 11. call_scene（命名隔离，对齐 rebuild S5 v4）
+## 11. callSite（原 call_scene；命名隔离，对齐 rebuild S5 v4）
 
 | 字段 | 语义 |
 |------|------|
-| `scene` | 用户会话场景 chat/task |
-| `call_scene` | LLM 调用点：`plan` / `worker` / `self-assess` / `rewrite`… |
+| `kind` | 会话形态 chat/task（旧 `scene`） |
+| `callSite` / `call_site` | LLM 调用点：`plan` / `worker` / `self-assess` / `rewrite`…（旧 `call_scene`） |
+| `biz_scene` | 业务域；与上两者无关 |
+| `executionMode` | 执行模式；与上三者正交 |
 
-**删除** `call_scene=plan-phase`、`evaluator`。强弱模型分层若需要，走 phase5 5.3，**不**绑路由模式枚举。
+**删除** 旧枚举值 `plan-phase`、`evaluator`（不论字段叫 call_scene 还是 callSite）。强弱模型分层走 phase5 5.3，**不**绑路由模式枚举。
+
+迁移：API/Java 用 `callSite`；DB/MQ 用 `call_site`；过渡期可读旧键 `call_scene`，落地后删除。
 
 ---
 
@@ -303,7 +320,7 @@ public class ResourceDispatcher {
 | `ExecutionModeSelector` | 三选项；mention 开关按 §8 |
 | `IntentRouter` / Policy Chain | 按 `executionMode` 分轨 A/B |
 | L2 索引调用 | 轨 A：agent+skill；轨 B：workflow |
-| `ChatController` | 必填 `executionMode`；透传 `scene` |
+| `ChatController` | 必填 `executionMode`；透传 `kind`（弃用请求体 `scene`） |
 | `ExecutionDispatcher` → `ResourceDispatcher` | §7 |
 
 ### 12.3 新建
@@ -354,9 +371,9 @@ public class ResourceDispatcher {
 |------|------|
 | [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体；D1/D5/S5 v4；本文 §7/§11 对齐 |
 | [multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) | 子 Agent / spawn |
-| [phase5](./phase5-operation-openness-design.md) | `call_scene` 模型路由；与 `scene` 隔离 |
+| [phase5](./phase5-operation-openness-design.md) | `callSite`（原 call_scene）模型路由；与 `kind` 隔离 |
 | [prompt-ops-routing-catalog](./archive/2026-07-20-prompt-ops-routing-catalog-design.md) | 规则 `resourceType`；轨 A/B 过滤 |
-| [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md) | 轨 A skill 跨轮 sticky + 默认软链；processGraph 可选；双写 ledger |
+| [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md) | 轨 A：可发现≠触发；`skillIds`=triggered；S-0 保真 + 轻 sticky（v3.1） |
 
 ---
 

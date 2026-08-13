@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -28,8 +29,9 @@ import java.util.List;
 public class PlanNotebook {
     private final String originalGoal;
     private final String userQuery;
+    /** 会话形态 chat/task（routing 四轴 `kind`；JSON 过渡可读旧键 scene） */
     @Setter
-    private String scene;
+    private String kind;
     private final Deque<TaskItem> taskQueue;
     private final List<RoundRecord> rounds;
     @Setter
@@ -52,8 +54,8 @@ public class PlanNotebook {
     @Setter
     private String sessionId;
 
-    private PlanNotebook(String originalGoal, String userQuery, String scene, int maxRounds, int maxTotalTasks) {
-        this(originalGoal, userQuery, scene, null, null, 0.0, null, Instant.now(),
+    private PlanNotebook(String originalGoal, String userQuery, String kind, int maxRounds, int maxTotalTasks) {
+        this(originalGoal, userQuery, kind, null, null, 0.0, null, Instant.now(),
                 maxRounds, maxTotalTasks, 0, 0, 0, 0, null);
     }
 
@@ -61,7 +63,7 @@ public class PlanNotebook {
     private PlanNotebook(
             @JsonProperty("originalGoal") String originalGoal,
             @JsonProperty("userQuery") String userQuery,
-            @JsonProperty("scene") String scene,
+            @JsonProperty("kind") @JsonAlias("scene") String kind,
             @JsonProperty("taskQueue") Collection<TaskItem> taskQueue,
             @JsonProperty("rounds") List<RoundRecord> rounds,
             @JsonProperty("goalCompletion") double goalCompletion,
@@ -76,7 +78,7 @@ public class PlanNotebook {
             @JsonProperty("sessionId") String sessionId) {
         this.originalGoal = originalGoal;
         this.userQuery = userQuery;
-        this.scene = scene;
+        this.kind = kind;
         this.taskQueue = taskQueue != null ? new ArrayDeque<>(taskQueue) : new ArrayDeque<>();
         this.rounds = rounds != null ? new ArrayList<>(rounds) : new ArrayList<>();
         this.goalCompletion = goalCompletion;
@@ -91,8 +93,8 @@ public class PlanNotebook {
         this.sessionId = sessionId;
     }
 
-    public static PlanNotebook create(String originalGoal, String userQuery, String scene, int maxRounds, int maxTotalTasks) {
-        return new PlanNotebook(originalGoal, userQuery, scene, maxRounds, maxTotalTasks);
+    public static PlanNotebook create(String originalGoal, String userQuery, String kind, int maxRounds, int maxTotalTasks) {
+        return new PlanNotebook(originalGoal, userQuery, kind, maxRounds, maxTotalTasks);
     }
 
     public void appendRound(RoundRecord round) {
@@ -106,7 +108,7 @@ public class PlanNotebook {
         if (userQuery != null && !userQuery.isBlank()) {
             sb.append("Query: ").append(userQuery).append('\n');
         }
-        sb.append("Scene: ").append(scene).append('\n');
+        sb.append("Kind: ").append(kind).append('\n');
         sb.append("Progress: ").append(goalCompletion);
         if (nextDirection != null && !nextDirection.isBlank()) {
             sb.append(" | Next: ").append(nextDirection);

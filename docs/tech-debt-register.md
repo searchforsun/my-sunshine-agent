@@ -46,7 +46,7 @@
 | DOC-101 | P3 | open | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 仍写 TenantUserStore/`/mock-data`；实现期清单，可读但非 SSOT |
 | DOC-102 | P3 | open | `specs/plans/2026-07-29-multi-agent-unified.*` | 历史对照仍大量使用 expert/peer 措辞（peer-collab 已删、spawn_subagent 已落地）；非本轮代码范围，建议后续文档轮次收敛术语 |
 | DOC-103 | P1 | open | `CLAUDE.md` vs `executionModes.ts` | 已纠偏为「routing v6 设计中 / 现状 auto\|react…」；落地 fast/pro/workflow 时删本条 |
-| DOC-104 | P3 | open | `specs/2026-08-12-skill-sticky-process-chain-design.md` | 随 async/decision 切片捎带进仓；未纳入本轮归档，待 skill sticky 落地后再治理 |
+| DOC-104 | P3 | open | `specs/2026-08-12-skill-sticky-process-chain-design.md` | v3.1：可发现≠触发；落地 S-0→S-D/S-T→S-1 后再归档；ledger/软链/图不做 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
 

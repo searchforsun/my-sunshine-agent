@@ -86,7 +86,7 @@ cross-turn（跨用户问答轮次）:
 | 工具关键字段（path、*Id、exitCode、trace…） | Mid/Near **schema 行**白名单原样（**chat 见 §5.5.8**；task 见 task-scene §6.5） | 渲染规则保真，禁止「先摘要再捞回」 |
 | 失败路径（试过/为何失败/测不过/权限拒） | T0 `processTrail`（kind=attempt\|fail\|denied…） | 硬保留；重要性 ≥ 成功叙事 |
 | 证据与时效 | RAG/外网：source + queriedAt 可短解释不可抹锚；**代码**：只留 refs，实时重读（§v12） | 代码路径**不**引入 asOf 水位 |
-| Skill 绑定 / 软链焦点（sticky） | Redis `SkillSessionLedger` + 消息完整 `RoutingResult`；overlay 在 Prompt 稳定前缀 | **不进** L1 Near/Mid/Far 折叠；Mid 最多 schema 路标。见 [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md) |
+| Skill **触发**态（轻 sticky） | 消息完整 `RoutingResult.skillIds`（=triggered SSOT）；上轮触发集种子；全文 overlay 仅 triggered | **不进** L1 Near/Mid/Far；可发现目录（名+描述）另层、非绑定 SSOT。见 [skill-sticky v3.1](./2026-08-12-skill-sticky-process-chain-design.md) |
 
 **明确不做**：对话窗 alone 作为唯一续跑判据（正确形态可以是瘦对话 + 胖 T0/H1）；chat 与 task 同一套「四类全留」（chat 仍 **正文为主 + 工具轮 schema**，见 §5.5.8，非 task 完整过程窗）。
 
@@ -1346,4 +1346,4 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 | [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 4.14 SSOT：H1 注入 + handoff 双写；压缩点不新建（S3） |
 | [archive/planner-harness-loop](./archive/2026-07-31-planner-harness-loop-design.md) | **已归档**；勿再按该文落地 |
 | [archive/harness-loop-enhancement 4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md) | **已归档**；run 内能力由本文 §4.5 吸收；可选门禁/重试见 [goal-alignment §12](./2026-07-27-react-goal-alignment-design.md) |
-| `phase5-operation-openness-design.md` | 运营化；其 5.5 工具分层注入对齐本文 §5.5.3 tools（名列表静态 + schema 尾部）；5.3 `call_scene` 与路由 `scene` 命名隔离 |
+| `phase5-operation-openness-design.md` | 运营化；5.5 工具分层对齐本文 §5.5.3；5.3 **`callSite`/`call_site`**（旧 call_scene）与会话形态 **`kind`**（旧 scene）命名隔离 |
