@@ -27,6 +27,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,7 +59,7 @@ class ExecutionPlanRouterTest {
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
-        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
+        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
         when(agentBindingParser.stripAgentMentions(org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -79,7 +80,7 @@ class ExecutionPlanRouterTest {
     @Test
     void multiStepQuery_withPro_hitsStructuralRule() {
         String query = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
 
         ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
 
@@ -94,7 +95,7 @@ class ExecutionPlanRouterTest {
     void atSkillBindingSingleStep_withFast_keepsSkillAndMayCallL3() {
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse("@finance-analysis 是否合规")).thenReturn(binding);
+        when(skillBindingParser.parse(eq("@finance-analysis 是否合规"), any(), any())).thenReturn(binding);
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.FAST, null,
                         Map.of("reactPromptId", "react-prompt.from-llm"), "llm")));
@@ -111,7 +112,7 @@ class ExecutionPlanRouterTest {
         String query = "@finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
+        when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(binding);
 
         ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
 
@@ -125,7 +126,7 @@ class ExecutionPlanRouterTest {
     @Test
     void ruleHit_withWorkflow_bindsFinanceList() {
         String query = "有哪些待审批报销";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
 
         ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.WORKFLOW)).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
@@ -137,7 +138,7 @@ class ExecutionPlanRouterTest {
     @Test
     void defaultRoute_pinsFast_withoutAutoJudge() {
         String query = "青松假有多少天、怎么申请";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa",
                         Map.of("reactPromptId", "react-prompt.x"), "llm")));

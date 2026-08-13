@@ -17,6 +17,7 @@ public record AgentUpdateRequest(
         String permissionsJson,
         String modelConfigJson,
         Integer maxIters,
-        Integer maxHandoffs
+        Integer maxHandoffs,
+        String kind
 ) {
 }

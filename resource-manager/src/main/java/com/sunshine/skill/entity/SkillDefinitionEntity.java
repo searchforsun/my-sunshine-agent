@@ -29,6 +29,9 @@ public class SkillDefinitionEntity {
     @Column(name = "active_version", nullable = false)
     private int activeVersion = 1;
 
+    @Column(length = 16, nullable = false)
+    private String kind = "all";
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 

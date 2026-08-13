@@ -31,7 +31,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,7 +66,7 @@ class RoutingGoldenSetTest {
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
-        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
+        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
         when(agentBindingParser.stripAgentMentions(org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -76,7 +78,7 @@ class RoutingGoldenSetTest {
                 skillBindingParser,
                 agentBindingParser);
 
-        when(skillBindingParser.parse(anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
+        when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
         when(skillBindingParser.stripAtMention(anyString())).thenAnswer(inv -> {
             String msg = inv.getArgument(0);
             if (msg != null && msg.startsWith("@")) {
@@ -192,7 +194,7 @@ class RoutingGoldenSetTest {
         String query = "@finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
 
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
@@ -222,7 +224,7 @@ class RoutingGoldenSetTest {
         String query = "@finance-analysis 这笔报销是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "这笔报销是否合规", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                         ExecutionMode.FAST, null, Map.of("reactPromptId", "react-prompt.x"), "llm")));
@@ -280,7 +282,7 @@ class RoutingGoldenSetTest {
         String query = "@finance-analysis 是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
@@ -345,7 +347,7 @@ class RoutingGoldenSetTest {
     @Test
     void workflowI5_atKnowledgeQaNotWorkflow_underFast() {
         String query = "@knowledge-qa 测试";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(SkillBindingOutcome.none(query));
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, query, null);

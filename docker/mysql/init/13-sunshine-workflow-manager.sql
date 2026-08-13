@@ -10,6 +10,7 @@ CREATE TABLE workflow_definition (
     enabled         TINYINT(1) NOT NULL DEFAULT 0,
     active_version  INT NOT NULL DEFAULT 0,
     source          VARCHAR(16) NOT NULL DEFAULT 'studio',
+    kind            VARCHAR(16) NOT NULL DEFAULT 'all' COMMENT '会话形态：chat|task|all（与 conversation.kind 同轴）',
     maintainer      VARCHAR(64),
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -25,9 +25,10 @@ class SkillBindingParserTest {
     private SkillBindingParser parser;
 
     private static final List<SkillCatalogIndexEntry> INDEX = List.of(
-            new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true, "none"),
-            new SkillCatalogIndexEntry("policy-review", "制度审查", "制度对照", 1, true, "none"),
-            new SkillCatalogIndexEntry("disabled-skill", "已禁用", "不可用", 1, false, "none"));
+            new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true, "none", "all"),
+            new SkillCatalogIndexEntry("policy-review", "制度审查", "制度对照", 1, true, "none", "all"),
+            new SkillCatalogIndexEntry("disabled-skill", "已禁用", "不可用", 1, false, "none", "all"),
+            new SkillCatalogIndexEntry("task-only", "任务专用", "仅任务会话", 1, true, "none", "task"));
 
     @BeforeEach
     void setUp() {
@@ -74,6 +75,15 @@ class SkillBindingParserTest {
 
         SkillBindingOutcome outcome = parser.parse("@disabled-skill 问题");
         assertThat(outcome.unknown()).isTrue();
+    }
+
+    @Test
+    void atMention_taskKindSkillUnreachableFromChatSession() {
+        when(skillCatalogService.findIndex("task-only"))
+                .thenReturn(Optional.of(INDEX.get(3)));
+
+        assertThat(parser.parse("@task-only 执行任务", null, "chat").unknown()).isTrue();
+        assertThat(parser.parse("@task-only 执行任务", null, "task").bound()).isTrue();
     }
 
     @Test

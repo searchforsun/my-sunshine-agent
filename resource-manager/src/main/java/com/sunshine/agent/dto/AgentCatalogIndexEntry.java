@@ -7,10 +7,17 @@ public record AgentCatalogIndexEntry(
         String displayName,
         String description,
         boolean enabled,
-        String tenantId
+        String tenantId,
+        String kind
 ) {
+    public AgentCatalogIndexEntry {
+        if (kind == null || kind.isBlank()) {
+            kind = "all";
+        }
+    }
+
     public static AgentCatalogIndexEntry from(AgentCatalogEntry full) {
         return new AgentCatalogIndexEntry(
-                full.id(), full.displayName(), full.description(), full.enabled(), full.tenantId());
+                full.id(), full.displayName(), full.description(), full.enabled(), full.tenantId(), full.kind());
     }
 }

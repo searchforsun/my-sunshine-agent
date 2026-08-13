@@ -78,6 +78,7 @@ public class SkillAdminService {
         def.setDescription(request.description() != null ? request.description().strip() : "");
         def.setEnabled(false);
         def.setActiveVersion(1);
+        def.setKind(normalizeKind(request.kind()));
         definitionRepository.save(def);
 
         SkillVersionEntity version = new SkillVersionEntity();
@@ -118,6 +119,7 @@ public class SkillAdminService {
         SkillDefinitionEntity def = requireDefinition(skillId);
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description() != null ? request.description().strip() : "");
+        def.setKind(normalizeKind(request.kind()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         catalogRegistry.refresh();
@@ -397,7 +399,8 @@ public class SkillAdminService {
                         ver.getMaintainer(),
                         isPublishedVersion(ver),
                         ver.getSandbox() != null ? ver.getSandbox() : "none",
-                        SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson())));
+                        SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson()),
+                        def.getKind() != null ? def.getKind() : "all"));
     }
 
     /** 写入 sandbox + policy；policy 可为 null（docker 时运行时用默认）；非法取值 → BizException */
@@ -435,5 +438,17 @@ public class SkillAdminService {
         } catch (IOException e) {
             return "[]";
         }
+    }
+
+    /** 会话形态 kind 收敛：chat|task|all；空/非法回落 all（Lab/校验见 K2） */
+    static String normalizeKind(String kind) {
+        if (kind == null) {
+            return "all";
+        }
+        String v = kind.strip();
+        return switch (v) {
+            case "chat", "task", "all" -> v;
+            default -> "all";
+        };
     }
 }

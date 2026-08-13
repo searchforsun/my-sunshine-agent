@@ -36,6 +36,8 @@ export interface SkillEntry {
   /** none | docker */
   sandbox?: string
   sandboxPolicy?: SandboxPolicy | null
+  /** 会话形态：chat | task | all */
+  kind?: string
 }
 
 export interface SkillVersion {
@@ -75,11 +77,21 @@ export async function listSkills(): Promise<SkillEntry[]> {
   return parseApiResponse<SkillEntry[]>(res)
 }
 
-export async function createSkill(id: string, displayName: string, description?: string): Promise<SkillEntry> {
+export async function createSkill(
+  id: string,
+  displayName: string,
+  description?: string,
+  kind?: string,
+): Promise<SkillEntry> {
   const res = await fetch(apiUrl('/api/skills'), {
     method: 'POST',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, displayName, description: description ?? '' }),
+    body: JSON.stringify({
+      id,
+      displayName,
+      description: description ?? '',
+      kind: kind ?? 'all',
+    }),
   })
   return parseApiResponse<SkillEntry>(res)
 }
@@ -97,11 +109,16 @@ export async function updateSkill(
   id: string,
   displayName: string,
   description?: string,
+  kind?: string,
 ): Promise<SkillEntry> {
   const res = await fetch(apiUrl(`/api/skills/${encodeURIComponent(id)}`), {
     method: 'PUT',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName, description: description ?? '' }),
+    body: JSON.stringify({
+      displayName,
+      description: description ?? '',
+      kind: kind ?? 'all',
+    }),
   })
   return parseApiResponse<SkillEntry>(res)
 }
@@ -290,6 +307,8 @@ export interface SkillCatalogIndexEntry {
   description: string
   version: number
   enabled: boolean
+  /** 会话形态：chat | task | all */
+  kind?: string
 }
 
 export async function listSkillCatalogIndex(): Promise<SkillCatalogIndexEntry[]> {

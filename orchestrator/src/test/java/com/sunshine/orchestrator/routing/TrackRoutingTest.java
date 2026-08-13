@@ -73,12 +73,10 @@ class TrackRoutingTest {
                 skillBindingParser,
                 agentBindingParser);
 
-        when(skillBindingParser.parse(anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
-        when(skillBindingParser.parse(anyString(), any())).thenAnswer(inv ->
-                SkillBindingOutcome.none(inv.getArgument(0)));
+        when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
         when(skillBindingParser.stripAtMention(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(agentBindingParser.stripAgentMentions(anyString())).thenAnswer(inv -> inv.getArgument(0));
-        when(agentBindingParser.parse(anyString())).thenAnswer(inv ->
+        when(agentBindingParser.parse(anyString(), anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
         when(skillCatalogService.sanitizeSkillPlan(any())).thenAnswer(inv -> inv.getArgument(0));
         when(intentRouter.classifyPlan(any(RoutingContext.class)))

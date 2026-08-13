@@ -41,7 +41,7 @@ class PlanValidatorTest {
                         "sdk__sunshine-finance__list_my_expenses", "财务列表", "", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null)));
         when(skillCatalogService.findIndex("compliance-check"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
-                        "compliance-check", "合规审查", "desc", 1, true, "none")));
+                        "compliance-check", "合规审查", "desc", 1, true, "none", "all")));
 
         PlanJson raw = samplePlan();
         assertThat(validator.validatePlannerOutput(raw)).isNull();
@@ -75,10 +75,10 @@ class PlanValidatorTest {
                         "sdk__sunshine-finance__list_my_expenses", "财务列表", "", "remote", "sdk", "sunshine-finance", "", null, Map.of(), "read", false, true, true, null)));
         when(skillCatalogService.findIndex("policy-review"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
-                        "policy-review", "制度审查", "desc", 1, true, "none")));
+                        "policy-review", "制度审查", "desc", 1, true, "none", "all")));
         when(skillCatalogService.findIndex("compliance-check"))
                 .thenReturn(Optional.of(new SkillCatalogIndexEntry(
-                        "compliance-check", "合规审查", "desc", 1, true, "none")));
+                        "compliance-check", "合规审查", "desc", 1, true, "none", "all")));
 
         PlanJson raw = multiAgentPlan();
         assertThat(validator.validatePlannerOutput(raw)).isNull();

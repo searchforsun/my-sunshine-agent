@@ -78,6 +78,6 @@ class AgentExecutorRouterTest {
         return new AgentCatalogEntry(
                 id, "展示名", "desc", null, List.of(), List.of(), "[]", true, "default",
                 List.of(), null, "{}", "{}", 2, 5,
-                AgentCatalogEntry.AgentSource.valueOf(source), null, null, null);
+                AgentCatalogEntry.AgentSource.valueOf(source), null, null, null, "all");
     }
 }

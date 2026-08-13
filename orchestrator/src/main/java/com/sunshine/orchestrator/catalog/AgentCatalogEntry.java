@@ -21,8 +21,15 @@ public record AgentCatalogEntry(
         AgentSource source,
         String agentCardUrl,
         String authConfigJson,
-        String endpointOverride
+        String endpointOverride,
+        String kind
 ) {
+    public AgentCatalogEntry {
+        if (kind == null || kind.isBlank()) {
+            kind = "all";
+        }
+    }
+
     public enum AgentSource { INTERNAL, EXTERNAL }
 
     public String primarySkillId() {

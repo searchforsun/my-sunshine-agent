@@ -87,6 +87,7 @@ const editForm = ref({
   modelName: null as string | null,
   maxIters: '',
   maxHandoffs: '',
+  kind: 'all' as string,
 })
 
 // ---- 外部智能体 ----
@@ -344,6 +345,7 @@ function loadEditForm(agent: AgentEntry) {
     modelName: parseModelConfigModel(agent.modelConfigJson),
     maxIters: String(agent.maxIters ?? 0),
     maxHandoffs: String(agent.maxHandoffs ?? 0),
+    kind: agent.kind ?? 'all',
   }
 }
 
@@ -597,6 +599,7 @@ async function handleSave() {
           modelConfigJson: buildModelConfigJson(editForm.value.modelName),
           maxIters: Number(editForm.value.maxIters) || 0,
           maxHandoffs: Number(editForm.value.maxHandoffs) || 0,
+          kind: editForm.value.kind,
         },
       )
     }
@@ -836,6 +839,9 @@ onUnmounted(() => {
                 <h4 class="form-section-title">能力配置</h4>
               </header>
               <div class="form-grid form-grid-config">
+                <NFormItem label="会话形态">
+                  <NSelect v-model:value="editForm.kind" class="sun-field" :disabled="!isEditing" :options="[{ label: '全部', value: 'all' },{ label: '对话', value: 'chat' },{ label: '任务', value: 'task' }]" :menu-props="{ class: 'agent-select-menu' }" />
+                </NFormItem>
                 <NFormItem label="关联 Skill">
                   <NSelect v-model:value="editForm.skillIds" class="sun-field" multiple filterable :disabled="!isEditing" :options="skillSelectOptions" :menu-props="{ class: 'agent-select-menu' }" placeholder="可选 0~N 个 Skill" />
                 </NFormItem>

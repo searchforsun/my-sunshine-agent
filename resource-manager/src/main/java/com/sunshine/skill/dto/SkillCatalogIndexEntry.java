@@ -7,11 +7,15 @@ public record SkillCatalogIndexEntry(
         String description,
         int version,
         boolean enabled,
-        String sandbox
+        String sandbox,
+        String kind
 ) {
     public SkillCatalogIndexEntry {
         if (sandbox == null || sandbox.isBlank()) {
             sandbox = "none";
+        }
+        if (kind == null || kind.isBlank()) {
+            kind = "all";
         }
     }
 
@@ -22,6 +26,7 @@ public record SkillCatalogIndexEntry(
                 full.description(),
                 full.version(),
                 full.enabled(),
-                full.sandbox());
+                full.sandbox(),
+                full.kind());
     }
 }

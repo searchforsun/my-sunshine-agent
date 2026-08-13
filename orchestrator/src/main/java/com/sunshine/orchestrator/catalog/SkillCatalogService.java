@@ -77,17 +77,34 @@ public class SkillCatalogService {
         return find(skillId).map(SkillCatalogEntry::systemOverlay).orElse("");
     }
 
-    /** L3 意图分类器 — Skill 目录（含 sandbox 能力） */
+    /** L3 意图分类器 — Skill 目录（含 sandbox 能力），按会话 kind 过滤（保留 all + 同 kind） */
+    public String renderForClassifier(String sessionKind) {
+        return renderForClassifier(sessionKind, false);
+    }
+
+    /** 兼容旧调用（无 kind 上下文 → 全量） */
     public String renderForClassifier() {
+        return renderForClassifier(null, true);
+    }
+
+    private String renderForClassifier(String sessionKind, boolean includeAll) {
         if (indexEntries().isEmpty()) {
             return "(无 skill 目录)";
         }
         return indexEntries().stream()
                 .filter(SkillCatalogIndexEntry::enabled)
+                .filter(e -> includeAll || ResourceKindFilter.matches(e.kind(), sessionKind))
                 .map(e -> "- **" + e.id() + "**: " + e.displayName()
                         + " | sandbox=" + e.sandbox()
                         + (StringUtils.hasText(e.description()) ? " — " + e.description() : ""))
                 .collect(Collectors.joining("\n"));
+    }
+
+    public String renderIntoClassifier(String classifierPrompt, String sessionKind) {
+        if (!StringUtils.hasText(classifierPrompt)) {
+            return classifierPrompt;
+        }
+        return classifierPrompt.replace("{{skill-catalog}}", renderForClassifier(sessionKind));
     }
 
     public String renderIntoClassifier(String classifierPrompt) {
@@ -112,6 +129,7 @@ public class SkillCatalogService {
         Map<String, String> params = new LinkedHashMap<>(plan.params());
         params.remove(SkillBindingOutcome.PARAM_SKILL);
         log.warn("[SkillCatalogService] unknown skillId={}, stripped from plan", skillId);
-        return new ExecutionPlan(plan.mode(), plan.workflowId(), params, plan.reason(), plan.ruleId());
+        return new ExecutionPlan(plan.mode(), plan.workflowId(), params, plan.reason(), plan.ruleId(),
+                plan.routingTraces());
     }
 }

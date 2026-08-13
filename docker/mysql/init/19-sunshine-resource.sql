@@ -8,6 +8,7 @@ CREATE TABLE skill_definition (
     description     VARCHAR(512),
     enabled         TINYINT(1) NOT NULL DEFAULT 1,
     active_version  INT NOT NULL DEFAULT 1,
+    kind            VARCHAR(16) NOT NULL DEFAULT 'all' COMMENT '会话形态：chat|task|all（与 conversation.kind 同轴）',
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -48,6 +49,7 @@ CREATE TABLE agent_definition (
     data_scope_json TEXT,
     permissions_json VARCHAR(512) NOT NULL DEFAULT '{}',
     model_config_json VARCHAR(512) NOT NULL DEFAULT '{}',
+    kind            VARCHAR(16) NOT NULL DEFAULT 'all' COMMENT '会话形态：chat|task|all（与 conversation.kind 同轴）',
     max_iters       INT NOT NULL DEFAULT 2,
     max_handoffs    INT NOT NULL DEFAULT 5,
     source          VARCHAR(16) NOT NULL DEFAULT 'INTERNAL',

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.catalog;
 
 import com.sunshine.orchestrator.catalog.AgentCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
+import com.sunshine.orchestrator.catalog.ResourceKindFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,10 @@ public class AgentBindingParser {
     private final AgentCatalogService agentCatalogService;
 
     public AgentBindingOutcome parse(String userMessage) {
+        return parse(userMessage, null);
+    }
+
+    public AgentBindingOutcome parse(String userMessage, String sessionKind) {
         if (!StringUtils.hasText(userMessage)) {
             return AgentBindingOutcome.none("");
         }
@@ -32,18 +37,18 @@ public class AgentBindingParser {
         LinkedHashSet<String> agentIds = new LinkedHashSet<>();
         Matcher head = DOLLAR_HEAD.matcher(trimmed);
         if (head.matches()) {
-            Optional<String> first = resolveAgentId(head.group(1));
+            Optional<String> first = resolveAgentId(head.group(1), sessionKind);
             if (first.isEmpty()) {
                 return AgentBindingOutcome.unknown(head.group(1));
             }
             agentIds.add(first.get());
-            collectInline(head.group(2), agentIds);
+            collectInline(head.group(2), agentIds, sessionKind);
             if (agentIds.isEmpty()) {
                 return AgentBindingOutcome.none(trimmed);
             }
             return AgentBindingOutcome.bound(new ArrayList<>(agentIds), stripAgentMentions(trimmed));
         }
-        collectInline(trimmed, agentIds);
+        collectInline(trimmed, agentIds, sessionKind);
         if (agentIds.isEmpty()) {
             return AgentBindingOutcome.none(trimmed);
         }
@@ -58,13 +63,13 @@ public class AgentBindingParser {
         return stripped.isEmpty() ? "请处理" : stripped;
     }
 
-    private void collectInline(String text, LinkedHashSet<String> agentIds) {
+    private void collectInline(String text, LinkedHashSet<String> agentIds, String sessionKind) {
         if (!StringUtils.hasText(text)) {
             return;
         }
         Matcher inline = INLINE_DOLLAR.matcher(text);
         while (inline.find()) {
-            Optional<String> agentId = resolveAgentId(inline.group(1));
+            Optional<String> agentId = resolveAgentId(inline.group(1), sessionKind);
             if (agentId.isEmpty()) {
                 throw new IllegalStateException("unknown agent: " + inline.group(1));
             }
@@ -72,17 +77,21 @@ public class AgentBindingParser {
         }
     }
 
-    private Optional<String> resolveAgentId(String token) {
+    /** 解析到 agent 后再按会话 kind 过滤（保留 all + 同 kind），缺省会话形态按 chat */
+    private Optional<String> resolveAgentId(String token, String sessionKind) {
         if (!StringUtils.hasText(token)) {
             return Optional.empty();
         }
         String raw = token.strip();
         Optional<AgentCatalogIndexEntry> byId = agentCatalogService.findIndex(raw);
         if (byId.isPresent()) {
-            return Optional.of(byId.get().id());
+            return ResourceKindFilter.matches(byId.get().kind(), sessionKind)
+                    ? Optional.of(byId.get().id())
+                    : Optional.empty();
         }
         return agentCatalogService.indexEntries().stream()
                 .filter(e -> raw.equals(e.displayName()))
+                .filter(e -> ResourceKindFilter.matches(e.kind(), sessionKind))
                 .map(AgentCatalogIndexEntry::id)
                 .findFirst();
     }

@@ -43,6 +43,8 @@ public class AgentDefinitionEntity {
     private int maxIters = 2;
     @Column(name = "max_handoffs", nullable = false)
     private int maxHandoffs = 5;
+    @Column(length = 16, nullable = false)
+    private String kind = "all";
     @Column(name = "source", length = 16, nullable = false)
     private String source = "INTERNAL";
     @Column(name = "agent_card_url", length = 512)

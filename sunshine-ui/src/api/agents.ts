@@ -12,6 +12,8 @@ export interface AgentCatalogIndexEntry {
   description: string
   enabled: boolean
   source?: string
+  /** 会话形态：chat | task | all */
+  kind?: string
 }
 
 export interface AgentEntry {
@@ -34,6 +36,8 @@ export interface AgentEntry {
   agentCardUrl?: string
   authConfigJson?: string
   endpointOverride?: string
+  /** 会话形态：chat | task | all */
+  kind?: string
 }
 
 export async function listAgents(): Promise<AgentEntry[]> {

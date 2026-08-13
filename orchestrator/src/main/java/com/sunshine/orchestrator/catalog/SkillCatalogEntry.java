@@ -11,6 +11,12 @@ public record SkillCatalogEntry(
         int version,
         boolean enabled,
         String sandbox,
-        SandboxPolicy sandboxPolicy
+        SandboxPolicy sandboxPolicy,
+        String kind
 ) {
+    public SkillCatalogEntry {
+        if (kind == null || kind.isBlank()) {
+            kind = "all";
+        }
+    }
 }

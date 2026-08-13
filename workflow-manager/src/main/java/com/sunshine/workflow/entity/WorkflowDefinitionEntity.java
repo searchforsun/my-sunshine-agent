@@ -36,6 +36,9 @@ public class WorkflowDefinitionEntity {
     @Column(nullable = false, length = 16)
     private String source = "studio";
 
+    @Column(nullable = false, length = 16)
+    private String kind = "all";
+
     @Column(length = 64)
     private String maintainer;
 

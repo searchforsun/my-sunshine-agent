@@ -35,8 +35,8 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
             return Mono.just(Optional.empty());
         }
         SkillBindingOutcome binding = StringUtils.hasText(ctx.clientSkillId())
-                ? skillBindingParser.parse(ctx.userMessage(), ctx.clientSkillId())
-                : skillBindingParser.parse(ctx.userMessage());
+                ? skillBindingParser.parse(ctx.userMessage(), ctx.clientSkillId(), ctx.kindOrDefault())
+                : skillBindingParser.parse(ctx.userMessage(), null, ctx.kindOrDefault());
         if (binding.unknown()) {
             return Mono.error(new BizException(OrchestratorErrorCode.SKILL_NOT_FOUND));
         }

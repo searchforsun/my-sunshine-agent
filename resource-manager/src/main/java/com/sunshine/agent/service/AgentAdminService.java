@@ -102,6 +102,7 @@ public class AgentAdminService {
         def.setAgentCardUrl(request.agentCardUrl() != null ? request.agentCardUrl().strip() : null);
         def.setAuthConfigJson(request.authConfigJson() != null ? request.authConfigJson().strip() : null);
         def.setEndpointOverride(request.endpointOverride() != null ? request.endpointOverride().strip() : null);
+        def.setKind(normalizeKind(request.kind()));
         def.setCreatedAt(now);
         def.setUpdatedAt(now);
         definitionRepository.save(def);
@@ -154,6 +155,7 @@ public class AgentAdminService {
         if (request.endpointOverride() != null) {
             def.setEndpointOverride(request.endpointOverride().strip());
         }
+        def.setKind(normalizeKind(request.kind()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         replaceSkillLinks(agentId, request.skillIds());
@@ -285,6 +287,18 @@ public class AgentAdminService {
             return value.strip();
         }
         return fallback;
+    }
+
+    /** 会话形态 kind 收敛：chat|task|all；空/非法回落 all（Lab/校验见 K2） */
+    private static String normalizeKind(String kind) {
+        if (kind == null) {
+            return "all";
+        }
+        String v = kind.strip();
+        return switch (v) {
+            case "chat", "task", "all" -> v;
+            default -> "all";
+        };
     }
 
     private void replaceSkillLinks(String agentId, List<String> skillIds) {

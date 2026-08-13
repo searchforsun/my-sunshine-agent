@@ -79,7 +79,8 @@ public class AgentCatalogRegistry {
                 AgentCatalogEntry.AgentSource.valueOf(def.getSource()),
                 def.getAgentCardUrl(),
                 def.getAuthConfigJson(),
-                def.getEndpointOverride());
+                def.getEndpointOverride(),
+                def.getKind() != null ? def.getKind() : "all");
     }
 
     private static List<String> parseTags(String json) {

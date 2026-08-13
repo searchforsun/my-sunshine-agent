@@ -71,9 +71,9 @@ export function useSkillsPage() {
 
   const showCreate = ref(false)
   const showEdit = ref(false)
-  const createForm = ref({ id: '', displayName: '', description: '' })
+  const createForm = ref({ id: '', displayName: '', description: '', kind: 'all' })
   const editTargetSkill = ref<SkillEntry | null>(null)
-  const editForm = ref({ displayName: '', description: '' })
+  const editForm = ref({ displayName: '', description: '', kind: 'all' })
   const creating = ref(false)
   const savingEdit = ref(false)
   const uploading = ref(false)
@@ -499,11 +499,12 @@ export function useSkillsPage() {
         createForm.value.id.trim(),
         createForm.value.displayName.trim(),
         createForm.value.description.trim(),
+        createForm.value.kind,
       )
       skills.value = [...skills.value, created]
       selectedId.value = created.id
       showCreate.value = false
-      createForm.value = { id: '', displayName: '', description: '' }
+      createForm.value = { id: '', displayName: '', description: '', kind: 'all' }
       message.success('Skill 已创建，请上传 Skill 文件夹')
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '创建失败'))
@@ -605,6 +606,7 @@ export function useSkillsPage() {
     editForm.value = {
       displayName: skill.displayName,
       description: skill.description ?? '',
+      kind: skill.kind ?? 'all',
     }
     showEdit.value = true
   }
@@ -622,6 +624,7 @@ export function useSkillsPage() {
         editTargetSkill.value.id,
         editForm.value.displayName.trim(),
         editForm.value.description.trim(),
+        editForm.value.kind,
       )
       skills.value = skills.value.map(s => (s.id === updated.id ? updated : s))
       showEdit.value = false

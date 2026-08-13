@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,7 +63,7 @@ class ReactTaskBoardRoutingTest {
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
-        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
+        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
         when(agentBindingParser.stripAgentMentions(org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -73,7 +74,7 @@ class ReactTaskBoardRoutingTest {
                         new WorkflowBindingParser(workflowCatalog)),
                 skillBindingParser,
                 agentBindingParser);
-        when(skillBindingParser.parse(anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
+        when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
         when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> inv.getArgument(0));

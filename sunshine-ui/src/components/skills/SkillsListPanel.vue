@@ -10,6 +10,17 @@ import {
 } from '../../utils/skills/skillsVersionUtils'
 
 const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
+
+function kindLabel(kind: string | undefined): string {
+  switch (kind) {
+    case 'chat':
+      return '对话'
+    case 'task':
+      return '任务'
+    default:
+      return ''
+  }
+}
 </script>
 
 <template>
@@ -48,6 +59,7 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
             <div class="skill-card-top">
               <div class="skill-card-names">
                 <span class="skill-title">{{ skill.id }}</span>
+                <span v-if="skill.kind && skill.kind !== 'all'" class="skill-kind">{{ kindLabel(skill.kind) }}</span>
                 <span v-if="skill.displayName && skill.displayName !== skill.id" class="skill-subtitle">{{ skill.displayName }}</span>
                 <span class="skill-version-line">{{ listCardActiveVersionLine(skill) }}</span>
                 <span v-if="listCardMaintainer(skill)" class="skill-maintainer">{{ listCardMaintainer(skill) }}</span>
@@ -230,6 +242,16 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.skill-kind {
+  flex-shrink: 0;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--sun-accent);
+  border: 1px solid var(--sun-border);
+  border-radius: 3px;
 }
 
 .skill-subtitle {

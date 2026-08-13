@@ -106,7 +106,7 @@ public class IntentRouter {
         }
         String workflowId = locked == ExecutionMode.WORKFLOW ? plan.workflowId() : null;
         Map<String, String> params = filterParamsForTrack(plan.params(), locked);
-        return new ExecutionPlan(locked, workflowId, params, plan.reason(), plan.ruleId());
+        return new ExecutionPlan(locked, workflowId, params, plan.reason(), plan.ruleId(), plan.routingTraces());
     }
 
     private static Map<String, String> filterParamsForTrack(Map<String, String> params, ExecutionMode locked) {
@@ -140,9 +140,9 @@ public class IntentRouter {
         if (!StringUtils.hasText(prompt)) {
             return "";
         }
-        // 目录仍全量注入；输出字段由【模式锁定·轨A/B】+ applyLockedMode 约束
+        // 目录按会话 kind 过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A/B】+ applyLockedMode 约束
         prompt = workflowCatalog.renderIntoClassifier(prompt);
-        return skillCatalogService.renderIntoClassifier(prompt);
+        return skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
     }
 
     static String buildClassifierUserMessage(RoutingContext ctx) {

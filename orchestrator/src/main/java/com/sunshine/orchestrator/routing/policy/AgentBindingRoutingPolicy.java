@@ -38,7 +38,7 @@ public class AgentBindingRoutingPolicy implements RoutingPolicy {
         }
         AgentBindingOutcome binding;
         try {
-            binding = agentBindingParser.parse(message);
+            binding = agentBindingParser.parse(message, ctx.kindOrDefault());
         } catch (IllegalStateException e) {
             return Mono.error(new BizException(OrchestratorErrorCode.AGENT_NOT_FOUND));
         }

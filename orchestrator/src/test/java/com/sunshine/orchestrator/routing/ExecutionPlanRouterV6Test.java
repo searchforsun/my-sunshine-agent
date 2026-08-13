@@ -57,7 +57,7 @@ class ExecutionPlanRouterV6Test {
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
-        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
+        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
         when(agentBindingParser.stripAgentMentions(org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -68,7 +68,7 @@ class ExecutionPlanRouterV6Test {
                         new WorkflowBindingParser(workflowCatalog)),
                 skillBindingParser,
                 agentBindingParser);
-        when(skillBindingParser.parse(any())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
+        when(skillBindingParser.parse(any(), any(), any())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
         when(skillBindingParser.stripAtMention(any())).thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.sanitizeSkillPlan(any())).thenAnswer(inv -> inv.getArgument(0));
     }
