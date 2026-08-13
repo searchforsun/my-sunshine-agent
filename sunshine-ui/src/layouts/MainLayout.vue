@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, NTabs, NTabPane, type MenuOption, type DropdownOption } from 'naive-ui'
-import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, AppsOutline, HardwareChipOutline, ConstructOutline, CubeOutline, CodeSlashOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline } from '@vicons/ionicons5'
+import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, AppsOutline, HardwareChipOutline, ConstructOutline, CubeOutline, CodeSlashOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline, LayersOutline } from '@vicons/ionicons5'
 import { h, type Component, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../composables/useSidebar'
@@ -143,11 +143,12 @@ const platformMenuOptions: MenuOption[] = [
   { label: '模型', key: 'models', icon: renderIcon(CubeOutline) },
   { label: '上下文', key: 'context', icon: renderIcon(AlbumsOutline) },
   { label: '提示词', key: 'prompts', icon: renderIcon(DocumentTextOutline) },
+  { label: '业务场景', key: 'biz-scenes', icon: renderIcon(LayersOutline) },
   { label: '业务数据', key: 'biz-data', icon: renderIcon(BriefcaseOutline) },
   { label: '系统状态', key: 'status', icon: renderIcon(StatsChartOutline) },
 ]
 
-const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'agents', 'models', 'context', 'prompts', 'biz-data', 'workflow-diff', 'skill-diff'])
+const FILL_CONTENT_ROUTES = new Set(['chat', 'knowledge', 'skills', 'workflows', 'tools', 'agents', 'models', 'context', 'prompts', 'biz-scenes', 'biz-data', 'workflow-diff', 'skill-diff'])
 const contentFill = computed(() => FILL_CONTENT_ROUTES.has(String(route.name ?? '')))
 const hideSidebarFab = computed(() => contentFill.value || route.name === 'skill-diff')
 

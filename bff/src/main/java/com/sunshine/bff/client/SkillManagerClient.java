@@ -214,6 +214,48 @@ public class SkillManagerClient {
         return get("/api/biz-scenes/active-codes");
     }
 
+    public Mono<Map<String, Object>> listBizScenes() {
+        return get("/api/biz-scenes");
+    }
+
+    public Mono<Map<String, Object>> createBizScene(Map<String, Object> body) {
+        return webClient.post()
+                .uri("/api/biz-scenes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> updateBizScene(String code, Map<String, Object> body) {
+        return webClient.put()
+                .uri("/api/biz-scenes/{code}", code)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> listBizScenePolicies(String tenantId) {
+        return webClient.get()
+                .uri(uri -> uri.path("/api/biz-scenes/policies").queryParam("tenantId", tenantId).build())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> createBizScenePolicy(String tenantId, Map<String, Object> body) {
+        return webClient.post()
+                .uri(uri -> uri.path("/api/biz-scenes/policies").queryParam("tenantId", tenantId).build())
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     private Mono<Map<String, Object>> get(String path) {
         return webClient.get()
                 .uri(path)

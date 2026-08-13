@@ -77,6 +77,12 @@ const router = createRouter({
           meta: { title: '提示词' },
         },
         {
+          path: 'biz-scenes',
+          name: 'biz-scenes',
+          component: () => import('../views/BizScenesView.vue'),
+          meta: { title: '业务场景' },
+        },
+        {
           path: 'workflows/:workflowId/diff',
           name: 'workflow-diff',
           component: () => import('../views/WorkflowVersionDiffView.vue'),
