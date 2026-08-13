@@ -56,6 +56,8 @@ export function useContextPage() {
   const conversations = ref<ConversationSummary[]>([])
   const convSearch = ref('')
   const selectedConvId = ref<string | null>(routeState.readConv())
+  /** 会话列表分栏：chat | task（K4；会话 kind 轴对齐记忆闸门） */
+  const convKindFilter = ref<'all' | 'chat' | 'task'>('all')
 
   const loadingUsers = ref(false)
   const loadingConvs = ref(false)
@@ -94,13 +96,20 @@ export function useContextPage() {
   const l2StatusFilter = ref<string | null>(null)
 
   const filteredConversations = computed(() => {
+    let list = conversations.value
+    if (convKindFilter.value !== 'all') {
+      list = list.filter(c => (c.kind || 'chat') === convKindFilter.value)
+    }
     const q = convSearch.value.trim().toLowerCase()
-    if (!q) return conversations.value
-    return conversations.value.filter(c => {
+    if (!q) return list
+    return list.filter(c => {
       const title = (c.title || '新对话').toLowerCase()
       return title.includes(q) || c.id.toLowerCase().includes(q)
     })
   })
+
+  /** 当前选中会话 kind（缺省按 chat）；驱动右侧 Tab 载体 */
+  const selectedConvKind = computed(() => selectedConv.value?.kind || 'chat')
 
   const filteredL2Entries = computed(() => {
     const q = l2Search.value.trim().toLowerCase()
@@ -484,6 +493,31 @@ export function useContextPage() {
     await refreshAll()
   })
 
+  /** 会话 kind 轴：切换会话时保证 activeTab 落在该 kind 合法集合内 */
+  watch(selectedConvKind, () => {
+    if (!routeReady.value) return
+    const legal = selectedConvKind.value === 'task' ? ['l1', 'task'] : ['l1', 'l2', 'l3']
+    if (!legal.includes(activeTab.value)) {
+      activeTab.value = selectedConvKind.value === 'task' ? 'task' : 'l1'
+    }
+  })
+
+  /** 分栏切换：选中会话不在该栏时落到栏内第一条 */
+  watch(convKindFilter, () => {
+    if (!routeReady.value) return
+    const list = filteredConversations.value
+    if (!list.some(c => c.id === selectedConvId.value)) {
+      selectedConvId.value = list[0]?.id ?? null
+      if (selectedConvId.value) {
+        void loadL1(selectedConvId.value)
+        void loadL3Entries(selectedConvId.value)
+      } else {
+        l1Snapshot.value = null
+        l3Entries.value = []
+      }
+    }
+  })
+
   watch([l2Search, l2StatusFilter], () => {
     if (!entries.value.length) return
     ensureL2Selection()
@@ -512,6 +546,8 @@ export function useContextPage() {
     authUsers,
     conversations,
     convSearch,
+    convKindFilter,
+    selectedConvKind,
     selectedConvId,
     loadingUsers,
     loadingConvs,

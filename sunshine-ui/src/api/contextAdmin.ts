@@ -83,6 +83,9 @@ export interface ReingestResult {
 export interface ConversationSummary {
   id: string
   title: string
+  kind?: string
+  workspaceId?: string | null
+  checkoutPath?: string | null
   createdAt?: string
   updatedAt?: string
 }

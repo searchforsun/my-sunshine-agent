@@ -15,6 +15,7 @@ import ContextConversationList from '../components/context/ContextConversationLi
 import ContextL1Panel from '../components/context/ContextL1Panel.vue'
 import ContextL2Panel from '../components/context/ContextL2Panel.vue'
 import ContextL3Panel from '../components/context/ContextL3Panel.vue'
+import ContextTaskPanels from '../components/context/ContextTaskPanels.vue'
 import { CONTEXT_PAGE_KEY, useContextPage } from '../composables/useContextPage'
 import '../utils/stream-markdown/styles.css'
 
@@ -68,12 +69,16 @@ provide(CONTEXT_PAGE_KEY, contextPage)
             <ContextL1Panel />
           </NTabPane>
 
-          <NTabPane name="l2" tab="L2 用户状态">
+          <NTabPane v-if="contextPage.selectedConvKind === 'chat'" name="l2" tab="L2 用户状态">
             <ContextL2Panel />
           </NTabPane>
 
-          <NTabPane name="l3" tab="L3 历史索引">
+          <NTabPane v-if="contextPage.selectedConvKind === 'chat'" name="l3" tab="L3 历史索引">
             <ContextL3Panel />
+          </NTabPane>
+
+          <NTabPane v-else name="task" tab="任务上下文">
+            <ContextTaskPanels />
           </NTabPane>
         </NTabs>
       </main>

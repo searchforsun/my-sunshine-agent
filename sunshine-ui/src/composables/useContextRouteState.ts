@@ -1,8 +1,8 @@
 import { useRoute, useRouter } from 'vue-router'
 
-export type ContextTab = 'l1' | 'l2' | 'l3'
+export type ContextTab = 'l1' | 'l2' | 'l3' | 'task'
 
-const VALID_TABS = new Set<string>(['l1', 'l2', 'l3'])
+const VALID_TABS = new Set<string>(['l1', 'l2', 'l3', 'task'])
 
 function queryString(value: unknown): string | null {
   if (typeof value !== 'string') return null

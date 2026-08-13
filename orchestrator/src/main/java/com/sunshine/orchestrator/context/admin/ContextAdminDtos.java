@@ -87,10 +87,13 @@ public final class ContextAdminDtos {
     public record ReingestResultView(String convId, int ingested, String message) {
     }
 
-    /** Admin 右侧会话列表：id + 标题 */
+    /** Admin 右侧会话列表：id + 标题 + kind（chat|task；task 带工作区信息） */
     public record ConversationSummaryView(
             String id,
             String title,
+            String kind,
+            String workspaceId,
+            String checkoutPath,
             Instant createdAt,
             Instant updatedAt) {
     }

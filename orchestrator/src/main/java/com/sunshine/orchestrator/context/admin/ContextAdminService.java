@@ -70,6 +70,9 @@ public class ContextAdminService {
                 .map(c -> new ConversationSummaryView(
                         c.getId(),
                         StringUtils.hasText(c.getTitle()) ? c.getTitle() : "新对话",
+                        StringUtils.hasText(c.getKind()) ? c.getKind() : "chat",
+                        c.getWorkspaceId(),
+                        c.getCheckoutPath(),
                         c.getCreatedAt(),
                         c.getUpdatedAt()))
                 .toList();
