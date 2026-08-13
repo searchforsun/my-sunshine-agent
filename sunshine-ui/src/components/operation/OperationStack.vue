@@ -8,10 +8,10 @@ import {
   hasRealTaskBoardItems,
   isDecisionStep,
   isSubagentStep,
-  resolvePlanIdFromStep,
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
 } from '../../api/processingSteps'
+import { isPlanDagMessage } from '../../api/harnessTimeline'
 import {
   catalogToolIdFromStepId,
   isSandboxExecStep,
@@ -322,15 +322,9 @@ const summaryText = computed(() => {
   return formatTimelineSummaryText(prefix, clock)
 })
 
-const planStep = computed(() => effectiveSteps.value.find(s => s.phase === 'plan'))
-
-const showPlanDag = computed(() => {
-  const plan = planStep.value
-  if (!plan) return false
-  return !!resolvePlanIdFromStep(plan)
-    || !!(plan.metadata?.planApproval?.planGraph?.nodes?.length)
-    || !!props.executionPlanId
-})
+const showPlanDag = computed(() =>
+  isPlanDagMessage(effectiveSteps.value, props.executionPlanId),
+)
 
 const displaySteps = computed(() => {
   void props.timelineRevision
