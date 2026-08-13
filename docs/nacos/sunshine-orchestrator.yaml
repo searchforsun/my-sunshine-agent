@@ -104,7 +104,9 @@ agent:
         max-user-rounds: 10
         # user-modification-template → Catalog id=plan-workflow.user-modification
     harness:
-      enabled: false
+      # true：PLAN_WORKFLOW → PlannerHarnessExecutor（内核冒烟 / 灰度）
+      # false：恢复旧 PlanWorkflowExecutor Approval/DAG
+      enabled: true
       max-rounds: 12
       max-total-tasks: 24
       max-duration-ms: 14400000
