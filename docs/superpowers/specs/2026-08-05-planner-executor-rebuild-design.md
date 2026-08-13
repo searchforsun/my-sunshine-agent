@@ -1,17 +1,19 @@
 # Planner-Executor 架构重建 — 取代动态 Plan-Workflow
 
-> **状态**：📋 设计评审中 · **kernel plan 已备**（[2026-08-13-planner-executor-kernel](../plans/2026-08-13-planner-executor-kernel.md)：H-0～H-4 + 过渡入口）· **4.14 唯一 SSOT**（原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
+> **状态**：**内核 H-0～H-4 + 过渡入口 ✅** · **H-5 ✅**（[routing v6+H-5 plan](../plans/2026-08-13-unified-routing-v6-h5.md)）· **H-6～H-7 / 阶段 D ⬜** · **4.14 唯一 SSOT**（原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
 > **v2（2026-08-05）**：简化决议 S1–S7（§0.1）。**v3（2026-08-07）**：§3.1.1 上下文契约。**v4（2026-08-10）**：S5 单一循环（无 full/hier）。**v5（2026-08-10）**：§4 分层普通时间线 + TaskBoard。**v6（2026-08-10）**：归档 harness；§5.0 PlanNotebook 定稿模型 + §5.4 S6 重规划表迁入本文。
 > **v7（2026-08-13）**：勘误 D6/`PlanValidator`/Redis key/TTL/GoalAlignment/`CollapsibleConfirmPanel`；**长负载预算**上调（§5.0 / §8.1，对齐现网 `react.task-max-iters` / spawn·exec-wall）。
 > **v8（2026-08-13）**：命名对齐 routing **四轴**——会话形态 `kind`（废 `scene`）；执行模式 `executionMode`；业务域 `biz_scene`（暂不动）；LLM 调用点 `callSite` / DB·MQ `call_site`（废 `call_scene`）。正文若仍写 `scene=chat|task` 均读作 `kind`。
+> **v9（2026-08-13）**：§7 落地进度——H-0～H-4 + 过渡入口 ✅。
+> **v10（2026-08-13）**：H-5 ✅（routing v6：`fast`/`pro`/`workflow` + ResourceDispatcher；`pro`→harness）；H-6 前端 / H-7 全量 Live / 阶段 D（R-4）**未做**。
 > **日期**：2026-08-05
 > **编号**：阶段四增量（重建 Planner-Executor，删除动态 Plan-Workflow）
 > **前置**：
->   - [统一资源路由 v6](./2026-07-29-unified-routing-design.md) — 用户三模式 `fast`/`pro`/`workflow` + 双轨意图收集 + `ResourceDispatcher`（**H-5 接线**；H-0～H-4 可用过渡映射先做）；**命名四轴 SSOT**
->   - [ReAct 目标对齐 4.7.7](./2026-07-27-react-goal-alignment-design.md) — `GoalAlignmentValidator` / Middleware（**设计态未落地**；可与 H-3 同批薄实现，或门禁降级为仅预算熔断）
+>   - [统一资源路由 v6](./2026-07-29-unified-routing-design.md) — 用户三模式 `fast`/`pro`/`workflow` + 双轨意图收集 + `ResourceDispatcher`（**H-5 ✅**；R-4 再删 PlanWorkflow 源码残留）；**命名四轴 SSOT**
+>   - [ReAct 目标对齐 4.7.7](./2026-07-27-react-goal-alignment-design.md) — Middleware/完整 4.7.7 **仍设计态**；harness 内已有**机械薄实现** `plan.harness.GoalAlignmentValidator`（DEVIATED/STUCK，H-3）
 >   - [多 Agent 统一设计](./2026-07-29-multi-agent-unified-design.md) — spawn_subagent 中心化编排 + `AgentRunRequest`
-> **依赖与落地顺序（跨 spec）**：[specs/README.md §活跃增量方案](./README.md#活跃增量方案依赖与落地顺序2026-08-13) — 主链 `H-0～H-4（过渡入口）→ routing v6 → H-5～H-7 → 阶段 D`；旁路可并行 stateless A / goal-alignment / 观测。
-> **现状基线（2026-08-13）**：运行时仍为 `auto|react|workflow|plan-workflow` + 完整动态 Plan-Workflow；本文描述**目标态**，阶段 D 完成前勿写「已删」。
+> **依赖与落地顺序（跨 spec）**：[specs/README.md §活跃增量方案](./README.md#活跃增量方案依赖与落地顺序2026-08-13) — 主链 `H-0～H-5 ✅ → H-6～H-7 → 阶段 D`。
+> **现状基线（2026-08-13）**：主路径已是 `fast|pro|workflow`；`pro`→`PlannerHarnessExecutor`（`harness.enabled=false` 时 pro **显式失败**）。旧 `PlanWorkflowExecutor`/Approval **源码仍存活**（主路径已断；阶段 D / R-4 再删）。**阶段 D 完成前勿写「已删」**。
 > **命名**：① 本文 `PlannerHarness*` / `harness.*` 与 AgentScope 官方 `HarnessAgent`（Compaction 载体）**无关**；② 四轴见上表，**禁止**用 `scene`/`call_scene` 承载会话形态或调用点。
 > **一句话**：**完全舍弃动态 Plan-Workflow**（Planner 一次性 DAG 规划 + PlanApproval 用户确认 + Plan DAG 时间线），重建为真正的 Planner-Executor——Planner 是 ReAct 主 Agent（全量上下文 + PlanNotebook 叠加），Worker 是 Planner 的**工具调用**（`forWorker()` 丰富上下文），**单一循环**边规划边执行（信息不足先调研再重规划；细则在 Worker ReAct，见 §0.1 S5）。**静态 Workflow（4.13 Studio 编排）保留**；新 Planner-Executor 正文用**分层普通时间线** + TaskBoard 一/二级待办（见 §4），**不**渲染 Plan DAG、**不**用步骤卡片形态。
 
@@ -54,7 +56,7 @@
 | **S7** | **harness 不复用 PlanValidator** | `PlanValidator` 校验 BPMN/DAG 硬契约（节点 type 白名单、answer 强制、网关拓扑），与 harness 线性 task 队列语义不符。harness 用轻量结构校验（id/label/依赖环）；PlanValidator 留给静态 Workflow | v8 §4.2 |
 
 **保留不变**：会话形态 `kind`（`chat`/`task`，用户显式；与 `executionMode` 正交，§6.1）；PlanNotebook (H1) 跨轮记忆；Planner/Worker 职责分离 + `forWorker()` 丰富上下文 + toolWhitelist 下发；handoff 双写（L1 尾部 + H1）；超时/重试/熔断预算（**初值见 §8.1 长负载档**）；降级通道（Planner 全失败 → React 兜底）；复用 AgentScope StateStore / AgentRuntime / 审计 / 沙箱 / spawn_subagent。  
-**前置实现（勿写成已有资产）**：`GoalAlignmentValidator` DEVIATED/STUCK（[4.7.7](./2026-07-27-react-goal-alignment-design.md)，可与 H-3 同批；未就绪时 S6④ 仅靠 `staleRounds` + 预算熔断）。
+**GoalAlignment**：harness 包内机械薄实现 ✅（`staleRounds` / 完成度启发式）；完整 [4.7.7](./2026-07-27-react-goal-alignment-design.md) Middleware / ReAct 共用层仍 ⬜。
 
 ---
 
@@ -151,7 +153,7 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 | `GoalEvaluator` / `TaskEvaluator` / `harness_eval_result` | **S1：统一 Planner 自判** |
 | `PlanSharedMemoryStore` (P2) | **S4：从 H1 rounds 读上游 handoff** |
 
-### 2.3 新增（harness spec v8 已设计，H-0~H-7 实施）
+### 2.3 新增（H-0～H-5 ✅；H-6～H-7 ⬜）
 
 | 组件 | 用途 |
 |------|------|
@@ -429,45 +431,72 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 
 ## 7. 实施阶段（v2 简化后）
 
-### 阶段 H-0：基础设施
+### 7.0 落地进度（2026-08-13）
 
-- `PlanNotebook` POJO（goal + taskQueue/`TaskItem` + `RoundRecord`/`NodeResult`；**无** `taskDecomposition` / `Phase` / `completeness`）
-- `PlanNotebookStore` 接口（Redis 单写四方法）
+| 阶段 | 状态 | 说明 |
+|------|:----:|------|
+| **H-0** 基础设施 | ✅ | `PlanNotebook`（字段 `kind`）+ Store 接口 + Nacos `agent.execution.harness` 长负载默认 |
+| **H-1** Redis 单写 | ✅ | `PlanNotebookStoreImpl`；键 `sunshine:plan:notebook:{sessionId}` TTL 7d（MySQL Writer 本就未建，S2 无回改债） |
+| **H-2** 恢复 | ✅ | load 时 `in_progress`→`fail`；无独立 RecoveryService |
+| **H-3** Planner + 校验 | ✅ | `HarnessPlanner` / `TaskQueueValidator` / harness `GoalAlignmentValidator`；`WORKER`+`forWorker`；`WorkerDispatchTool`；Catalog `planner.harness`/`harness.worker`；`PlannerAgentRuntime`→ReAct |
+| **H-4** Loop | ✅ | `PlannerHarnessLoop`（预算熔断 + `nextDirection` + Assess 后对齐）；`WorkerContextFactory` |
+| **过渡入口**（kernel 附带） | ✅ | 已被 H-5 取代主路径；历史：`harness.enabled`∧`PLAN_WORKFLOW`→harness |
+| **H-5** routing v6 三模式 | ✅ | [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)：`fast`/`pro`/`workflow` + ResourceDispatcher；`pro`→harness；冒烟 `verify_routing_v6_smoke.py` |
+| **H-6** 前端时间线+TaskBoard | ⬜ | 分层普通时间线 / 一二级看板；Approval UI 清理 |
+| **H-7** Live 全量 | ⬜ | §9.2 P1–P8；现仅有 **kernel smoke** + routing v6 smoke |
+| **阶段 D** 删旧 plan-workflow | ⬜ | = routing **R-4**；禁止在 H-7 前删源码；主路径已不进 PlanWorkflow |
+
+**代码落点**：`orchestrator/.../plan/harness/*` · 灰度 `docs/nacos/sunshine-orchestrator.yaml` → `agent.execution.harness.enabled` · 冒烟 `scripts/verify_planner_harness_kernel_smoke.py`。
+
+### 阶段 H-0：基础设施 ✅
+
+- [x] `PlanNotebook` POJO（goal + taskQueue/`TaskItem` + `RoundRecord`/`NodeResult`；**无** `taskDecomposition` / `Phase` / `completeness`；会话形态字段 **`kind`**）
+- [x] `PlanNotebookStore` 接口（Redis 单写四方法）
+- [x] Nacos / `AgentExecutionProperties.Harness` 长负载默认（§8.1）
 - **出口**：单测绿
 
-### 阶段 H-1：持久化实现
+### 阶段 H-1：持久化实现 ✅
 
-- `PlanNotebookStoreImpl`（Redis 单写，每轮 save）
-- **回改**：删除 `PlanNotebookMysqlWriter` / `PlannerNotebookEntity` / `PlannerNotebookRepository` / `planner_notebooks` DDL（S2）
+- [x] `PlanNotebookStoreImpl`（Redis 单写，每轮 save / renewTtl）
+- [x] **回改**：无存量 MySQL Writer 可删（S2 从一开始即 Redis-only）
 - **出口**：单测（save→load 一致性）
 
-### 阶段 H-2：恢复
+### 阶段 H-2：恢复 ✅
 
-- **简化**：不实现独立 `PlanNotebookRecoveryService` 的 StateStore 查询；恢复 = Redis load + IN_PROGRESS→FAIL→replan 规则（S2），与 `PlanNotebookStore` 单测合并覆盖
+- [x] 恢复 = Redis load + IN_PROGRESS→FAIL→replan 规则（S2），与 Store 单测合并
 - **出口**：单测（Redis load + 状态修复）
 
-### 阶段 H-3：HarnessPlanner + 校验
+### 阶段 H-3：HarnessPlanner + 校验 ✅
 
-- `HarnessPlanner`（吐调度单元 + 3 类触发重规划 + selfAssess + 综合回答；**无**模式自判）
-- `GoalAlignmentValidator`（DEVIATED/STUCK，机械）
-- 轻量结构校验（S7，不复用 PlanValidator）
-- `AgentRole.WORKER` + `AgentRunRequest.worker()` + `AssembledContext.forWorker()`
+- [x] `HarnessPlanner`（planNext / selfAssess / synthesizeAnswer；**无**模式自判）
+- [x] `GoalAlignmentValidator`（DEVIATED/STUCK，机械薄实现；非完整 4.7.7 Middleware）
+- [x] `TaskQueueValidator`（S7，不复用 PlanValidator）
+- [x] `AgentRole.WORKER` + `AgentRunRequest.worker()` + `AssembledContext.forWorker()` + `WorkerDispatchTool`
+- [x] Catalog 种子 `planner.harness` / `harness.worker`
 - **出口**：单测（调度单元输出 + forWorker 上下文构造）
 
-### 阶段 H-4：Loop
+### 阶段 H-4：Loop ✅
 
-- `PlannerHarnessLoop`（单一循环编排 + 超时/重试/Stuck）
-- `WorkerContextFactory`（从 H1 rounds 读上游 handoff，S4）
-- **出口**：单测（循环编排 + 故障模拟）
+- [x] `PlannerHarnessLoop`（Plan→Validate→Execute→Assess；预算 / `nextDirection` / Stuck）
+- [x] `WorkerContextFactory`（从 H1 rounds 读上游 handoff，S4）
+- **出口**：单测（循环编排 + 故障 / maxReplans 模拟）
 
-### 阶段 H-5：路由接线 + 删除旧入口
+### 过渡入口（kernel 附带，非完整 H-5）✅
 
-- `PlannerHarnessExecutor` + `ResourceDispatcher`：`executionMode=pro` → harness（[routing v6](./2026-07-29-unified-routing-design.md)）
-- 删除动态 `PLAN_WORKFLOW` / `PlanWorkflowExecutor` 入口与 `ForcedExecutionRouter`；三模式显式选择替代 `auto`/`planMode`
-- golden set §A 迁移
-- **出口**：`pro` 进 harness、`fast`/`workflow` 不进；编译绿
+- [x] `PlannerHarnessExecutor`（load/create notebook → `loop.run` → renewTtl；`fallbackReact`）
+- [x] `ExecutionDispatcher`：`harness.enabled` ∧ `PLAN_WORKFLOW` → harness，否则旧 PlanWorkflow
+- [x] 内核冒烟脚本（非 §9.2 全量）
+- **非本阶段**：`executionMode=pro` / 删旧入口 → 见 H-5
 
-### 阶段 H-6：前端（分层时间线 + TaskBoard）
+### 阶段 H-5：路由接线 ✅
+
+- [x] `PlannerHarnessExecutor` + `ResourceDispatcher`：`executionMode=pro` → harness（[routing v6](./2026-07-29-unified-routing-design.md)；plan [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)）
+- [x] 三模式显式选择替代 `auto`/`planMode`；主路径不再调用 `PlanWorkflowExecutor`
+- [x] 冒烟：`scripts/verify_routing_v6_smoke.py`（V1/V3/V4/V5）
+- **源码删除**（`PlanWorkflow*` / `ForcedExecutionRouter` 类文件等）→ **R-4 / 阶段 D**，本阶段不断流即可
+- **出口**：`pro` 进 harness、`fast`/`workflow` 不进；编译绿 ✅
+
+### 阶段 H-6：前端（分层时间线 + TaskBoard）⬜
 
 - OperationStack harness 层级：plan → worker 行 → subSteps + **handoff 行**（普通时间线，非卡片）
 - TaskBoard：一级=H1 投影（波次并行样式）；二级=Worker todolist（有则展示，结束不收束 handoff）
@@ -475,19 +504,20 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 - 静态 Workflow 保留 DAG 展示（D3）
 - **出口**：视觉验收
 
-### 阶段 H-7：Live 验收
+### 阶段 H-7：Live 验收 ⬜
 
 - `scripts/verify_planner_executor_live.py`（对齐 §9.2 P1–P8；检查门列表写在 implementation plan，勿再引用已归档 v8 §12.2 编号）
 - 回归：静态 Workflow（golden set B/C/D/I）、ReAct、spawn
+- **已有**：`verify_planner_harness_kernel_smoke.py`（Redis notebook + plan SSE；**不**替代本阶段）
 
-### 阶段 D（删除）：旧 plan-workflow 代码清理
+### 阶段 D（删除）：旧 plan-workflow 代码清理 ⬜
 
 - 删除 `WorkflowPlanner` / `PlanWorkflowExecutor` / `PlanMaterializer` / `PlanNormalizer` / `PlanApprovalService` 全套
 - 清理 Catalog `planner.prompt` / `plan-workflow.*`、Nacos `agent.execution.plan-workflow`
 - 前端删 `/plans/:planId` 动态 plan 专属部分
 - **出口**：grep 零残留 + 全量回归
 
-> **实施顺序**：H-0→H-4 可用过渡入口独立验收 → H-5（与 routing v6 同批或紧随）→ H-6→H-7 → **阶段 D**。阶段 D 是纯减法，不阻塞 harness 上线；**禁止** H-7 前删动态 Plan-Workflow。
+> **实施顺序**：H-0→H-5 ✅ → **下一波** H-6→H-7 → **阶段 D（R-4）**。阶段 D 是纯减法，不阻塞 harness 灰度；**禁止** H-7 前删动态 Plan-Workflow 源码。
 
 ---
 
@@ -501,7 +531,7 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 agent:
   execution:
     harness:
-      enabled: false              # 灰度开关
+      enabled: false              # 灰度开关；kernel 冒烟可临时 true（见 §7.0）
       # —— 循环预算（长负载）——
       max-rounds: 12              # Plan→Execute 波次；原 5 偏短
       max-total-tasks: 24         # 含调研/重规划单元；原 10

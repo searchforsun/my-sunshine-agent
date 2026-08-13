@@ -1,9 +1,10 @@
 # 统一资源路由设计（用户显式三模式 + 双轨意图收集）
 
-> **状态**：📋 设计评审中 · **v6（2026-08-10）重写**  
-> **日期**：2026-07-29（初稿）· 2026-07-30（v2/v3）· 2026-08-05（v5 harness 对齐）· **2026-08-10（v6：三模式显式选择，取消自动模式识别）**  
+> **状态**：🟡 **R-0～R-3 ✅**（[unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) + rebuild **H-5**）· **R-4 / 阶段 D ⬜** · **v6（2026-08-10）重写**  
+> **日期**：2026-07-29（初稿）· 2026-07-30（v2/v3）· 2026-08-05（v5 harness 对齐）· **2026-08-10（v6：三模式显式选择，取消自动模式识别）** · **2026-08-13（R-0～R-3 + H-5 落地；R-4 另开）**  
+
 > **编号**：阶段四增量（路由层重构）  
-> **前置**：[multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（D1 删除动态 Plan-Workflow；S5 v4 单一循环）· [workflow-structured-io](./archive/2026-07-24-workflow-structured-io-design.md)  
+> **前置**：[multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（**内核 H-0～H-4 ✅**；D1 删除动态 Plan-Workflow 仍在阶段 D；S5 v4 单一循环）· [workflow-structured-io](./archive/2026-07-24-workflow-structured-io-design.md)  
 > **一句话**：用户在前端显式选择 **快速 / 专业 / 工作流** 三种执行模式（**取消** L3 自动模式识别与 `auto`）。快速→ReAct（可 spawn 子 Agent）；专业→Planner-Executor；工作流→静态 Workflow。意图链按模式分轨：快/专收集 skill+子 Agent；工作流只收集 workflow。`#` 补全**仅工作流模式**显示。
 
 ### v6 相对旧稿的废止项
@@ -336,15 +337,15 @@ public class ResourceDispatcher {
 
 ## 13. 实施阶段（建议）
 
-| 阶段 | 内容 | 出口 |
-|------|------|------|
-| **R-0** | 协议：`executionMode` 三值 + 前端选择器 + mention 开关；删 auto/plan-workflow 文案 | 前后端契约单测 |
-| **R-1** | `RoutingResult` + 分轨 Chain（L0/L1）+ `ResourceDispatcher` 三分支 | 编译绿；模式钉死分发 |
-| **R-2** | 轨 A/B 的 L2/L3（无 planMode） | 单测：同 query 不同 mode → 不同候选域 |
-| **R-3** | ReactExecutor Catalog 注入；专业模式接到 `PlannerHarnessExecutor`（可与 4.14 H-5 并行） | Live：三模式冒烟 |
-| **R-4** | 删除动态 plan-workflow 残留、ForcedExecutionRouter、旧枚举 | grep 零残留 |
+| 阶段 | 状态 | 内容 | 出口 | 融合 plan |
+|------|:----:|------|------|----------|
+| **R-0** | ✅ | 协议：`executionMode` 三值 + 前端选择器 + mention 开关；删 auto/plan-workflow 文案 | 前后端契约单测 | T1–T2 |
+| **R-1** | ✅ | `RoutingResult` + 分轨 Chain（L0/L1）+ `ResourceDispatcher` 三分支 | 编译绿；模式钉死分发 | T3–T4 |
+| **R-2** | ✅ | 轨 A/B 的 L2/L3（无 planMode） | 单测：同 query 不同 mode → 不同候选域 | T5 |
+| **R-3** | ✅ | 专业模式接到 `PlannerHarnessExecutor`（= rebuild H-5）；三模式冒烟 | Live：`verify_routing_v6_smoke.py` V1/V3/V4/V5 | T3+T7 |
+| **R-4** | ⬜ | 删除动态 plan-workflow 残留、ForcedExecutionRouter、旧枚举 | grep 零残留 | **另开**阶段 D |
 
-> 与 4.14：R-3 专业分支依赖 harness 可执行；可先 `pro` → 临时降级提示，但**禁止**静默改回 `fast`。
+> 与 4.14：R-3 = H-5 接线 **✅**（[unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)）。**延期**：`intent.classifier` Catalog live 版本 bump；R-4 / 阶段 D；H-6 / H-7。`pro` **禁止**静默改回 `fast`。
 
 ---
 

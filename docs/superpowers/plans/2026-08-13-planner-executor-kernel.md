@@ -1,8 +1,8 @@
 # Planner-Executor Kernel（H-0～H-4 + 过渡入口）Implementation Plan
 
-> **状态**：📋 待执行  
-> **Spec**：[2026-08-05-planner-executor-rebuild-design.md](../specs/2026-08-05-planner-executor-rebuild-design.md)（v7）  
-> **后续 plan（本 plan 不做）**：routing v6 / H-5 三模式、H-6 前端、H-7 Live 全量、阶段 D 删旧 plan-workflow  
+> **状态**：✅ **已完成**（2026-08-13；冒烟 `scripts/verify_planner_harness_kernel_smoke.py`）  
+> **Spec**：[2026-08-05-planner-executor-rebuild-design.md](../specs/2026-08-05-planner-executor-rebuild-design.md)（v10 · §7.0 进度）  
+> **后续**：routing v6 + H-5 ✅（[unified-routing-v6-h5](./2026-08-13-unified-routing-v6-h5.md)）；仍待 H-6 前端、H-7 Live 全量、阶段 D / R-4 删旧 plan-workflow  
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
