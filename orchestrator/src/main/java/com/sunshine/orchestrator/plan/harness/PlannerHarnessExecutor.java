@@ -18,8 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Planner-Executor 过渡入口：{@code harness.enabled=true} 且 {@code PLAN_WORKFLOW} 时由
- * {@link com.sunshine.orchestrator.execution.ExecutionDispatcher} 分发至此。
+ * Planner-Executor 主入口（routing v6 / H-5）：用户 {@code ExecutionMode.PRO} 且
+ * {@code harness.enabled=true} 时由 {@link com.sunshine.orchestrator.execution.ExecutionDispatcher}
+ * （ResourceDispatcher）分发至此；harness 关闭时 Dispatcher 显式失败，不回落 PlanWorkflow。
  */
 @Slf4j
 @Component
