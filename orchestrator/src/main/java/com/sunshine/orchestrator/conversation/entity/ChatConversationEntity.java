@@ -34,7 +34,7 @@ public class ChatConversationEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    /** 本会话最近一次发送时用户选择的 executionPreference */
+    /** 本会话最近一次发送时的执行模式（列名保留；取值 fast|pro|workflow） */
     @Column(name = "execution_preference", length = 32)
     private String executionPreference;
 

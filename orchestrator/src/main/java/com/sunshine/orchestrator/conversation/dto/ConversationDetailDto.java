@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.conversation.dto;
 
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
+import com.sunshine.orchestrator.routing.ExecutionPreference;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,7 +36,7 @@ public class ConversationDetailDto {
                 .title(conv.getTitle())
                 .createdAt(conv.getCreatedAt())
                 .updatedAt(conv.getUpdatedAt())
-                .executionPreference(conv.getExecutionPreference())
+                .executionPreference(ExecutionPreference.toStoredWire(conv.getExecutionPreference()))
                 .kbId(conv.getKbId())
                 .modelName(conv.getModelName())
                 .kind(conv.getKind())
@@ -58,7 +59,7 @@ public class ConversationDetailDto {
         private String status;
         private String intent;
         private String executionPlanId;
-        /** user 消息发送时的 executionPreference */
+        /** user 消息发送时的执行模式（API：fast|pro|workflow；读侧映射旧 wire） */
         private String executionPreference;
         private int seq;
         private Instant createdAt;
@@ -75,7 +76,7 @@ public class ConversationDetailDto {
             dto.setStatus(m.getStatus());
             dto.setIntent(m.getIntent());
             dto.setExecutionPlanId(m.getExecutionPlanId());
-            dto.setExecutionPreference(m.getExecutionPreference());
+            dto.setExecutionPreference(ExecutionPreference.toStoredWire(m.getExecutionPreference()));
             dto.setSeq(m.getSeq());
             dto.setCreatedAt(m.getCreatedAt());
             dto.setUpdatedAt(m.getUpdatedAt());

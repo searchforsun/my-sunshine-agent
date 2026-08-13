@@ -39,4 +39,14 @@ public enum ExecutionPreference {
             case WORKFLOW -> "workflow";
         };
     }
+
+    /**
+     * 持久化 / API 写出：旧 wire 经 {@link #from} 映射为 fast|pro|workflow；空输入保持 null。
+     */
+    public static String toStoredWire(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return from(raw).wireValue();
+    }
 }

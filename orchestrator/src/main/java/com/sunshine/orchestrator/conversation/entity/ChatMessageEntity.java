@@ -57,7 +57,7 @@ public class ChatMessageEntity {
     @Column(name = "execution_plan_id", length = 36)
     private String executionPlanId;
 
-    /** user 消息发送时用户选择的 executionPreference */
+    /** user 消息发送时的执行模式（列名保留；取值 fast|pro|workflow） */
     @Column(name = "execution_preference", length = 32)
     private String executionPreference;
 

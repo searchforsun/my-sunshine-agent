@@ -12,6 +12,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
+import com.sunshine.orchestrator.routing.ExecutionPreference;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -288,11 +289,11 @@ public class ConversationService {
                 : trimmed;
     }
 
-    /** 记录本会话最近一次用户指定的 executionPreference（auto 也落库便于恢复） */
+    /** 记录本会话最近一次用户指定的执行模式（列名 execution_preference；取值 fast|pro|workflow） */
     @Transactional
     public void updateExecutionPreference(String id, String userId, String tenantId, String preference) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
-        conv.setExecutionPreference(preference);
+        conv.setExecutionPreference(ExecutionPreference.toStoredWire(preference));
         conv.setUpdatedAt(Instant.now());
         conversationRepo.save(conv);
     }
@@ -347,8 +348,11 @@ public class ConversationService {
         msg.setRole(role);
         msg.setContent(content != null ? content : "");
         msg.setStatus(status);
-        if ("user".equals(role) && executionPreference != null && !executionPreference.isBlank()) {
-            msg.setExecutionPreference(executionPreference.strip());
+        if ("user".equals(role)) {
+            String wire = ExecutionPreference.toStoredWire(executionPreference);
+            if (wire != null) {
+                msg.setExecutionPreference(wire);
+            }
         }
         msg.setCreatedAt(now);
         msg.setUpdatedAt(now);

@@ -15,5 +15,7 @@ class ExecutionModeMigrationTest {
         assertThat(ExecutionMode.from("workflow")).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(ExecutionPreference.from("auto").wireValue()).isEqualTo("fast");
         assertThat(ExecutionPreference.from("plan-workflow").wireValue()).isEqualTo("pro");
+        assertThat(ExecutionPreference.toStoredWire("auto")).isEqualTo("fast");
+        assertThat(ExecutionPreference.toStoredWire("plan-workflow")).isEqualTo("pro");
     }
 }
