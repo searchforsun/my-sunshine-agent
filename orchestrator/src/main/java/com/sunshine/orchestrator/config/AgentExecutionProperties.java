@@ -116,11 +116,18 @@ public class AgentExecutionProperties {
         private int maxTotalTasks = 24;
         private long maxDurationMs = 14_400_000L;
         private int staleRoundsThreshold = 3;
+        /** 终态错误降级 ReAct（对齐 plan-workflow fallbackReact 语义） */
+        private FallbackReact fallbackReact = new FallbackReact();
         private Task task = new Task();
         private Planner planner = new Planner();
         private Worker worker = new Worker();
         private Notebook notebook = new Notebook();
         private Session session = new Session();
+
+        @Data
+        public static class FallbackReact {
+            private boolean enabled = true;
+        }
 
         @Data
         public static class Task {

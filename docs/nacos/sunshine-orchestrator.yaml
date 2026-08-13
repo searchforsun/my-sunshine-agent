@@ -109,6 +109,8 @@ agent:
       max-total-tasks: 24
       max-duration-ms: 14400000
       stale-rounds-threshold: 3
+      fallback-react:
+        enabled: true
       task:
         max-retries: 2
       planner:
