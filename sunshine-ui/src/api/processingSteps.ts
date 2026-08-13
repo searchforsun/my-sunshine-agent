@@ -73,17 +73,31 @@ export {
 } from './processingStepsPlan'
 export type { PlanStepDetailView } from './processingStepsPlan'
 
-/** ReAct TaskBoard 清单项（SSE metadata.tasks） */
+/** ReAct / harness TaskBoard 清单项（SSE metadata.tasks；一级可带 dependsOn + secondary） */
 export interface TaskBoardItemView {
   id: string
   content: string
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  /** 一级 H1：依赖其它一级 id；用于波次分组（不画边） */
+  dependsOn?: string[]
+  /** 一级下可选二级 todolist；空/缺省不渲染二级区 */
+  secondary?: TaskBoardItemView[]
 }
 
-/** 已收到 manage_tasks 落库后的真实清单（占位步无 revision/items） */
+/** 看板展示用一级 items：优先 metadata.taskQueue（harness H1），否则 metadata.tasks */
+export function resolveTaskBoardPrimaryItems(step: ProcessingStep): TaskBoardItemView[] {
+  const queue = step.metadata?.taskQueue
+  if (queue && queue.length > 0) return queue
+  return step.metadata?.tasks ?? []
+}
+
+/** 已收到 manage_tasks / H1 投影后的真实清单（占位步无 revision/items） */
 export function hasRealTaskBoardItems(step: ProcessingStep): boolean {
-  const tasks = step.metadata?.tasks ?? []
-  return tasks.length > 0 && (step.metadata?.taskRevision ?? 0) >= 1
+  const tasks = resolveTaskBoardPrimaryItems(step)
+  if (tasks.length === 0) return false
+  // harness taskQueue 投影可无 revision；ReAct manage_tasks 仍要求 revision≥1
+  if ((step.metadata?.taskQueue?.length ?? 0) > 0) return true
+  return (step.metadata?.taskRevision ?? 0) >= 1
 }
 
 /** ReAct spawn_subagent 主时间线卡片（phase 或 id 前缀） */
@@ -186,10 +200,15 @@ export interface StepMetadata {
     rounds?: PlanApprovalRoundView[]
     planGraph?: PlanGraph
   }
-  /** ReAct TaskBoard */
+  /** ReAct TaskBoard / harness H1 投影（同结构；含 dependsOn/secondary 时走波次+嵌套） */
   tasks?: TaskBoardItemView[]
   taskRevision?: number
   taskProgress?: string
+  /**
+   * harness H1 taskQueue 投影（与 tasks 同形；优先于 tasks）。
+   * 后端补 SSE 前可缺省——见 H-6 Task4 DONE_WITH_CONCERNS。
+   */
+  taskQueue?: TaskBoardItemView[]
   /** 沙箱 read/write/edit 完整容器路径 */
   sandboxPath?: string
   /** 沙箱 glob 搜索根 */

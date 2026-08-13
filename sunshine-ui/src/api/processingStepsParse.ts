@@ -29,20 +29,49 @@ function parseSummary(raw: unknown): StepSummary | undefined {
 function parseTaskBoardItems(raw: unknown): StepMetadata['tasks'] {
   if (!Array.isArray(raw) || raw.length === 0) return undefined
   const items = raw
-    .map(item => {
-      if (!item || typeof item !== 'object') return null
-      const o = item as Record<string, unknown>
-      const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : ''
-      const content = typeof o.content === 'string' && o.content.trim() ? o.content.trim() : ''
-      const status = typeof o.status === 'string' ? o.status.trim() : ''
-      if (!id || !content || !status) return null
-      if (status !== 'pending' && status !== 'in_progress' && status !== 'completed' && status !== 'cancelled') {
-        return null
-      }
-      return { id, content, status } as TaskBoardItemView
-    })
+    .map(item => parseTaskBoardItem(item, 0))
     .filter((item): item is NonNullable<typeof item> => !!item)
   return items.length > 0 ? items : undefined
+}
+
+/** depth 限制避免异常嵌套；二级不再解析 deeper secondary */
+function parseTaskBoardItem(raw: unknown, depth: number): TaskBoardItemView | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === 'string' && o.id.trim()
+    ? o.id.trim()
+    : (typeof o.taskId === 'string' && o.taskId.trim() ? o.taskId.trim() : '')
+  const content = typeof o.content === 'string' && o.content.trim()
+    ? o.content.trim()
+    : (typeof o.label === 'string' && o.label.trim() ? o.label.trim() : '')
+  const status = normalizeTaskBoardStatus(typeof o.status === 'string' ? o.status.trim() : '')
+  if (!id || !content || !status) return null
+  const dependsOn = Array.isArray(o.dependsOn)
+    ? o.dependsOn.filter((d): d is string => typeof d === 'string' && !!d.trim()).map(d => d.trim())
+    : undefined
+  let secondary: TaskBoardItemView[] | undefined
+  if (depth < 1 && Array.isArray(o.secondary) && o.secondary.length > 0) {
+    const nested = o.secondary
+      .map(child => parseTaskBoardItem(child, depth + 1))
+      .filter((child): child is TaskBoardItemView => !!child)
+    if (nested.length > 0) secondary = nested
+  }
+  const view: TaskBoardItemView = { id, content, status }
+  if (dependsOn && dependsOn.length > 0) view.dependsOn = dependsOn
+  if (secondary) view.secondary = secondary
+  return view
+}
+
+/** H1 TaskItem status → TaskBoard 状态；ReAct 四态原样保留 */
+function normalizeTaskBoardStatus(
+  status: string,
+): TaskBoardItemView['status'] | null {
+  if (status === 'pending' || status === 'in_progress' || status === 'completed' || status === 'cancelled') {
+    return status
+  }
+  if (status === 'done') return 'completed'
+  if (status === 'fail' || status === 'obsolete') return 'cancelled'
+  return null
 }
 
 function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
@@ -266,6 +295,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
       }
     : undefined
   const tasks = parseTaskBoardItems(obj.tasks)
+  const taskQueue = parseTaskBoardItems(obj.taskQueue)
   const taskRevision = typeof obj.taskRevision === 'number' ? obj.taskRevision : undefined
   const taskProgress = typeof obj.taskProgress === 'string' && obj.taskProgress.trim()
     ? obj.taskProgress.trim()
@@ -296,6 +326,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !nodeAttempts?.length
     && !planApproval
     && !tasks?.length
+    && !taskQueue?.length
     && taskRevision == null
     && !taskProgress
     && !sandboxPath
@@ -333,6 +364,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     nodeAttempts,
     planApproval,
     tasks,
+    taskQueue,
     taskRevision,
     taskProgress,
     sandboxPath,
@@ -390,6 +422,11 @@ export function mergeStepMetadata(
   if (incoming.tasks?.length && incomingRevision >= prevRevision) {
     merged.tasks = incoming.tasks
     merged.taskRevision = incoming.taskRevision
+    merged.taskProgress = incoming.taskProgress ?? merged.taskProgress
+  }
+  // harness H1：taskQueue 全量替换（无 revision；有则覆盖）
+  if (incoming.taskQueue?.length) {
+    merged.taskQueue = incoming.taskQueue
     merged.taskProgress = incoming.taskProgress ?? merged.taskProgress
   }
   if (incoming.decision || prev.decision) {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { ProcessingStep, TaskBoardItemView } from '../../api/processingSteps'
-import { hasRealTaskBoardItems, stepLifecycle } from '../../api/processingSteps'
+import { hasRealTaskBoardItems, resolveTaskBoardPrimaryItems, stepLifecycle } from '../../api/processingSteps'
+import { groupTaskBoardWaves, hasSecondaryTodos } from '../../api/taskBoardWaves'
 
 const props = withDefaults(defineProps<{
   step: ProcessingStep
@@ -22,9 +23,12 @@ const userToggled = ref(false)
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isPending = computed(() => lifecycle.value === 'pending')
-const tasks = computed(() => props.step.metadata?.tasks ?? [])
+const tasks = computed(() => resolveTaskBoardPrimaryItems(props.step))
 const hasRealTasks = computed(() => hasRealTaskBoardItems(props.step))
 const showPanel = computed(() => hasRealTasks.value)
+/** 一级按 dependsOn 分波；单波时仍走原列表布局 */
+const primaryWaves = computed(() => groupTaskBoardWaves(tasks.value))
+const useWaveLayout = computed(() => primaryWaves.value.length > 1)
 
 const doneCount = computed(() =>
   tasks.value.filter(t => t.status === 'completed').length,
@@ -99,24 +103,105 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
           </svg>
           <span class="taskboard-progress">{{ progressLabel }}</span>
         </button>
-        <ul v-show="expanded && hasRealTasks" class="taskboard-list" role="list">
-        <li
-          v-for="item in tasks"
-          :key="item.id"
-          class="taskboard-item"
-          :class="itemClass(item)"
-        >
-          <span class="taskboard-marker" :class="markerClass(item)" aria-hidden="true">
-            <svg v-if="item.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
-              <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <svg v-else-if="item.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
-              <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </span>
-          <span class="taskboard-content">{{ item.content }}</span>
-        </li>
-      </ul>
+        <div v-show="expanded && hasRealTasks" class="taskboard-body">
+          <!-- 多波：并排波次（无依赖边） -->
+          <div
+            v-if="useWaveLayout"
+            class="taskboard-waves"
+            role="list"
+          >
+            <ul
+              v-for="(wave, waveIdx) in primaryWaves"
+              :key="waveIdx"
+              class="taskboard-list taskboard-wave"
+              role="list"
+            >
+              <li
+                v-for="item in wave"
+                :key="item.id"
+                class="taskboard-item"
+                :class="itemClass(item)"
+              >
+                <span class="taskboard-marker" :class="markerClass(item)" aria-hidden="true">
+                  <svg v-if="item.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+                    <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <svg v-else-if="item.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+                    <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+                <div class="taskboard-item-body">
+                  <span class="taskboard-content">{{ item.content }}</span>
+                  <ul
+                    v-if="hasSecondaryTodos(item)"
+                    class="taskboard-secondary"
+                    role="list"
+                  >
+                    <li
+                      v-for="sub in item.secondary"
+                      :key="sub.id"
+                      class="taskboard-item is-secondary"
+                      :class="itemClass(sub)"
+                    >
+                      <span class="taskboard-marker" :class="markerClass(sub)" aria-hidden="true">
+                        <svg v-if="sub.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+                          <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <svg v-else-if="sub.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+                          <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                      </span>
+                      <span class="taskboard-content">{{ sub.content }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <!-- 单波 / 无 dependsOn：原纵向清单 -->
+          <ul v-else class="taskboard-list" role="list">
+            <li
+              v-for="item in tasks"
+              :key="item.id"
+              class="taskboard-item"
+              :class="itemClass(item)"
+            >
+              <span class="taskboard-marker" :class="markerClass(item)" aria-hidden="true">
+                <svg v-if="item.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+                  <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <svg v-else-if="item.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+                  <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <div class="taskboard-item-body">
+                <span class="taskboard-content">{{ item.content }}</span>
+                <ul
+                  v-if="hasSecondaryTodos(item)"
+                  class="taskboard-secondary"
+                  role="list"
+                >
+                  <li
+                    v-for="sub in item.secondary"
+                    :key="sub.id"
+                    class="taskboard-item is-secondary"
+                    :class="itemClass(sub)"
+                  >
+                    <span class="taskboard-marker" :class="markerClass(sub)" aria-hidden="true">
+                      <svg v-if="sub.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+                        <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      <svg v-else-if="sub.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+                        <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                    <span class="taskboard-content">{{ sub.content }}</span>
+                  </li>
+                </ul>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -236,6 +321,32 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   transform: rotate(-90deg);
 }
 
+.taskboard-body {
+  max-height: min(36vh, 280px);
+  overflow-y: auto;
+}
+
+.taskboard-waves {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 12px;
+  padding: 0 10px 8px;
+  align-items: start;
+}
+
+.taskboard-waves .taskboard-list {
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.taskboard-wave {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--sun-border) 70%, transparent);
+  border-radius: var(--panel-radius);
+}
+
 .taskboard-list {
   list-style: none;
   margin: 0;
@@ -243,8 +354,6 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: min(36vh, 280px);
-  overflow-y: auto;
 }
 
 .taskboard-item {
@@ -252,6 +361,32 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   grid-template-columns: 16px minmax(0, 1fr);
   column-gap: 8px;
   align-items: start;
+}
+
+.taskboard-item-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.taskboard-secondary {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0 0 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 1px solid color-mix(in srgb, var(--sun-border) 80%, transparent);
+  padding-left: 8px;
+}
+
+.taskboard-item.is-secondary {
+  opacity: 0.92;
+}
+
+.taskboard-item.is-secondary .taskboard-content {
+  font-size: calc(var(--sun-font-sm) * 0.95);
 }
 
 .taskboard-marker {

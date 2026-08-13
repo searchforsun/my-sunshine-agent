@@ -1038,10 +1038,6 @@ watch(
             :hide-header-preview="!!harnessHandoffOf(step)"
             @toggle="toggleCard(step)"
           />
-          <div
-            v-if="harnessHandoffOf(step)"
-            class="op-harness-handoff"
-          >{{ harnessHandoffOf(step) }}</div>
           <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
             <HitlStepActions
               :key="hitlStepKey(inlineHitlStep(step))"
@@ -1050,7 +1046,7 @@ watch(
               @decided="(token, approved) => emit('hitlDecided', token, approved)"
             />
           </div>
-          <!-- loop / harness worker：嵌套 think/tool/正文随卡片展开收起 -->
+          <!-- loop / harness worker：过程（subSteps）在前，handoff 收束在后 -->
           <div
             v-if="isCardExpanded(step) && hasNestedBodyTimeline(step)"
             class="op-nested-stack"
@@ -1065,6 +1061,10 @@ watch(
               @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
             />
           </div>
+          <div
+            v-if="harnessHandoffOf(step)"
+            class="op-harness-handoff"
+          >{{ harnessHandoffOf(step) }}</div>
         </template>
         <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
         <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
