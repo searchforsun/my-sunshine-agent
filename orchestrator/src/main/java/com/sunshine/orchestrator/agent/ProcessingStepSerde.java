@@ -304,6 +304,9 @@ public final class ProcessingStepSerde {
                 row.put("id", item.id());
                 row.put("content", item.content());
                 row.put("status", item.status());
+                if (item.dependsOn() != null && !item.dependsOn().isEmpty()) {
+                    row.put("dependsOn", item.dependsOn());
+                }
                 tasks.add(row);
             }
             map.put("tasks", tasks);
