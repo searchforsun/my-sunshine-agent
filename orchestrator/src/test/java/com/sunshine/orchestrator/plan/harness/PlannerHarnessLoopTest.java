@@ -49,7 +49,8 @@ class PlannerHarnessLoopTest {
         executionProperties.getHarness().setEnabled(true);
         executionProperties.getHarness().getTask().setMaxRetries(2);
         executionProperties.getHarness().getPlanner().setMaxReplans(6);
-        when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("sandbox__exec"));
+        org.mockito.Mockito.lenient().when(toolSetResolver.resolveReactTools(any()))
+                .thenReturn(List.of("sandbox__exec"));
         loop = new PlannerHarnessLoop(
                 planner, workerDispatchTool, store, executionProperties, toolSetResolver);
     }
@@ -150,6 +151,105 @@ class PlannerHarnessLoopTest {
         assertThat(notebook.getReplanCount()).isGreaterThanOrEqualTo(1);
         verify(planner, atLeast(2)).planNext(any(), any());
         verify(planner, times(1)).synthesizeAnswer(any(), any());
+    }
+
+    @Test
+    void nextDirectionAnswerSynthesizesEvenIfCompletionBelowOne() {
+        PlanNotebook notebook = PlanNotebook.create("goal", "用户问", "task", 12, 24);
+        notebook.setSessionId("sess-answer");
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.getTaskQueue().clear();
+            nb.getTaskQueue().add(new TaskItem(
+                    "t1", "一步", "pending", List.of(), "", "", ""));
+            return null;
+        }).when(planner).planNext(any(), any());
+        doAnswer(inv -> {
+            String taskId = inv.getArgument(0);
+            WorkerDispatchTool.DispatchSession session = inv.getArgument(1);
+            WorkerDispatchTool.replaceTaskStatus(session.notebook(), taskId, "done");
+            session.notebook().setTotalTasksCompleted(1);
+            assertThat(session.parentRunId()).startsWith("harness-loop-");
+            return "ok";
+        }).when(workerDispatchTool).dispatchWorker(anyString(), any(WorkerDispatchTool.DispatchSession.class));
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.setGoalCompletion(0.7);
+            nb.setNextDirection("answer");
+            return null;
+        }).when(planner).selfAssess(any(), any());
+        when(planner.synthesizeAnswer(any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("综合：自判回答")));
+
+        List<StreamToken> tokens = loop.run(streamCtx(), notebook).collectList().block();
+
+        assertThat(tokens.stream().anyMatch(t -> t.text() != null && t.text().contains("自判回答"))).isTrue();
+        verify(planner, times(1)).planNext(any(), any());
+        verify(planner, times(1)).synthesizeAnswer(any(), any());
+    }
+
+    @Test
+    void goalAlignmentDeviatedRunsWorkerThenReplans() {
+        PlanNotebook notebook = PlanNotebook.create("goal", "用户问", "task", 12, 24);
+        notebook.setSessionId("sess-deviated");
+        // 冷启动后首波完成任务但自判完成度极低 → Assess 后 DEVIATED；不得饿死首波 Execute
+        AtomicInteger planCalls = new AtomicInteger();
+        AtomicInteger dispatchCalls = new AtomicInteger();
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            int n = planCalls.incrementAndGet();
+            nb.getTaskQueue().clear();
+            nb.getTaskQueue().add(new TaskItem(
+                    "t" + n, "步骤" + n, "pending", List.of(), "", "", ""));
+            return null;
+        }).when(planner).planNext(any(), any());
+        doAnswer(inv -> {
+            String taskId = inv.getArgument(0);
+            WorkerDispatchTool.DispatchSession session = inv.getArgument(1);
+            dispatchCalls.incrementAndGet();
+            WorkerDispatchTool.replaceTaskStatus(session.notebook(), taskId, "done");
+            session.notebook().setTotalTasksCompleted(session.notebook().getTotalTasksCompleted() + 1);
+            return "ok";
+        }).when(workerDispatchTool).dispatchWorker(anyString(), any(WorkerDispatchTool.DispatchSession.class));
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            if (nb.getReplanCount() >= 1) {
+                nb.setGoalCompletion(1.0);
+                nb.setNextDirection("answer");
+            } else {
+                nb.setGoalCompletion(0.05);
+                nb.setNextDirection("continue");
+            }
+            return null;
+        }).when(planner).selfAssess(any(), any());
+        when(planner.synthesizeAnswer(any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("综合：偏离后重规划完成")));
+
+        List<StreamToken> tokens = loop.run(streamCtx(), notebook).collectList().block();
+
+        assertThat(dispatchCalls.get()).isGreaterThanOrEqualTo(2);
+        assertThat(notebook.getReplanCount()).isGreaterThanOrEqualTo(1);
+        assertThat(tokens.stream().anyMatch(t -> t.text() != null && t.text().contains("偏离后"))).isTrue();
+        verify(planner, atLeast(2)).planNext(any(), any());
+    }
+
+    @Test
+    void resolveAssessDecision_mapsCatalogDirections() {
+        PlanNotebook nb = PlanNotebook.create("g", "q", "task", 12, 24);
+        nb.setGoalCompletion(0.5);
+        nb.setNextDirection("answer");
+        assertThat(PlannerHarnessLoop.resolveAssessDecision(nb))
+                .isEqualTo(PlannerHarnessLoop.AssessDecision.ANSWER);
+        nb.setNextDirection("replan");
+        assertThat(PlannerHarnessLoop.resolveAssessDecision(nb))
+                .isEqualTo(PlannerHarnessLoop.AssessDecision.REPLAN);
+        nb.setNextDirection("continue");
+        assertThat(PlannerHarnessLoop.resolveAssessDecision(nb))
+                .isEqualTo(PlannerHarnessLoop.AssessDecision.CONTINUE);
+        nb.setNextDirection(null);
+        nb.setGoalCompletion(1.0);
+        assertThat(PlannerHarnessLoop.resolveAssessDecision(nb))
+                .isEqualTo(PlannerHarnessLoop.AssessDecision.ANSWER);
     }
 
     private static ExecutionStreamContext streamCtx() {
