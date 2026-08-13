@@ -11,7 +11,12 @@ import {
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
 } from '../../api/processingSteps'
-import { isPlanDagMessage } from '../../api/harnessTimeline'
+import { isHarnessTimelineMessage, isPlanDagMessage } from '../../api/harnessTimeline'
+import {
+  buildHarnessTimelineEntries,
+  isHarnessPlanStep,
+  isWorkerStep,
+} from '../../api/harnessHierarchy'
 import {
   catalogToolIdFromStepId,
   isSandboxExecStep,
@@ -147,8 +152,8 @@ function isCardExpanded(step: ProcessingStep): boolean {
   if (cardUserToggled.has(step.id)) {
     return cardExpanded.get(step.id) ?? false
   }
-  // loop 框内 agent：运行中默认展开，便于看流式 think/正文；结束后默认收起
-  if (hasNestedLoopBodyTimeline(step)) {
+  // loop / worker 内过程：运行中默认展开，便于看流式 think/正文；结束后默认收起
+  if (hasNestedBodyTimeline(step)) {
     return lifecycleOf(step) === 'running'
   }
   return false
@@ -157,6 +162,16 @@ function isCardExpanded(step: ProcessingStep): boolean {
 function hasNestedLoopBodyTimeline(step: ProcessingStep): boolean {
   return !!step.id?.startsWith('i')
     && !!(step.subSteps?.length || step.contentBlocks?.length)
+}
+
+/** harness worker 内 ReAct 过程：subSteps / contentBlocks 嵌套时间线 */
+function hasNestedWorkerBodyTimeline(step: ProcessingStep): boolean {
+  return isWorkerStep(step)
+    && !!(step.subSteps?.length || step.contentBlocks?.length)
+}
+
+function hasNestedBodyTimeline(step: ProcessingStep): boolean {
+  return hasNestedLoopBodyTimeline(step) || hasNestedWorkerBodyTimeline(step)
 }
 
 function toggleCard(step: ProcessingStep): void {
@@ -326,6 +341,10 @@ const showPlanDag = computed(() =>
   isPlanDagMessage(effectiveSteps.value, props.executionPlanId),
 )
 
+const isHarnessTimeline = computed(() =>
+  isHarnessTimelineMessage(effectiveSteps.value, props.executionPlanId),
+)
+
 const displaySteps = computed(() => {
   void props.timelineRevision
   if (showPlanDag.value) {
@@ -338,7 +357,7 @@ const displaySteps = computed(() => {
       return true
     })
   }
-  // ReAct：正文已 inline 穿插，不再展示「生成回答」步骤行；无 items 的 tasks 占位步不展示
+  // harness / ReAct：保留 worker-*；正文已 inline 穿插，隐藏 generate；无 items 的 tasks 占位不展示
   return props.steps.filter(s => {
     if (isHiddenReactTimelineStep(s)) return false
     if (s.phase === 'tasks' && !hasRealTaskBoardItems(s)) return false
@@ -346,6 +365,23 @@ const displaySteps = computed(() => {
   })
 })
 
+/** harness：stepId → indent / handoff（仅 harness 消息有值） */
+const harnessEntryByStepId = computed(() => {
+  const map = new Map<string, { indent: 0 | 1; handoffText?: string }>()
+  if (!isHarnessTimeline.value) return map
+  for (const entry of buildHarnessTimelineEntries(displaySteps.value)) {
+    map.set(entry.step.id, { indent: entry.indent, handoffText: entry.handoffText })
+  }
+  return map
+})
+
+function harnessIndentOf(step: ProcessingStep): 0 | 1 {
+  return harnessEntryByStepId.value.get(step.id)?.indent ?? 0
+}
+
+function harnessHandoffOf(step: ProcessingStep): string | undefined {
+  return harnessEntryByStepId.value.get(step.id)?.handoffText
+}
 /** 显示行：普通步骤或工具/检索组（连续的同类步折叠为一组） */
 type DisplayRow =
   | { kind: 'step'; step: ProcessingStep }
@@ -521,9 +557,11 @@ function pushCollapsedOperationRows(result: DisplayRow[], collapsedRows: Display
   })
 }
 
-/** subagent / decision 卡须始终露出主时间线，不可被 roundGroup 吞掉 */
+/** subagent / decision / harness plan·worker 须始终露出主时间线，不可被 roundGroup 吞掉 */
 function isTimelineStickyStep(step: ProcessingStep): boolean {
-  return isSubagentStep(step) || isDecisionStep(step)
+  if (isSubagentStep(step) || isDecisionStep(step)) return true
+  if (isHarnessTimeline.value && (isWorkerStep(step) || isHarnessPlanStep(step))) return true
+  return false
 }
 
 /** 按原序：sticky 步单独露出，其余可折叠段再 roundGroup */
@@ -621,8 +659,11 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
   return result
 }
 
-/** 显示行（带正文间多轮折叠） */
-const roundDisplayRows = computed(() => roundGroupSteps(displayRows.value))
+/** 显示行（带正文间多轮折叠）；harness 分层时间线不做 roundGroup，避免吞掉 plan/worker */
+const roundDisplayRows = computed(() => {
+  if (isHarnessTimeline.value) return displayRows.value
+  return roundGroupSteps(displayRows.value)
+})
 
 /** exec 步所属轮次 think 摘要（think_summary 工具输出）：exec 步向前取最近 think 步的 stepSummary。
  * 主行显示「执行命令 {摘要} {命令头}」，摘要缺失则仅命令头。 */
@@ -934,7 +975,10 @@ watch(
           </template>
         </template>
         <template v-else>
-        <div class="op-row">
+        <div
+          class="op-row"
+          :class="{ 'is-harness-indent-1': row.kind === 'step' && harnessIndentOf(row.step) === 1 }"
+        >
         <template v-if="row.kind === 'toolGroup'">
           <ToolGroupCard
             :group-kind="row.groupKind"
@@ -991,8 +1035,13 @@ watch(
             :execution-plan-id="executionPlanId"
             :embed-hitl="false"
             :round-summary="thinkSummaryByStepId.get(step.id)"
+            :hide-header-preview="!!harnessHandoffOf(step)"
             @toggle="toggleCard(step)"
           />
+          <div
+            v-if="harnessHandoffOf(step)"
+            class="op-harness-handoff"
+          >{{ harnessHandoffOf(step) }}</div>
           <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
             <HitlStepActions
               :key="hitlStepKey(inlineHitlStep(step))"
@@ -1001,9 +1050,9 @@ watch(
               @decided="(token, approved) => emit('hitlDecided', token, approved)"
             />
           </div>
-          <!-- loop 框内 agent：嵌套 think/正文随卡片展开收起 -->
+          <!-- loop / harness worker：嵌套 think/tool/正文随卡片展开收起 -->
           <div
-            v-if="isCardExpanded(step) && hasNestedLoopBodyTimeline(step)"
+            v-if="isCardExpanded(step) && hasNestedBodyTimeline(step)"
             class="op-nested-stack"
           >
             <OperationStack
@@ -1028,8 +1077,7 @@ watch(
         </template>
         </template>
         </div>
-        </template>
-      </template>
+        </template>      </template>
       <template v-for="row in orphanContent" :key="row.key">
         <div class="op-inline-content">
           <div class="op-inline-body" :class="{ 'is-streaming-md': row.streaming }">
@@ -1261,6 +1309,23 @@ watch(
   margin: 2px 0 8px 16px;
   padding-left: 8px;
   border-left: 1px solid var(--sun-border);
+}
+
+/* harness：worker 挂在 plan 下一级缩进 */
+.op-row.is-harness-indent-1 {
+  padding-left: 16px;
+}
+
+/* harness：worker 结束 handoff 收束子行（非卡片） */
+.op-harness-handoff {
+  margin: 2px 0 0 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--sun-border);
+  font-size: var(--sun-font-sm);
+  line-height: 1.45;
+  color: var(--sun-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .op-inline-body {

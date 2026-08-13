@@ -36,13 +36,14 @@ export function isPlanDagMessage(
 }
 
 /**
- * harness：worker 步，或有 plan 且无 DAG 图。
- * 与 isPlanDagMessage 互斥时真 DAG / classic node-* 优先。
+ * harness：worker 步，或有 plan 且无 DAG。
+ * DAG 优先：`isPlanDagMessage(steps, executionPlanId)` 为真时恒为 false。
  */
-export function isHarnessTimelineMessage(steps: ProcessingStep[]): boolean {
-  if (hasPlanGraphNodes(steps)) return false
-  if (hasNodeSteps(steps)) return false
-  if (hasResolvablePlanId(steps) && !hasWorkerStep(steps)) return false
+export function isHarnessTimelineMessage(
+  steps: ProcessingStep[],
+  executionPlanId?: string | null,
+): boolean {
+  if (isPlanDagMessage(steps, executionPlanId)) return false
   if (hasWorkerStep(steps)) return true
   if (steps.some(s => s.phase === 'plan')) return true
   return false

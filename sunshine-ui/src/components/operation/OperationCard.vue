@@ -45,11 +45,14 @@ const props = withDefaults(defineProps<{
   roundSummary?: string
   /** 折叠区内不显示 ✓ */
   hideCheckmark?: boolean
+  /** harness worker：handoff 改子行展示，主行不重复 summary 预览 */
+  hideHeaderPreview?: boolean
 }>(), {
   embedHitl: true,
   hideChevron: false,
   hitlUiKey: '',
   roundSummary: undefined,
+  hideHeaderPreview: false,
 })
 
 const router = useRouter()
@@ -168,7 +171,9 @@ const shiftSummary = computed(() => shouldShiftSummaryOnExpand(props.step))
 const { isSandboxTool, editDiffSummary } = useSandboxToolExpand(() => props.step)
 
 const showHeaderPreview = computed(
-  () => !!headerText.value && (!props.expanded || !shiftSummary.value),
+  () => !props.hideHeaderPreview
+    && !!headerText.value
+    && (!props.expanded || !shiftSummary.value),
 )
 
 const expandPanels = computed(() => resolveStepExpandPanels(props.step))

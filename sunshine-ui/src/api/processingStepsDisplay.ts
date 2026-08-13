@@ -565,8 +565,12 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   if (step.phase === 'subagent' || step.id.startsWith('subagent-')) {
     return false
   }
-  // loop 框内 agent：嵌套 think/正文可展开
+  // loop 框内 agent / harness worker：嵌套 think/正文可展开
   if (step.id.startsWith('i') && (step.subSteps?.length || step.contentBlocks?.length)) {
+    return true
+  }
+  if ((step.phase === 'worker' || step.id.startsWith('worker-'))
+    && (step.subSteps?.length || step.contentBlocks?.length)) {
     return true
   }
   if (isSandboxExecStep(step) && extractSandboxExecCommand(step)) {

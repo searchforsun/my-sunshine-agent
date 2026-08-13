@@ -47,7 +47,7 @@ describe('harnessTimeline · DAG vs harness', () => {
       step({ id: 'node-rag', phase: 'node' }),
     ]
     expect(isPlanDagMessage(steps, 'plan-xyz')).toBe(true)
-    expect(isHarnessTimelineMessage(steps)).toBe(false)
+    expect(isHarnessTimelineMessage(steps, 'plan-xyz')).toBe(false)
   })
 
   it('harness：plan 无 planGraph → harness，非 DAG', () => {
@@ -93,7 +93,20 @@ describe('harnessTimeline · DAG vs harness', () => {
       step({ id: 'plan', phase: 'plan', detail: 'planId=hist-1', summary: { after: '执行计划' } }),
     ]
     expect(isPlanDagMessage(steps, 'hist-1')).toBe(true)
-    expect(isHarnessTimelineMessage(steps)).toBe(false)
+    expect(isHarnessTimelineMessage(steps, 'hist-1')).toBe(false)
+  })
+
+  it('互斥：executionPlanId + plan 无 worker → DAG 胜，二者不能同为 true', () => {
+    const steps = [
+      step({ id: 'plan', phase: 'plan', summary: { after: '规划' } }),
+    ]
+    const executionPlanId = 'ep-hist-only'
+    expect(isPlanDagMessage(steps, executionPlanId)).toBe(true)
+    expect(isHarnessTimelineMessage(steps, executionPlanId)).toBe(false)
+    expect(
+      isPlanDagMessage(steps, executionPlanId)
+      && isHarnessTimelineMessage(steps, executionPlanId),
+    ).toBe(false)
   })
 
   it('ReAct 无 plan/worker → 皆 false', () => {
