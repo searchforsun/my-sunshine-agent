@@ -123,7 +123,8 @@ public class HarnessPlanner {
                 ctx.tenantId(),
                 ctx.assistantMsgId(),
                 ctx.conversationId(),
-                0);
+                0)
+                .withConversationKind(resolveConversationKind(notebook, ctx));
     }
 
     private AssembledContext resolveMemory(ExecutionStreamContext ctx) {

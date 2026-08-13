@@ -142,6 +142,7 @@ public class ReactExecutor {
                         blocks, skillId, ctx.reactRestart(),
                         ctx.conversationId(), reactPromptId, checkpointThinkIteration,
                         resolveMaxItersByKind(ctx))
+                .withConversationKind(ctx.conversationKind())
                 .withModelOverride(ctx.modelOverride()));
     }
 

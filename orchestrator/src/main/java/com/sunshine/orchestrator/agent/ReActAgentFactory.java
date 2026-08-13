@@ -5,8 +5,6 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
-import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
@@ -50,7 +48,6 @@ public class ReActAgentFactory {
     private final ModelSceneResolver modelSceneResolver;
     /** 惰性注入，避免 Factory → DispatchTool → AgentRuntime → Factory 环 */
     private final ObjectProvider<WorkerDispatchTool> workerDispatchTool;
-    private final ChatConversationRepository conversationRepository;
 
     private LoadBalancedWebClientTransport transport;
 
@@ -212,16 +209,12 @@ public class ReActAgentFactory {
                 request.tenantId(), request.skillId(), request.userId(), conversationKind);
     }
 
-    /** 从会话实体读 kind；缺省 chat（不按 executionMode） */
-    private String resolveConversationKind(AgentRunRequest request) {
-        if (request == null || !StringUtils.hasText(request.conversationId())) {
-            return "chat";
+    /** 优先读 request 透传的 conversationKind；缺省 chat（不按 executionMode、不查库） */
+    private static String resolveConversationKind(AgentRunRequest request) {
+        if (request != null && StringUtils.hasText(request.conversationKind())) {
+            return request.conversationKind().strip();
         }
-        return conversationRepository.findById(request.conversationId().strip())
-                .map(ChatConversationEntity::getKind)
-                .filter(StringUtils::hasText)
-                .map(String::strip)
-                .orElse("chat");
+        return "chat";
     }
 
     public int resolveMaxIters(AgentRunRequest request) {

@@ -5,7 +5,6 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.TimelineBinding;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
-import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
@@ -51,8 +50,6 @@ class ReActAgentFactoryTest {
     private ObjectProvider<WorkerDispatchTool> workerDispatchToolProvider;
     @Mock
     private WorkerDispatchTool workerDispatchTool;
-    @Mock
-    private ChatConversationRepository conversationRepository;
 
     private PromptCatalogHolder catalogHolder;
     private ReActAgentFactory factory;
@@ -84,7 +81,7 @@ class ReActAgentFactoryTest {
                         new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         factory = new ReActAgentFactory(
                 catalogHolder, executionProperties, dynamicToolkitFactory, middlewareFactory,
-                stateStore, webClientBuilder, resolver, workerDispatchToolProvider, conversationRepository);
+                stateStore, webClientBuilder, resolver, workerDispatchToolProvider);
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "test-key");
     }
@@ -134,11 +131,23 @@ class ReActAgentFactoryTest {
     }
 
     @Test
+    void resolveToolkit_mainWithTaskKind_buildsTaskToolSetWithoutDb() {
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-main",
+                List.of(), null, false, "conv-task")
+                .withConversationKind("task");
+        when(dynamicToolkitFactory.build("default", null, "u1", "task")).thenReturn(subToolkit);
+
+        assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
+        verify(dynamicToolkitFactory).build("default", null, "u1", "task");
+    }
+
+    @Test
     void resolveMaxIters_prefersRequestValue() {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, AssembledContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("sdk__sunshine-finance__list_my_expenses"), null, 4,
-                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null, null);
+                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null, null, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
@@ -172,6 +181,18 @@ class ReActAgentFactoryTest {
         verify(workerDispatchToolProvider).getObject();
         verify(workerDispatchTool).registerIntoPlannerToolkit(subToolkit);
         verify(dynamicToolkitFactory, org.mockito.Mockito.never()).build("default", null, "u1", "chat");
+    }
+
+    @Test
+    void resolveToolkit_plannerWithTaskKind_buildsTaskToolSet() {
+        AgentRunRequest req = AgentRunRequest.planner(
+                AssembledContext.empty(), "plan next", List.of(), "u1", "default", "msg-p", "conv-1", 0)
+                .withConversationKind("task");
+        when(dynamicToolkitFactory.buildForPlanner("default", null, "u1", "task")).thenReturn(subToolkit);
+        when(workerDispatchToolProvider.getObject()).thenReturn(workerDispatchTool);
+
+        assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
+        verify(dynamicToolkitFactory).buildForPlanner("default", null, "u1", "task");
     }
 
     @Test
@@ -213,6 +234,6 @@ class ReActAgentFactoryTest {
                 TimelineBinding.SUB_COMPRESSED,
                 false,
                 null,
-                null, 0, null, null, null, null, null);
+                null, 0, null, null, null, null, null, null);
     }
 }

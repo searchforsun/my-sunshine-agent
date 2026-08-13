@@ -36,7 +36,9 @@ public record AgentRunRequest(
         /** 模型配置（spawn / 预定义智能体）；优先于 modelOverride */
         String modelConfigJson,
         /** 会话级模型 override（仅 MAIN chat / Planner 主对话；intent/rewrite/title 忽略） */
-        String modelOverride
+        String modelOverride,
+        /** 会话 kind（chat|task）；装默认工具集透传，缺省按 chat */
+        String conversationKind
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : AssembledContext.empty();
@@ -49,7 +51,8 @@ public record AgentRunRequest(
                 role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
-                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride);
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind);
     }
 
     public AgentRunRequest withReactPromptId(String reactPromptId) {
@@ -57,7 +60,18 @@ public record AgentRunRequest(
                 role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
-                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride);
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind);
+    }
+
+    /** 透传会话 kind（装默认工具集）；不查库 */
+    public AgentRunRequest withConversationKind(String conversationKind) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind);
     }
 
     /** MAIN 每 run 独立 main-{runId}；SUB/WORKER 用角色前缀（SSE 经 bindHitlBridge 映射 assistantMessageId） */
@@ -161,6 +175,7 @@ public record AgentRunRequest(
                 reactPromptId,
                 conversationId,
                 checkpointThinkIteration,
+                null,
                 null,
                 null,
                 null,
@@ -284,6 +299,7 @@ public record AgentRunRequest(
                 dataScopeJson,
                 permissionsJson,
                 modelConfigJson,
+                null,
                 null);
     }
 
@@ -328,6 +344,7 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -361,6 +378,7 @@ public record AgentRunRequest(
                 null,
                 conversationId,
                 0,
+                null,
                 null,
                 null,
                 null,
