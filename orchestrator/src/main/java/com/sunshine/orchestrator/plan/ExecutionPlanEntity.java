@@ -35,23 +35,8 @@ public class ExecutionPlanEntity {
     @Column(nullable = false, length = 24)
     private String status;
 
-    @Column(name = "planner_model", length = 64)
-    private String plannerModel;
-
-    @Column(name = "planner_reason", length = 512)
-    private String plannerReason;
-
     @Column(name = "plan_json", nullable = false, columnDefinition = "MEDIUMTEXT")
     private String planJson;
-
-    @Column(name = "planner_attempts", columnDefinition = "MEDIUMTEXT")
-    private String plannerAttempts;
-
-    @Column(name = "approval_rounds", columnDefinition = "MEDIUMTEXT")
-    private String approvalRounds;
-
-    @Column(name = "replan_count", nullable = false)
-    private int replanCount;
 
     @Column(name = "validated_json", columnDefinition = "MEDIUMTEXT")
     private String validatedJson;
@@ -64,9 +49,6 @@ public class ExecutionPlanEntity {
 
     @Column(name = "trace_id", length = 64)
     private String traceId;
-
-    @Column(name = "reject_reason", length = 512)
-    private String rejectReason;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

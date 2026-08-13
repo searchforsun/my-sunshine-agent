@@ -19,10 +19,7 @@ public final class StepSummarizer {
         }
         String trimmed = query.strip().replaceAll("\\s+", " ");
         String clipped = clipByDisplayBudget(trimmed, QUERY_DISPLAY_BUDGET);
-        if (clipped.equals(trimmed)) {
-            return "「" + trimmed + "」";
-        }
-        return "「" + clipped + "…」";
+        return "「" + clipped + "」";
     }
 
     /** 按显示宽度截断：ASCII 1、CJK/全角 2，避免英文 @skill-id 被 18 字符硬切过短 */

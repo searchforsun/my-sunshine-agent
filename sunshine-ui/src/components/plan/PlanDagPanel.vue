@@ -16,11 +16,6 @@ import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
 import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
-import {
-  isPlanRegenerating,
-  resolvePlanApprovalToken,
-} from '../../api/planApprovalSteps'
-// PlanApprovalActions 已断主路径；文件保留至阶段 D 删除（HITL 仍用 CollapsibleConfirmPanel）
 
 const props = defineProps<{
   planStep: ProcessingStep
@@ -66,7 +61,6 @@ function stepContentSignature(step?: ProcessingStep): string {
     step.metadata?.recoveryStatus ?? '',
     step.metadata?.recoveryToken ?? '',
     step.metadata?.nodeAttempts?.map(a => `${a.attemptNo}:${a.status}:${a.summary ?? ''}`).join('|') ?? '',
-    step.metadata?.planApproval?.rounds?.map(r => `${r.roundNo}:${r.status}:${r.userHint ?? ''}`).join('|') ?? '',
     subStepsSignature(step.subSteps),
   ].join('\u0001')
 }
@@ -121,30 +115,14 @@ const graphPlanId = ref<string | null>(null)
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
 const loadingPlan = ref(false)
 
-const isRegenerating = computed(() => isPlanRegenerating(props.planStep))
-
-const approvalRoundsKey = computed(() =>
-  props.planStep.metadata?.planApproval?.rounds
-    ?.map(r => `${r.roundNo}:${r.status}`)
-    .join('|') ?? '',
-)
-
 const planId = computed(() => {
   const fromStep = resolvePlanIdFromStep(props.planStep)
   if (fromStep) return fromStep
   if (props.executionPlanId) return props.executionPlanId
-  const token = resolvePlanApprovalToken(props.planStep)
-  if (token) return `approval:${token}`
   return undefined
 })
 
-const inlineApprovalGraph = computed((): PlanGraph | undefined => {
-  const g = props.planStep.metadata?.planApproval?.planGraph
-  if (!g?.nodes?.length) return undefined
-  return g
-})
-
-const graphSource = computed(() => frozenGraph.value ?? inlineApprovalGraph.value ?? undefined)
+const graphSource = computed(() => frozenGraph.value ?? undefined)
 
 const nodeSteps = computed(() => listPlanDagNodeSteps(props.allSteps))
 
@@ -201,7 +179,6 @@ function onExpandDag() {
     nodes: dagNodes.value,
     selectedId: selectedId.value,
     live: props.live,
-    loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
   }, onSelectNode)
 }
 
@@ -230,7 +207,6 @@ function syncExpandLayer() {
     selectedId.value ?? '',
     dagNodesSig.value,
     props.live ? '1' : '0',
-    isRegenerating.value ? '1' : '0',
     props.userQuery ?? '',
   ].join('\u0001')
   if (syncSig !== lastExpandSyncSig) {
@@ -242,7 +218,6 @@ function syncExpandLayer() {
       nodes: dagNodes.value,
       selectedId: selectedId.value,
       live: props.live,
-      loadingLabel: isRegenerating.value ? '重新生成中…' : undefined,
     })
   }
   bindSelect(id, onSelectNode)
@@ -250,7 +225,7 @@ function syncExpandLayer() {
 
 async function loadPlan() {
   const id = planId.value
-  if (!id || id.startsWith('approval:')) return
+  if (!id) return
   const hasGraph = graphPlanId.value === id && !!frozenGraph.value
   // 流式执行期拓扑只拉一次；终态/刷新须拉 execution_trace 恢复节点着色
   if (props.live && hasGraph) return
@@ -300,21 +275,6 @@ onUnmounted(() => {
   const id = planId.value
   if (id) unregisterPlanDagSelectHandler(id)
 })
-watch(approvalRoundsKey, (key, prev) => {
-  if (key !== prev && planId.value) {
-    if (!inlineApprovalGraph.value) {
-      frozenGraph.value = null
-      graphPlanId.value = null
-    }
-    void loadPlan()
-  }
-})
-watch(
-  () => props.planStep.metadata?.planApproval?.status,
-  (status) => {
-    if (status === 'awaiting' && planId.value) void loadPlan()
-  },
-)
 watch(planId, (id, prev) => {
   if (prev) unregisterPlanDagSelectHandler(prev)
   if (id) registerPlanDagSelectHandler(id, onSelectNode)
@@ -358,7 +318,6 @@ watch(() => expandState.activePlanId, (activeId) => {
   if (!activeId || activeId !== planId.value) lastExpandSyncSig = ''
 })
 watch(selectedId, () => syncExpandLayer())
-watch(isRegenerating, () => syncExpandLayer())
 </script>
 
 <template>
@@ -375,8 +334,7 @@ watch(isRegenerating, () => syncExpandLayer())
       :dag-nodes="dagNodes"
       :selected-id="selectedId"
       :live="live"
-      :loading-label="isRegenerating ? '重新生成中…' : undefined"
-      :show-expand="!isRegenerating"
+      :show-expand="true"
       @select="onSelectNode"
       @expand="onExpandDag"
     />

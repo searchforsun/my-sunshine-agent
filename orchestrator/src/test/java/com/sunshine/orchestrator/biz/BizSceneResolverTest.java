@@ -34,7 +34,7 @@ class BizSceneResolverTest {
     }
 
     @Test
-    void retiredOrUnknownScene_isInvalid() {
+    void disabledOrUnknownScene_isInvalid() {
         List<SceneTagged> skills = List.of(new SceneTagged("s1", "legacy-scene"));
         assertThat(BizSceneResolver.resolve(List.of(), skills, ACTIVE)).isEmpty();
         assertThat(BizSceneResolver.resolve(List.of(), skills, Set.of())).isEmpty();

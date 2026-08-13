@@ -9,7 +9,7 @@ import reactor.core.publisher.Flux;
 
 /**
  * Planner-Executor 运行时 — ReAct + Catalog {@code planner.harness} + H1 injectedBlocks。
- * 不再依赖 {@code WorkflowPlanner}；旧 plan-workflow 仍由 {@code PlanWorkflowExecutor} 直调。
+ * 独立角色（PLANNER），非 MAIN；不做一次性 DAG 规划。
  */
 @Slf4j
 @Component

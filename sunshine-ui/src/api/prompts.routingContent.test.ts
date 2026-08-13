@@ -8,7 +8,7 @@ describe('routing rule content · v6 语义（轨 A 绑技能/助手 / 轨 B 绑
     expect(form.matchType).toBe('regex')
   })
 
-  it('旧 react 规则解析时规范化为 fast，技能绑定保留', () => {
+  it('旧 react 规则解析时回退 fast，技能绑定保留', () => {
     const form = parseRoutingContentJson(
       '{"matchType":"regex","match":"any","patterns":["制度怎么说"],'
       + '"plan":{"mode":"react","params":{"skill":"policy-qa"}}}',
@@ -17,7 +17,7 @@ describe('routing rule content · v6 语义（轨 A 绑技能/助手 / 轨 B 绑
     expect(form.plan?.params?.skill).toBe('policy-qa')
   })
 
-  it('旧 plan-workflow 规则解析时规范化为 fast（轨 A）', () => {
+  it('旧 plan-workflow 规则解析时回退 fast（轨 A）', () => {
     const form = parseRoutingContentJson(
       '{"matchType":"regex","patterns":["先.+再"],"plan":{"mode":"plan-workflow","params":{}}}',
     )

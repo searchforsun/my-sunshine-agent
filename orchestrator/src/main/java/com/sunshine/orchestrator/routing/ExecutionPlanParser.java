@@ -53,12 +53,9 @@ public class ExecutionPlanParser {
             String workflowId = stored.substring("workflow:".length());
             return new ExecutionPlan(ExecutionMode.WORKFLOW, workflowId, Map.of(), "stored");
         }
-        String norm = stored.toLowerCase().replace('_', '-');
-        return switch (norm) {
-            case "fast", "react", "agent", "auto" ->
-                    new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "stored");
-            case "pro", "plan-workflow", "plan" ->
-                    new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "stored");
+        return switch (stored.toLowerCase().replace('_', '-')) {
+            case "fast" -> new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "stored");
+            case "pro" -> new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "stored");
             default -> ExecutionPlan.reactFallback("unknown stored intent: " + stored);
         };
     }

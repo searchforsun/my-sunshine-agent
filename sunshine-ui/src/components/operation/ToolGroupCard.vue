@@ -116,7 +116,6 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
             <polyline points="4.5 8 7 10.5 11.5 5.5" />
           </svg>
         </span>
-        <span v-if="anyRunning && live" class="op-pulse">…</span>
         <svg
           class="op-chevron"
           width="12"
@@ -269,15 +268,6 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
 .tool-group-label.op-shimmer {
   --op-shimmer-base: var(--sun-shimmer-label-base);
   --op-shimmer-peak: var(--sun-shimmer-label-peak);
-}
-
-.op-pulse {
-  animation: op-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes op-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
 }
 
 @keyframes op-text-shimmer {

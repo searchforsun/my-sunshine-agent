@@ -34,7 +34,7 @@ public class PlanRunFinalizer {
             String planId,
             WorkflowRunSession runSession) {
         if (runSession.isFallbackReact()
-                && executionProperties.getPlanWorkflow().getFallbackReact().isEnabled()) {
+                && executionProperties.getFallbackReact().isEnabled()) {
             return Mono.fromRunnable(() -> executionPlanStore.markDegradedReact(
                             planId, runSession.getAbortReason()))
                     .subscribeOn(Schedulers.boundedElastic())
@@ -91,7 +91,7 @@ public class PlanRunFinalizer {
         session.bindTraceMessageId(ctx.assistantMsgId());
         List<StreamToken> fallbackPlan = PlanTimeline.planFallbackStep(
                 session, reason + "；改由自主智能体接续执行");
-        if (!executionProperties.getPlanWorkflow().getFallbackReact().isInjectPartialContext()) {
+        if (!executionProperties.getFallbackReact().isInjectPartialContext()) {
             return Flux.concat(Flux.fromIterable(fallbackPlan), reactExecutor.execute(ctx));
         }
         List<String> injected = buildPartialContext(runSession);

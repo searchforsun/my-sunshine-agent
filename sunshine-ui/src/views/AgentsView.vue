@@ -294,6 +294,7 @@ const isFormDirty = computed(() => {
     || editForm.value.modelName !== parseModelConfigModel(agent.modelConfigJson)
     || editForm.value.maxIters !== String(agent.maxIters ?? 0)
     || editForm.value.maxHandoffs !== String(agent.maxHandoffs ?? 0)
+    || editForm.value.kind !== (agent.kind ?? 'all')
     || editForm.value.bizScene !== (agent.bizScene ?? null)
 })
 
@@ -304,6 +305,17 @@ function isAgentComplete(agent: AgentEntry): boolean {
   return !!agent.displayName?.trim()
     && !!agent.systemPrompt?.trim()
     && agent.systemPrompt.trim() !== PLACEHOLDER_PROMPT
+}
+
+function kindLabel(kind: string | undefined): string {
+  switch (kind) {
+    case 'chat':
+      return '对话'
+    case 'task':
+      return '任务'
+    default:
+      return ''
+  }
 }
 
 // ---- View 菜单 ----
@@ -759,7 +771,12 @@ onUnmounted(() => {
                 @click="selectAgent(agent.id)"
               >
                 <div class="agent-row-head">
-                  <span class="agent-name">{{ agent.displayName }}</span>
+                  <div class="agent-name-row">
+                    <span class="agent-name">{{ agent.displayName }}</span>
+                    <span v-if="agent.kind && agent.kind !== 'all'" class="agent-kind">
+                      <NTag :bordered="false" size="tiny" class="meta-chip">{{ kindLabel(agent.kind) }}</NTag>
+                    </span>
+                  </div>
                   <NSwitch
                     v-if="isAgentComplete(agent)"
                     :value="agent.enabled"
@@ -1443,11 +1460,29 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.agent-name-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .agent-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-kind {
+  flex-shrink: 0;
+}
+
+.meta-chip {
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
+  --n-text-color: var(--sun-text-secondary) !important;
+  --n-border: none !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
 }
 
 .agent-id {

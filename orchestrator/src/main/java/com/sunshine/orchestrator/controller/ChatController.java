@@ -153,9 +153,9 @@ public class ChatController {
         job.bindStreamEpoch(streamEpoch);
         StepEventBridge.bindGenerationFlush(ctx.assistantMsgId(), streamEpoch, job::emitStreamToken);
 
-        boolean planWorkflowResume = resume
+        boolean planRunResume = resume
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
-        boolean reactRestartResume = resume && !planWorkflowResume && streamExecutor.isReactStoredIntent(ctx.intent());
+        boolean reactRestartResume = resume && !planRunResume && streamExecutor.isReactStoredIntent(ctx.intent());
         boolean hasNativeCheckpoint = reactRestartResume
                 && checkpointService.hasCheckpoint(ctx.userId(), ctx.assistantMsgId());
         log.info("[ChatController] resume msg={} reactRestart={} hasNativeCheckpoint={} initialSteps={}",
@@ -168,10 +168,10 @@ public class ChatController {
             // 无论有无 native checkpoint：截断半截步，保留 tasks/decision；无 checkpoint 靠注入块续进度
             truncateAfterLastDoneThink(initialSteps);
         }
-        String initialContent = resume && !planWorkflowResume && !reactRestartResume
+        String initialContent = resume && !planRunResume && !reactRestartResume
                 ? ctx.existingContent() : "";
         StringBuilder buffer = new StringBuilder(initialContent != null ? initialContent : "");
-        String initialReasoning = resume && !planWorkflowResume && !reactRestartResume
+        String initialReasoning = resume && !planRunResume && !reactRestartResume
                 ? ctx.existingReasoning() : "";
         Consumer<String> flushPartial = content ->
                 flushScheduler.flushPartial(ctx.assistantMsgId(), content);

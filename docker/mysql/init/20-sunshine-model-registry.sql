@@ -53,26 +53,30 @@ CREATE TABLE IF NOT EXISTS model_scene_binding (
 
 INSERT INTO model_provider (provider_key, display_name, protocol, base_url, path_prefix, api_key_enc, enabled, tenant_id) VALUES
 ('deepseek', 'DeepSeek', 'openai-compatible', 'https://api.deepseek.com', '/v1', 'UNSET', 1, 'default'),
+('minimax', 'MiniMax', 'openai-compatible', 'https://api.minimaxi.com/v1', '', 'UNSET', 1, 'default'),
 ('qwen', '通义千问', 'openai-compatible', 'https://dashscope.aliyuncs.com/compatible-mode/v1', '', 'UNSET', 1, 'default')
 ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), base_url = VALUES(base_url), path_prefix = VALUES(path_prefix);
 
-INSERT INTO model_definition (provider_key, model_name, display_name, context_window, max_output_tokens, encoding, capabilities, user_selectable, enabled, sort_order, tenant_id) VALUES
-('deepseek', 'deepseek-v4-pro', 'DeepSeek V4 Pro', 256000, 16384, 'cl100k_base',
- '{"reasoning":true,"multimodal":false,"tool_call":true}', 1, 1, 10, 'default'),
-('deepseek', 'deepseek-v4-flash', 'DeepSeek V4 Flash', 128000, 16384, 'cl100k_base',
- '{"reasoning":false,"multimodal":false,"tool_call":true}', 1, 1, 20, 'default'),
-('qwen', 'qwen-plus', 'Qwen Plus', 262144, 8192, 'cl100k_base',
- '{"reasoning":false,"multimodal":false,"tool_call":true}', 1, 1, 30, 'default'),
-('qwen', 'qwen-max', 'Qwen Max', 65536, 8192, 'cl100k_base',
- '{"reasoning":false,"multimodal":false,"tool_call":true}', 1, 1, 40, 'default')
+INSERT INTO model_definition (provider_key, model_name, display_name, context_window, max_output_tokens, encoding, capabilities, request_extras, user_selectable, enabled, sort_order, tenant_id) VALUES
+('deepseek', 'deepseek-v4-pro', 'deepseek-v4-pro', 256000, 16384, 'cl100k_base',
+ '{"toolCall": true, "reasoning": true, "multimodal": false}', '{"thinking": {"type": "enabled"}, "reasoning_effort": "high", "max_completion_tokens": 16384}', 1, 1, 10, 'default'),
+('deepseek', 'deepseek-v4-flash', 'deepseek-v4-flash', 128000, 16384, 'cl100k_base',
+ '{"toolCall": true, "reasoning": true, "multimodal": false}', '{"thinking": {"type": "enabled"}, "reasoning_effort": "high", "max_completion_tokens": 16384}', 1, 1, 20, 'default'),
+('minimax', 'MiniMax-M3', 'MiniMax-M3', 1000000, 131072, 'cl100k_base',
+ '{"toolCall": true, "reasoning": true, "multimodal": true}', '{"reasoning_split": true}', 1, 1, 50, 'default'),
+('qwen', 'qwen-plus', 'qwen-plus', 262144, 8192, 'cl100k_base',
+ '{"toolCall": true, "reasoning": false, "multimodal": false}', NULL, 1, 1, 30, 'default'),
+('qwen', 'qwen-max', 'qwen-max', 65536, 8192, 'cl100k_base',
+ '{"toolCall": true, "reasoning": false, "multimodal": false}', NULL, 1, 1, 40, 'default')
 ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), context_window = VALUES(context_window),
   max_output_tokens = VALUES(max_output_tokens),
-  capabilities = VALUES(capabilities), user_selectable = VALUES(user_selectable), sort_order = VALUES(sort_order);
+  capabilities = VALUES(capabilities), request_extras = VALUES(request_extras),
+  user_selectable = VALUES(user_selectable), sort_order = VALUES(sort_order);
 
 INSERT INTO model_scene_binding (scene_key, primary_model, fallback_model, extras, enabled, tenant_id, remark) VALUES
 ('default', 'deepseek-v4-pro', 'qwen-plus', NULL, 1, 'default', '通用缺省'),
 ('chat', 'deepseek-v4-pro', 'qwen-plus', NULL, 1, 'default', '对话主循环缺省'),
-('intent', 'deepseek-v4-flash', 'qwen-plus', '{"max_completion_tokens":256,"temperature":0}', 1, 'default', '意图分类'),
+('intent', 'deepseek-v4-flash', 'qwen-plus', '{"max_tokens": 256, "temperature": 0}', 1, 'default', '意图分类'),
 ('planner', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', 'Planner'),
 ('rewrite.intent', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', '路由域改写'),
 ('rewrite.planner', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', '规划域改写'),

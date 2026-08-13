@@ -143,7 +143,7 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_planWorkflow_withAtSkill_keepsForcedMode() {
+    void resolve_pro_withAtSkill_keepsForcedMode() {
         ExecutionPlan skillPlan = new ExecutionPlan(
                 ExecutionMode.FAST, null,
                 Map.of("skill", "policy-review", "effectiveQuery", "老家有事请事假是否合理"),
@@ -161,7 +161,7 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_planWorkflow_hitsSharedTrackARule() {
+    void resolve_pro_hitsSharedTrackARule() {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
 
         ExecutionPlan plan = router.resolve(

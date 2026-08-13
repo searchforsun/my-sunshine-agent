@@ -9,7 +9,7 @@
 子套件:
   sdk     G1–G3  SDK 发现 / catalog / 解耦 / 可选 Chat SSE
   mcp     G4–G5  mcp.json 导入 + probe（无 npx 时 SKIP）
-  toolset G6–G7  react-default 工具集 + disable 动态生效
+  toolset G6–G7  chat 默认集 + disable 动态生效
   hitl    G8     approve_oa_task 写工具确认
   all     G1–G10
 
@@ -213,7 +213,7 @@ def chat_sse(
             body = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": "react",
+                "executionPreference": "fast",
             }
             with requests.post(
                 f"{GATEWAY_URL}/api/chat/stream",
@@ -378,11 +378,11 @@ def run_g4_g5_mcp(headers: dict) -> dict:
 
 
 def run_g6_g7_toolset(headers: dict) -> dict:
-    print("\n[G6] react-default 工具集 members API")
+    print("\n[G6] chat 默认集 members API")
     subset = [FIN_LIST, OA_LIST]
     add_resp = admin_json(
         "POST",
-        "/api/admin/tools/sets/react-default/members:add",
+        "/api/admin/tools/sets/chat/members:add",
         headers,
         json={"items": [{"toolId": tid} for tid in subset]},
     )
@@ -396,7 +396,7 @@ def run_g6_g7_toolset(headers: dict) -> dict:
         )
     page_resp = admin_json(
         "GET",
-        "/api/admin/tools/sets/react-default/members?page=1&size=50",
+        "/api/admin/tools/sets/chat/members?page=1&size=50",
         headers,
     )
     items = (page_resp or {}).get("items") if isinstance(page_resp, dict) else []
@@ -404,7 +404,7 @@ def run_g6_g7_toolset(headers: dict) -> dict:
     missing = [tid for tid in subset if tid not in page_ids]
     if missing:
         raise AssertionError(f"members 列表缺少 {missing}, 实际 toolIds={sorted(page_ids)[:10]}...")
-    print(f"[OK] G6: react-default 含 {subset}（共 {len(page_ids)} 成员）")
+    print(f"[OK] G6: chat 默认集含 {subset}（共 {len(page_ids)} 成员）")
 
     print("\n[G7] disable 工具动态生效（成员保留、运行时排除）")
     enable_sdk_tools(headers)
@@ -418,16 +418,16 @@ def run_g6_g7_toolset(headers: dict) -> dict:
         raise AssertionError(f"disable 后 enabledOnly catalog 仍含 {FIN_LIST}")
     page_after = admin_json(
         "GET",
-        "/api/admin/tools/sets/react-default/members?page=1&size=50",
+        "/api/admin/tools/sets/chat/members?page=1&size=50",
         headers,
     )
     items = (page_after or {}).get("items") if isinstance(page_after, dict) else []
     fin_row = next((i for i in items if i.get("toolId") == FIN_LIST), None)
     if not fin_row:
-        raise AssertionError(f"disable 后 react-default 成员仍应保留 {FIN_LIST}")
+        raise AssertionError(f"disable 后 chat 默认集成员仍应保留 {FIN_LIST}")
     patch_tool(FIN_LIST, {"enabled": True}, headers)
     print("[OK] G7: disable 后 enabledOnly catalog 已排除，成员仍保留")
-    return {"pass": True, "react_default": subset}
+    return {"pass": True, "chat_default": subset}
 
 
 def run_g8_hitl(headers: dict) -> dict:

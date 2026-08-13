@@ -62,7 +62,7 @@ public class WorkflowNodeRunner {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (runSession.isAborted()) {
             return Flux.empty();
         }
@@ -71,19 +71,19 @@ public class WorkflowNodeRunner {
             log.warn("[WorkflowNodeRunner] 节点 {} 不存在", nodeId);
             return Flux.empty();
         }
-        NodeSpec resolved = resolveParams(rawSpec, wfCtx, def, planWorkflow);
+        NodeSpec resolved = resolveParams(rawSpec, wfCtx, def, planRun);
         NodeHandler handler = registry.require(rawSpec.type());
         ResumeInteractionHint hint = streamCtx.resumeInteraction();
         if (hint != null && nodeId.equals(hint.pending().nodeId())) {
             return resumeFromPendingInteraction(
                     session, def, nodeId, rawSpec, resolved, handler, wfCtx,
-                    streamCtx.withResumeInteraction(null), runSession, planWorkflow, hint.pending());
+                    streamCtx.withResumeInteraction(null), runSession, planRun, hint.pending());
         }
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
         // critical 工具集需 block tool-manager：禁止在 reactor-http 上解析（否则 Plan 中途静默降级 ReAct）
         return Mono.fromCallable(() ->
-                        retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId()))
+                        retryPolicyResolver.resolve(rawSpec, planRun, streamCtx.tenantId()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(retryPolicy -> {
                     List<StreamToken> startTokens = tracksNodeStep
@@ -107,16 +107,16 @@ public class WorkflowNodeRunner {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow,
+            boolean planRun,
             PendingInteraction pending) {
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
         return Mono.fromCallable(() ->
-                        retryPolicyResolver.resolve(rawSpec, planWorkflow, streamCtx.tenantId()))
+                        retryPolicyResolver.resolve(rawSpec, planRun, streamCtx.tenantId()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(retryPolicy -> resumeWithPolicy(
                         session, def, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
-                        runSession, planWorkflow, pending, tracksNodeStep, startedAt, retryPolicy));
+                        runSession, planRun, pending, tracksNodeStep, startedAt, retryPolicy));
     }
 
     private Flux<StreamToken> resumeWithPolicy(
@@ -129,7 +129,7 @@ public class WorkflowNodeRunner {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow,
+            boolean planRun,
             PendingInteraction pending,
             boolean tracksNodeStep,
             long startedAt,
@@ -428,11 +428,11 @@ public class WorkflowNodeRunner {
         return v != null ? v.toString() : "";
     }
 
-    private NodeSpec resolveParams(NodeSpec spec, WorkflowContext ctx, WorkflowDefinition def, boolean planWorkflow) {
+    private NodeSpec resolveParams(NodeSpec spec, WorkflowContext ctx, WorkflowDefinition def, boolean planRun) {
         Map<String, Object> resolved = new LinkedHashMap<>();
         if (spec.params() != null) {
             spec.params().forEach((k, v) -> {
-                if (planWorkflow && "prompt".equals(k) && v instanceof String s) {
+                if (planRun && "prompt".equals(k) && v instanceof String s) {
                     resolved.put(k, upstreamOutputResolver.resolvePrompt(s, ctx, def));
                 } else if (v instanceof String s) {
                     resolved.put(k, TemplateResolver.resolve(s, ctx));

@@ -11,7 +11,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Map;
 
-/** StepMetadata 工厂与增量合并 — 路由/HITL/recovery/planApproval/decision 等域 */
+/** StepMetadata 工厂与增量合并 — 路由/HITL/recovery/decision 等域 */
 final class StepMetadataAssembler {
 
     private static final String RAG_EXPAND_SECTION_TITLE = "检索过程";
@@ -25,7 +25,7 @@ final class StepMetadataAssembler {
         }
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
                 null, null, null,
                 textOrNull(sandboxPath), textOrNull(sandboxSearchRoot), null, null, null, null, null);
     }
@@ -36,7 +36,7 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, editDiff, null, null);
         }
         return new StepMetadata(
@@ -44,7 +44,7 @@ final class StepMetadataAssembler {
                 base.rewriteFrom(), base.rewriteTo(), base.rewriteScenario(), base.rewriteScenarioLabel(),
                 base.skillId(), base.plannerMode(), base.routingReason(), base.rewriteInDetail(),
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
-                base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), base.spawnPrompt(), base.cancellable(),
                 editDiff, base.decision(), base.routingTraces());
     }
@@ -56,7 +56,7 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null,
                     null, null, null, null, null, p, null, null, null, null);
         }
         return new StepMetadata(
@@ -64,7 +64,7 @@ final class StepMetadataAssembler {
                 base.rewriteFrom(), base.rewriteTo(), base.rewriteScenario(), base.rewriteScenarioLabel(),
                 base.skillId(), base.plannerMode(), base.routingReason(), base.rewriteInDetail(),
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
-                base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), p, base.cancellable(), base.editDiff(),
                 base.decision(), base.routingTraces());
     }
@@ -73,7 +73,7 @@ final class StepMetadataAssembler {
         Boolean flag = cancellable ? Boolean.TRUE : Boolean.FALSE;
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, flag, null, null, null);
         }
         return new StepMetadata(
@@ -81,7 +81,7 @@ final class StepMetadataAssembler {
                 base.rewriteFrom(), base.rewriteTo(), base.rewriteScenario(), base.rewriteScenarioLabel(),
                 base.skillId(), base.plannerMode(), base.routingReason(), base.rewriteInDetail(),
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
-                base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), base.spawnPrompt(), flag, base.editDiff(),
                 base.decision(), base.routingTraces());
     }
@@ -99,7 +99,7 @@ final class StepMetadataAssembler {
         }
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
-                textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null, null, null, null, null,
+                textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null,
                 tracesOrNull(plan.routingTraces()));
     }
@@ -110,7 +110,7 @@ final class StepMetadataAssembler {
         }
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
-                skillId.strip(), null, null, null, null, null, null, null, null,
+                skillId.strip(), null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null);
     }
 
@@ -120,7 +120,7 @@ final class StepMetadataAssembler {
         }
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
                 List.copyOf(tasks), revision, progress, null, null, null, null, null, null, null);
     }
 
@@ -134,7 +134,7 @@ final class StepMetadataAssembler {
         }
         return copy(base, routing.skillId(), routing.plannerMode(), routing.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), routing.routingTraces());
     }
 
@@ -144,12 +144,12 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, hitl, null, null, null,
+                    null, null, null, null, null, hitl, null, null,
                     null, null, null, null, null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), hitl, base.recovery(),
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), base.routingTraces());
     }
 
@@ -159,7 +159,7 @@ final class StepMetadataAssembler {
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), null,
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), base.routingTraces());
     }
 
@@ -169,12 +169,12 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, List.copyOf(nodeAttempts), null,
+                    null, null, null, null, null, null, null, List.copyOf(nodeAttempts),
                     null, null, null, null, null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
-                List.copyOf(nodeAttempts), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                List.copyOf(nodeAttempts), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), base.routingTraces());
     }
 
@@ -184,12 +184,12 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, recovery, null, null,
+                    null, null, null, null, null, null, recovery, null,
                     null, null, null, null, null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), recovery,
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), base.routingTraces());
     }
 
@@ -207,23 +207,8 @@ final class StepMetadataAssembler {
                 outcome.rewrittenQuery(),
                 outcome.scenario(),
                 scenarioLabel.isBlank() ? null : scenarioLabel,
-                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null);
-    }
-
-    static StepMetadata withPlanApproval(StepMetadata base, PlanApprovalMeta planApproval) {
-        if (planApproval == null) {
-            return base;
-        }
-        if (base == null) {
-            return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, planApproval,
-                    null, null, null, null, null, null, null, null, null, null);
-        }
-        return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
-                base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
-                base.nodeAttempts(), planApproval, base.tasks(), base.taskRevision(), base.taskProgress(),
-                base.decision(), base.routingTraces());
     }
 
     static StepMetadata withDecision(StepMetadata base, DecisionStepMeta decision) {
@@ -232,12 +217,12 @@ final class StepMetadataAssembler {
         }
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, decision, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 decision, base.routingTraces());
     }
 
@@ -266,7 +251,6 @@ final class StepMetadataAssembler {
                 base.hitl(),
                 base.recovery(),
                 base.nodeAttempts(),
-                base.planApproval(),
                 base.tasks(),
                 base.taskRevision(),
                 base.taskProgress(),
@@ -304,7 +288,6 @@ final class StepMetadataAssembler {
                 overlay.recovery() != null ? overlay.recovery() : base.recovery(),
                 overlay.nodeAttempts() != null && !overlay.nodeAttempts().isEmpty()
                         ? overlay.nodeAttempts() : base.nodeAttempts(),
-                overlay.planApproval() != null ? overlay.planApproval() : base.planApproval(),
                 overlay.tasks() != null && !overlay.tasks().isEmpty() ? overlay.tasks() : base.tasks(),
                 overlay.taskRevision() != null ? overlay.taskRevision() : base.taskRevision(),
                 overlay.taskProgress() != null ? overlay.taskProgress() : base.taskProgress(),
@@ -324,19 +307,19 @@ final class StepMetadataAssembler {
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 true, base.expandSectionTitle(), base.hitl(), base.recovery(),
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), base.routingTraces());
     }
 
     static StepMetadata withRagExpandLayout(StepMetadata base) {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
-                    null, null, null, true, RAG_EXPAND_SECTION_TITLE, null, null, null, null,
+                    null, null, null, true, RAG_EXPAND_SECTION_TITLE, null, null, null,
                     null, null, null, null, null, null, null, null, null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 true, RAG_EXPAND_SECTION_TITLE, base.hitl(), base.recovery(),
-                base.nodeAttempts(), base.planApproval(), base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.nodeAttempts(), base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.decision(), base.routingTraces());
     }
 
@@ -350,7 +333,6 @@ final class StepMetadataAssembler {
             HitlStepMeta hitl,
             NodeRecoveryMeta recovery,
             List<NodeAttemptMeta> nodeAttempts,
-            PlanApprovalMeta planApproval,
             List<TaskBoardItemView> tasks,
             Integer taskRevision,
             String taskProgress,
@@ -373,7 +355,6 @@ final class StepMetadataAssembler {
                 hitl,
                 recovery,
                 nodeAttempts,
-                planApproval,
                 tasks,
                 taskRevision,
                 taskProgress,

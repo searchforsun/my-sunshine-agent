@@ -154,7 +154,7 @@ def chat_sse_stream(
     conv_id: str,
     query: str,
     *,
-    execution_preference: str = "auto",
+    execution_preference: str = "workflow",
     stop_on_confirmation: bool = False,
 ) -> SseCollector:
     collector = SseCollector()
@@ -335,7 +335,7 @@ def run_read_case(
 ) -> CaseResult:
     print(f"\n[{case_id}] {query}")
     conv_id = new_conv(token)
-    collector = chat_sse_stream(token, conv_id, query, execution_preference="auto")
+    collector = chat_sse_stream(token, conv_id, query, execution_preference="workflow")
     assistant = wait_assistant_terminal(token, conv_id)
     status = assistant.get("status")
     wf = assistant.get("workflowId")
@@ -424,7 +424,7 @@ def run_write_case(
         token,
         conv_id,
         query,
-        execution_preference="auto",
+        execution_preference="workflow",
         stop_on_confirmation=True,
     )
     try:
@@ -526,7 +526,7 @@ def suite_write(token: str, user_id: str) -> list[CaseResult]:
         # 回落：走 workflow list 再解析
         list_conv = new_conv(token)
         list_q = "#oa-task-assist 我的 OA 待办有哪些"
-        list_coll = chat_sse_stream(token, list_conv, list_q, execution_preference="auto")
+        list_coll = chat_sse_stream(token, list_conv, list_q, execution_preference="workflow")
         list_asst = wait_assistant_terminal(token, list_conv)
         if not workflow_hit(list_asst, "oa-task-assist"):
             results.append(

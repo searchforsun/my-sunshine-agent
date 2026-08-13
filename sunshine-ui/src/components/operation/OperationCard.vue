@@ -170,11 +170,6 @@ const headerText = computed(() => {
   }
   return resolveStepHeaderText(props.step)
 })
-
-/** active 文案已以省略号结尾时，op-pulse 不再追加省略号，避免「…」重复 */
-function endsWithEllipsis(text: string): boolean {
-  return text.endsWith('…') || text.endsWith('...')
-}
 const shiftSummary = computed(() => shouldShiftSummaryOnExpand(props.step))
 const { isSandboxTool, editDiffSummary } = useSandboxToolExpand(() => props.step)
 
@@ -283,7 +278,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
             <span v-if="editDiffSummary.add" class="op-diff-stat is-add">+{{ editDiffSummary.add }}</span>
             <span v-if="editDiffSummary.del" class="op-diff-stat is-del">-{{ editDiffSummary.del }}</span>
           </span>
-          <span v-if="isRunning && live && !endsWithEllipsis(headerText)" class="op-pulse">…</span>
         </span>
         <svg
           v-if="showCheckmark"
@@ -595,15 +589,14 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   gap: 8px;
   margin: 0;
   min-width: 0;
-  font-size: var(--sun-font-sm, 12px);
-  line-height: 1.45;
+  font-size: var(--op-detail-font);
+  line-height: 1.55;
 }
 
 .op-routing-key {
   flex-shrink: 0;
   min-width: 72px;
-  font-weight: 450;
-  color: var(--sun-text-secondary);
+  color: var(--sun-text-muted);
 }
 
 .op-routing-detail {
@@ -614,10 +607,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 
 .op-line.is-running .op-label:not(.op-shimmer) {
   color: var(--sun-text);
-}
-
-.op-pulse {
-  animation: op-pulse 1.2s ease-in-out infinite;
 }
 
 .op-detail {
@@ -676,11 +665,6 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 
 .op-line :deep(.collapsible-confirm) {
   margin-left: 0;
-}
-
-@keyframes op-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
 }
 
 @keyframes op-text-shimmer {

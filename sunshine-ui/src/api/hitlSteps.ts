@@ -105,14 +105,14 @@ export function isRagStepId(stepId: string): boolean {
   return stripInvokeSuffix(stepId) === 'rag'
 }
 
-/** Plan workflow 业务 node 步（含 tool 写操作 HITL，id 为 node-{id}） */
-export function isPlanWorkflowBizNode(step: ProcessingStep): boolean {
+/** Plan DAG 业务 node 步（含 tool 写操作 HITL，id 为 node-{id}） */
+export function isPlanBizNode(step: ProcessingStep): boolean {
   return step.id.startsWith('node-') && step.id !== 'node-answer'
 }
 
-/** 可承载 HITL 的步骤：ReAct tool 步或 Plan workflow 业务 node */
+/** 可承载 HITL 的步骤：ReAct tool 步或 Plan DAG 业务 node */
 export function isHitlCarrierStep(step: ProcessingStep): boolean {
-  return isHitlToolStep(step) || isPlanWorkflowBizNode(step)
+  return isHitlToolStep(step) || isPlanBizNode(step)
 }
 
 /** ReAct 主 timeline 工具步（id 或 phase 任一命中） */
@@ -144,7 +144,7 @@ function toolIdFromStepId(stepId: string): string | undefined {
 }
 
 function buildPendingFromPlanNode(step: ProcessingStep): HitlConfirmationPayload | undefined {
-  if (!isPlanWorkflowBizNode(step)) return undefined
+  if (!isPlanBizNode(step)) return undefined
   const awaiting = isHitlAwaiting(step) || isHitlSummaryAwaiting(step)
   if (!awaiting) return undefined
   const token = resolveHitlToken(step) ?? ''
@@ -237,7 +237,7 @@ export function resolvePendingHitlForStep(
     if (isToolStepId(step.id)) {
       return step.id.startsWith(toolStepIdPrefix(p.toolId.trim()))
     }
-    if (isPlanWorkflowBizNode(step)) {
+    if (isPlanBizNode(step)) {
       return p.toolId.trim() === (step.metadata?.hitlToolDisplayName?.trim() || formatStepLabel(step))
     }
     return false
@@ -322,7 +322,7 @@ export function hasHitlPanel(step: ProcessingStep): boolean {
 /** 时间线中是否存在待用户操作的 HITL 步（ReAct 主 timeline 或 agent 节点 subSteps） */
 export function stepsHaveAwaitingHitl(steps: ProcessingStep[] | undefined): boolean {
   if (!steps?.length) return false
-  if (steps.some(s => isPlanWorkflowBizNode(s) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
+  if (steps.some(s => isPlanBizNode(s) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
     return true
   }
   if (steps.some(s => isToolStepId(s.id) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
@@ -356,7 +356,7 @@ export function resolveHitlUiKey(
   if (!steps?.length) return ''
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (isPlanWorkflowBizNode(s) && isHitlSummaryAwaiting(s)) return s.id
+    if (isPlanBizNode(s) && isHitlSummaryAwaiting(s)) return s.id
     if (isToolStepId(s.id) && isHitlSummaryAwaiting(s)) return s.id
   }
   return ''
@@ -572,7 +572,7 @@ function findHitlTargetPlanNodeIndex(
 ): number {
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (!isPlanWorkflowBizNode(s)) continue
+    if (!isPlanBizNode(s)) continue
     if (attachMode) {
       const lc = s.lifecycle
       if (lc !== 'running' && lc !== 'paused' && lc !== 'pending') continue
@@ -584,7 +584,7 @@ function findHitlTargetPlanNodeIndex(
   if (attachMode) return -1
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (!isPlanWorkflowBizNode(s)) continue
+    if (!isPlanBizNode(s)) continue
     if (isHitlResolved(s)) continue
     if (s.lifecycle === 'done' || s.lifecycle === 'skipped') continue
     return i

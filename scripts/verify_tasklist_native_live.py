@@ -59,7 +59,7 @@ def setup_auth() -> tuple[str, str]:
     return token, conv_id
 
 
-def chat_sse(token: str, conv_id: str, query: str, preference: str = "react") -> str:
+def chat_sse(token: str, conv_id: str, query: str, preference: str = "fast") -> str:
     curl = shutil.which("curl")
     if not curl:
         raise RuntimeError("curl not found")

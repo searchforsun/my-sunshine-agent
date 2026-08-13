@@ -55,9 +55,6 @@ function handleCardMenuSelect(scene: BizSceneEntry, key: string) {
             <div class="scene-card-top">
               <div class="scene-card-names">
                 <span class="scene-title">{{ scene.bizScene }}</span>
-                <span v-if="scene.status !== 'active'" class="scene-status-chip">
-                  <NTag :bordered="false" size="tiny" class="meta-chip">退役</NTag>
-                </span>
                 <span v-if="scene.displayName && scene.displayName !== scene.bizScene" class="scene-subtitle">{{ scene.displayName }}</span>
               </div>
               <NSwitch
@@ -231,17 +228,6 @@ function handleCardMenuSelect(scene: BizSceneEntry, key: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.scene-status-chip {
-  flex-shrink: 0;
-}
-
-.meta-chip {
-  --n-color: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
-  --n-text-color: var(--sun-text-secondary) !important;
-  --n-border: none !important;
-  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
 }
 
 .scene-subtitle {

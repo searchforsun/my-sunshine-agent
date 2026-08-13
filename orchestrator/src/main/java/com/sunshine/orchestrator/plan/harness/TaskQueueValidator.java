@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-/** harness 线性 task 队列轻量结构校验（S7：不复用 PlanValidator）。 */
+/** harness 线性 task 队列轻量结构校验（不复用动态规划校验器） */
 public final class TaskQueueValidator {
     private TaskQueueValidator() {
     }

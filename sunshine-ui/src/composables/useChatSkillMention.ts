@@ -1,6 +1,7 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
 import { allowsSkillMention, type ExecutionPreference } from '../api/executionModes'
+import { matchesSessionKind } from '../utils/kindFilter'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
 /** Composer / Skill 补全 */
@@ -8,6 +9,7 @@ export function useChatSkillMention(
   inputText: Ref<string>,
   preference: Ref<ExecutionPreference>,
   loading: Ref<boolean>,
+  sessionKind: Ref<string>,
 ) {
   const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
   const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
@@ -26,11 +28,13 @@ export function useChatSkillMention(
   const filteredSkills = computed(() => {
     const q = skillQuery.value.trim().toLowerCase()
     return skillCatalog.value
-      .filter(s => s.enabled && (
-        !q
-        || s.id.toLowerCase().includes(q)
-        || s.displayName.toLowerCase().includes(q)
-      ))
+      .filter(s => s.enabled
+        && matchesSessionKind(sessionKind.value, s.kind)
+        && (
+          !q
+          || s.id.toLowerCase().includes(q)
+          || s.displayName.toLowerCase().includes(q)
+        ))
       .slice(0, 8)
   })
 
@@ -46,7 +50,7 @@ export function useChatSkillMention(
     }
     skillMentionStart.value = match.index
     skillQuery.value = match[1]
-    showSkillSuggest.value = skillCatalog.value.some(s => s.enabled)
+    showSkillSuggest.value = filteredSkills.value.length > 0
     skillSuggestIndex.value = 0
   }
 

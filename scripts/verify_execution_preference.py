@@ -84,7 +84,7 @@ def chat_sse_raw(token: str, conv_id: str, query: str, *, preference: str | None
     if not curl:
         raise RuntimeError("curl not found")
     body: dict = {"content": query, "conversationId": conv_id}
-    if preference and preference != "auto":
+    if preference:
         body["executionPreference"] = preference
     payload = json.dumps(body, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
@@ -127,7 +127,7 @@ def wait_assistant(token: str, conv_id: str, max_wait: int = 90) -> dict:
         detail = resp.json()
         messages = detail.get("messages") or detail.get("data", {}).get("messages") or []
         assistants = [m for m in messages if m.get("role") == "assistant"]
-        # plan-workflow 可能停在用户确认（interrupted）；路由断言仍可读 intent steps
+        # 可能停在交互确认（interrupted）；路由断言仍可读 intent steps
         if assistants and assistants[-1].get("status") in ("completed", "interrupted", "failed"):
             return assistants[-1]
         time.sleep(2)

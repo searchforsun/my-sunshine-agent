@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.routing;
 
 /**
- * 顶层执行模式：fast / pro / workflow（读侧兼容旧 wire：auto/react/plan-workflow）。
+ * 顶层执行模式：fast / pro / workflow（协议 wire 唯一取值）。
  */
 public enum ExecutionMode {
     FAST,
@@ -13,10 +13,10 @@ public enum ExecutionMode {
             return FAST;
         }
         return switch (raw.toLowerCase().replace('_', '-')) {
-            case "workflow", "pipeline" -> WORKFLOW;
-            case "pro", "plan-workflow", "plan" -> PRO;
-            case "fast", "react", "agent", "auto" -> FAST;
-            default -> FAST;
+            case "fast" -> FAST;
+            case "pro" -> PRO;
+            case "workflow" -> WORKFLOW;
+            default -> throw new IllegalArgumentException("unknown execution mode: " + raw);
         };
     }
 }

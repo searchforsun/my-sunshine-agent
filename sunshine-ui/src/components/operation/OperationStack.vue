@@ -54,7 +54,7 @@ import SubagentCard from './SubagentCard.vue'
 import DecisionCard from './DecisionCard.vue'
 import ToolGroupCard from './ToolGroupCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
-import PlanWorkflowPanel from '../plan/PlanWorkflowPanel.vue'
+import PlanDagPanel from '../plan/PlanDagPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrate'
 
@@ -907,7 +907,6 @@ watch(
                       <polyline points="4.5 8 7 10.5 11.5 5.5" />
                     </svg>
                   </span>
-                  <span v-if="row.anyRunning && live" class="op-pulse">…</span>
                   <svg
                     class="op-chevron"
                     width="12"
@@ -1003,7 +1002,7 @@ watch(
         </template>
         <template v-else>
         <template v-for="step in [row.step]" :key="`${step.id}-${hitlRevision}-${step.summary?.active ?? ''}`">
-        <PlanWorkflowPanel
+        <PlanDagPanel
           v-if="step.phase === 'plan' && showPlanDag"
           :plan-step="step"
           :all-steps="effectiveSteps"
@@ -1068,7 +1067,7 @@ watch(
             class="op-harness-handoff"
           >{{ harnessHandoffOf(step) }}</div>
         </template>
-        <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanWorkflowPanel 之后渲染 -->
+        <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanDagPanel 之后渲染 -->
         <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
           <div class="op-inline-content">
             <div class="op-inline-body" :class="{ 'is-streaming-md': crow.streaming }">
@@ -1108,7 +1107,7 @@ watch(
     />
     <!-- 正在处理折叠：最后一步概要（无 chevron）+ 最后一段正文 -->
     <template v-if="!timelineBodyExpanded && collapsedPreviewStep">
-      <PlanWorkflowPanel
+      <PlanDagPanel
         v-if="collapsedPreviewStep.phase === 'plan' && showPlanDag"
         :plan-step="collapsedPreviewStep"
         :all-steps="effectiveSteps"
@@ -1431,17 +1430,6 @@ watch(
 
 .round-group-body .op-line.is-clickable {
   cursor: pointer;
-}
-
-.op-pulse {
-  font-size: 0.85em;
-  color: var(--sun-text-muted);
-  animation: op-pulse-fade 1.2s ease-in-out infinite;
-}
-
-@keyframes op-pulse-fade {
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 0.85; }
 }
 
 .op-line-hitl :deep(.collapsible-confirm) {

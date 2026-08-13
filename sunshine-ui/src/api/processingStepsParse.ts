@@ -1,7 +1,5 @@
 /** SSE / REST steps JSON 解析 */
 import type { SandboxEditDiffMeta, SandboxDiffLine } from './sandboxEditDiff'
-import type { PlanApprovalRoundView } from './planApprovalSteps'
-import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
 import type {
   DecisionAnswerView,
@@ -272,43 +270,6 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     : undefined
   const recoveryExpiresAt = typeof recoveryRaw?.expiresAt === 'number' ? recoveryRaw.expiresAt : undefined
   const nodeAttempts = parseNodeAttempts(obj.nodeAttempts)
-  const planApprovalRaw = obj.planApproval && typeof obj.planApproval === 'object'
-    ? obj.planApproval as Record<string, unknown>
-    : null
-  const planApprovalStatus = typeof planApprovalRaw?.status === 'string'
-    ? planApprovalRaw.status as StepMetadata['planApproval'] extends { status?: infer S } ? S : never
-    : undefined
-  const planApprovalToken = typeof planApprovalRaw?.token === 'string' && planApprovalRaw.token.trim()
-    ? planApprovalRaw.token.trim()
-    : undefined
-  const planApprovalExpiresAt = typeof planApprovalRaw?.expiresAt === 'number'
-    ? planApprovalRaw.expiresAt
-    : undefined
-  const planApprovalRounds = Array.isArray(planApprovalRaw?.rounds)
-    ? planApprovalRaw.rounds
-        .filter((r): r is Record<string, unknown> => r && typeof r === 'object')
-        .map((r) => ({
-          roundNo: typeof r.roundNo === 'number' ? r.roundNo : 0,
-          status: (typeof r.status === 'string' ? r.status : 'awaiting') as PlanApprovalRoundView['status'],
-          userHint: typeof r.userHint === 'string' ? r.userHint : undefined,
-          chainSummary: typeof r.chainSummary === 'string' ? r.chainSummary : undefined,
-          createdAt: typeof r.createdAt === 'number' ? r.createdAt : undefined,
-          resolvedAt: typeof r.resolvedAt === 'number' ? r.resolvedAt : undefined,
-        }))
-    : undefined
-  const planApprovalGraphRaw = planApprovalRaw?.planGraph
-  const planApprovalPlanGraph = planApprovalGraphRaw && typeof planApprovalGraphRaw === 'object'
-    ? planApprovalGraphRaw as PlanGraph
-    : undefined
-  const planApproval = planApprovalRaw
-    ? {
-        status: planApprovalStatus,
-        token: planApprovalToken,
-        expiresAt: planApprovalExpiresAt,
-        rounds: planApprovalRounds,
-        planGraph: planApprovalPlanGraph,
-      }
-    : undefined
   const tasks = parseTaskBoardItems(obj.tasks)
   const taskQueue = parseTaskBoardItems(obj.taskQueue)
   const taskRevision = typeof obj.taskRevision === 'number' ? obj.taskRevision : undefined
@@ -340,7 +301,6 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !hitlStatus
     && !recoveryStatus
     && !nodeAttempts?.length
-    && !planApproval
     && !tasks?.length
     && !taskQueue?.length
     && taskRevision == null
@@ -379,7 +339,6 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     recoveryError,
     recoveryExpiresAt,
     nodeAttempts,
-    planApproval,
     tasks,
     taskQueue,
     taskRevision,
@@ -394,7 +353,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   }
 }
 
-/** upsert 时合并 metadata（含 HITL/Recovery/PlanApproval） */
+/** upsert 时合并 metadata（含 HITL/Recovery） */
 export function mergeStepMetadata(
   prev?: StepMetadata,
   incoming?: StepMetadata,
@@ -422,18 +381,6 @@ export function mergeStepMetadata(
   const incomingAttempts = incoming.nodeAttempts?.length ?? 0
   if (incomingAttempts > prevAttempts) {
     merged.nodeAttempts = incoming.nodeAttempts
-  }
-  if (incoming.planApproval || prev.planApproval) {
-    merged.planApproval = {
-      ...prev.planApproval,
-      ...incoming.planApproval,
-      rounds: incoming.planApproval?.rounds?.length
-        ? incoming.planApproval.rounds
-        : prev.planApproval?.rounds,
-      planGraph: incoming.planApproval?.planGraph?.nodes?.length
-        ? incoming.planApproval.planGraph
-        : prev.planApproval?.planGraph,
-    }
   }
   const prevRevision = prev.taskRevision ?? 0
   const incomingRevision = incoming.taskRevision ?? 0

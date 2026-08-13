@@ -2,7 +2,7 @@ package com.sunshine.orchestrator.routing;
 
 /**
  * Chat 执行偏好（协议 wire：fast|pro|workflow）。
- * 读侧兼容旧值 auto/react/plan-workflow；无「路由自判」AUTO。
+ * 无「路由自判」AUTO；未知值视为非法。
  */
 public enum ExecutionPreference {
     FAST,
@@ -14,10 +14,10 @@ public enum ExecutionPreference {
             return FAST;
         }
         return switch (raw.strip().toLowerCase().replace('_', '-')) {
-            case "workflow", "pipeline" -> WORKFLOW;
-            case "pro", "plan-workflow", "plan" -> PRO;
-            case "fast", "react", "agent", "auto" -> FAST;
-            default -> FAST;
+            case "fast" -> FAST;
+            case "pro" -> PRO;
+            case "workflow" -> WORKFLOW;
+            default -> throw new IllegalArgumentException("unknown execution preference: " + raw);
         };
     }
 
@@ -40,9 +40,7 @@ public enum ExecutionPreference {
         };
     }
 
-    /**
-     * 持久化 / API 写出：旧 wire 经 {@link #from} 映射为 fast|pro|workflow；空输入保持 null。
-     */
+    /** 持久化 / API 写出：空输入保持 null。 */
     public static String toStoredWire(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;

@@ -19,7 +19,7 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.util.List;
 
-/** 业务场景 Lab：biz_scene 闭集码表 + 场景 Policy 管理（K2）。运行时禁止新建码；retired 不可新绑。 */
+/** 业务场景 Lab：biz_scene 闭集码表 + 场景 Policy 管理（K2）。运行时禁止新建码；disabled 不可新绑。 */
 @Service
 @RequiredArgsConstructor
 public class BizSceneAdminService {
@@ -75,7 +75,7 @@ public class BizSceneAdminService {
         }
         if (StringUtils.hasText(request.status())) {
             String status = request.status().strip();
-            if (!"active".equals(status) && !"retired".equals(status)) {
+            if (!"active".equals(status) && !"disabled".equals(status)) {
                 throw new BizException(BizSceneErrorCode.INVALID_STATUS);
             }
             def.setStatus(status);

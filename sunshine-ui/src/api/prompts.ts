@@ -141,7 +141,6 @@ export const PROMPT_KIND_LABELS: Record<string, string> = {
   'routing-rule': '路由规则',
   sandbox: '沙箱',
   rag: '知识库检索',
-  'plan-workflow': '动态规划',
 }
 
 export function promptKindLabel(kind: string): string {
@@ -274,16 +273,13 @@ export async function dryRunRouting(
 function normalizePlanMode(raw: string | undefined | null): string {
   if (!raw) return 'fast'
   switch (raw) {
-    case 'react':
-    case 'agent':
-    case 'auto':
-    case 'plan-workflow':
-    case 'plan':
-      return 'fast'
     case 'workflow':
       return 'workflow'
-    default:
+    case 'fast':
+    case 'pro':
       return raw
+    default:
+      return 'fast'
   }
 }
 

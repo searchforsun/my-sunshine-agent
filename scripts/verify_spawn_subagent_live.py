@@ -118,7 +118,7 @@ def new_conversation(token: str) -> str:
     return conv_id
 
 
-def chat_sse(token: str, conv_id: str, query: str, *, preference: str = "react") -> str:
+def chat_sse(token: str, conv_id: str, query: str, *, preference: str = "fast") -> str:
     import shutil
 
     curl = shutil.which("curl")
@@ -202,7 +202,7 @@ def chat_sse_live(
     conv_id: str,
     query: str,
     *,
-    preference: str = "react",
+    preference: str = "fast",
     write_hitl_mode: str | None = None,
     auto_approve: bool = False,
     wait: bool = True,
@@ -394,7 +394,7 @@ def main_level_think_ids(steps: list[dict]) -> list[str]:
 
 def run_s1(token: str, conv_id: str, query: str) -> dict:
     print(f"\n[S1] query={query}")
-    raw = chat_sse(token, conv_id, query, preference="react")
+    raw = chat_sse(token, conv_id, query, preference="fast")
     assistant = wait_assistant(token, conv_id, min(TIMEOUT_SEC, 200))
     steps = merge_steps(parse_sse_steps(raw), assistant)
     step_ids = [str(s.get("id")) for s in steps]
@@ -422,7 +422,7 @@ def run_s1(token: str, conv_id: str, query: str) -> dict:
 
 def run_s4(token: str, conv_id: str, query: str) -> dict:
     print(f"\n[S4 soft] query={query}")
-    raw = chat_sse(token, conv_id, query, preference="react")
+    raw = chat_sse(token, conv_id, query, preference="fast")
     assistant = wait_assistant(token, conv_id, min(TIMEOUT_SEC, 200))
     steps = merge_steps(parse_sse_steps(raw), assistant)
     step_ids = [str(s.get("id")) for s in steps]
@@ -445,7 +445,7 @@ def run_s4(token: str, conv_id: str, query: str) -> dict:
 def run_hitl(token: str, conv_id: str, query: str) -> dict:
     print(f"\n[S-HITL] query={query}")
     coll = chat_sse_live(
-        token, conv_id, query, preference="react", auto_approve=True,
+        token, conv_id, query, preference="fast", auto_approve=True,
     )
     assistant = wait_assistant(token, conv_id, min(TIMEOUT_SEC, 200))
     steps = merge_steps(coll.steps, assistant)
@@ -484,7 +484,7 @@ def run_workspace(token: str, conv_id: str, query: str) -> dict:
         token,
         conv_id,
         query,
-        preference="react",
+        preference="fast",
         write_hitl_mode="always",
         auto_approve=False,
     )
@@ -529,7 +529,7 @@ def latest_subagent_run_id(steps: list[dict]) -> str | None:
 
 def run_cancel(token: str, conv_id: str, query: str) -> dict:
     print(f"\n[S-CANCEL] query={query}")
-    coll = chat_sse_live(token, conv_id, query, preference="react", wait=False)
+    coll = chat_sse_live(token, conv_id, query, preference="fast", wait=False)
     try:
         coll.wait_until(
             lambda c: bool(c.generation_id)

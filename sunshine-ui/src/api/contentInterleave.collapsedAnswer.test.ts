@@ -44,7 +44,7 @@ describe('resolveCollapsedAnswerText', () => {
     }))).toBe('终稿')
   })
 
-  it('uses plan answer SSOT for plan workflows', () => {
+  it('uses plan answer SSOT for plan DAG workflows', () => {
     expect(resolveCollapsedAnswerText(msg({
       content: '误入',
       steps: [
@@ -52,14 +52,7 @@ describe('resolveCollapsedAnswerText', () => {
           id: 'plan',
           phase: 'plan',
           lifecycle: 'done',
-          metadata: {
-            planApproval: {
-              planGraph: {
-                nodes: [{ id: 'n1', type: 'llm', displayName: 'A' }],
-                edges: [],
-              },
-            },
-          },
+          detail: 'planId=ep-1',
         },
         { id: 'node-answer', phase: 'node', lifecycle: 'done', result: '计划终稿' },
       ],

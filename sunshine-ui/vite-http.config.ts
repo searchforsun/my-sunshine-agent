@@ -2,7 +2,6 @@ import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
-  base: '/',
   plugins: [vue()],
   server: {
     host: '0.0.0.0',
@@ -25,8 +24,5 @@ export default defineConfig({
       '/health': { target: 'http://127.0.0.1:8000', changeOrigin: true },
       '/v1': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
-  },
-  optimizeDeps: {
-    include: ['markdown-it', 'highlight.js', 'markdown-it-highlightjs', 'markdown-it-task-lists', '@mdit/plugin-katex', 'katex', 'mermaid'],
   },
 })

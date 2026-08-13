@@ -87,27 +87,34 @@ CREATE TABLE execution_mode_policy (
 INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status) VALUES
 ('sunshine-biz', 'sunshine-biz-simulator', '业务模拟应用', 'default', 'offline');
 
--- 新默认集（会话 kind：chat | task）；旧两行保留供 Runtime toolIds 双读
+-- 默认工具集（会话 kind：chat | task）
 INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
 ('global-chat-default', 'global_chat_default', NULL, '平台 Chat 工具集'),
-('global-task-default', 'global_task_default', NULL, '平台 Task 工具集'),
-('global-react-default', 'global_react_default', NULL, '平台 ReAct 工具集（legacy）'),
-('global-plan-workflow', 'global_plan_workflow', NULL, '平台 Plan-Workflow 工具集（legacy）');
+('global-task-default', 'global_task_default', NULL, '平台 Task 工具集');
 
-INSERT INTO execution_mode_policy (id, mode_key, tenant_id, policy_json) VALUES
-('global-plan-workflow-policy', 'plan_workflow', NULL, JSON_OBJECT(
-  'criticalOnFailure', 'fail_fast',
-  'defaults', JSON_OBJECT(
-    'maxAttempts', 2,
-    'backoffMs', 500,
-    'backoffMultiplier', 2.0,
-    'onFailure', 'continue',
-    'retryOnErrorClass', JSON_ARRAY('TIMEOUT', 'SERVICE_UNAVAILABLE', 'CIRCUIT_OPEN')
-  ),
-  'byType', JSON_OBJECT(
-    'rag', JSON_OBJECT('maxAttempts', 1),
-    'tool', JSON_OBJECT('maxAttempts', 2),
-    'agent', JSON_OBJECT('maxAttempts', 1),
-    'answer', JSON_OBJECT('maxAttempts', 2, 'onFailure', 'fail_fast')
-  )
-));
+-- 工具集成员（chat/task 各 12 条，与线上 active 一致）
+INSERT INTO tool_set_member (set_id, tool_id, sort_order, critical) VALUES
+('global-chat-default', 'sdk__sunshine-biz__list_my_expenses', 0, 0),
+('global-chat-default', 'sdk__sunshine-biz__approve_oa_task', 1, 0),
+('global-chat-default', 'sdk__sunshine-biz__get_attendance_month', 2, 0),
+('global-chat-default', 'sdk__sunshine-biz__get_expense_detail', 3, 0),
+('global-chat-default', 'sdk__sunshine-biz__get_finance_inbox_item', 4, 0),
+('global-chat-default', 'sdk__sunshine-biz__get_leave_balance', 5, 0),
+('global-chat-default', 'sdk__sunshine-biz__list_leave_requests', 6, 0),
+('global-chat-default', 'sdk__sunshine-biz__list_my_finance_inbox', 7, 0),
+('global-chat-default', 'sdk__sunshine-biz__list_oa_tasks', 8, 0),
+('global-chat-default', 'sdk__sunshine-biz__submit_expense', 9, 0),
+('global-chat-default', 'sdk__sunshine-biz__submit_leave_request', 10, 0),
+('global-chat-default', 'sdk__sunshine-biz__summarize_my_expenses', 11, 0),
+('global-task-default', 'sdk__sunshine-biz__approve_oa_task', 0, 0),
+('global-task-default', 'sdk__sunshine-biz__get_attendance_month', 1, 0),
+('global-task-default', 'sdk__sunshine-biz__get_expense_detail', 2, 0),
+('global-task-default', 'sdk__sunshine-biz__get_finance_inbox_item', 3, 0),
+('global-task-default', 'sdk__sunshine-biz__get_leave_balance', 4, 0),
+('global-task-default', 'sdk__sunshine-biz__list_leave_requests', 5, 0),
+('global-task-default', 'sdk__sunshine-biz__list_my_expenses', 6, 0),
+('global-task-default', 'sdk__sunshine-biz__list_my_finance_inbox', 7, 0),
+('global-task-default', 'sdk__sunshine-biz__list_oa_tasks', 8, 0),
+('global-task-default', 'sdk__sunshine-biz__submit_expense', 9, 0),
+('global-task-default', 'sdk__sunshine-biz__submit_leave_request', 10, 0),
+('global-task-default', 'sdk__sunshine-biz__summarize_my_expenses', 11, 0);

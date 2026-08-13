@@ -99,7 +99,6 @@ class ExecutionPlanQueryServiceTest {
         entity.setUserId("u1");
         entity.setTenantId("default");
         entity.setStatus("completed");
-        entity.setPlannerReason("跨领域");
         entity.setPlanJson("""
                 {"planId":"p1","reason":"跨领域","nodes":[{"id":"n1","type":"rag"}],"edges":[]}
                 """);

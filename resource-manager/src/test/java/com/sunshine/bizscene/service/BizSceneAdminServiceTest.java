@@ -88,7 +88,7 @@ class BizSceneAdminServiceTest {
     }
 
     @Test
-    void createPolicy_rejectsMissingOrRetiredScene() {
+    void createPolicy_rejectsMissingOrDisabledScene() {
         when(definitionRepository.findById("unknown")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.createPolicy("default",
                 new BizScenePolicySaveRequest("unknown", "{}", null, null)))
@@ -96,10 +96,10 @@ class BizSceneAdminServiceTest {
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(BizSceneErrorCode.SCENE_NOT_FOUND);
 
-        BizSceneDefinitionEntity retired = new BizSceneDefinitionEntity();
-        retired.setBizScene("legacy");
-        retired.setStatus("retired");
-        when(definitionRepository.findById("legacy")).thenReturn(Optional.of(retired));
+        BizSceneDefinitionEntity disabled = new BizSceneDefinitionEntity();
+        disabled.setBizScene("legacy");
+        disabled.setStatus("disabled");
+        when(definitionRepository.findById("legacy")).thenReturn(Optional.of(disabled));
         assertThatThrownBy(() -> service.createPolicy("default",
                 new BizScenePolicySaveRequest("legacy", "{}", null, null)))
                 .isInstanceOf(BizException.class)
@@ -128,11 +128,11 @@ class BizSceneAdminServiceTest {
     }
 
     @Test
-    void isActiveBizScene_retiredCodeCannotBind() {
-        BizSceneDefinitionEntity retired = new BizSceneDefinitionEntity();
-        retired.setBizScene("legacy");
-        retired.setStatus("retired");
-        when(definitionRepository.findById("legacy")).thenReturn(Optional.of(retired));
+    void isActiveBizScene_disabledCodeCannotBind() {
+        BizSceneDefinitionEntity disabled = new BizSceneDefinitionEntity();
+        disabled.setBizScene("legacy");
+        disabled.setStatus("disabled");
+        when(definitionRepository.findById("legacy")).thenReturn(Optional.of(disabled));
         when(definitionRepository.findById("refund")).thenReturn(Optional.empty());
 
         assertThat(service.isActiveBizScene("legacy")).isFalse();

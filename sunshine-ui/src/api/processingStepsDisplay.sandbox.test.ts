@@ -140,7 +140,7 @@ describe('sandbox tool timeline display', () => {
     })
     const header = resolveStepHeaderText(exec)
     expect(header.length).toBeLessThanOrEqual(43)
-    expect(header.endsWith('…')).toBe(true)
+    expect(header.endsWith('…')).toBe(false)
     expect(extractSandboxExecCommand(exec)).toBe(longCmd)
   })
 

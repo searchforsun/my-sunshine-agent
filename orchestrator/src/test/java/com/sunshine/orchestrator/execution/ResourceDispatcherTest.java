@@ -36,8 +36,6 @@ class ResourceDispatcherTest {
     @Mock
     private ReactExecutor reactExecutor;
     @Mock
-    private PlanWorkflowExecutor planWorkflowExecutor;
-    @Mock
     private PlannerHarnessExecutor plannerHarnessExecutor;
 
     private AgentExecutionProperties executionProperties;
@@ -49,7 +47,6 @@ class ResourceDispatcherTest {
         dispatcher = new ExecutionDispatcher(
                 workflowExecutor,
                 reactExecutor,
-                planWorkflowExecutor,
                 plannerHarnessExecutor,
                 executionProperties);
     }
@@ -63,7 +60,7 @@ class ResourceDispatcherTest {
 
         assertThat(tokens).extracting(StreamToken::text).containsExactly("harness");
         verify(plannerHarnessExecutor).execute(any());
-        verifyNoInteractions(planWorkflowExecutor, reactExecutor, workflowExecutor);
+        verifyNoInteractions(reactExecutor, workflowExecutor);
     }
 
     @Test
@@ -75,7 +72,7 @@ class ResourceDispatcherTest {
                 .extracting(ex -> ((BizException) ex).getErrorCode())
                 .isEqualTo(OrchestratorErrorCode.HARNESS_DISABLED);
 
-        verifyNoInteractions(plannerHarnessExecutor, planWorkflowExecutor, reactExecutor, workflowExecutor);
+        verifyNoInteractions(plannerHarnessExecutor, reactExecutor, workflowExecutor);
     }
 
     @Test
@@ -86,7 +83,7 @@ class ResourceDispatcherTest {
 
         assertThat(tokens).extracting(StreamToken::text).containsExactly("react");
         verify(reactExecutor).execute(any());
-        verifyNoInteractions(plannerHarnessExecutor, planWorkflowExecutor, workflowExecutor);
+        verifyNoInteractions(plannerHarnessExecutor, workflowExecutor);
     }
 
     @Test
@@ -97,19 +94,7 @@ class ResourceDispatcherTest {
 
         assertThat(tokens).extracting(StreamToken::text).containsExactly("workflow");
         verify(workflowExecutor).execute(any());
-        verifyNoInteractions(plannerHarnessExecutor, planWorkflowExecutor, reactExecutor);
-    }
-
-    @Test
-    void neverCallsPlanWorkflowExecutor_onProOrFast() {
-        executionProperties.getHarness().setEnabled(true);
-        when(plannerHarnessExecutor.execute(any())).thenReturn(Flux.just(StreamToken.content("harness")));
-        when(reactExecutor.execute(any())).thenReturn(Flux.just(StreamToken.content("react")));
-
-        dispatcher.execute(ctx(ExecutionMode.PRO)).collectList().block();
-        dispatcher.execute(ctx(ExecutionMode.FAST)).collectList().block();
-
-        verifyNoInteractions(planWorkflowExecutor);
+        verifyNoInteractions(plannerHarnessExecutor, reactExecutor);
     }
 
     private static ExecutionStreamContext ctx(ExecutionMode mode) {

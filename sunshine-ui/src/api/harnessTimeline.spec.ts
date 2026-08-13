@@ -12,25 +12,6 @@ function step(
 }
 
 describe('harnessTimeline · DAG vs harness', () => {
-  it('planGraph.nodes → DAG，非 harness', () => {
-    const steps = [
-      step({
-        id: 'plan',
-        phase: 'plan',
-        metadata: {
-          planApproval: {
-            planGraph: {
-              nodes: [{ id: 'n1', type: 'llm', displayName: 'A' }],
-              edges: [],
-            },
-          },
-        },
-      }),
-    ]
-    expect(isPlanDagMessage(steps)).toBe(true)
-    expect(isHarnessTimelineMessage(steps)).toBe(false)
-  })
-
   it('classic planId + node-* → DAG', () => {
     const steps = [
       step({ id: 'plan', phase: 'plan', detail: 'planId=ep-1' }),
@@ -50,7 +31,7 @@ describe('harnessTimeline · DAG vs harness', () => {
     expect(isHarnessTimelineMessage(steps, 'plan-xyz')).toBe(false)
   })
 
-  it('harness：plan 无 planGraph → harness，非 DAG', () => {
+  it('harness：plan 无 DAG 引用 → harness，非 DAG', () => {
     const steps = [
       step({ id: 'plan', phase: 'plan', summary: { after: '规划 R1' } }),
       step({ id: 'plan-R2', phase: 'plan', summary: { after: '规划 R2' } }),
@@ -66,26 +47,6 @@ describe('harnessTimeline · DAG vs harness', () => {
     ]
     expect(isPlanDagMessage(steps)).toBe(false)
     expect(isHarnessTimelineMessage(steps)).toBe(true)
-  })
-
-  it('互斥：有真 DAG 图时即使有 worker 也判 DAG', () => {
-    const steps = [
-      step({
-        id: 'plan',
-        phase: 'plan',
-        metadata: {
-          planApproval: {
-            planGraph: {
-              nodes: [{ id: 'n1', type: 'agent', displayName: 'X' }],
-              edges: [],
-            },
-          },
-        },
-      }),
-      step({ id: 'worker-x', phase: 'worker' }),
-    ]
-    expect(isPlanDagMessage(steps)).toBe(true)
-    expect(isHarnessTimelineMessage(steps)).toBe(false)
   })
 
   it('历史：仅 planId 合成 plan、无 worker → 仍可 DAG', () => {

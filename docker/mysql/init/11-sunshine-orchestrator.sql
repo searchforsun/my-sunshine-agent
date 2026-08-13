@@ -9,7 +9,7 @@ CREATE TABLE chat_conversation (
     title       VARCHAR(128) NOT NULL DEFAULT '新对话',
     created_at  DATETIME(3)  NOT NULL,
     updated_at  DATETIME(3)  NOT NULL,
-    execution_preference VARCHAR(32) NULL COMMENT 'auto|simple-llm|react|workflow|plan-workflow',
+    execution_preference VARCHAR(32) NULL COMMENT 'fast|pro|workflow',
     kb_id       VARCHAR(64)  NULL COMMENT '会话绑定的知识库 id',
     kind        VARCHAR(16)  NOT NULL DEFAULT 'chat' COMMENT 'chat / task',
     workspace_id  VARCHAR(64)  NULL COMMENT 'kind=task 时必填',
@@ -95,7 +95,7 @@ CREATE TABLE user_context_state (
     INDEX idx_ctx_expires (expires_at)
 );
 
--- 动态 Plan 执行记录（含 planner_attempts / replan_count / approval_rounds / pause_checkpoint）
+-- 执行计划快照（静态 Workflow 落库 + 暂停续跑检查点；旧动态 Plan-Workflow 已下线）
 CREATE TABLE execution_plan (
     id               VARCHAR(36)  NOT NULL PRIMARY KEY,
     conversation_id  VARCHAR(64)  NOT NULL,
@@ -103,17 +103,11 @@ CREATE TABLE execution_plan (
     user_id          VARCHAR(64)  NOT NULL,
     tenant_id        VARCHAR(64)  NOT NULL DEFAULT 'default',
     status           VARCHAR(24)  NOT NULL,
-    planner_model    VARCHAR(64)  NULL,
-    planner_reason   VARCHAR(512) NULL,
     plan_json        MEDIUMTEXT   NOT NULL,
-    planner_attempts MEDIUMTEXT   NULL,
-    approval_rounds  MEDIUMTEXT   NULL COMMENT 'Plan 用户确认轮次 JSON',
-    replan_count     INT          NOT NULL DEFAULT 0,
     validated_json   MEDIUMTEXT   NULL,
     execution_trace  MEDIUMTEXT   NULL,
     pause_checkpoint MEDIUMTEXT   NULL COMMENT '暂停续跑 JSON：resumeNodeId + wfCtx',
     trace_id         VARCHAR(64)  NULL,
-    reject_reason    VARCHAR(512) NULL,
     created_at       DATETIME(3)  NOT NULL,
     validated_at     DATETIME(3)  NULL,
     started_at       DATETIME(3)  NULL,

@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NModal, NSelect } from 'naive-ui'
+import { NButton, NForm, NFormItem, NInput, NModal } from 'naive-ui'
 import { BIZ_SCENES_PAGE_KEY, type BizScenesPageApi } from '../../composables/useBizScenesPage'
 
 const page = inject(BIZ_SCENES_PAGE_KEY) as BizScenesPageApi
-
-const statusOptions = [
-  { label: '启用', value: 'active' },
-  { label: '退役', value: 'retired' },
-]
 </script>
 
 <template>
@@ -50,9 +45,6 @@ const statusOptions = [
           type="textarea"
           :autosize="{ minRows: 2, maxRows: 4 }"
         />
-      </NFormItem>
-      <NFormItem label="状态">
-        <NSelect v-model:value="page.editDraft.status" class="sun-field" :options="statusOptions" />
       </NFormItem>
     </NForm>
     <template #action>

@@ -75,7 +75,7 @@ def chat_once(token: str, query: str, *, preference: str | None = None,
     conv = auth_json("POST", "/api/conversations", None, token)
     conv_id = (conv.json().get("data") or conv.json()).get("id")
     body: dict = {"content": query, "conversationId": conv_id}
-    if preference and preference != "auto":
+    if preference:
         body["executionPreference"] = preference
     if workflow_id:
         body["workflowId"] = workflow_id
@@ -144,7 +144,7 @@ def main() -> int:
     print(f"[P1] 设置规则 → me() = {str(got)[:30]}... pass={got == RULE}")
 
     # P2 ReAct 生效
-    assistant = chat_once(token, "你好", preference="react", personal_rules=RULE)
+    assistant = chat_once(token, "你好", preference="fast", personal_rules=RULE)
     text = content_of(assistant)
     ok = MARKER in text
     report["steps"]["P2"] = {"pass": ok, "status": assistant.get("status"), "head": text[:40]}
@@ -161,7 +161,7 @@ def main() -> int:
     data = patch_rules(token, "")
     token = data.get("token") or token
     cleared = me_rules(token)
-    assistant = chat_once(token, "你好", preference="react")
+    assistant = chat_once(token, "你好", preference="fast")
     text = content_of(assistant)
     ok = cleared is None and MARKER not in text
     report["steps"]["P4"] = {"pass": ok, "cleared": cleared, "head": text[:40]}
@@ -170,7 +170,7 @@ def main() -> int:
     # P5 服务端有规则但请求体不带 → 不注入
     data = patch_rules(token, RULE)
     token = data.get("token") or token
-    assistant = chat_once(token, "你好", preference="react")
+    assistant = chat_once(token, "你好", preference="fast")
     text = content_of(assistant)
     ok = MARKER not in text
     report["steps"]["P5"] = {"pass": ok, "head": text[:40]}

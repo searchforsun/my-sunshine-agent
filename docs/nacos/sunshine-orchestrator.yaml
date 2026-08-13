@@ -29,7 +29,7 @@ agent:
   # 提示词/时间线/改写正文已迁 prompt-manager Catalog
   # （docker/mysql/init/17-sunshine-prompt-manager.sql）
   # 运营入口：/prompts；禁止再在本文件维护提示词正文
-  # system-prompt / mode-overlay.* / answer.* / timeline.* / planner.prompt → Catalog
+  # system-prompt / mode-overlay.* / answer.* / timeline.* / planner.harness → Catalog
   # 模型名 SSOT = resource-manager model_scene_binding（ModelSceneResolver）；禁止再写 *.model
 
   prompt:
@@ -38,18 +38,10 @@ agent:
   # intent 模型 → scene=intent；classifier-prompt → Catalog id=intent.classifier
   # （已删除 agent.intent 配置壳，禁止再写）
 
-  planner:
-    # model → scene=planner
-    temperature: 0
-    max_tokens: 4096
-    max_nodes: 8
-    routing_node_buffer: 6
-    # prompt → Catalog id=planner.prompt（含拓扑约束；勿再写 topology-hints）
-
   # timeline.* → Catalog timeline.intent / timeline.steps.* / timeline.hitl / …（T9）
 
   execution:
-    default-mode: react
+    default-mode: fast
     react:
       # ReAct think→tool 单 run 循环上限（chat 会话）。长任务（持续开发/多步执行）需充足余量，
       # 过低会触达 AgentScope 总结轮：该轮不传 tools，DeepSeek-V4 会把 DSML 工具调用
@@ -86,26 +78,9 @@ agent:
         spawn-await-max-waits: 3
         exec-wall-timeout-sec: 600
         max-concurrent-per-message: 3
-    plan-workflow:
-      replan:
-        max-attempts: 2
-        # user-feedback-template → Catalog id=plan-workflow.replan-feedback
-      planner:
-        max-attempts: 2
-        backoff-ms: 800
-      # answer.upstream-failure-line → Catalog id=plan-workflow.upstream-failure-line
-      fallback-react:
-        enabled: true
-        inject-partial-context: true
-      approval:
-        enabled: true
-        timeout-sec: 600
-        on-timeout: fallback_react
-        max-user-rounds: 10
-        # user-modification-template → Catalog id=plan-workflow.user-modification
     harness:
       # true：pro → PlannerHarnessExecutor
-      # false：专业模式不可用（显式失败）；禁止静默改 fast，禁止回落旧 PlanWorkflow Approval/DAG
+      # false：专业模式不可用（显式失败）；禁止静默改 fast，禁止回落旧动态规划
       enabled: true
       max-rounds: 12
       max-total-tasks: 24

@@ -18,7 +18,7 @@ function msg(partial: Partial<ChatMessage>): ChatMessage {
   return { role: 'assistant', content: '', ...partial }
 }
 
-describe('contentInterleave · harness vs plan-workflow', () => {
+describe('contentInterleave · harness vs Plan DAG', () => {
   const harnessSteps: ProcessingStep[] = [
     step({ id: 'intent', phase: 'intent' }),
     step({ id: 'plan', phase: 'plan', summary: { after: '规划 R1' } }),
@@ -27,23 +27,12 @@ describe('contentInterleave · harness vs plan-workflow', () => {
   ]
 
   const dagSteps: ProcessingStep[] = [
-    step({
-      id: 'plan',
-      phase: 'plan',
-      metadata: {
-        planApproval: {
-          planGraph: {
-            nodes: [{ id: 'n1', type: 'llm', displayName: 'A' }],
-            edges: [],
-          },
-        },
-      },
-    }),
+    step({ id: 'plan', phase: 'plan', detail: 'planId=ep-1' }),
     step({ id: 'node-rag', phase: 'node', detail: '检索中' }),
     step({ id: 'node-answer', phase: 'node', result: '计划终稿' }),
   ]
 
-  it('harness：worker 无 graph → 非 plan-workflow，正文可挂在 worker 后（ReAct 式）', () => {
+  it('harness：worker → 非 DAG，正文可挂在 worker 后（ReAct 式）', () => {
     const blocks = [
       { segmentId: 'content-1', afterStepId: 'plan', text: '规划说明' },
       { segmentId: 'content-2', afterStepId: 'worker-t1', text: 'Worker 产出' },
@@ -80,7 +69,7 @@ describe('contentInterleave · harness vs plan-workflow', () => {
     ])
   })
 
-  it('plan-workflow DAG：仍仅穿插 node-answer，业务 node 块不进主时间线', () => {
+  it('Plan DAG：仍仅穿插 node-answer，业务 node 块不进主时间线', () => {
     const blocks = [
       { segmentId: 'leak', afterStepId: 'node-rag', text: '抽屉摘要' },
       { segmentId: 'tail:node-answer', afterStepId: 'node-answer', text: '块' },
@@ -94,7 +83,7 @@ describe('contentInterleave · harness vs plan-workflow', () => {
       .toEqual(['计划终稿'])
   })
 
-  it('plan-workflow DAG：折叠终稿走 answer SSOT', () => {
+  it('Plan DAG：折叠终稿走 answer SSOT', () => {
     expect(resolveCollapsedAnswerText(msg({
       content: '误入',
       steps: dagSteps,

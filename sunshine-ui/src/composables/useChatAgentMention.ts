@@ -1,6 +1,7 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { listAgentCatalogIndex, type AgentCatalogIndexEntry } from '../api/agents'
 import { allowsAgentMention, type ExecutionPreference } from '../api/executionModes'
+import { matchesSessionKind } from '../utils/kindFilter'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
 /** Composer $ 智能体 补全 */
@@ -8,6 +9,7 @@ export function useChatAgentMention(
   inputText: Ref<string>,
   preference: Ref<ExecutionPreference>,
   loading: Ref<boolean>,
+  sessionKind: Ref<string>,
 ) {
   const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
   const agentCatalog = ref<AgentCatalogIndexEntry[]>([])
@@ -21,11 +23,13 @@ export function useChatAgentMention(
   const filteredAgents = computed(() => {
     const q = agentQuery.value.trim().toLowerCase()
     return agentCatalog.value
-      .filter(e => e.enabled && (
-        !q
-        || e.id.toLowerCase().includes(q)
-        || e.displayName.toLowerCase().includes(q)
-      ))
+      .filter(e => e.enabled
+        && matchesSessionKind(sessionKind.value, e.kind)
+        && (
+          !q
+          || e.id.toLowerCase().includes(q)
+          || e.displayName.toLowerCase().includes(q)
+        ))
       .slice(0, 8)
   })
 
@@ -41,7 +45,7 @@ export function useChatAgentMention(
     }
     agentMentionStart.value = match.index
     agentQuery.value = match[1]
-    showAgentSuggest.value = agentCatalog.value.some(e => e.enabled)
+    showAgentSuggest.value = filteredAgents.value.length > 0
     agentSuggestIndex.value = 0
   }
 

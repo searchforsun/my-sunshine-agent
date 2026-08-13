@@ -101,12 +101,6 @@ const router = createRouter({
           meta: { title: '工作区' },
         },
         {
-          path: 'plans/:planId',
-          name: 'plan-detail',
-          component: () => import('../views/PlanDetailView.vue'),
-          meta: { title: '执行计划' },
-        },
-        {
           path: 'status',
           name: 'status',
           component: () => import('../views/StatusView.vue'),

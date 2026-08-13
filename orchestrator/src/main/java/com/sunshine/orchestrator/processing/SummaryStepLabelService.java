@@ -132,7 +132,7 @@ public class SummaryStepLabelService {
             line = line.substring(0, newline).trim();
         }
         if (line.length() > RAG_SOURCE_CLIP) {
-            return line.substring(0, RAG_SOURCE_CLIP) + "…";
+            return line.substring(0, RAG_SOURCE_CLIP);
         }
         return line;
     }

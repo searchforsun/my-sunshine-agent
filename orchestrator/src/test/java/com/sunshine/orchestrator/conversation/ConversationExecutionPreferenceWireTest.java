@@ -13,31 +13,29 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 会话持久化 wire：写出 fast|pro|workflow；读侧映射旧值 */
+/** 会话持久化 wire：仅写出 fast|pro|workflow */
 class ConversationExecutionPreferenceWireTest {
 
     @Test
     @DisplayName("toStoredWire 写出新 wire，空保持 null")
-    void toStoredWire_mapsLegacyAndKeepsBlankNull() {
-        assertThat(ExecutionPreference.toStoredWire("auto")).isEqualTo("fast");
-        assertThat(ExecutionPreference.toStoredWire("react")).isEqualTo("fast");
-        assertThat(ExecutionPreference.toStoredWire("plan-workflow")).isEqualTo("pro");
+    void toStoredWire_keepsBlankNull() {
         assertThat(ExecutionPreference.toStoredWire("pro")).isEqualTo("pro");
         assertThat(ExecutionPreference.toStoredWire("workflow")).isEqualTo("workflow");
+        assertThat(ExecutionPreference.toStoredWire("fast")).isEqualTo("fast");
         assertThat(ExecutionPreference.toStoredWire(null)).isNull();
         assertThat(ExecutionPreference.toStoredWire("  ")).isNull();
     }
 
     @Test
-    @DisplayName("会话/消息 DTO 读侧将旧库值映射为新 wire")
-    void dtoFrom_mapsLegacyStoredPreference() {
+    @DisplayName("会话/消息 DTO 写出存储 wire")
+    void dtoFrom_mapsStoredPreference() {
         Instant now = Instant.parse("2026-08-13T00:00:00Z");
         ChatConversationEntity conv = new ChatConversationEntity();
         conv.setId("c1");
         conv.setTitle("t");
         conv.setCreatedAt(now);
         conv.setUpdatedAt(now);
-        conv.setExecutionPreference("plan-workflow");
+        conv.setExecutionPreference("pro");
         conv.setKind("chat");
 
         ChatMessageEntity user = new ChatMessageEntity();
@@ -46,7 +44,7 @@ class ConversationExecutionPreferenceWireTest {
         user.setContent("hi");
         user.setStatus("COMPLETED");
         user.setSeq(1);
-        user.setExecutionPreference("react");
+        user.setExecutionPreference("fast");
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
 

@@ -5,19 +5,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
 /**
- * Agent 执行模式配置 — react / plan-workflow / harness 运行时策略（Nacos agent.execution）。
- * 提示词正文 SSOT = Catalog（react.subagent.* / plan-workflow.* / planner.harness）。
+ * Agent 执行模式配置 — react / harness / workflow 运行时策略（Nacos agent.execution）。
+ * 提示词正文 SSOT = Catalog（react.subagent.* / planner.harness / harness.worker）。
  */
 @Data
 @RefreshScope
 @ConfigurationProperties(prefix = "agent.execution")
 public class AgentExecutionProperties {
 
-    private String defaultMode = "react";
+    private String defaultMode = "fast";
     private React react = new React();
-    private PlanWorkflow planWorkflow = new PlanWorkflow();
     /** 4.14 Planner-Executor harness — SSOT：Nacos agent.execution.harness（非 AgentScope HarnessAgent） */
     private Harness harness = new Harness();
+    /** Workflow 节点失败终态降级 ReAct — SSOT：Nacos agent.execution.fallback-react */
+    private FallbackReact fallbackReact = new FallbackReact();
 
     @Data
     public static class React {
@@ -71,42 +72,9 @@ public class AgentExecutionProperties {
     }
 
     @Data
-    public static class PlanWorkflow {
-        private Replan replan = new Replan();
-        private PlannerInvoke planner = new PlannerInvoke();
-        private Answer answer = new Answer();
-        private FallbackReact fallbackReact = new FallbackReact();
-        private Approval approval = new Approval();
-
-        @Data
-        public static class Replan {
-            private int maxAttempts = 2;
-        }
-
-        @Data
-        public static class PlannerInvoke {
-            private int maxAttempts = 2;
-            private long backoffMs = 800;
-        }
-
-        @Data
-        public static class Answer {
-        }
-
-        @Data
-        public static class FallbackReact {
-            private boolean enabled = true;
-            private boolean injectPartialContext = true;
-        }
-
-        @Data
-        public static class Approval {
-            private boolean enabled = true;
-            private int timeoutSec = 600;
-            private int maxUserRounds = 10;
-            /** 超时策略：fallback_react 降级 ReAct；auto_approve 视同用户确认并执行 Plan */
-            private String onTimeout = "fallback_react";
-        }
+    public static class FallbackReact {
+        private boolean enabled = true;
+        private boolean injectPartialContext = true;
     }
 
     @Data
@@ -116,7 +84,7 @@ public class AgentExecutionProperties {
         private int maxTotalTasks = 24;
         private long maxDurationMs = 14_400_000L;
         private int staleRoundsThreshold = 3;
-        /** 终态错误降级 ReAct（对齐 plan-workflow fallbackReact 语义） */
+        /** 终态错误降级 ReAct（对齐 workflow 节点 fallbackReact 语义） */
         private FallbackReact fallbackReact = new FallbackReact();
         private Task task = new Task();
         private Planner planner = new Planner();

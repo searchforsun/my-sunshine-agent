@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 运行时默认工具集解析。
- * path {@code kind} 首选 {@code chat}|{@code task}；过渡期亦接受 {@code react-default}|{@code plan-workflow}。
+ * path {@code kind} 取值 {@code chat}|{@code task}。
  */
 @RestController
 @RequestMapping("/api/tools/sets")

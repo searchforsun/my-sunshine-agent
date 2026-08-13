@@ -36,8 +36,6 @@ public record StepMetadata(
         NodeRecoveryMeta recovery,
         /** Workflow 节点执行 attempt 列表（重试过程实时下发） */
         List<NodeAttemptMeta> nodeAttempts,
-        /** 动态 Plan 用户确认轮次 */
-        PlanApprovalMeta planApproval,
         /** ReAct TaskBoard 清单项 */
         List<TaskBoardItemView> tasks,
         Integer taskRevision,
@@ -102,10 +100,6 @@ public record StepMetadata(
         return StepMetadataAssembler.fromRewrite(outcome);
     }
 
-    public static StepMetadata withPlanApproval(StepMetadata base, PlanApprovalMeta planApproval) {
-        return StepMetadataAssembler.withPlanApproval(base, planApproval);
-    }
-
     public static StepMetadata withDecision(StepMetadata base, DecisionStepMeta decision) {
         return StepMetadataAssembler.withDecision(base, decision);
     }
@@ -161,7 +155,6 @@ public record StepMetadata(
                 && hitl == null
                 && recovery == null
                 && (nodeAttempts == null || nodeAttempts.isEmpty())
-                && planApproval == null
                 && (tasks == null || tasks.isEmpty())
                 && taskRevision == null
                 && !StringUtils.hasText(taskProgress)

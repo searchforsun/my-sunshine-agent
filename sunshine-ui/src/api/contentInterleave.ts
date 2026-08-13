@@ -278,9 +278,9 @@ export function appendInterleavedContent(
 ): void {
   if (!chunk) return
   const steps = msg.steps
-  // 旧 plan-workflow / 静态 DAG：answer SSOT 在 node-answer.result；plain content 会破坏表格换行
+  // 静态 Workflow DAG：answer SSOT 在 node-answer.result；plain content 会破坏表格换行
   // harness（有 worker 无 graph）走 ReAct 式穿插，不在此丢弃
-  if (steps?.length && isPlanWorkflowSteps(steps, msg.executionPlanId)) return
+  if (steps?.length && isPlanDagSteps(steps, msg.executionPlanId)) return
   msg.content = (msg.content ?? '') + chunk
   if (!steps?.length) return
   if (!msg.contentBlocks) msg.contentBlocks = []
@@ -319,7 +319,7 @@ function joinedPlanAnswerBlocks(blocks: ContentBlock[] | undefined): string {
 export function resolvePlanAnswerText(
   msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): string {
-  if (!msg.steps?.length || !isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
+  if (!msg.steps?.length || !isPlanDagSteps(msg.steps, msg.executionPlanId)) {
     return msg.content?.trim() ?? ''
   }
   const fromStep = msg.steps.find(s => s.id === 'node-answer')?.result?.trim()
@@ -335,7 +335,7 @@ export function resolvePlanAnswerText(
 export function resolveCollapsedAnswerText(
   msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): string {
-  if (msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
+  if (msg.steps?.length && isPlanDagSteps(msg.steps, msg.executionPlanId)) {
     return resolvePlanAnswerText(msg).trim()
   }
   const steps = msg.steps ?? []
@@ -376,7 +376,7 @@ export function resolveCollapsedAnswerText(
 export function syncPlanAnswerContentFromStep(
   msg: Pick<ChatMessage, 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
-  if (!msg.steps?.length || !isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
+  if (!msg.steps?.length || !isPlanDagSteps(msg.steps, msg.executionPlanId)) return
   const fromStep = msg.steps.find(s => s.id === 'node-answer')?.result
   if (fromStep == null || fromStep === '') return
   msg.content = fromStep
@@ -392,7 +392,7 @@ export function sanitizePlanAssistantMessage(
   msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
   if (msg.role !== 'assistant' || !msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
+  if (!isPlanDagSteps(msg.steps, msg.executionPlanId)) return
   stripPlanDrawerLeakFromMessage(msg)
 }
 
@@ -403,7 +403,7 @@ export function isPlanNodeLeakText(
   executionPlanId?: string | null,
 ): boolean {
   const content = text.trim()
-  if (!content || !isPlanWorkflowSteps(steps, executionPlanId)) return false
+  if (!content || !isPlanDagSteps(steps, executionPlanId)) return false
   for (const step of steps) {
     if (!step.id.startsWith('node-') || step.id === 'node-answer') continue
     const label = formatStepLabel(step)
@@ -421,7 +421,7 @@ export function isPlanDrawerLeakContent(
   msg: Pick<ChatMessage, 'content' | 'steps' | 'executionPlanId'>,
 ): boolean {
   const content = msg.content?.trim()
-  if (!content || !msg.steps?.length || !isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return false
+  if (!content || !msg.steps?.length || !isPlanDagSteps(msg.steps, msg.executionPlanId)) return false
   if (isPlanNodeLeakText(content, msg.steps, msg.executionPlanId)) return true
   const answerText = msg.steps.find(s => s.id === 'node-answer')?.result?.trim()
   if (answerText && content === answerText) return false
@@ -440,7 +440,7 @@ export function stripPlanDrawerLeakFromMessage(
   if (msg.role !== 'assistant') return
   stripNonAnswerPlanContentBlocks(msg)
   if (!msg.content?.trim() || !msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
+  if (!isPlanDagSteps(msg.steps, msg.executionPlanId)) return
   const answerText = msg.steps.find(s => s.id === 'node-answer')?.result?.trim() ?? ''
   if (isPlanDrawerLeakContent(msg)) {
     msg.content = answerText
@@ -476,7 +476,7 @@ export function stripNonAnswerPlanContentBlocks(
   msg: Pick<ChatMessage, 'role' | 'content' | 'steps' | 'contentBlocks' | 'executionPlanId'>,
 ): void {
   if (msg.role !== 'assistant' || !msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
+  if (!isPlanDagSteps(msg.steps, msg.executionPlanId)) return
   if (!msg.contentBlocks?.length) return
   const kept = msg.contentBlocks.filter(b =>
     shouldRenderPlanMainContentBlock(b, msg.steps!, msg.executionPlanId),
@@ -494,12 +494,12 @@ export function stripNonAnswerPlanContentBlocks(
  */
 export function normalizeRestoredInterleavedContent(msg: ChatMessage): void {
   if (msg.role !== 'assistant') return
-  if (msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
+  if (msg.steps?.length && isPlanDagSteps(msg.steps, msg.executionPlanId)) {
     syncPlanAnswerContentFromStep(msg)
   }
   if (!msg.contentBlocks?.length) return
   stripPlanDrawerLeakFromMessage(msg)
-  const joinedRaw = msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)
+  const joinedRaw = msg.steps?.length && isPlanDagSteps(msg.steps, msg.executionPlanId)
     ? joinedPlanAnswerBlocks(msg.contentBlocks)
     : joinedContentBlocks(msg.contentBlocks)
   const joined = joinedRaw.trim()
@@ -540,7 +540,7 @@ export function shouldShowAssistantBottomContent(
 export function isContentFullyInterleaved(msg: ChatMessage): boolean {
   if (isPlanDrawerLeakContent(msg)) return true
   if (!msg.steps?.length) return false
-  if (isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
+  if (isPlanDagSteps(msg.steps, msg.executionPlanId)) {
     const answerText = resolvePlanAnswerText(msg).trim()
     if (!answerText) return !msg.content?.trim()
     const content = (msg.content ?? '').trim()
@@ -559,7 +559,7 @@ export function isContentFullyInterleaved(msg: ChatMessage): boolean {
 }
 
 export function resolveStreamingContentText(msg: ChatMessage): string {
-  if (msg.steps?.length && isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) {
+  if (msg.steps?.length && isPlanDagSteps(msg.steps, msg.executionPlanId)) {
     return resolvePlanAnswerText(msg)
   }
   const blocks = msg.contentBlocks
@@ -575,8 +575,8 @@ export type TimelineContentRow = {
 }
 
 /** Plan 主时间线仅穿插 answer 正文；业务 node 的 detail/result 只在抽屉展示。
- * 与 harness 互斥：有 worker 无 graph → 非 plan-workflow，走 ReAct 式穿插。 */
-function isPlanWorkflowSteps(
+ * 与 harness 互斥：有 worker 无 graph → 非 DAG，走 ReAct 式穿插。 */
+function isPlanDagSteps(
   steps: ProcessingStep[],
   executionPlanId?: string | null,
 ): boolean {
@@ -589,7 +589,7 @@ export function shouldRenderPlanMainContentBlock(
   steps: ProcessingStep[],
   executionPlanId?: string | null,
 ): boolean {
-  if (!isPlanWorkflowSteps(steps, executionPlanId)) return true
+  if (!isPlanDagSteps(steps, executionPlanId)) return true
   const anchor = block.afterStepId
   if (anchor === 'node-answer' || block.segmentId === 'tail:node-answer') return true
   if (anchor.startsWith('node-') && anchor !== 'node-answer') return false
@@ -606,7 +606,7 @@ export function contentRowsAfterStep(
   executionPlanId?: string | null,
 ): TimelineContentRow[] {
   if (!blocks?.length) return []
-  const planAnswerText = isPlanWorkflowSteps(steps, executionPlanId)
+  const planAnswerText = isPlanDagSteps(steps, executionPlanId)
     ? steps.find(s => s.id === 'node-answer')?.result?.trim()
     : ''
   const rows: TimelineContentRow[] = []
@@ -653,7 +653,7 @@ export function hydratePlanAnswerFromContent(
 ): void {
   if (msg.role !== 'assistant') return
   if (!msg.steps?.length) return
-  if (!isPlanWorkflowSteps(msg.steps, msg.executionPlanId)) return
+  if (!isPlanDagSteps(msg.steps, msg.executionPlanId)) return
   sanitizePlanAssistantMessage(msg)
   const answerIdx = msg.steps.findIndex(s => s.id === 'node-answer')
   if (answerIdx < 0) return
@@ -723,7 +723,7 @@ export function orphanContentRows(
   executionPlanId?: string | null,
 ): TimelineContentRow[] {
   if (!blocks?.length) return []
-  const planAnswerText = isPlanWorkflowSteps(steps, executionPlanId)
+  const planAnswerText = isPlanDagSteps(steps, executionPlanId)
     ? steps.find(s => s.id === 'node-answer')?.result?.trim()
     : ''
   const rows: TimelineContentRow[] = []

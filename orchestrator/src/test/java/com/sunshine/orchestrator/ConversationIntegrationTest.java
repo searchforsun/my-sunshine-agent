@@ -360,7 +360,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "hello", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "partial", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "react");
+        conversationService.updateMessageIntent(assistant.getId(), "fast");
 
         streamResume(ALICE, conv.getId(), assistant.getId());
 
@@ -403,7 +403,7 @@ class ConversationIntegrationTest {
         conversationService.appendMessage(conv.getId(), "user", "hi", MessageStatus.COMPLETED);
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "part", MessageStatus.INTERRUPTED);
-        conversationService.updateMessageIntent(assistant.getId(), "react");
+        conversationService.updateMessageIntent(assistant.getId(), "fast");
 
         ChatMessage resume = new ChatMessage();
         resume.setConversationId(conv.getId());

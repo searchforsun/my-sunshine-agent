@@ -769,7 +769,7 @@ const server = http.createServer(async (req, res) => {
       assistantMsg.status = 'streaming'
     } else {
       conv.messages.push({ id: newId(), role: 'user', content: payload.content, status: 'completed', seq: conv.messages.length + 1, createdAt: nowIso() })
-      assistantMsg = { id: newId(), role: 'assistant', content: '', status: 'streaming', intent: 'react', seq: conv.messages.length + 1, createdAt: nowIso() }
+      assistantMsg = { id: newId(), role: 'assistant', content: '', status: 'streaming', intent: 'fast', seq: conv.messages.length + 1, createdAt: nowIso() }
       conv.messages.push(assistantMsg)
       if (conv.title === '新对话' && payload.content) {
         conv.title = payload.content.length > 28 ? payload.content.slice(0, 28) : payload.content

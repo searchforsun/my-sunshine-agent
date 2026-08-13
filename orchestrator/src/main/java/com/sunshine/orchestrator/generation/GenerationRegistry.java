@@ -6,7 +6,6 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.WorkflowNodeRecoveryService;
-import com.sunshine.orchestrator.plan.PlanApprovalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -27,10 +26,6 @@ public class GenerationRegistry {
     @Autowired(required = false)
     @Lazy
     private HitlConfirmationService hitlConfirmationService;
-
-    @Autowired(required = false)
-    @Lazy
-    private PlanApprovalService planApprovalService;
 
     @Autowired(required = false)
     @Lazy
@@ -121,9 +116,6 @@ public class GenerationRegistry {
     private void releaseBlockingWaits(String messageId) {
         if (hitlConfirmationService != null) {
             hitlConfirmationService.cancelWaitersForMessage(messageId);
-        }
-        if (planApprovalService != null) {
-            planApprovalService.cancelWaitersForMessage(messageId);
         }
         if (workflowNodeRecoveryService != null) {
             workflowNodeRecoveryService.cancelWaitersForMessage(messageId);

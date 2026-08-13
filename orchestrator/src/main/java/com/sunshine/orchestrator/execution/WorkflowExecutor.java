@@ -48,7 +48,7 @@ public class WorkflowExecutor {
         return staticPlanRunner.execute(ctx, this::executeDynamicDefinition);
     }
 
-    /** 动态 Plan 物化后的 DAG 执行（plan 步由 PlanWorkflowExecutor 前置下发） */
+    /** 物化后 DAG 执行（静态 Workflow 与暂停续跑共用） */
     public Flux<StreamToken> executeDynamicDefinition(WorkflowDefinition def, ExecutionStreamContext streamCtx) {
         return executeDynamicDefinition(def, streamCtx, new WorkflowRunSession());
     }
@@ -62,16 +62,16 @@ public class WorkflowExecutor {
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
         session.bindTraceMessageId(streamCtx.assistantMsgId());
-        boolean planWorkflow = StringUtils.hasText(streamCtx.persistedPlanId());
-        if (planWorkflow) {
+        boolean planRun = StringUtils.hasText(streamCtx.persistedPlanId());
+        if (planRun) {
             workflowPauseService.bindRun(streamCtx.assistantMsgId(), streamCtx.persistedPlanId());
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
-        return executeSchedule(def, session, def.executionSteps(), wfCtx, streamCtx, runSession, planWorkflow)
+        return executeSchedule(def, session, def.executionSteps(), wfCtx, streamCtx, runSession, planRun)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
-                    if (planWorkflow) {
+                    if (planRun) {
                         workflowPauseService.clearRun(streamCtx.assistantMsgId());
                     }
                 });
@@ -96,17 +96,17 @@ public class WorkflowExecutor {
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
         session.bindTraceMessageId(streamCtx.assistantMsgId());
-        boolean planWorkflow = StringUtils.hasText(streamCtx.persistedPlanId());
-        if (planWorkflow) {
+        boolean planRun = StringUtils.hasText(streamCtx.persistedPlanId());
+        if (planRun) {
             workflowPauseService.bindRun(streamCtx.assistantMsgId(), streamCtx.persistedPlanId());
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
         List<PlanExecutionSchedule.Step> steps = resolveResumeSteps(def, checkpoint.resumeNodeId(), wfCtx);
-        return executeSchedule(def, session, steps, wfCtx, streamCtx, runSession, planWorkflow)
+        return executeSchedule(def, session, steps, wfCtx, streamCtx, runSession, planRun)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
-                    if (planWorkflow) {
+                    if (planRun) {
                         workflowPauseService.clearRun(streamCtx.assistantMsgId());
                     }
                 });
@@ -119,12 +119,12 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (steps == null || steps.isEmpty()) {
-            return executeNodeOrder(def.linearOrder(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeNodeOrder(def.linearOrder(), session, def, wfCtx, streamCtx, runSession, planRun);
         }
         return Flux.fromIterable(steps)
-                .concatMap(step -> executeStep(step, session, def, wfCtx, streamCtx, runSession, planWorkflow));
+                .concatMap(step -> executeStep(step, session, def, wfCtx, streamCtx, runSession, planRun));
     }
 
     private Flux<StreamToken> executeStep(
@@ -134,9 +134,9 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (step instanceof PlanExecutionSchedule.Single single) {
-            return executeOneNode(single.nodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeOneNode(single.nodeId(), session, def, wfCtx, streamCtx, runSession, planRun);
         }
         if (step instanceof PlanExecutionSchedule.Parallel parallel) {
             List<String> pending = parallel.branchNodeIds().stream()
@@ -145,19 +145,19 @@ public class WorkflowExecutor {
             Flux<StreamToken> branches = pending.isEmpty()
                     ? Flux.empty()
                     : Flux.merge(pending.stream()
-                            .map(id -> executeOneNode(id, session, def, wfCtx, streamCtx, runSession, planWorkflow))
+                            .map(id -> executeOneNode(id, session, def, wfCtx, streamCtx, runSession, planRun))
                             .toList());
             if (isNodeCompleted(wfCtx, parallel.joinNodeId())) {
                 return branches;
             }
             return branches.concatWith(executeOneNode(
-                    parallel.joinNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow));
+                    parallel.joinNodeId(), session, def, wfCtx, streamCtx, runSession, planRun));
         }
         if (step instanceof PlanExecutionSchedule.Exclusive exclusive) {
-            return executeExclusive(exclusive, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeExclusive(exclusive, session, def, wfCtx, streamCtx, runSession, planRun);
         }
         if (step instanceof PlanExecutionSchedule.Loop loop) {
-            return executeLoop(loop, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeLoop(loop, session, def, wfCtx, streamCtx, runSession, planRun);
         }
         return Flux.empty();
     }
@@ -169,7 +169,7 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         String loopId = loop.loopNodeId();
         NodeSpec loopSpec = def.node(loopId);
         String loopLabel = loopSpec != null && StringUtils.hasText(loopSpec.displayName())
@@ -184,10 +184,10 @@ public class WorkflowExecutor {
         }
         Flux<StreamToken> open = hasLoopSettled(wfCtx, loopId)
                 ? Flux.empty()
-                : executeOneNode(loopId, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                : executeOneNode(loopId, session, def, wfCtx, streamCtx, runSession, planRun);
         return open.concatWith(Flux.defer(() ->
                         runLoopIterations(
-                                loop, bridge, foldIter, session, def, wfCtx, streamCtx, runSession, planWorkflow)))
+                                loop, bridge, foldIter, session, def, wfCtx, streamCtx, runSession, planRun)))
                 .doFinally(sig -> {
                     if (StringUtils.hasText(streamCtx.assistantMsgId())) {
                         StepEventBridge.clearLoopBodyFold(streamCtx.assistantMsgId());
@@ -204,7 +204,7 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (hasLoopSettled(wfCtx, loop.loopNodeId())) {
             return Flux.empty();
         }
@@ -217,7 +217,7 @@ public class WorkflowExecutor {
         AtomicReference<String> buffer = new AtomicReference<>("");
         return loopCycle(
                 loop, bridge, foldIter, conditionGroup, maxIterations, onMax, iter, buffer,
-                session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                session, def, wfCtx, streamCtx, runSession, planRun);
     }
 
     private static PlanEdgeConditionGroup parseLoopConditionGroup(Map<String, Object> params) {
@@ -253,7 +253,7 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         // do-while：至少一轮；继续条件在 body 之后求值
         if (iter.get() >= maxIterations) {
             return applyLoopMaxIterations(loop.loopNodeId(), onMax, buffer.get(), iter.get(), wfCtx, runSession)
@@ -270,7 +270,7 @@ public class WorkflowExecutor {
         }
         int round = iter.get() + 1;
         foldIter.set(round);
-        return executeNodeOrder(body, session, def, wfCtx, streamCtx, runSession, planWorkflow)
+        return executeNodeOrder(body, session, def, wfCtx, streamCtx, runSession, planRun)
                 .concatMap(token -> {
                     if (bridge.isBodyToken(token)) {
                         return Flux.fromIterable(bridge.wrap(token, round));
@@ -291,7 +291,7 @@ public class WorkflowExecutor {
                     }
                     return loopCycle(
                             loop, bridge, foldIter, conditionGroup, maxIterations, onMax, iter, buffer,
-                            session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                            session, def, wfCtx, streamCtx, runSession, planRun);
                 }));
     }
 
@@ -408,10 +408,10 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         Flux<StreamToken> gateway = isNodeCompleted(wfCtx, exclusive.gatewayNodeId())
                 ? Flux.empty()
-                : executeOneNode(exclusive.gatewayNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                : executeOneNode(exclusive.gatewayNodeId(), session, def, wfCtx, streamCtx, runSession, planRun);
         return gateway.concatWith(Flux.defer(() -> {
             PlanExecutionSchedule.ExclusiveArm picked = pickExclusiveArm(exclusive.arms(), wfCtx);
             if (picked == null) {
@@ -421,7 +421,7 @@ public class WorkflowExecutor {
             List<String> pending = picked.pathNodeIds().stream()
                     .filter(id -> !isNodeCompleted(wfCtx, id))
                     .toList();
-            return executeNodeOrder(pending, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeNodeOrder(pending, session, def, wfCtx, streamCtx, runSession, planRun);
         }));
     }
 
@@ -453,12 +453,12 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
-        if (planWorkflow && workflowPauseService.consumePauseRequested(streamCtx.assistantMsgId())) {
+            boolean planRun) {
+        if (planRun && workflowPauseService.consumePauseRequested(streamCtx.assistantMsgId())) {
             return pauseBeforeNode(session, def, nodeId, wfCtx, streamCtx);
         }
         workflowPauseService.setCurrentNode(streamCtx.assistantMsgId(), nodeId);
-        return nodeRunner.executeNode(session, def, nodeId, wfCtx, streamCtx, runSession, planWorkflow);
+        return nodeRunner.executeNode(session, def, nodeId, wfCtx, streamCtx, runSession, planRun);
     }
 
     private List<PlanExecutionSchedule.Step> resolveResumeSteps(
@@ -543,10 +543,10 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         return Flux.fromIterable(nodeOrder)
                 .concatMap(nodeId -> executeOneNode(
-                        nodeId, session, def, wfCtx, streamCtx, runSession, planWorkflow));
+                        nodeId, session, def, wfCtx, streamCtx, runSession, planRun));
     }
 
     private Flux<StreamToken> pauseBeforeNode(

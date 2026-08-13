@@ -194,26 +194,15 @@ public class ToolSetMemberService {
     }
 
     /**
-     * Runtime 读：优先新 set 成员，再并入 legacy set 中尚未出现的 toolId（去重）。
-     * Admin 写路径不经此方法，只碰新 set。
+     * Runtime 读：当前 kind 默认集的成员（含 critical 标记）。
      */
     public ToolSetToolIdsResponse toolIds(ToolSetKind kind, String tenantId) {
-        List<ToolSetMemberEntity> primary = findSet(kind, tenantId)
+        List<ToolSetMemberEntity> members = findSet(kind, tenantId)
                 .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
                 .orElse(List.of());
-        List<ToolSetMemberEntity> legacy = findLegacySet(kind, tenantId)
-                .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
-                .orElse(List.of());
-        LinkedHashMap<String, Boolean> merged = new LinkedHashMap<>();
-        for (ToolSetMemberEntity member : primary) {
-            merged.put(member.getToolId(), member.isCritical());
-        }
-        for (ToolSetMemberEntity member : legacy) {
-            merged.putIfAbsent(member.getToolId(), member.isCritical());
-        }
-        List<String> toolIds = List.copyOf(merged.keySet());
+        List<String> toolIds = members.stream().map(ToolSetMemberEntity::getToolId).toList();
         List<String> criticalIds = kind == ToolSetKind.TASK_DEFAULT
-                ? merged.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).toList()
+                ? members.stream().filter(ToolSetMemberEntity::isCritical).map(ToolSetMemberEntity::getToolId).toList()
                 : List.of();
         return new ToolSetToolIdsResponse(toolIds, criticalIds);
     }
@@ -268,13 +257,6 @@ public class ToolSetMemberService {
             return toolSetRepository.findBySetTypeAndTenantId(kind.tenantType(), tenantId.strip());
         }
         return toolSetRepository.findBySetTypeAndTenantId(kind.globalType(), null);
-    }
-
-    private Optional<ToolSetEntity> findLegacySet(ToolSetKind kind, String tenantId) {
-        if (isTenantScoped(tenantId)) {
-            return toolSetRepository.findBySetTypeAndTenantId(kind.legacyTenantType(), tenantId.strip());
-        }
-        return toolSetRepository.findBySetTypeAndTenantId(kind.legacyGlobalType(), null);
     }
 
     private ToolSetEntity createGlobalSet(ToolSetKind kind) {

@@ -66,7 +66,7 @@ def run_react_live():
     with requests.post(
             f"{GW}/api/chat/stream",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"content": REACT_QUERY, "conversationId": conv_id, "executionPreference": "react"},
+            json={"content": REACT_QUERY, "conversationId": conv_id, "executionPreference": "fast"},
             stream=True, timeout=180) as r:
         r.raise_for_status()
         for line in r.iter_lines(decode_unicode=True):

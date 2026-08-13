@@ -111,9 +111,9 @@ public class PromptRoutingSupport {
 
     private static RoutingPlanSpec parsePlan(JsonNode node) {
         if (node == null || node.isNull() || !node.isObject()) {
-            return new RoutingPlanSpec("react", null, Map.of());
+            return new RoutingPlanSpec("fast", null, Map.of());
         }
-        String mode = textOrDefault(node, "mode", "react");
+        String mode = textOrDefault(node, "mode", "fast");
         String workflowId = node.has("workflowId") && !node.get("workflowId").isNull()
                 ? node.get("workflowId").asText(null)
                 : null;

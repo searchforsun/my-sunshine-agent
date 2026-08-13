@@ -4,10 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.context.AssembledContext;
-import com.sunshine.orchestrator.registry.ModelCapabilities;
-import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
-import com.sunshine.orchestrator.registry.ModelCatalogScene;
-import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +12,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
 import java.util.Map;
@@ -24,7 +19,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,17 +36,8 @@ class ExecutionPlanStoreTest {
 
     @BeforeEach
     void setUp() {
-        ModelSceneResolver resolver = new ModelSceneResolver(
-                new ObjectMapper(), WebClient.builder(), "http://localhost", "default");
-        resolver.replaceSnapshotForTest(
-                List.of(new ModelCatalogDefinition(
-                        "deepseek-v4-flash", "p", "flash", 128000, 8192, "cl100k_base",
-                        ModelCapabilities.defaults(), null, true, true, 0)),
-                List.of(
-                        new ModelCatalogScene("planner", "deepseek-v4-flash", null, Map.of(), true),
-                        new ModelCatalogScene("default", "deepseek-v4-flash", null, Map.of(), true)));
         store = new ExecutionPlanStore(repository, new PlanJsonCodec(new ObjectMapper()),
-                planJsonParser, resolver, conversationService);
+                planJsonParser, conversationService);
     }
 
     @Test
@@ -95,17 +80,16 @@ class ExecutionPlanStoreTest {
     }
 
     @Test
-    void markRejected_setsTerminalStatus() {
+    void markFailed_setsTerminalStatus() {
         ExecutionPlanEntity entity = new ExecutionPlanEntity();
         entity.setId("p1");
-        entity.setStatus("draft");
+        entity.setStatus("running");
         when(repository.findById("p1")).thenReturn(Optional.of(entity));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        store.markRejected("p1", "非法节点");
+        store.markFailed("p1", "节点失败");
 
-        assertThat(entity.getStatus()).isEqualTo("rejected");
-        assertThat(entity.getRejectReason()).isEqualTo("非法节点");
+        assertThat(entity.getStatus()).isEqualTo("failed");
         assertThat(entity.getCompletedAt()).isNotNull();
     }
 
@@ -146,18 +130,5 @@ class ExecutionPlanStoreTest {
         when(repository.findByMessageId("msg-1")).thenReturn(Optional.of(entity));
 
         assertThat(store.findResumableForMessage("msg-1")).isPresent();
-    }
-
-    @Test
-    void inferPlanningResumeNodeId_returnsFirstBusinessNode() {
-        ExecutionPlanEntity entity = new ExecutionPlanEntity();
-        entity.setValidatedJson("{\"nodes\":[{\"id\":\"n1\",\"type\":\"llm\"}],"
-                + "\"edges\":[{\"from\":\"start\",\"to\":\"n1\"}]}");
-        PlanJson plan = new PlanJson("p1", "r",
-                List.of(new PlanNode("n1", "llm", Map.of())),
-                List.of(new PlanEdge("start", "n1")));
-        when(planJsonParser.parse(entity.getValidatedJson())).thenReturn(plan);
-
-        assertThat(store.inferPlanningResumeNodeId(entity)).isEqualTo("n1");
     }
 }

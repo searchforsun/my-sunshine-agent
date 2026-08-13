@@ -3,7 +3,6 @@ package com.sunshine.tool.mcp;
 import com.sunshine.tool.entity.McpServerEntity;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
 import java.util.List;
@@ -13,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class McpJsonRpcClientTest {
 
-    private final McpJsonRpcClient client = new McpJsonRpcClient(WebClient.builder());
+    private final McpJsonRpcClient client = new McpJsonRpcClient();
 
     @Test
     void parseTools_extractsNameDescriptionAndSchema() {

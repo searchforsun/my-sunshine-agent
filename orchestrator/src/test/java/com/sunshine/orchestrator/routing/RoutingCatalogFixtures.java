@@ -70,7 +70,6 @@ public final class RoutingCatalogFixtures {
                 text("scope-prompt", "scope", ""),
                 text("hitl.agent-prompt", "hitl", ""),
                 text("intent.classifier", "intent", "classifier-stub"),
-                text("planner.prompt", "planner", "planner-stub"),
                 text("answer.template", "answer",
                         "用户问题：{{start.userQuery}}\n\n上游数据：\n{{plan.upstream}}\n\n请汇总。"),
                 text("answer.overlay", "answer", ""),
@@ -80,7 +79,7 @@ public final class RoutingCatalogFixtures {
                         "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"),
                 json("timeline.intent", "timeline",
                         "{\"label\":\"识别意图\",\"before\":\"识别用户意图\","
-                                + "\"active\":\"正在识别用户意图...\","
+                                + "\"active\":\"正在识别用户意图\","
                                 + "\"default-after\":\"已完成意图识别\"}"));
     }
 

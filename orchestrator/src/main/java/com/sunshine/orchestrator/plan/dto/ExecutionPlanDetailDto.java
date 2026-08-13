@@ -19,9 +19,6 @@ public class ExecutionPlanDetailDto {
     private String conversationId;
     private String messageId;
     private String status;
-    private String plannerModel;
-    private String plannerReason;
-    private String rejectReason;
     private Map<String, Object> plan;
     private Map<String, Object> validatedPlan;
     private List<PlanNodeTrace> nodes;
@@ -36,9 +33,6 @@ public class ExecutionPlanDetailDto {
                 .conversationId(entity.getConversationId())
                 .messageId(entity.getMessageId())
                 .status(entity.getStatus())
-                .plannerModel(entity.getPlannerModel())
-                .plannerReason(entity.getPlannerReason())
-                .rejectReason(entity.getRejectReason())
                 .plan(codec.parseJsonMap(entity.getPlanJson()))
                 .validatedPlan(codec.parseJsonMap(entity.getValidatedJson()))
                 .nodes(codec.traceFromJson(entity.getExecutionTrace()))

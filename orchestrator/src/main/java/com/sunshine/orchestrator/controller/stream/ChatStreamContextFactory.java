@@ -181,10 +181,10 @@ public class ChatStreamContextFactory {
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         ChatConversationEntity conv = conversationService.getOwned(assistant.getConversationId(), userId, tenantId);
         String kbId = resolveSessionKbId(msg.getKbId(), conv.getKbId(), tenantId);
-        boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
+        boolean planRunResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
                 assistant.getIntent() != null ? assistant.getIntent() : "");
-        boolean reactRestartResume = !planWorkflowResume
+        boolean reactRestartResume = !planRunResume
                 && storedPlan.mode() == ExecutionMode.FAST;
         boolean hasNativeCheckpoint = reactRestartResume
                 && checkpointService.hasCheckpoint(userId, assistantId);
@@ -202,7 +202,7 @@ public class ChatStreamContextFactory {
             // 无 checkpoint 时靠 injectedBlocks 续进度，勿只留 intent
             stepsJson = assistant.getSteps();
             contentBlocksJson = assistant.getContentBlocks();
-        } else if (planWorkflowResume) {
+        } else if (planRunResume) {
             resumeContent = "";
             resumeReasoning = "";
             stepsJson = assistant.getSteps();

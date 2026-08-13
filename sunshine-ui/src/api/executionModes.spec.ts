@@ -9,8 +9,8 @@ import {
 } from './executionModes'
 
 describe('executionModes · fast/pro/workflow', () => {
-  it('normalize 映射旧 wire', () => {
-    expect(normalizeExecutionPreference('plan-workflow')).toBe('pro')
+  it('normalize 仅认新 wire，未知/旧值回退 fast', () => {
+    expect(normalizeExecutionPreference('plan-workflow')).toBe('fast')
     expect(normalizeExecutionPreference('auto')).toBe('fast')
     expect(normalizeExecutionPreference('react')).toBe('fast')
     expect(normalizeExecutionPreference('fast')).toBe('fast')

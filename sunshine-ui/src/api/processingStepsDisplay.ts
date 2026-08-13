@@ -371,7 +371,7 @@ function stripPlanMetaText(text: string): string {
 
 function truncateStepPreview(text: string, max = STEP_HEADER_PREVIEW_MAX): string {
   if (text.length <= max) return text
-  return `${text.slice(0, max)}…`
+  return text.slice(0, max)
 }
 
 export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
@@ -417,19 +417,6 @@ export function resolveStepHeaderText(step: ProcessingStep): string {
   return truncateStepPreview(display)
 }
 
-function extractFirstProseLine(text: string): string {
-  for (const raw of text.split('\n')) {
-    const line = raw.trim()
-    if (!line || line.startsWith('#') || /^\|/.test(line)) continue
-    if (/^[-*_]{3,}$/.test(line)) continue
-    const plain = line.replace(/\*\*|__|`/g, '').replace(/^>\s*/, '').trim()
-    if (plain.length >= 8 && /[\u4e00-\u9fff]/.test(plain)) {
-      return plain.replace(/\s+/g, ' ')
-    }
-  }
-  return ''
-}
-
 /** 展开区 lead：保留换行，供 StaticMarkdown 渲染（主行预览仍用 resolveStepHeaderText 单行截断） */
 export function resolveStepExpandLead(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
@@ -465,13 +452,6 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
     }
   } else {
     oneLine = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
-  }
-  if (oneLine.endsWith('…') && step.detail?.trim()) {
-    const fromDetail = extractFirstProseLine(step.detail)
-    const prefix = oneLine.slice(0, -1).trim()
-    if (fromDetail && (fromDetail.startsWith(prefix) || prefix.length >= 12 && fromDetail.startsWith(prefix.slice(0, 12)))) {
-      return fromDetail
-    }
   }
   return oneLine
 }
@@ -542,11 +522,10 @@ export function stripLoadedSkillPrefix(text?: string): string {
   return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()
 }
 
-/** 主行摘要是否被截断（带 …），展开后可看全文 */
+/** 主行摘要是否超预览长度（宽度截断交给 CSS ellipsis），展开后可看全文 */
 export function isStepSummaryTruncated(step: ProcessingStep): boolean {
   const header = resolveStepHeaderText(step)
   if (!header) return false
-  if (header.endsWith('…')) return true
   const full = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
   return !!full && full.length > STEP_HEADER_PREVIEW_MAX
 }

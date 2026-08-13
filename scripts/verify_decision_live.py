@@ -182,7 +182,7 @@ def chat_sse_live(
     conv_id: str,
     query: str,
     *,
-    preference: str = "react",
+    preference: str = "fast",
     wait: bool = True,
     resume_message_id: str | None = None,
 ) -> SseCollector:

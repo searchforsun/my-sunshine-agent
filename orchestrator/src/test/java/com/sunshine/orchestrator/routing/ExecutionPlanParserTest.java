@@ -53,23 +53,12 @@ class ExecutionPlanParserTest {
     }
 
     @Test
-    void parsesPlanWorkflowJson() {
+    void parsesSkillIdTopLevel() {
         String json = """
-                {"mode":"plan-workflow","workflowId":null,"params":{},"reason":"跨领域多步"}
+                {"mode":"pro","workflowId":null,"skillId":"sandbox-coding-demo","params":{},"reason":"沙箱脚本分析"}
                 """;
         ExecutionPlan plan = parser.parse(json);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.intentLabel()).isEqualTo("pro");
-        assertThat(plan.reason()).isEqualTo("跨领域多步");
-    }
-
-    @Test
-    void parsesSkillIdTopLevel() {
-        String json = """
-                {"mode":"react","workflowId":null,"skillId":"sandbox-coding-demo","params":{},"reason":"沙箱脚本分析"}
-                """;
-        ExecutionPlan plan = parser.parse(json);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("sandbox-coding-demo");
         assertThat(plan.reason()).isEqualTo("沙箱脚本分析");
     }
@@ -86,11 +75,5 @@ class ExecutionPlanParserTest {
         assertThat(plan.params()).containsEntry("agentIds", "a1,a2");
         assertThat(plan.params()).containsEntry("skillIds", "s1,s2");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "s1");
-    }
-
-    @Test
-    void parseStoredIntentPlanWorkflow() {
-        ExecutionPlan plan = parser.parseStoredIntent("plan-workflow");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
     }
 }

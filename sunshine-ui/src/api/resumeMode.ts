@@ -42,7 +42,7 @@ export function resumeButtonLabel(msg: ChatMessage): string {
 export function isReactAssistantMessage(msg: Pick<ChatMessage, 'intent' | 'steps'>): boolean {
   if (msg.steps?.some(s => s.phase === 'plan' || s.id.startsWith('node-'))) return false
   const intent = (msg.intent ?? '').toLowerCase()
-  if (intent.startsWith('workflow:') || intent === 'plan-workflow') return false
+  if (intent.startsWith('workflow:')) return false
   if (intent === 'knowledge' || intent === 'finance') return false
   return true
 }

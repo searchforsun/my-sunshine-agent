@@ -64,14 +64,15 @@ public class PromptRoutingService {
         return "fast".equals(normalized);
     }
 
-    /** v6 规则 mode 直值 fast / pro / workflow；兼容旧别名（react→fast、plan-workflow→pro） */
+    /** v6 规则 mode 直值 fast / pro / workflow；空或未知按 workflow 处理 */
     private static String normalizeMode(String raw) {
         if (raw == null) {
             return "workflow";
         }
         return switch (raw.toLowerCase().replace('_', '-')) {
-            case "fast", "react", "agent", "auto" -> "fast";
-            case "pro", "plan-workflow", "plan" -> "pro";
+            case "fast" -> "fast";
+            case "pro" -> "pro";
+            case "workflow" -> "workflow";
             default -> "workflow";
         };
     }

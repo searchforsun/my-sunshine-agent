@@ -1,10 +1,6 @@
-/** 区分 harness 分层时间线 vs 静态/旧 plan-workflow DAG */
+/** 区分 harness 分层时间线 vs 静态 Workflow DAG */
 import type { ProcessingStep } from './processingSteps'
 import { resolvePlanIdFromStep } from './processingStepsPlan'
-
-function hasPlanGraphNodes(steps: ProcessingStep[]): boolean {
-  return steps.some(s => (s.metadata?.planApproval?.planGraph?.nodes?.length ?? 0) > 0)
-}
 
 function hasWorkerStep(steps: ProcessingStep[]): boolean {
   return steps.some(s => s.phase === 'worker' || /^worker-/.test(s.id))
@@ -19,14 +15,13 @@ function hasNodeSteps(steps: ProcessingStep[]): boolean {
 }
 
 /**
- * 有可渲染 DAG 图 → 静态 Workflow / 旧 plan-workflow。
- * 真 planGraph 优先；否则 classic planId/executionPlanId + node-*（或无 worker 的历史 plan 引用）。
+ * 有可渲染 DAG 图 → 静态 Workflow。
+ * classic planId/executionPlanId + node-*（或无 worker 的历史 plan 引用）。
  */
 export function isPlanDagMessage(
   steps: ProcessingStep[],
   executionPlanId?: string | null,
 ): boolean {
-  if (hasPlanGraphNodes(steps)) return true
   // harness worker 且无图 → 非 DAG（互斥时图已在上方胜出）
   if (hasWorkerStep(steps)) return false
   const hasPlanRef = hasResolvablePlanId(steps) || !!executionPlanId?.trim()

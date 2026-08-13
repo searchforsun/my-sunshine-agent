@@ -260,7 +260,7 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void forcedJ4_planWorkflow() {
+    void forcedJ4_pro() {
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, "先查制度再查待审批", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
@@ -280,7 +280,7 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void forcedJ6_planWorkflow_mergesAtSkillParams() {
+    void forcedJ6_pro_mergesAtSkillParams() {
         String query = "@finance-analysis 是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);

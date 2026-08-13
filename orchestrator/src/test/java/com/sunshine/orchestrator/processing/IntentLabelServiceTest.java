@@ -67,7 +67,7 @@ class IntentLabelServiceTest {
     @Test
     void stepSummarizer_intentActive_noLegacyKnowledgeRoutingPhrase() {
         String after = StepSummarizer.active("intent", "我有哪些待审批报销");
-        assertThat(after).isEqualTo("正在识别用户意图...");
+        assertThat(after).isEqualTo("正在识别用户意图");
         assertThat(after).doesNotContain("查阅知识库").doesNotContain("直接回答");
     }
 

@@ -1,13 +1,11 @@
 package com.sunshine.orchestrator.plan;
 
-import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowContextCodec;
-import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/** 动态 Plan 持久化与状态机 */
+/** Plan 持久化与状态机（静态 Workflow 快照） */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,7 +26,6 @@ public class ExecutionPlanStore {
     private final ExecutionPlanRepository repository;
     private final PlanJsonCodec codec;
     private final PlanJsonParser planJsonParser;
-    private final ModelSceneResolver modelSceneResolver;
     private final ConversationService conversationService;
 
     @Transactional
@@ -42,10 +39,7 @@ public class ExecutionPlanStore {
         entity.setUserId(requireText(ctx.userId(), "userId"));
         entity.setTenantId(StringUtils.hasText(ctx.tenantId()) ? ctx.tenantId() : "default");
         entity.setStatus(ExecutionPlanStatus.DRAFT.dbValue());
-        entity.setPlannerModel(modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), null).effectiveModel());
-        entity.setPlannerReason(truncate(planJson.reason(), 512));
         entity.setPlanJson(codec.toJson(planJson));
-        entity.setReplanCount(0);
         entity.setCreatedAt(now);
         repository.save(entity);
         log.info("[ExecutionPlanStore] draft id={} msg={}", id, ctx.assistantMsgId());
@@ -53,52 +47,10 @@ public class ExecutionPlanStore {
     }
 
     @Transactional
-    public void appendPlannerAttempt(String planId, PlannerAttempt attempt) {
-        ExecutionPlanEntity entity = requireEntity(planId);
-        List<PlannerAttempt> attempts = new ArrayList<>(codec.plannerAttemptsFromJson(entity.getPlannerAttempts()));
-        attempts.add(attempt);
-        entity.setPlannerAttempts(codec.plannerAttemptsToJson(attempts));
-        if ("replan".equals(attempt.phase()) && attempt.attemptNo() > 1) {
-            entity.setReplanCount(Math.max(entity.getReplanCount(), attempt.attemptNo() - 1));
-        }
-        repository.save(entity);
-    }
-
-    @Transactional
-    public void updatePlannerOutput(String planId, PlanJson planJson) {
-        ExecutionPlanEntity entity = requireEntity(planId);
-        entity.setPlanJson(codec.toJson(planJson));
-        if (StringUtils.hasText(planJson.reason())) {
-            entity.setPlannerReason(truncate(planJson.reason(), 512));
-        }
-        repository.save(entity);
-    }
-
-    @Transactional
-    public void saveApprovalRounds(String planId, List<PlanApprovalRound> rounds) {
-        ExecutionPlanEntity entity = requireEntity(planId);
-        entity.setApprovalRounds(codec.approvalRoundsToJson(rounds));
-        repository.save(entity);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PlanApprovalRound> listApprovalRounds(String planId) {
-        return codec.approvalRoundsFromJson(requireEntity(planId).getApprovalRounds());
-    }
-
-    @Transactional
-    public void markAwaitingApproval(String planId, PlanJson planJson) {
-        ExecutionPlanEntity entity = requireEntity(planId);
-        entity.setPlanJson(codec.toJson(planJson));
-        entity.setStatus(ExecutionPlanStatus.AWAITING_APPROVAL.dbValue());
-        repository.save(entity);
-    }
-
-    @Transactional
     public void markValidated(String planId, PlanJson planJson) {
         ExecutionPlanEntity entity = requireEntity(planId);
         ExecutionPlanStatus current = ExecutionPlanStatus.fromDb(entity.getStatus());
-        if (current != ExecutionPlanStatus.DRAFT && current != ExecutionPlanStatus.AWAITING_APPROVAL) {
+        if (current != ExecutionPlanStatus.DRAFT) {
             assertStatus(entity, ExecutionPlanStatus.DRAFT);
         }
         entity.setStatus(ExecutionPlanStatus.VALIDATED.dbValue());
@@ -107,19 +59,6 @@ public class ExecutionPlanStore {
         repository.save(entity);
         conversationService.linkMessageExecutionPlan(entity.getMessageId(), planId);
         log.info("[ExecutionPlanStore] validated id={}", planId);
-    }
-
-    @Transactional
-    public void markRejected(String planId, String reason) {
-        ExecutionPlanEntity entity = requireEntity(planId);
-        if (isTerminal(entity.getStatus())) {
-            return;
-        }
-        entity.setStatus(ExecutionPlanStatus.REJECTED.dbValue());
-        entity.setRejectReason(truncate(reason, 512));
-        entity.setCompletedAt(Instant.now());
-        repository.save(entity);
-        log.info("[ExecutionPlanStore] rejected id={} reason={}", planId, reason);
     }
 
     @Transactional
@@ -183,7 +122,6 @@ public class ExecutionPlanStore {
             return;
         }
         entity.setStatus(ExecutionPlanStatus.DEGRADED_REACT.dbValue());
-        entity.setRejectReason(truncate(reason, 512));
         entity.setCompletedAt(Instant.now());
         repository.save(entity);
         log.info("[ExecutionPlanStore] degraded_react id={} reason={}", planId, reason);
@@ -196,7 +134,6 @@ public class ExecutionPlanStore {
             return;
         }
         entity.setStatus(ExecutionPlanStatus.FAILED.dbValue());
-        entity.setRejectReason(truncate(reason, 512));
         entity.setCompletedAt(Instant.now());
         repository.save(entity);
         log.info("[ExecutionPlanStore] failed id={} reason={}", planId, reason);
@@ -215,15 +152,6 @@ public class ExecutionPlanStore {
         return repository.findByMessageId(messageId.strip());
     }
 
-    @Transactional(readOnly = true)
-    public java.util.Optional<ExecutionPlanEntity> findPausedForMessage(String messageId) {
-        if (!StringUtils.hasText(messageId)) {
-            return java.util.Optional.empty();
-        }
-        return repository.findByMessageId(messageId.strip())
-                .filter(e -> ExecutionPlanStatus.PAUSED == ExecutionPlanStatus.fromDb(e.getStatus()));
-    }
-
     /** 续跑：PAUSED、FAILED+checkpoint、或 cancel 竞态下 RUNNING/VALIDATED 但已有 checkpoint */
     @Transactional(readOnly = true)
     public java.util.Optional<ExecutionPlanEntity> findResumableForMessage(String messageId) {
@@ -237,10 +165,6 @@ public class ExecutionPlanStore {
     private boolean isResumablePlan(ExecutionPlanEntity entity) {
         ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
         if (status == ExecutionPlanStatus.PAUSED) {
-            return true;
-        }
-        if (status == ExecutionPlanStatus.AWAITING_APPROVAL
-                && StringUtils.hasText(entity.getValidatedJson())) {
             return true;
         }
         if (status == ExecutionPlanStatus.FAILED
@@ -262,8 +186,7 @@ public class ExecutionPlanStore {
         if (current != ExecutionPlanStatus.RUNNING
                 && current != ExecutionPlanStatus.PAUSED
                 && current != ExecutionPlanStatus.VALIDATED
-                && current != ExecutionPlanStatus.DRAFT
-                && current != ExecutionPlanStatus.AWAITING_APPROVAL) {
+                && current != ExecutionPlanStatus.DRAFT) {
             return;
         }
         WorkflowCheckpoint toSave = checkpoint;
@@ -292,8 +215,7 @@ public class ExecutionPlanStore {
         return status == ExecutionPlanStatus.RUNNING
                 || status == ExecutionPlanStatus.VALIDATED
                 || status == ExecutionPlanStatus.PAUSED
-                || status == ExecutionPlanStatus.DRAFT
-                || status == ExecutionPlanStatus.AWAITING_APPROVAL;
+                || status == ExecutionPlanStatus.DRAFT;
     }
 
     /** PLANNING 阶段续跑起始节点：validated 已有则取 DAG 首业务节点 */
@@ -350,7 +272,6 @@ public class ExecutionPlanStore {
         ExecutionPlanStatus status = ExecutionPlanStatus.fromDb(entity.getStatus());
         if (status != ExecutionPlanStatus.PAUSED
                 && status != ExecutionPlanStatus.FAILED
-                && status != ExecutionPlanStatus.AWAITING_APPROVAL
                 && status != ExecutionPlanStatus.RUNNING
                 && status != ExecutionPlanStatus.VALIDATED) {
             assertStatus(entity, ExecutionPlanStatus.PAUSED);
@@ -388,7 +309,6 @@ public class ExecutionPlanStore {
         return s == ExecutionPlanStatus.COMPLETED
                 || s == ExecutionPlanStatus.COMPLETED_WITH_ERRORS
                 || s == ExecutionPlanStatus.FAILED
-                || s == ExecutionPlanStatus.REJECTED
                 || s == ExecutionPlanStatus.DEGRADED_REACT;
     }
 

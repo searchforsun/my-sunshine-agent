@@ -13,8 +13,7 @@ import reactor.core.publisher.Flux;
 /**
  * ResourceDispatcher（类名过渡保留 ExecutionDispatcher）：按用户钉死的
  * {@link ExecutionMode} 分发 — FAST→ReAct、PRO→PlannerHarness、WORKFLOW→静态 Workflow。
- * <p>PRO 在 {@code harness.enabled=false} 时显式失败，禁止回落 PlanWorkflow、禁止静默改 FAST。
- * {@link PlanWorkflowExecutor} 字段保留供阶段 D 前 Spring 装配/测试断言，主路径 switch 永不调用。
+ * <p>PRO 在 {@code harness.enabled=false} 时显式失败，禁止回落旧动态规划、禁止静默改 FAST。
  */
 @Component
 @RequiredArgsConstructor
@@ -22,9 +21,6 @@ public class ExecutionDispatcher {
 
     private final WorkflowExecutor workflowExecutor;
     private final ReactExecutor reactExecutor;
-    /** 阶段 D 前保留注入；主路径禁止调用（见 execute switch） */
-    @SuppressWarnings("unused")
-    private final PlanWorkflowExecutor planWorkflowExecutor;
     private final PlannerHarnessExecutor plannerHarnessExecutor;
     private final AgentExecutionProperties executionProperties;
 

@@ -24,7 +24,7 @@ const state = reactive({
   loadingLabel: undefined as string | undefined,
 })
 
-/** 按 planId 注册，避免放大层与 PlanWorkflowPanel 闭包 handler 脱节 */
+/** 按 planId 注册，避免放大层与 PlanDagPanel 闭包 handler 脱节 */
 const selectHandlers = new Map<string, (node: DagNodeView) => void>()
 
 export function registerPlanDagSelectHandler(

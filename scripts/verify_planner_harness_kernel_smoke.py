@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Planner-Executor 内核冒烟（非完整 H-7）。
 
-验证：`agent.execution.harness.enabled=true` 时，Chat `executionPreference=plan-workflow`
+验证：`agent.execution.harness.enabled=true` 时，Chat `executionPreference=pro`
 走 PlannerHarnessExecutor，并出现 PlanNotebook Redis 键或 harness 日志。
 
 用法:
@@ -132,7 +132,7 @@ def chat_sse(token: str, conv_id: str, query: str) -> str:
     body = {
         "content": query,
         "conversationId": conv_id,
-        "executionPreference": "plan-workflow",
+        "executionPreference": "pro",
     }
     payload = json.dumps(body, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
@@ -250,7 +250,7 @@ def main() -> int:
     print(f"Gateway={GATEWAY_URL} timeout={TIMEOUT_SEC}s")
     print(f"Redis={REDIS_HOST}:{REDIS_PORT} prefix={NOTEBOOK_PREFIX}")
     print(
-        "说明: harness.enabled=false 时 PLAN_WORKFLOW 恢复旧 Approval/DAG；"
+        "说明: harness.enabled=false 时 pro 语义降级；"
         "本冒烟要求 enabled=true。"
     )
 
@@ -301,7 +301,7 @@ def main() -> int:
     # 旧 Approval 路径：出现 confirmation 且无 plan/worker harness 步 → 判定未启用 harness
     if signals["confirmations"] and not signals["plan_steps"] and not notebook_key and not log_hit:
         return fail(
-            "疑似仍走旧 PlanWorkflow Approval（SSE confirmation 且无 harness 证据）",
+            "疑似 harness 未启用（SSE confirmation 且无 harness 证据）",
             hint=(
                 "设置 docs/nacos/sunshine-orchestrator.yaml harness.enabled=true，"
                 "然后: python scripts/sync_nacos.py && "

@@ -70,7 +70,7 @@ public record RoutingTrace(String layer, String label, String detail) {}
 
 ### 4.1 intent 步展示（方案 A）
 
-- intent 步主行统一状态文案：`before=识别用户意图` → `active=正在识别用户意图...` → `after=已完成意图识别`（`timeline.intent` Catalog 配置）。
+- intent 步主行统一状态文案：`before=识别用户意图` → `active=正在识别用户意图` → `after=已完成意图识别`（`timeline.intent` Catalog 配置；时间线不再出现手动省略号，宽度截断交给 CSS ellipsis）。
 - 不再展示绑定摘要行/`routingReason` 主行；识别过程整体收敛进抽屉（见 4.2）。
 
 ### 4.2 intent 步抽屉（方案 B）

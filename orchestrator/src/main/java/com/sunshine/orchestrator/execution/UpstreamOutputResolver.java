@@ -51,7 +51,7 @@ public class UpstreamOutputResolver {
             return "";
         }
         String displayName = resolveDisplayName(nodeId, def);
-        String line = promptCatalogHolder.requireText("plan-workflow.upstream-failure-line");
+        String line = promptCatalogHolder.requireText("workflow.upstream-failure-line");
         if (!StringUtils.hasText(line)) {
             return "（" + displayName + " 执行失败：" + failure.error() + "）";
         }

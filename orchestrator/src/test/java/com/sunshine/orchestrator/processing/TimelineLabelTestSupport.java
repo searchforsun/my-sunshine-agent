@@ -46,7 +46,6 @@ public final class TimelineLabelTestSupport {
         WorkflowNodeCompletionLabels.bind(new WorkflowNodeCompletionLabelService());
         StepLabels.bind(toolCatalog);
         SkillLoadLabels.bind(new SkillLoadLabelService(skillCatalog, timelineCatalog));
-        PlanApprovalLabels.bind(new PlanApprovalLabelService(timelineCatalog));
         ToolNodeLabels.bind(new ToolNodeLabelService(timelineCatalog, toolCatalog));
         HitlLabels.bind(new HitlLabelService(timelineCatalog));
         SummaryStepLabels.bind(new SummaryStepLabelService(timelineCatalog, toolCatalog));
@@ -119,7 +118,6 @@ public final class TimelineLabelTestSupport {
         TimelineStepLabels.bind(null);
         ThinkStepLabels.bind(null);
         SkillLoadLabels.bind(null);
-        PlanApprovalLabels.bind(null);
         ToolNodeLabels.bind(null);
         HitlLabels.bind(null);
         SummaryStepLabels.bind(null);

@@ -5,7 +5,6 @@
  */
 
 import { relocateAgentNodeHitl } from './hitlSteps'
-import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
 import type { SandboxEditDiffMeta } from './sandboxEditDiff'
@@ -205,14 +204,6 @@ export interface StepMetadata {
   recoveryExpiresAt?: number
   /** Workflow 节点执行 attempt（重试过程 SSE 实时下发） */
   nodeAttempts?: import('./executionPlans').PlanNodeAttempt[]
-  /** 动态 Plan 用户确认 */
-  planApproval?: {
-    status?: 'awaiting' | 'approved'
-    token?: string
-    expiresAt?: number
-    rounds?: PlanApprovalRoundView[]
-    planGraph?: PlanGraph
-  }
   /** ReAct TaskBoard / harness H1 投影（同结构；含 dependsOn/secondary 时走波次+嵌套） */
   tasks?: TaskBoardItemView[]
   taskRevision?: number

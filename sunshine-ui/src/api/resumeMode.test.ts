@@ -13,7 +13,7 @@ function reactMsg(overrides: Partial<ChatMessage> = {}): ChatMessage {
     role: 'assistant',
     content: '',
     status: 'interrupted',
-    intent: 'react',
+    intent: 'fast',
     steps: [
       { id: 'intent', phase: 'intent', lifecycle: 'done' },
       { id: 'skill', phase: 'skill', lifecycle: 'done' },
@@ -34,7 +34,7 @@ describe('resumeMode · ReAct 无感续跑', () => {
 
   it('Plan/Workflow 节点 paused → 继续执行', () => {
     const msg = reactMsg({
-      intent: 'plan-workflow',
+      intent: 'workflow:finance-list',
       steps: [{ id: 'node-1', phase: 'node', lifecycle: 'paused' }],
     })
     expect(isReactAssistantMessage(msg)).toBe(false)

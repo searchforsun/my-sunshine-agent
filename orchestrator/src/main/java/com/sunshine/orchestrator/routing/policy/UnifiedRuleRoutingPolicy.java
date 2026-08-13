@@ -78,14 +78,15 @@ public class UnifiedRuleRoutingPolicy implements RoutingPolicy {
         return new ExecutionPlan(locked, plan.workflowId(), plan.params(), plan.reason(), plan.ruleId());
     }
 
-    /** v6 规则 mode 直值 fast / pro / workflow；兼容旧别名（react→fast、plan-workflow→pro） */
+    /** v6 规则 mode 直值 fast / pro / workflow；空或未知按 workflow 处理 */
     static ExecutionMode parseMode(String raw) {
         if (raw == null) {
             return ExecutionMode.WORKFLOW;
         }
         return switch (raw.toLowerCase().replace('_', '-')) {
-            case "fast", "react", "agent", "auto" -> ExecutionMode.FAST;
-            case "pro", "plan-workflow", "plan" -> ExecutionMode.PRO;
+            case "fast" -> ExecutionMode.FAST;
+            case "pro" -> ExecutionMode.PRO;
+            case "workflow" -> ExecutionMode.WORKFLOW;
             default -> ExecutionMode.WORKFLOW;
         };
     }

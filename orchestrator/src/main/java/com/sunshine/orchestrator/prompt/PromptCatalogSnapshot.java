@@ -147,9 +147,9 @@ public final class PromptCatalogSnapshot {
 
     private static RoutingPlanSpec parsePlan(JsonNode node) {
         if (node == null || node.isNull() || !node.isObject()) {
-            return new RoutingPlanSpec("react", null, Map.of());
+            return new RoutingPlanSpec("fast", null, Map.of());
         }
-        String mode = textOrDefault(node, "mode", "react");
+        String mode = textOrDefault(node, "mode", "fast");
         String workflowId = null;
         if (node.has("workflowId") && !node.get("workflowId").isNull()) {
             String raw = node.get("workflowId").asText(null);

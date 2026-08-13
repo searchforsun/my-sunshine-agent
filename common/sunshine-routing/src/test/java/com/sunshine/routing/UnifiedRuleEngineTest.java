@@ -16,14 +16,14 @@ class UnifiedRuleEngineTest {
     void structuralBeatsLowerPriorityRegex() {
         RoutingRuleDef structural = rule("structural-plan", 100, "structural",
                 List.of("先.+再"), Map.of("knowledge", List.of("制度"), "finance", List.of("报销"), "analysis", List.of("分析")),
-                "plan-workflow", null);
+                "pro", null);
         RoutingRuleDef regex = rule("finance-list", 10, "regex",
                 List.of("待审批"), Map.of(), "workflow", "finance-list");
         UnifiedRuleEngine engine = new UnifiedRuleEngine(List.of(regex, structural));
         Optional<UnifiedRuleEngine.Hit> hit = engine.match("先检索制度再分析报销待审批");
         assertTrue(hit.isPresent());
         assertEquals("structural-plan", hit.get().ruleId());
-        assertEquals("plan-workflow", hit.get().plan().mode());
+        assertEquals("pro", hit.get().plan().mode());
     }
 
     @Test

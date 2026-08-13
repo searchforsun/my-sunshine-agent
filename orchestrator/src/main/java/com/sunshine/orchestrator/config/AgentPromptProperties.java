@@ -37,7 +37,6 @@ public class AgentPromptProperties {
         private IntentTimeline intent = new IntentTimeline();
         private java.util.LinkedHashMap<String, StepTimeline> steps = new java.util.LinkedHashMap<>();
         private HitlTimeline hitl = new HitlTimeline();
-        private PlanApprovalTimeline planApproval = new PlanApprovalTimeline();
         private AgentTimeline agent = new AgentTimeline();
         private RagAfterTimeline ragAfter = new RagAfterTimeline();
         private SandboxTimeline sandbox = new SandboxTimeline();
@@ -48,7 +47,6 @@ public class AgentPromptProperties {
             t.setIntent(fixtureIntent());
             t.setSteps(fixtureSteps());
             t.setHitl(fixtureHitl());
-            t.setPlanApproval(fixturePlanApproval());
             t.setAgent(fixtureAgent());
             t.setRagAfter(fixtureRagAfter());
             t.setSandbox(fixtureSandbox());
@@ -149,7 +147,7 @@ public class AgentPromptProperties {
         private static IntentTimeline fixtureIntent() {
             var intent = new IntentTimeline();
             intent.setBefore("识别用户意图");
-            intent.setActive("正在识别用户意图...");
+            intent.setActive("正在识别用户意图");
             intent.setLabel("识别意图");
             intent.setDefaultAfter("已完成意图识别");
             return intent;
@@ -163,15 +161,6 @@ public class AgentPromptProperties {
             hitl.setDenied("用户取消调用");
             hitl.setSkippedAfter("用户取消调用，已跳过");
             return hitl;
-        }
-
-        private static PlanApprovalTimeline fixturePlanApproval() {
-            var p = new PlanApprovalTimeline();
-            p.setAwaiting("等待确认执行计划");
-            p.setApproved("已确认执行计划");
-            p.setRegenerating("正在根据修改意见重新规划…");
-            p.setTimedOut("确认超时，将改由自主智能体继续");
-            return p;
         }
 
         private static AgentTimeline fixtureAgent() {
@@ -282,16 +271,6 @@ public class AgentPromptProperties {
         private String hitsWithQuery;
         private String zeroHits;
         private String genericDone;
-    }
-
-    @Getter
-    @Setter
-    public static class PlanApprovalTimeline {
-
-        private String awaiting;
-        private String approved;
-        private String regenerating;
-        private String timedOut;
     }
 
     @Getter

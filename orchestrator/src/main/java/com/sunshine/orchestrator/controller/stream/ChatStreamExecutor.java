@@ -14,7 +14,7 @@ import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
-import com.sunshine.orchestrator.execution.PlanWorkflowExecutor;
+import com.sunshine.orchestrator.execution.WorkflowResumeService;
 import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ChatStreamExecutor {
 
     private final ExecutionPlanStore executionPlanStore;
-    private final PlanWorkflowExecutor planWorkflowExecutor;
+    private final WorkflowResumeService workflowResumeService;
     private final ExecutionPlanParser executionPlanParser;
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanRouter executionPlanRouter;
@@ -72,18 +72,18 @@ public class ChatStreamExecutor {
 
         StringBuilder buffer = new StringBuilder();
         if (resume) {
-            boolean planWorkflowResume = executionPlanStore
+            boolean planRunResume = executionPlanStore
                     .findResumableForMessage(ctx.assistantMsgId()).isPresent();
-            boolean reactRestartResume = !planWorkflowResume && isReactStoredIntent(ctx.intent());
-            if (!planWorkflowResume && !reactRestartResume && StringUtils.hasText(ctx.existingContent())) {
+            boolean reactRestartResume = !planRunResume && isReactStoredIntent(ctx.intent());
+            if (!planRunResume && !reactRestartResume && StringUtils.hasText(ctx.existingContent())) {
                 buffer.append(ctx.existingContent());
             }
         }
-        boolean planWorkflowResumeOnResume = resume
+        boolean planRunResumeOnResume = resume
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
-        boolean reactRestartOnResume = resume && !planWorkflowResumeOnResume && isReactStoredIntent(ctx.intent());
+        boolean reactRestartOnResume = resume && !planRunResumeOnResume && isReactStoredIntent(ctx.intent());
         StringBuilder reasoningBuffer = new StringBuilder(
-                resume && !planWorkflowResumeOnResume && !reactRestartOnResume
+                resume && !planRunResumeOnResume && !reactRestartOnResume
                         ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepSerde.fromJson(ctx.existingStepsJson()));
@@ -195,7 +195,7 @@ public class ChatStreamExecutor {
             executionMode.set(ExecutionMode.PRO);
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan)
                     .withPersistedPlanId(resumablePlan.get().getId());
-            return prepareChunkFlux(planWorkflowExecutor.resumePaused(execCtx, resumablePlan.get()));
+            return prepareChunkFlux(workflowResumeService.resumePaused(execCtx, resumablePlan.get()));
         }
         if (ctx.intent() != null) {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());

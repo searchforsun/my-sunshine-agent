@@ -65,10 +65,8 @@ export function isExecutionPreference(raw: unknown): raw is ExecutionPreference 
   return raw === 'fast' || raw === 'pro' || raw === 'workflow'
 }
 
-/** 读路径兼容：auto/react→fast，plan-workflow→pro；未知回退 fast */
+/** 读路径仅认协议三值；未知/旧值一律回退 fast */
 export function normalizeExecutionPreference(raw: unknown): ExecutionPreference {
-  if (raw === 'pro' || raw === 'plan-workflow') return 'pro'
-  if (raw === 'workflow') return 'workflow'
-  if (raw === 'fast' || raw === 'auto' || raw === 'react') return 'fast'
+  if (isExecutionPreference(raw)) return raw
   return 'fast'
 }

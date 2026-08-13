@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.execution.retry;
 
-import com.sunshine.common.tool.PlanWorkflowExecutionPolicy;
+import com.sunshine.common.tool.WorkflowNodeExecutionPolicy;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.catalog.WorkflowNodeDefaultsRegistry;
 import com.sunshine.orchestrator.execution.NodeSpec;
@@ -24,11 +24,11 @@ public class NodeRetryPolicyResolver {
         this.toolSetResolver = toolSetResolver;
     }
 
-    public NodeRetryPolicy resolve(NodeSpec spec, boolean planWorkflow, String tenantId) {
-        PlanWorkflowExecutionPolicy policy = nodeDefaultsRegistry.policy();
-        PlanWorkflowExecutionPolicy.NodeDefaults defaults = policy.defaults();
+    public NodeRetryPolicy resolve(NodeSpec spec, boolean planRun, String tenantId) {
+        WorkflowNodeExecutionPolicy policy = nodeDefaultsRegistry.policy();
+        WorkflowNodeExecutionPolicy.NodeDefaults defaults = policy.defaults();
         String type = spec.type() != null ? spec.type() : "";
-        PlanWorkflowExecutionPolicy.NodeTypeOverride typeOverride =
+        WorkflowNodeExecutionPolicy.NodeTypeOverride typeOverride =
                 policy.byType() != null ? policy.byType().get(type) : null;
         int maxAttempts = firstPositive(
                 paramInt(spec, "retry.maxAttempts"),
@@ -49,8 +49,8 @@ public class NodeRetryPolicyResolver {
     private OnFailureAction resolveOnFailure(
             NodeSpec spec,
             String type,
-            PlanWorkflowExecutionPolicy policy,
-            PlanWorkflowExecutionPolicy.NodeDefaults defaults,
+            WorkflowNodeExecutionPolicy policy,
+            WorkflowNodeExecutionPolicy.NodeDefaults defaults,
             String tenantId) {
         String param = readParamString(spec, "retry.onFailure");
         if (StringUtils.hasText(param)) {
@@ -63,7 +63,7 @@ public class NodeRetryPolicyResolver {
                 return OnFailureAction.fromConfig(policy.criticalOnFailure());
             }
         }
-        PlanWorkflowExecutionPolicy.NodeTypeOverride typeOverride =
+        WorkflowNodeExecutionPolicy.NodeTypeOverride typeOverride =
                 policy.byType() != null ? policy.byType().get(type) : null;
         if (typeOverride != null && StringUtils.hasText(typeOverride.onFailure())) {
             return OnFailureAction.fromConfig(typeOverride.onFailure());

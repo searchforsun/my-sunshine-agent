@@ -55,7 +55,7 @@ public class ReactExecutor {
         return executeWithInjected(ctx, List.of(), query, skillId);
     }
 
-    /** plan-workflow 降级 ReAct - 注入已成功节点上下文 */
+    /** 节点失败降级 ReAct - 注入已成功节点上下文 */
     public Flux<StreamToken> executeWithInjected(ExecutionStreamContext ctx, List<String> injectedBlocks) {
         Map<String, String> params = ctx.plan() != null && ctx.plan().params() != null
                 ? ctx.plan().params() : Map.of();

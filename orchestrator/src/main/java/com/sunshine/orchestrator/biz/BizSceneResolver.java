@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * biz_scene 解析（authority §2.1 · K2）：agent 优先非空 → 否则 skillIds 第一非空 → 否则 null。
- * 非空码必须落在业务场景 Lab 且 active（闭集）；retired/未知码视为无效返回空并记 audit 日志。
+ * 非空码必须落在业务场景 Lab 且 active（闭集）；disabled/未知码视为无效返回空并记 audit 日志。
  */
 @Slf4j
 public final class BizSceneResolver {

@@ -126,7 +126,7 @@ public class LlmGatewayClient {
     // ==================== 公共底层 API（供内部调用方） ====================
 
     /**
-     * 原始请求体补全 — 供 IntentRouter / WorkflowPlanner 等需要自定义请求体的调用方。
+     * 原始请求体补全 — 供 IntentRouter / Planner 等需要自定义请求体的调用方。
      * 调用方自行构造 model / messages / temperature 等字段；可含 fallback_model。
      */
     public Mono<Map<String, Object>> completeRaw(Map<String, Object> requestBody) {

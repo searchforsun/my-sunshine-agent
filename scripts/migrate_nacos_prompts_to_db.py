@@ -31,8 +31,7 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "mode-overlay.react-restart": "ReAct 继续生成叠加层：中断后续跑时接着已有进度，勿从头规划。",
     "mode-overlay.subagent": "子 Agent 叠加层：spawn/workflow 子任务内的角色与工具使用约束。",
     "mode-overlay.workflow": "Workflow 模式叠加层：静态/计划工作流节点执行时的补充行为约束。",
-    "intent.classifier": "意图分类：将用户问题映射为执行模式（react / workflow / plan-workflow）及可选参数。",
-    "planner.prompt": "动态规划器：根据用户问题生成 Plan JSON（节点与边），供 plan-workflow 校验与执行。",
+    "intent.classifier": "意图分类：将用户问题映射为执行模式（fast / pro / workflow）及可选参数。",
     "answer.template": "Answer 节点终态作答模板：综合上游节点输出，面向用户生成 Markdown 结论。",
     "answer.overlay": "Answer 覆盖层：在 answer 模板之上追加的补充约束（可为空）。",
     "rewrite.intent": "意图补全改写：结合近期对话补全过短输入并还原指代，供意图路由使用。",
@@ -42,13 +41,9 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "sandbox.cancel-result": "沙箱工具取消回执：用户取消 exec/grep/glob 后回给主 Agent 的说明（含剩余次数）。",
     "sandbox.budget-exhausted": "沙箱取消预算耗尽：同族工具再调用次数用尽时，提示模型改方案或直接作答。",
     "react.subagent.cancel-result": "子任务取消回执：用户取消 spawn_subagent 后，提示主 Agent 自行接手原任务。",
-    "plan-workflow.replan-feedback": "Plan 校验失败反馈：把校验错误注入 Planner，要求修正后重输出一行 Plan JSON。",
-    "plan-workflow.user-modification": "用户改计划：把用户对 DAG 的修改意见注入 Planner，触发重新规划。",
-    "plan-workflow.upstream-failure-line": "上游失败说明行：answer 解析上游占位时，失败节点注入的降级说明文案。",
     "timeline.intent": "意图步骤时间线：识别意图步骤的 label 与 before/active/after（含各模式 after 文案）。",
     "timeline.hitl": "HITL 步骤时间线：等待用户确认写操作时的展示文案。",
     "timeline.agent": "Agent 节点时间线：workflow/plan 中 agent 节点的展示与摘要模板。",
-    "timeline.plan-approval": "Plan 确认步骤时间线：等待用户确认执行计划时的展示文案。",
     "timeline.rag-after": "RAG 完成后文案：检索步骤结束后写入 after 的摘要模板。",
     "timeline.sandbox": "沙箱步骤时间线：沙箱相关工具/工作区步骤的展示文案。",
     "timeline.steps.think": "时间线「思考/推理」步骤的 before/active/after 展示文案。",
@@ -77,7 +72,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "mode-overlay.subagent": "模式覆盖 · Subagent",
     "mode-overlay.workflow": "模式覆盖 · Workflow",
     "intent.classifier": "意图分类提示词",
-    "planner.prompt": "Planner 提示词",
     "answer.template": "Answer 模板",
     "answer.overlay": "Answer 覆盖层",
     "scope-prompt": "Scope 提示词",
@@ -88,7 +82,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "timeline.intent": "时间线 · Intent",
     "timeline.hitl": "时间线 · HITL",
     "timeline.sandbox": "时间线 · Sandbox",
-    "timeline.plan-approval": "时间线 · Plan 确认",
     "timeline.agent": "时间线 · Agent 节点",
     "timeline.rag-after": "时间线 · RAG after",
 }
@@ -182,17 +175,6 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
             content_text=intent["classifier-prompt"],
             content_json=None,
             description=PURPOSE_DESCRIPTIONS.get("intent.classifier", "意图分类"),
-        ))
-
-    planner = agent.get("planner") or {}
-    if isinstance(planner, dict) and isinstance(planner.get("prompt"), str):
-        seeds.append(PromptSeed(
-            id="planner.prompt",
-            kind="planner",
-            display_name=display_name_for("planner.prompt"),
-            content_text=planner["prompt"],
-            content_json=None,
-            description=PURPOSE_DESCRIPTIONS.get("planner.prompt", "动态规划器"),
         ))
 
     for src_key, pid in (

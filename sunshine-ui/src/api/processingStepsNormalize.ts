@@ -10,7 +10,7 @@ function isThinkStepId(id: string): boolean {
   return id === 'think' || id.startsWith('think-')
 }
 
-/** plan-workflow / 静态 workflow 的节点级 reasoning，不走 ReAct think 步骤 */
+/** 静态 Workflow 的节点级 reasoning，不走 ReAct think 步骤 */
 export function isWorkflowNodeStepId(id: string | undefined): boolean {
   return !!id && id.startsWith('node-')
 }

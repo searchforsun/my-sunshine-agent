@@ -57,9 +57,6 @@ export interface ExecutionPlanDetail {
   conversationId: string
   messageId: string
   status: string
-  plannerModel?: string
-  plannerReason?: string
-  rejectReason?: string
   plan: PlanGraph
   validatedPlan?: PlanGraph
   nodes: PlanNodeTrace[]
@@ -73,7 +70,6 @@ export interface ExecutionPlanSummary {
   id: string
   messageId: string
   status: string
-  plannerReason?: string
   createdAt?: string
   completedAt?: string
 }

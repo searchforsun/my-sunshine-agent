@@ -49,7 +49,7 @@ public class SdkDiscoveryPuller {
             String appId = entry.getKey();
             ServiceInstance instance = entry.getValue();
             seenAppIds.add(appId);
-            pullFromInstance(appId, instance.getServiceId(), instance, timeout);
+            pullFromInstance(appId, instance.getServiceId(), timeout);
         }
 
         sdkApplicationRepository.findAll().forEach(app -> {
@@ -73,7 +73,7 @@ public class SdkDiscoveryPuller {
             sdkApplicationRepository.save(app);
             throw new BizException(ToolErrorCode.SDK_APP_OFFLINE);
         }
-        pullFromInstance(appId, app.getNacosService(), instances.getFirst(), timeout);
+        pullFromInstance(appId, app.getNacosService(), timeout);
     }
 
     private Map<String, ServiceInstance> discoverToolAppInstances() {
@@ -93,14 +93,10 @@ public class SdkDiscoveryPuller {
                 .toList();
     }
 
-    private void pullFromInstance(String appId, String nacosService, ServiceInstance instance, Duration timeout) {
-        var catalog = sdkCatalogClient.fetchCatalog(
-                instance.getHost(),
-                instance.getPort(),
-                "/sunshine/tools/catalog",
-                timeout);
+    private void pullFromInstance(String appId, String nacosService, Duration timeout) {
+        var catalog = sdkCatalogClient.fetchCatalog(nacosService, "/sunshine/tools/catalog", timeout);
         if (catalog == null) {
-            log.warn("[SdkDiscoveryPuller] empty catalog appId={} instance={}:{}", appId, instance.getHost(), instance.getPort());
+            log.warn("[SdkDiscoveryPuller] empty catalog appId={} service={}", appId, nacosService);
             return;
         }
         sdkCatalogUpsertService.upsert(appId, nacosService, catalog);

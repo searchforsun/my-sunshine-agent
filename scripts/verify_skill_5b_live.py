@@ -67,21 +67,9 @@ def setup_auth() -> tuple[str, str]:
     return token, conv_id
 
 
-def confirm_plan(token: str, approval_token: str) -> bool:
-    body = auth_json(
-        "POST",
-        "/api/chat/confirm-plan",
-        {"token": approval_token, "action": "approve"},
-        token,
-    )
-    data = body.get("data") or body
-    return data.get("accepted") is True
-
-
-def collect_sse_with_plan_approval(token: str, conv_id: str, query: str) -> list[dict]:
-    """消费 SSE；若 plan 步进入用户确认则自动 approve。"""
+def collect_sse(token: str, conv_id: str, query: str) -> list[dict]:
+    """消费 SSE 收集步骤。"""
     steps: list[dict] = []
-    approved_tokens: set[str] = set()
     error: Exception | None = None
     done = threading.Event()
 
@@ -112,15 +100,6 @@ def collect_sse_with_plan_approval(token: str, conv_id: str, query: str) -> list
                     if obj.get("type") != "step":
                         continue
                     steps.append(obj)
-                    if str(obj.get("id")) != "plan":
-                        continue
-                    pa = (obj.get("metadata") or {}).get("planApproval") or {}
-                    approval_token = pa.get("token")
-                    status = pa.get("status")
-                    if approval_token and status == "awaiting" and approval_token not in approved_tokens:
-                        approved_tokens.add(approval_token)
-                        ok = confirm_plan(token, approval_token)
-                        print(f"[skill-5b] auto approve plan token={approval_token[:8]}... accepted={ok}")
         except Exception as e:
             error = e
         finally:
@@ -225,7 +204,7 @@ def main() -> int:
     token, conv_id = setup_auth()
     print(f"[skill-5b] conversationId={conv_id}")
 
-    raw = collect_sse_with_plan_approval(token, conv_id, args.query)
+    raw = collect_sse(token, conv_id, args.query)
     steps = raw
     step_ids = [str(s.get("id")) for s in steps]
     print(f"[skill-5b] SSE steps ({len(steps)}): {step_ids}")
@@ -291,8 +270,8 @@ def main() -> int:
             status = detail.get("status")
             nodes = (detail.get("validatedPlan") or detail.get("plan") or {}).get("nodes") or []
             print(f"[skill-5b] execution-plan status={status} nodes={len(nodes)}")
-            if status in ("rejected", "failed"):
-                print(f"WARN: plan 终态 {status} reject={detail.get('rejectReason')}", file=sys.stderr)
+            if status == "failed":
+                print(f"WARN: plan 终态 {status}", file=sys.stderr)
                 return 2
         except Exception as e:
             print(f"WARN: GET execution-plans 失败: {e}", file=sys.stderr)

@@ -72,14 +72,14 @@ export function useBizScenesPage() {
     selectedCode.value = code
   }
 
-  /** 启用/禁用开关：active | retired */
+  /** 启用/禁用开关：active | disabled */
   async function toggleEnabled(scene: BizSceneEntry, v: boolean) {
     saving.value = true
     try {
-      const updated = await updateBizScene(scene.bizScene, { status: v ? 'active' : 'retired' })
+      const updated = await updateBizScene(scene.bizScene, { status: v ? 'active' : 'disabled' })
       const idx = scenes.value.findIndex(s => s.bizScene === scene.bizScene)
       if (idx >= 0) scenes.value[idx] = updated
-      message.success(v ? '已启用' : '已退役')
+      message.success(v ? '已启用' : '已禁用')
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '操作失败'))
     } finally {
@@ -114,7 +114,7 @@ export function useBizScenesPage() {
 
   // ---- 码表编辑（弹窗）----
   const showEdit = ref(false)
-  const editDraft = ref({ bizScene: '', displayName: '', description: '', status: 'active' })
+  const editDraft = ref({ bizScene: '', displayName: '', description: '' })
   const editing = ref(false)
 
   function openEdit(scene: BizSceneEntry) {
@@ -122,7 +122,6 @@ export function useBizScenesPage() {
       bizScene: scene.bizScene,
       displayName: scene.displayName,
       description: scene.description ?? '',
-      status: scene.status === 'active' ? 'active' : 'retired',
     }
     showEdit.value = true
   }
@@ -134,7 +133,6 @@ export function useBizScenesPage() {
       await updateBizScene(editDraft.value.bizScene.trim(), {
         displayName: editDraft.value.displayName.trim(),
         description: editDraft.value.description.trim(),
-        status: editDraft.value.status,
       })
       showEdit.value = false
       await refreshAll()

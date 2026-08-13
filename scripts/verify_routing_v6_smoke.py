@@ -377,15 +377,15 @@ def judge_v1(r: dict) -> tuple[bool, str]:
     if r["http_code"] >= 400:
         return False, f"unexpected http={r['http_code']}"
     intent = str(r.get("intent") or "")
-    # 协议 wire：fast；兼容旧 react 标签
-    if intent in ("fast", "react") or intent.startswith("fast"):
+    # 协议 wire：fast
+    if intent == "fast" or intent.startswith("fast"):
         return True, f"intent={intent}"
     # 无 intent 时：有 think 且无 worker harness 步，视为 ReAct 路径
     sig = r["signals"]
     if sig["think_steps"] and not sig["worker_steps"] and not r.get("notebook_key"):
         return True, f"sse:think×{len(sig['think_steps'])} (no harness notebook)"
     if r.get("status") == "completed" and not r.get("notebook_key") and not sig["worker_steps"]:
-        if intent.startswith("workflow:") or intent in ("pro", "plan-workflow"):
+        if intent.startswith("workflow:") or intent == "pro":
             return False, f"wrong path intent={intent}"
         return True, f"completed without harness; intent={intent or '(none)'}"
     return False, f"not ReAct-like intent={intent!r} status={r.get('status')}"
@@ -399,8 +399,8 @@ def judge_v3(r: dict, *, yaml_harness: bool) -> tuple[bool, str]:
             hint = " yaml harness.enabled=false"
         return False, f"http={r['http_code']}{hint} raw_has_err={WORKFLOW_MISS_HINT in (r.get('raw') or '')}"
     intent = str(r.get("intent") or "")
-    if intent in ("fast", "react") and not r.get("notebook_key") and not r.get("log_hit"):
-        return False, f"silently fell to fast/react intent={intent}"
+    if intent == "fast" and not r.get("notebook_key") and not r.get("log_hit"):
+        return False, f"silently fell to fast intent={intent}"
     evidence = []
     if r.get("notebook_key"):
         evidence.append(f"redis:{r['notebook_key']}")
@@ -411,7 +411,7 @@ def judge_v3(r: dict, *, yaml_harness: bool) -> tuple[bool, str]:
         evidence.append(f"sse:plan×{len(sig['plan_steps'])}")
     if sig["worker_steps"]:
         evidence.append(f"sse:worker×{len(sig['worker_steps'])}")
-    if intent in ("pro", "plan-workflow"):
+    if intent == "pro":
         evidence.append(f"intent={intent}")
     if evidence and (r.get("notebook_key") or r.get("log_hit") or sig["plan_steps"] or sig["worker_steps"]):
         return True, ",".join(evidence)
@@ -432,11 +432,11 @@ def judge_v4(r: dict) -> tuple[bool, str]:
         return True, f"workflowId={wf} intent={intent}"
     if intent.startswith("workflow:") and wf:
         return True, f"workflowId={wf} intent={intent}"
-    # plan 画布步 + 非 react 成功
+    # plan 画布步 + 非 fast/pro 成功
     sig = r["signals"]
-    if sig["plan_steps"] and intent not in ("fast", "react", "pro", "plan-workflow"):
+    if sig["plan_steps"] and intent not in ("fast", "pro"):
         return True, f"sse:plan + intent={intent}"
-    if intent in ("fast", "react") or (r.get("status") == "completed" and not wf and not intent.startswith("workflow:")):
+    if intent == "fast" or (r.get("status") == "completed" and not wf and not intent.startswith("workflow:")):
         return False, f"degraded to ReAct intent={intent!r}"
     return False, f"not static workflow intent={intent!r} workflowId={wf!r}"
 
@@ -456,14 +456,14 @@ def judge_v5(r: dict) -> tuple[bool, str]:
     status = r.get("status")
     if status == "failed":
         return True, f"assistant failed intent={intent!r}"
-    if status == "completed" and (intent in ("fast", "react") or intent.startswith("fast")):
+    if status == "completed" and intent.startswith("fast"):
         return False, f"silently degraded to ReAct success intent={intent}"
     if status == "completed" and intent.startswith("workflow:"):
         return False, f"unexpected workflow hit intent={intent}"
     if status == "completed":
         return False, f"completed without failure intent={intent!r} (must not succeed as ReAct)"
-    # interrupted / none：若无 react 成功内容，可接受为未完成失败路径
-    if status in (None, "interrupted") and intent not in ("fast", "react"):
+    # interrupted / none：若无 fast 成功内容，可接受为未完成失败路径
+    if status in (None, "interrupted") and intent != "fast":
         if miss or r["http_code"] >= 400:
             return True, f"non-success status={status}"
     return False, f"expected workflow miss failure; got http={r['http_code']} status={status} intent={intent!r}"

@@ -22,11 +22,11 @@ public class McpJsonRpcClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String PROTOCOL_VERSION = "2024-11-05";
 
-    private final WebClient webClient;
-
-    public McpJsonRpcClient(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.build();
-    }
+    /**
+     * SSE 目标为配置的 endpoint URL 直连，不经过 Nacos 服务发现，
+     * 故不经容器注入 WebClient.Builder（sunshine-common 的 @LoadBalanced 增强会把 IP 当服务名解析）。
+     */
+    private final WebClient webClient = WebClient.create();
 
     public List<McpToolDescriptor> listTools(McpServerEntity server, Duration timeout) {
         try (McpTransport transport = openTransport(server, timeout)) {

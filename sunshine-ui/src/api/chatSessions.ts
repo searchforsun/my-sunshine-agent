@@ -343,14 +343,14 @@ export function useChatSessions(
     const resolveTarget = (): ChatMessage =>
       s.messages.find(m => m.id === resumeMessageId && m.role === 'assistant') ?? target
 
-    const planWorkflowResume = target.steps?.some(
+    const planRunResume = target.steps?.some(
       step => step.id.startsWith('node-') && step.lifecycle === 'paused',
     )
-    const executionRestart = !planWorkflowResume
+    const executionRestart = !planRunResume
       && resolveResumeMode(target) === 'regenerate'
       && isExecutionRestartMessage(target)
     const reactRestart = false
-    if (planWorkflowResume) {
+    if (planRunResume) {
       target.content = ''
       target.reasoning = ''
       target.contentBlocks = undefined
@@ -383,7 +383,7 @@ export function useChatSessions(
       target.reasoning = ''
     }
     stripPlanDrawerLeakFromMessage(target)
-    if (executionRestart || planWorkflowResume) bumpAssistantMessage(s)
+    if (executionRestart || planRunResume) bumpAssistantMessage(s)
 
     s.loading = true
     target.status = 'streaming'

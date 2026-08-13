@@ -128,7 +128,7 @@ def chat_sse_live(token: str, conv_id: str, query: str, *, wait: bool = True) ->
     def run() -> None:
         try:
             headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-            body = {"content": query, "conversationId": conv_id, "executionPreference": "react"}
+            body = {"content": query, "conversationId": conv_id, "executionPreference": "fast"}
             with requests.post(
                 f"{GATEWAY_URL}/api/chat/stream",
                 headers=headers,

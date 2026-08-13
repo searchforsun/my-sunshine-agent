@@ -266,14 +266,6 @@ public final class ProcessingTimelineSession {
         completions.completePlanAt(after, detail, endedAt);
     }
 
-    public void beginPlanAwaitingApproval(String detail, StepMetadata metadata) {
-        completions.beginPlanAwaitingApproval(detail, metadata);
-    }
-
-    public void updatePlanApproval(StepMetadata metadata, String activeSummary) {
-        completions.updatePlanApproval(metadata, activeSummary);
-    }
-
     public void completeSkillLoad(String skillId) {
         completions.completeSkillLoad(skillId);
     }

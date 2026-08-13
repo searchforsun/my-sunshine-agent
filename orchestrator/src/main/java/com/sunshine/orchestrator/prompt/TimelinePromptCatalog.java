@@ -8,7 +8,6 @@ import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.config.AgentPromptProperties.AgentTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.HitlTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.IntentTimeline;
-import com.sunshine.orchestrator.config.AgentPromptProperties.PlanApprovalTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.RagAfterTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.SandboxTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.StepTimeline;
@@ -82,10 +81,6 @@ public class TimelinePromptCatalog {
         return parseJson("timeline.hitl", HitlTimeline.class, HitlTimeline::new);
     }
 
-    public PlanApprovalTimeline planApproval() {
-        return parseJson("timeline.plan-approval", PlanApprovalTimeline.class, PlanApprovalTimeline::new);
-    }
-
     public AgentTimeline agent() {
         return parseJson("timeline.agent", AgentTimeline.class, AgentTimeline::new);
     }
@@ -153,7 +148,6 @@ public class TimelinePromptCatalog {
         AgentPromptProperties.Timeline fixture = AgentPromptProperties.Timeline.fixture();
         entries.add(jsonEntry("timeline.intent", writeJson(fixture.getIntent())));
         entries.add(jsonEntry("timeline.hitl", writeJson(fixture.getHitl())));
-        entries.add(jsonEntry("timeline.plan-approval", writeJson(fixture.getPlanApproval())));
         entries.add(jsonEntry("timeline.agent", writeJson(fixture.getAgent())));
         entries.add(jsonEntry("timeline.rag-after", writeJson(fixture.getRagAfter())));
         entries.add(jsonEntry("timeline.sandbox", writeJson(fixture.getSandbox())));

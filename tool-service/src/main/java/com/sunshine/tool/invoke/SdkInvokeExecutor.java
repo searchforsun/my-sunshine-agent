@@ -8,7 +8,6 @@ import com.sunshine.tool.exception.ToolErrorCode;
 import com.sunshine.tool.repo.SdkApplicationRepository;
 import com.sunshine.tools.sdk.dto.SdkToolInvokeResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,9 +15,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Component
@@ -28,9 +25,9 @@ public class SdkInvokeExecutor {
 
     private final DiscoveryClient discoveryClient;
     private final SdkApplicationRepository sdkApplicationRepository;
+    /** 注入 sunshine-common 的 @LoadBalanced WebClient.Builder，按 Nacos 服务名解析实例。 */
     private final WebClient webClient;
     private final ToolIntegrationProperties properties;
-    private final AtomicInteger roundRobin = new AtomicInteger();
 
     public SdkInvokeExecutor(
             DiscoveryClient discoveryClient,
@@ -46,13 +43,11 @@ public class SdkInvokeExecutor {
     public String invoke(ToolDefinitionEntity tool, Map<String, String> params, String userId, String tenantId) {
         SdkApplicationEntity app = sdkApplicationRepository.findById(tool.getSourceRef())
                 .orElseThrow(() -> new BizException(ToolErrorCode.SDK_APP_NOT_FOUND));
-        ServiceInstance instance = pickInstance(app.getNacosService());
-        if (instance == null) {
+        if (!hasOnlineInstance(app.getNacosService())) {
             throw new BizException(ToolErrorCode.SDK_APP_OFFLINE);
         }
         String invokePath = StringUtils.hasText(app.getInvokePath()) ? app.getInvokePath() : "/sunshine/tools/invoke";
-        String url = "http://" + instance.getHost() + ":" + instance.getPort()
-                + invokePath + "/" + tool.getExternalName();
+        String url = "http://" + app.getNacosService() + invokePath + "/" + tool.getExternalName();
         Duration timeout = Duration.ofSeconds(Math.max(5, properties.getSdk().getInvokeTimeoutSeconds()));
         Map<String, String> body = params != null ? params : Map.of();
 
@@ -86,14 +81,8 @@ public class SdkInvokeExecutor {
         return response.result() != null ? response.result() : "";
     }
 
-    private ServiceInstance pickInstance(String nacosService) {
-        List<ServiceInstance> instances = discoveryClient.getInstances(nacosService).stream()
-                .filter(i -> "true".equalsIgnoreCase(i.getMetadata().get(META_TOOL_APP)))
-                .toList();
-        if (instances.isEmpty()) {
-            return null;
-        }
-        int idx = Math.floorMod(roundRobin.getAndIncrement(), instances.size());
-        return instances.get(idx);
+    private boolean hasOnlineInstance(String nacosService) {
+        return discoveryClient.getInstances(nacosService).stream()
+                .anyMatch(i -> "true".equalsIgnoreCase(i.getMetadata().get(META_TOOL_APP)));
     }
 }

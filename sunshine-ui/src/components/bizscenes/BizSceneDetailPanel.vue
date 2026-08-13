@@ -20,14 +20,6 @@ function formatTs(ts?: string | null): string {
       <div class="detail-title-block">
         <div class="detail-name-row">
           <h3>{{ page.selectedScene!.bizScene }}</h3>
-          <NTag
-            size="small"
-            :bordered="false"
-            round
-            :type="page.selectedScene!.status === 'active' ? 'success' : 'warning'"
-          >
-            {{ page.selectedScene!.status === 'active' ? '启用' : '退役' }}
-          </NTag>
         </div>
         <div class="detail-meta-inline">
           <span class="detail-subtitle">{{ page.selectedScene!.displayName }}</span>

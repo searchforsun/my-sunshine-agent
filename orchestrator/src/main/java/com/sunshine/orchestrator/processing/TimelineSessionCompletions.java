@@ -49,22 +49,6 @@ final class TimelineSessionCompletions {
         }
     }
 
-    void beginPlanAwaitingApproval(String detail, StepMetadata metadata) {
-        long ts = System.currentTimeMillis();
-        emitter.apply(TimelineStepId.PLAN.id(), TimelineStepId.PLAN.phase(), EventKind.PENDING,
-                summaries.resolveBefore(TimelineStepId.PLAN.id()), null);
-        startAt(TimelineStepId.PLAN.id(), TimelineStepId.PLAN.phase(), ts);
-        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.PROGRESS, PlanApprovalLabels.awaiting(), detail, metadata, ts);
-        state.activeStepId = TimelineStepId.PLAN.id();
-    }
-
-    void updatePlanApproval(StepMetadata metadata, String activeSummary) {
-        String summary = activeSummary != null && !activeSummary.isBlank()
-                ? activeSummary
-                : PlanApprovalLabels.awaiting();
-        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.PROGRESS, summary, null, metadata, System.currentTimeMillis());
-    }
-
     void completeSkillLoad(String skillId) {
         if (skillId == null || skillId.isBlank()) {
             return;

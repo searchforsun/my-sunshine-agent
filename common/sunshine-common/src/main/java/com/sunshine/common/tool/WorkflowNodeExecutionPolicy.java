@@ -5,9 +5,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 
-/** Plan / Workflow 节点默认重试策略 SSOT；节点级覆盖见 Studio params retry.* */
+/** Workflow 节点默认重试策略 SSOT；节点级覆盖见 Studio params retry.* */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record PlanWorkflowExecutionPolicy(
+public record WorkflowNodeExecutionPolicy(
         NodeDefaults defaults,
         Map<String, NodeTypeOverride> byType,
         String criticalOnFailure) {
@@ -16,8 +16,8 @@ public record PlanWorkflowExecutionPolicy(
      * 冷启动 / 测试占位。运行时以 workflow-manager Nacos → HTTP `/node-defaults` 为准；
      * 禁止在 fetch 失败时反复回退到本方法覆盖已成功加载的策略。
      */
-    public static PlanWorkflowExecutionPolicy platformDefault() {
-        return new PlanWorkflowExecutionPolicy(
+    public static WorkflowNodeExecutionPolicy platformDefault() {
+        return new WorkflowNodeExecutionPolicy(
                 new NodeDefaults(2, 500L, 2.0, "continue",
                         List.of("TIMEOUT", "SERVICE_UNAVAILABLE", "CIRCUIT_OPEN")),
                 Map.of(
