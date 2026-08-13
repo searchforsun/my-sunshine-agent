@@ -1,13 +1,13 @@
 # Kind · Biz-Scene Lab · Toolset Axis Implementation Plan
 
-> **状态**：⬜ 待执行  
-> **Spec**：[kind-biz-scene-catalog](../specs/2026-08-13-kind-biz-scene-catalog-design.md) · [business-context-authority](../specs/2026-08-13-business-context-authority-design.md) §2.1（解析算法）  
+> **状态**：✅ 已实现（K0～K4 全绿；Live `scripts/verify_kind_biz_scene_live.py`）  
+> **Spec**：[kind-biz-scene-catalog](../specs/archive/2026-08-13-kind-biz-scene-catalog-design.md) · [business-context-authority](../specs/2026-08-13-business-context-authority-design.md) §2.1（解析算法）  
 > **前置**：routing v6 + H-5 ✅（`fast|pro|workflow`；会话 `kind` 已透传）· H-6 ✅  
 > **本 plan 不做（仍延期）**：H-7 Live；阶段 D / R-4；完整业务权威装载（Policy∥任务板∥偏好注入 Prompt，属 business-context 后续）；Tool/Workflow 挂 `biz_scene`；独立场景分类器 / HITL 选场景  
 >
 > **分期**：K0 工具集轴 → K1 资源 `kind` 过滤 → K2 业务场景 Lab → K3 退役 react-prompt → K4 上下文分栏  
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 默认工具集与资源可发现面按会话 **`kind=chat|task`** 对齐；侧栏独立 **业务场景 Lab** 成为 `biz_scene` 闭集 SSOT；退役 Catalog `react-prompt` / `reactPromptId`；上下文管理页按 kind 分栏。
 
@@ -91,7 +91,7 @@ conversation.kind == task → resolveTaskTools(tenant)
 - Produces: 新全局 set id；`toolIds(kind, tenant)` 双读旧集
 - Consumes: 无
 
-- [ ] **Step 1: 写失败单测**
+- [x] **Step 1: 写失败单测**
 
 ```java
 @Test
@@ -109,27 +109,27 @@ void pathWire_isChatOrTaskOnly() {
 }
 ```
 
-- [ ] **Step 2: 跑测确认失败**
+- [x] **Step 2: 跑测确认失败**
 
 Run: `mvn test -pl tool-service -Dtest=ToolSetKindMigrationTest -q`  
 Expected: FAIL（尚无 CHAT_DEFAULT / path()）
 
-- [ ] **Step 3: 改枚举 + DDL 种子**
+- [x] **Step 3: 改枚举 + DDL 种子**
 
 - 枚举加 `path()` 返回 `chat`/`task`；保留旧 globalType 字段值**或**改为新 type 并在 MemberService 双查旧 type/id  
 - SQL：`INSERT` `global-chat-default` / `global-task-default`；**保留**旧两行供双读（或同文件注释说明已有环境靠服务双读）  
 - `tool_set_member.critical` 注释改为「仅 task 默认集有效」
 
-- [ ] **Step 4: MemberService 双读**
+- [x] **Step 4: MemberService 双读**
 
 `toolIds`：加载新 set 成员；若空（或显式 merge 策略）再加载旧 id 成员并去重。Admin `pageMembers` / add / remove：**只**操作新 set（首次写入时 ensure 新 set 存在）。
 
-- [ ] **Step 5: 跑测通过 + 更新旧测试夹具**
+- [x] **Step 5: 跑测通过 + 更新旧测试夹具**
 
 Run: `mvn test -pl tool-service -Dtest=ToolSetKindMigrationTest,ToolSetMemberServiceTest -q`  
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tool-service docker/mysql/init/16-sunshine-tool-service.sql
@@ -157,7 +157,7 @@ EOF
 - Consumes: Task1 Runtime API
 - **装集入口**须能读到 `conversation.kind`（已有则透传；缺省按 `chat`）
 
-- [ ] **Step 1: 改 Resolver 测试为新方法名 + kind 分支**
+- [x] **Step 1: 改 Resolver 测试为新方法名 + kind 分支**
 
 ```java
 @Test
@@ -169,21 +169,21 @@ void resolveTaskTools_intersectsEnabledPool() { /* 原 plan-workflow */ }
 
 并加工厂/执行路径测试：`kind=task` → 调 `resolveTaskTools`，**不**调 chat。
 
-- [ ] **Step 2: 跑测确认失败**
+- [x] **Step 2: 跑测确认失败**
 
 Run: `mvn test -pl orchestrator -Dtest=ToolSetResolverTest -q`  
 Expected: FAIL（方法未改名）
 
-- [ ] **Step 3: 实现 Client + Resolver + 调用点**
+- [x] **Step 3: 实现 Client + Resolver + 调用点**
 
 全量替换 `resolveReactTools` → 按 kind 分支；**禁止** `executionMode==PRO` 再选另一套默认集。Harness / ReAct MAIN 均：`chat→chat集`，`task→task集`。
 
-- [ ] **Step 4: 跑相关测试**
+- [x] **Step 4: 跑相关测试**
 
 Run: `mvn test -pl orchestrator -Dtest=ToolSetResolverTest,DynamicToolkitFactoryTest,HarnessPlannerTest,PlannerHarnessLoopTest -q`  
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -208,16 +208,16 @@ EOF
 - Consumes: Task1 Admin `.../sets/chat|task/...`
 - Produces: UI 子 Tab 文案 **chat / task**（可用中文「对话默认」「任务默认」，path 仍英文）
 
-- [ ] **Step 1: 改 `ToolSetKindPath` 与 `subTab`**
+- [x] **Step 1: 改 `ToolSetKindPath` 与 `subTab`**
 
 `subTab: 'chat' | 'task'`；critical 开关仅 `task` 显示（原 plan-workflow 行为）。
 
-- [ ] **Step 2: 类型检查 / 构建**
+- [x] **Step 2: 类型检查 / 构建**
 
 Run: `cd sunshine-ui && npx vue-tsc --noEmit`（或项目惯用检查）  
 Expected: 无 ToolSetKindPath 相关错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -247,7 +247,7 @@ EOF
 - Produces: `filterByConversationKind(entries, sessionKind)`（或等价内联）
 - Consumes: 会话 `kind`（RoutingContext / Conversation 已有）
 
-- [ ] **Step 1: 写过滤单测**
+- [x] **Step 1: 写过滤单测**
 
 ```java
 @Test
@@ -258,12 +258,12 @@ void filter_keepsAllAndMatchingKind() {
 }
 ```
 
-- [ ] **Step 2: 跑测 FAIL → 实现 DDL + entity + filter 接线 → PASS**
+- [x] **Step 2: 跑测 FAIL → 实现 DDL + entity + filter 接线 → PASS**
 
 Run: `mvn test -pl orchestrator -Dtest=ResourceKindFilterTest,SkillCatalogServiceTest -q`  
 另：`mvn test -pl resource-manager -Dtest=…`（Admin 序列化若有测）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -292,9 +292,9 @@ EOF
 - Produces: `isActiveBizScene(tenant, code) → boolean` 供 Skill/Agent 保存校验
 - Consumes: 无
 
-- [ ] **Step 1: 写 Admin 单测（创建 / retired 拒绝新绑）**
-- [ ] **Step 2: FAIL → DDL + Service + Controller → PASS**
-- [ ] **Step 3: Commit**
+- [x] **Step 1: 写 Admin 单测（创建 / retired 拒绝新绑）**
+- [x] **Step 2: FAIL → DDL + Service + Controller → PASS**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -322,9 +322,9 @@ EOF
 - Consumes: Task5 Lab；K1 Catalog 元数据  
 - **不做**：完整 Policy∥任务板∥偏好装载（标 `// 权威层 P3：business-context 后续`）
 
-- [ ] **Step 1: Resolver 单测（agent 优先、空跳过、retired→null）**
-- [ ] **Step 2: 实现 + 召回后接线 → PASS**
-- [ ] **Step 3: Commit**
+- [x] **Step 1: Resolver 单测（agent 优先、空跳过、retired→null）**
+- [x] **Step 2: 实现 + 召回后接线 → PASS**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -348,9 +348,9 @@ EOF
 **Interfaces:**
 - Consumes: Task5 Admin API
 
-- [ ] **Step 1: 路由 + 空页可打开**
-- [ ] **Step 2: 码表 CRUD + Policy 邻接 Tab**
-- [ ] **Step 3: Commit**
+- [x] **Step 1: 路由 + 空页可打开**
+- [x] **Step 2: 码表 CRUD + Policy 邻接 Tab**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -383,14 +383,14 @@ EOF
 | `react-prompt.travel-budget` | Lab `travel-budget` + Skill |
 | `react-prompt.demo-scenario` | **删除**（兜底改靠 mode-overlay.react） |
 
-- [ ] **Step 1: 列出 grep 命中并改测试为「无该字段」**
-- [ ] **Step 2: 删协议 + Composer + UI + SQL → 测试全绿**
-- [ ] **Step 3: 仓库 grep 确认**
+- [x] **Step 1: 列出 grep 命中并改测试为「无该字段」**
+- [x] **Step 2: 删协议 + Composer + UI + SQL → 测试全绿**
+- [x] **Step 3: 仓库 grep 确认**
 
 Run: `rg -n 'reactPromptId|react-prompt' --glob '!docs/**' --glob '!**/plans/**' --glob '!**/specs/**'`  
 Expected: 无业务命中（或仅历史注释待删）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -415,9 +415,9 @@ EOF
 **Interfaces:**
 - Consumes: 会话列表 API 已有 `kind` 字段（若无则补 BFF/orch 列表投影）
 
-- [ ] **Step 1: 列表分栏 + 选中会话驱动 Tab**
-- [ ] **Step 2: task 选中时隐藏用户 L2 权威展示**
-- [ ] **Step 3: Commit**
+- [x] **Step 1: 列表分栏 + 选中会话驱动 Tab**
+- [x] **Step 2: task 选中时隐藏用户 L2 权威展示**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -440,13 +440,13 @@ EOF
 - Modify: `docs/superpowers/specs/README.md` 依赖表 / 第三波备注  
 - Modify: `CLAUDE.md` / `implementation-plan.md` 若有对应缺口行
 
-- [ ] **Step 1: 写脚本骨架 + 本地可跑检查**
-- [ ] **Step 2: 重启相关服务后跑 Live（tool-service / resource-manager / orchestrator）**
+- [x] **Step 1: 写脚本骨架 + 本地可跑检查**
+- [x] **Step 2: 重启相关服务后跑 Live（tool-service / resource-manager / orchestrator）**
 
 Run: `python scripts/verify_kind_biz_scene_live.py`  
 Expected: V0–V2 PASS（或明确 SKIP 原因）
 
-- [ ] **Step 3: 文档勾选 K0–K4 ✅ + Commit**
+- [x] **Step 3: 文档勾选 K0–K4 ✅ + Commit**
 
 ```bash
 git commit -m "$(cat <<'EOF'

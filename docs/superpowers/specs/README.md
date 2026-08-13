@@ -134,7 +134,7 @@ flowchart TB
 | [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ | — | task-scene、skill-sticky、biz 挂载纪律 |
 | [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 | routing + 压缩点；pro 边界要 H1 | — |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat）；码表/工具集见下行 |
-| [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) | 资源 `kind` 过滤 · 业务场景 Lab · 工具集 chat/task · 退役 react-prompt | routing + business-context + toolset | 计划 [kind-biz-scene-catalog](../plans/2026-08-13-kind-biz-scene-catalog.md) ⬜ K0～K4 |
+| [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md) | 资源 `kind` 过滤 · 业务场景 Lab · 工具集 chat/task · 退役 react-prompt | routing + business-context + toolset | ✅ K0～K4（`verify_kind_biz_scene_live.py`） |
 | [skill-sticky](./2026-08-12-skill-sticky-process-chain-design.md) | 可发现≠触发；触发保真 + 轻 sticky（v3.1） | routing 轨 A | — |
 | [goal-alignment](./2026-07-27-react-goal-alignment-design.md) | 机械门禁 | TaskBoard/AS2（已有） | rebuild S6（可同批） |
 | [orchestrator-stateless](./2026-08-03-orchestrator-stateless-design.md) | 物理无状态 | 波次 A 独立；B2/B3 要 harness | 多实例生产 |
@@ -152,7 +152,7 @@ flowchart TB
 
 **现状提醒（2026-08-13）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码仍在**（主路径已断）。CLAUDE「4.14 🟡」= H-0～H-6 ✅ / H-7+阶段 D ⬜；架构表勿写「PlanWorkflow 已删」直至阶段 D。
 
-**命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`；Catalog 资源同轴另含 `all`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**（码表 = 业务场景 Lab）；执行模式 **`executionMode`**；默认工具集按会话 `kind`（废 ReAct/Plan-Workflow 集）。详见 [routing v6](./2026-07-29-unified-routing-design.md) · [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)。
+**命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`；Catalog 资源同轴另含 `all`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**（码表 = 业务场景 Lab）；执行模式 **`executionMode`**；默认工具集按会话 `kind`（废 ReAct/Plan-Workflow 集）。详见 [routing v6](./2026-07-29-unified-routing-design.md) · [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md)。
 
 ---
 
