@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -25,6 +26,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -34,6 +36,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * 注册钩子（Task 8）：在组装 PLANNER toolkit 时调用
  * {@link #registerIntoPlannerToolkit(Toolkit)}；勿注入 MAIN/SUB。
  * 运行前须 {@link #bindSession(DispatchSession)}（由 HarnessPlanner / Loop 设置）。
+ * <p>
+ * 会话按 assistantMessageId / parentRunId / planner-{runId} 存入 {@link ConcurrentHashMap}，
+ * <b>禁止 ThreadLocal</b>（工具在 {@code boundedElastic} 上执行，与 bind 线程不同）。
  */
 @Slf4j
 @Component
@@ -42,7 +47,9 @@ public class WorkerDispatchTool implements AgentTool {
 
     public static final String NAME = "dispatch_worker";
 
-    private static final ThreadLocal<DispatchSession> SESSION = new ThreadLocal<>();
+    private static final ConcurrentHashMap<String, DispatchSession> BY_MESSAGE_ID = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DispatchSession> BY_RUN_ID = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DispatchSession> BY_BRIDGE_ID = new ConcurrentHashMap<>();
 
     private final AgentRuntime agentRuntime;
     private final WorkerContextFactory contextFactory;
@@ -58,18 +65,91 @@ public class WorkerDispatchTool implements AgentTool {
             String conversationId,
             String parentRunId,
             int maxIters) {
+        String plannerBridgeId() {
+            return StringUtils.hasText(parentRunId) ? "planner-" + parentRunId.strip() : null;
+        }
     }
 
     public static void bindSession(DispatchSession session) {
-        SESSION.set(session);
+        if (session == null || session.notebook() == null) {
+            return;
+        }
+        if (StringUtils.hasText(session.assistantMessageId())) {
+            BY_MESSAGE_ID.put(session.assistantMessageId().strip(), session);
+        }
+        if (StringUtils.hasText(session.parentRunId())) {
+            BY_RUN_ID.put(session.parentRunId().strip(), session);
+        }
+        String bridgeId = session.plannerBridgeId();
+        if (StringUtils.hasText(bridgeId)) {
+            BY_BRIDGE_ID.put(bridgeId, session);
+        }
     }
 
-    public static void clearSession() {
-        SESSION.remove();
+    public static void clearSession(DispatchSession session) {
+        if (session == null) {
+            return;
+        }
+        if (StringUtils.hasText(session.assistantMessageId())) {
+            BY_MESSAGE_ID.remove(session.assistantMessageId().strip(), session);
+        }
+        if (StringUtils.hasText(session.parentRunId())) {
+            BY_RUN_ID.remove(session.parentRunId().strip(), session);
+        }
+        String bridgeId = session.plannerBridgeId();
+        if (StringUtils.hasText(bridgeId)) {
+            BY_BRIDGE_ID.remove(bridgeId, session);
+        }
     }
 
-    public static DispatchSession currentSession() {
-        return SESSION.get();
+    /** 测试清理：移除全部绑定（生产路径用 {@link #clearSession(DispatchSession)}）。 */
+    public static void clearAllSessionsForTests() {
+        BY_MESSAGE_ID.clear();
+        BY_RUN_ID.clear();
+        BY_BRIDGE_ID.clear();
+    }
+
+    public static DispatchSession currentSession(String lookupKey) {
+        return lookupSession(lookupKey);
+    }
+
+    static DispatchSession lookupSession(String lookupKey) {
+        if (!StringUtils.hasText(lookupKey)) {
+            return null;
+        }
+        String key = lookupKey.strip();
+        DispatchSession session = BY_MESSAGE_ID.get(key);
+        if (session != null) {
+            return session;
+        }
+        session = BY_RUN_ID.get(key);
+        if (session != null) {
+            return session;
+        }
+        session = BY_BRIDGE_ID.get(key);
+        if (session != null) {
+            return session;
+        }
+        if (key.startsWith("planner-") && key.length() > "planner-".length()) {
+            return BY_RUN_ID.get(key.substring("planner-".length()));
+        }
+        return null;
+    }
+
+    static DispatchSession resolveSessionForToolUse(String toolUseId) {
+        if (StringUtils.hasText(toolUseId)) {
+            String messageId = StepEventBridge.resolveMessageIdForToolUse(toolUseId);
+            DispatchSession byMsg = lookupSession(messageId);
+            if (byMsg != null) {
+                return byMsg;
+            }
+            String bridgeId = StepEventBridge.bridgeIdForToolUse(toolUseId);
+            DispatchSession byBridge = lookupSession(bridgeId);
+            if (byBridge != null) {
+                return byBridge;
+            }
+        }
+        return lookupSession(StepEventBridge.activeBridgeId());
     }
 
     /**
@@ -110,15 +190,20 @@ public class WorkerDispatchTool implements AgentTool {
                     Map<String, Object> input = param.getInput() != null ? param.getInput() : Map.of();
                     Object raw = input.get("taskId");
                     String taskId = raw != null ? String.valueOf(raw) : null;
-                    String text = dispatchWorker(taskId);
+                    // ConcurrentHashMap + StepEventBridge 均为跨线程；勿依赖 ThreadLocal
+                    DispatchSession session = resolveSessionForToolUse(toolUseId);
+                    String text = dispatchWorker(taskId, session);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    /** 单测 / 同步入口。 */
-    String dispatchWorker(String taskId) {
-        DispatchSession session = SESSION.get();
+    /** 单测 / 同步入口：用 assistantMessageId 或 parentRunId / planner-{runId} 查找会话。 */
+    String dispatchWorker(String taskId, String sessionLookupKey) {
+        return dispatchWorker(taskId, lookupSession(sessionLookupKey));
+    }
+
+    String dispatchWorker(String taskId, DispatchSession session) {
         if (session == null || session.notebook() == null) {
             return errorJson("未绑定 WorkerDispatch 会话（须先 bindSession）");
         }

@@ -52,7 +52,7 @@ class HarnessPlannerTest {
 
     @AfterEach
     void tearDown() {
-        WorkerDispatchTool.clearSession();
+        WorkerDispatchTool.clearAllSessionsForTests();
     }
 
     @Test
@@ -121,7 +121,7 @@ class HarnessPlannerTest {
         assertThat(req.reactPromptId()).isEqualTo(HarnessPlanner.CATALOG_ID);
         assertThat(req.injectedBlocks()).isNotEmpty();
         assertThat(req.injectedBlocks().get(0)).contains("## Goal").contains("完成调研");
-        assertThat(WorkerDispatchTool.currentSession()).isNull();
+        assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();
     }
 
     @Test
@@ -148,7 +148,7 @@ class HarnessPlannerTest {
         assertThat(tokens).isNotEmpty();
         assertThat(tokens.get(0).text()).contains("综合结论");
         assertThat(nb.getRounds()).isEmpty();
-        assertThat(WorkerDispatchTool.currentSession()).isNull();
+        assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();
     }
 
     private static ExecutionStreamContext streamCtx() {

@@ -76,9 +76,10 @@ public class HarnessPlanner {
     public Flux<StreamToken> synthesizeAnswer(PlanNotebook notebook, ExecutionStreamContext ctx) {
         AgentRunRequest request = buildRequest(notebook, ctx, HINT_ANSWER);
         return Flux.defer(() -> {
-            bindDispatchSession(notebook, ctx, request.runId());
-            return agentRuntime.run(request);
-        }).doFinally(sig -> WorkerDispatchTool.clearSession());
+            WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, request.runId());
+            return agentRuntime.run(request)
+                    .doFinally(sig -> WorkerDispatchTool.clearSession(session));
+        });
     }
 
     /**
@@ -87,7 +88,7 @@ public class HarnessPlanner {
      */
     private String invokePlanner(PlanNotebook notebook, ExecutionStreamContext ctx, String phaseHint) {
         AgentRunRequest request = buildRequest(notebook, ctx, phaseHint);
-        bindDispatchSession(notebook, ctx, request.runId());
+        WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, request.runId());
         try {
             StringBuilder answer = new StringBuilder();
             long timeoutMs = plannerTimeoutMs();
@@ -96,7 +97,7 @@ public class HarnessPlanner {
                     .blockLast(Duration.ofMillis(timeoutMs));
             return answer.toString();
         } finally {
-            WorkerDispatchTool.clearSession();
+            WorkerDispatchTool.clearSession(session);
         }
     }
 
@@ -140,8 +141,9 @@ public class HarnessPlanner {
         return provided != null ? provided : AssembledContext.empty();
     }
 
-    private void bindDispatchSession(PlanNotebook notebook, ExecutionStreamContext ctx, String parentRunId) {
-        WorkerDispatchTool.bindSession(new WorkerDispatchTool.DispatchSession(
+    private WorkerDispatchTool.DispatchSession bindDispatchSession(
+            PlanNotebook notebook, ExecutionStreamContext ctx, String parentRunId) {
+        WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
                 notebook,
                 List.of(),
                 ctx != null ? ctx.userId() : null,
@@ -149,7 +151,9 @@ public class HarnessPlanner {
                 ctx != null ? ctx.assistantMsgId() : null,
                 ctx != null ? ctx.conversationId() : null,
                 parentRunId,
-                0));
+                0);
+        WorkerDispatchTool.bindSession(session);
+        return session;
     }
 
     static List<TaskItem> parsePlanTasks(String text) {
