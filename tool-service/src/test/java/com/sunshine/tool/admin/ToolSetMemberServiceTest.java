@@ -40,17 +40,29 @@ class ToolSetMemberServiceTest {
 
     @BeforeEach
     void seed() {
-        ToolSetEntity react = new ToolSetEntity();
-        react.setId("global-react-default");
-        react.setSetType("global_react_default");
-        react.setDisplayName("ReAct");
-        toolSetRepository.save(react);
+        ToolSetEntity chat = new ToolSetEntity();
+        chat.setId("global-chat-default");
+        chat.setSetType("global_chat_default");
+        chat.setDisplayName("Chat");
+        toolSetRepository.save(chat);
 
-        ToolSetEntity plan = new ToolSetEntity();
-        plan.setId("global-plan-workflow");
-        plan.setSetType("global_plan_workflow");
-        plan.setDisplayName("Plan");
-        toolSetRepository.save(plan);
+        ToolSetEntity task = new ToolSetEntity();
+        task.setId("global-task-default");
+        task.setSetType("global_task_default");
+        task.setDisplayName("Task");
+        toolSetRepository.save(task);
+
+        ToolSetEntity legacyReact = new ToolSetEntity();
+        legacyReact.setId("global-react-default");
+        legacyReact.setSetType("global_react_default");
+        legacyReact.setDisplayName("ReAct legacy");
+        toolSetRepository.save(legacyReact);
+
+        ToolSetEntity legacyPlan = new ToolSetEntity();
+        legacyPlan.setId("global-plan-workflow");
+        legacyPlan.setSetType("global_plan_workflow");
+        legacyPlan.setDisplayName("Plan legacy");
+        toolSetRepository.save(legacyPlan);
 
         saveTool("sdk__sunshine-finance__list_my_expenses", true);
         saveTool("sdk__sunshine-finance__get_expense_detail", true);
@@ -59,13 +71,13 @@ class ToolSetMemberServiceTest {
 
     @Test
     void pageMembers_emptyByDefault() {
-        var page = toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null);
+        var page = toolSetMemberService.pageMembers(ToolSetKind.CHAT_DEFAULT, null, 1, 20, null);
         assertThat(page.total()).isZero();
     }
 
     @Test
     void pageMembers_tenantWithoutSet_returnsEmpty() {
-        var page = toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, "tenant-b", 1, 20, null);
+        var page = toolSetMemberService.pageMembers(ToolSetKind.CHAT_DEFAULT, "tenant-b", 1, 20, null);
         assertThat(page.total()).isZero();
         assertThat(page.items()).isEmpty();
     }
@@ -73,7 +85,7 @@ class ToolSetMemberServiceTest {
     @Test
     void addMembers_addsEnabledAndRejectsDisabled() {
         var result = toolSetMemberService.addMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false),
@@ -81,18 +93,18 @@ class ToolSetMemberServiceTest {
         assertThat(result.added()).containsExactly("sdk__sunshine-finance__list_my_expenses");
         assertThat(result.rejected()).hasSize(1);
         assertThat(result.rejected().getFirst().reason()).isEqualTo("not_enabled");
-        assertThat(toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null).total()).isOne();
+        assertThat(toolSetMemberService.pageMembers(ToolSetKind.CHAT_DEFAULT, null, 1, 20, null).total()).isOne();
     }
 
     @Test
     void addMembers_skipsDuplicate() {
         toolSetMemberService.addMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
         var second = toolSetMemberService.addMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
@@ -102,48 +114,100 @@ class ToolSetMemberServiceTest {
     @Test
     void removeMembers_deletesFromSet() {
         toolSetMemberService.addMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false),
                         new ToolSetMemberAddItem("sdk__sunshine-finance__get_expense_detail", false))));
         toolSetMemberService.removeMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberRemoveRequest(List.of("sdk__sunshine-finance__list_my_expenses")));
-        assertThat(toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null).total()).isOne();
+        assertThat(toolSetMemberService.pageMembers(ToolSetKind.CHAT_DEFAULT, null, 1, 20, null).total()).isOne();
     }
 
     @Test
-    void patchCritical_marksPlanMember() {
+    void patchCritical_marksTaskMember() {
         toolSetMemberService.addMembers(
-                ToolSetKind.PLAN_WORKFLOW,
+                ToolSetKind.TASK_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", true))));
-        var ids = toolSetMemberService.toolIds(ToolSetKind.PLAN_WORKFLOW, null);
+        var ids = toolSetMemberService.toolIds(ToolSetKind.TASK_DEFAULT, null);
         assertThat(ids.criticalToolIds()).containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
 
     @Test
     void toolIds_returnsMemberIds() {
         toolSetMemberService.addMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
-        assertThat(toolSetMemberService.toolIds(ToolSetKind.REACT_DEFAULT, null).toolIds())
+        assertThat(toolSetMemberService.toolIds(ToolSetKind.CHAT_DEFAULT, null).toolIds())
                 .containsExactly("sdk__sunshine-finance__list_my_expenses");
+    }
+
+    @Test
+    void toolIds_mergesLegacyWhenNewEmpty() {
+        ToolSetMemberEntity legacy = new ToolSetMemberEntity();
+        legacy.setSetId("global-react-default");
+        legacy.setToolId("sdk__sunshine-finance__list_my_expenses");
+        legacy.setSortOrder(0);
+        legacy.setCritical(false);
+        toolSetMemberRepository.save(legacy);
+
+        assertThat(toolSetMemberService.toolIds(ToolSetKind.CHAT_DEFAULT, null).toolIds())
+                .containsExactly("sdk__sunshine-finance__list_my_expenses");
+    }
+
+    @Test
+    void toolIds_prefersNewThenMergesLegacyUnique() {
+        toolSetMemberService.addMembers(
+                ToolSetKind.CHAT_DEFAULT,
+                null,
+                new ToolSetMemberAddRequest(List.of(
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+
+        ToolSetMemberEntity legacyDup = new ToolSetMemberEntity();
+        legacyDup.setSetId("global-react-default");
+        legacyDup.setToolId("sdk__sunshine-finance__list_my_expenses");
+        legacyDup.setSortOrder(0);
+        legacyDup.setCritical(false);
+        toolSetMemberRepository.save(legacyDup);
+
+        ToolSetMemberEntity legacyExtra = new ToolSetMemberEntity();
+        legacyExtra.setSetId("global-react-default");
+        legacyExtra.setToolId("sdk__sunshine-finance__get_expense_detail");
+        legacyExtra.setSortOrder(1);
+        legacyExtra.setCritical(false);
+        toolSetMemberRepository.save(legacyExtra);
+
+        assertThat(toolSetMemberService.toolIds(ToolSetKind.CHAT_DEFAULT, null).toolIds())
+                .containsExactly(
+                        "sdk__sunshine-finance__list_my_expenses",
+                        "sdk__sunshine-finance__get_expense_detail");
+    }
+
+    @Test
+    void addMembers_writesOnlyNewSetNotLegacy() {
+        toolSetMemberService.addMembers(
+                ToolSetKind.CHAT_DEFAULT,
+                null,
+                new ToolSetMemberAddRequest(List.of(
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+        assertThat(toolSetMemberRepository.findBySetIdOrderBySortOrderAsc("global-chat-default")).hasSize(1);
+        assertThat(toolSetMemberRepository.findBySetIdOrderBySortOrderAsc("global-react-default")).isEmpty();
     }
 
     @Test
     void pageMembers_returnsMemberBasics() {
         toolSetMemberService.addMembers(
-                ToolSetKind.REACT_DEFAULT,
+                ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
-        var item = toolSetMemberService.pageMembers(ToolSetKind.REACT_DEFAULT, null, 1, 20, null)
+        var item = toolSetMemberService.pageMembers(ToolSetKind.CHAT_DEFAULT, null, 1, 20, null)
                 .items().getFirst();
         assertThat(item.toolId()).isEqualTo("sdk__sunshine-finance__list_my_expenses");
         assertThat(item.sourceLabel()).contains("SDK");

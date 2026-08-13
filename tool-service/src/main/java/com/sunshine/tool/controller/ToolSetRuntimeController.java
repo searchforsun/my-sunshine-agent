@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 运行时默认工具集解析。
+ * path {@code kind} 首选 {@code chat}|{@code task}；过渡期亦接受 {@code react-default}|{@code plan-workflow}。
+ */
 @RestController
 @RequestMapping("/api/tools/sets")
 @RequiredArgsConstructor

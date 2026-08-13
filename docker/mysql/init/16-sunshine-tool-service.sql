@@ -71,7 +71,7 @@ CREATE TABLE tool_set_member (
     set_id          VARCHAR(64) NOT NULL,
     tool_id         VARCHAR(128) NOT NULL,
     sort_order      INT NOT NULL DEFAULT 0,
-    critical        TINYINT(1) NOT NULL DEFAULT 0 COMMENT '仅 plan-workflow 集有效；1=Planner 关键工具',
+    critical        TINYINT(1) NOT NULL DEFAULT 0 COMMENT '仅 task 默认集有效；1=Planner 关键工具',
     PRIMARY KEY (set_id, tool_id)
 );
 
@@ -87,9 +87,12 @@ CREATE TABLE execution_mode_policy (
 INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status) VALUES
 ('sunshine-biz', 'sunshine-biz-simulator', '业务模拟应用', 'default', 'offline');
 
+-- 新默认集（会话 kind：chat | task）；旧两行保留供 Runtime toolIds 双读
 INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
-('global-react-default', 'global_react_default', NULL, '平台 ReAct 工具集'),
-('global-plan-workflow', 'global_plan_workflow', NULL, '平台 Plan-Workflow 工具集');
+('global-chat-default', 'global_chat_default', NULL, '平台 Chat 工具集'),
+('global-task-default', 'global_task_default', NULL, '平台 Task 工具集'),
+('global-react-default', 'global_react_default', NULL, '平台 ReAct 工具集（legacy）'),
+('global-plan-workflow', 'global_plan_workflow', NULL, '平台 Plan-Workflow 工具集（legacy）');
 
 INSERT INTO execution_mode_policy (id, mode_key, tenant_id, policy_json) VALUES
 ('global-plan-workflow-policy', 'plan_workflow', NULL, JSON_OBJECT(

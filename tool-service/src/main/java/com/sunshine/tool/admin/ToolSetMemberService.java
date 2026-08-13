@@ -150,7 +150,7 @@ public class ToolSetMemberService {
             member.setSetId(writable.set().getId());
             member.setToolId(toolId);
             member.setSortOrder(nextOrder++);
-            member.setCritical(kind == ToolSetKind.PLAN_WORKFLOW && Boolean.TRUE.equals(item.critical()));
+            member.setCritical(kind == ToolSetKind.TASK_DEFAULT && Boolean.TRUE.equals(item.critical()));
             toolSetMemberRepository.save(member);
             added.add(toolId);
         }
@@ -183,7 +183,7 @@ public class ToolSetMemberService {
         if (!StringUtils.hasText(toolId)) {
             throw new BizException(ToolErrorCode.TOOL_ID_INVALID);
         }
-        WritableSet writable = resolveWritableSet(ToolSetKind.PLAN_WORKFLOW, tenantId);
+        WritableSet writable = resolveWritableSet(ToolSetKind.TASK_DEFAULT, tenantId);
         ToolSetMemberEntity member = toolSetMemberRepository
                 .findBySetIdAndToolId(writable.set().getId(), toolId.strip())
                 .orElseThrow(() -> new BizException(ToolErrorCode.TOOL_SET_MEMBER_NOT_FOUND));
@@ -193,15 +193,27 @@ public class ToolSetMemberService {
         publish(tenantId);
     }
 
+    /**
+     * Runtime 读：优先新 set 成员，再并入 legacy set 中尚未出现的 toolId（去重）。
+     * Admin 写路径不经此方法，只碰新 set。
+     */
     public ToolSetToolIdsResponse toolIds(ToolSetKind kind, String tenantId) {
-        Optional<ToolSetEntity> setOpt = findSet(kind, tenantId);
-        if (setOpt.isEmpty()) {
-            return new ToolSetToolIdsResponse(List.of(), List.of());
+        List<ToolSetMemberEntity> primary = findSet(kind, tenantId)
+                .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
+                .orElse(List.of());
+        List<ToolSetMemberEntity> legacy = findLegacySet(kind, tenantId)
+                .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
+                .orElse(List.of());
+        LinkedHashMap<String, Boolean> merged = new LinkedHashMap<>();
+        for (ToolSetMemberEntity member : primary) {
+            merged.put(member.getToolId(), member.isCritical());
         }
-        List<ToolSetMemberEntity> members = toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(setOpt.get().getId());
-        List<String> toolIds = members.stream().map(ToolSetMemberEntity::getToolId).toList();
-        List<String> criticalIds = kind == ToolSetKind.PLAN_WORKFLOW
-                ? members.stream().filter(ToolSetMemberEntity::isCritical).map(ToolSetMemberEntity::getToolId).toList()
+        for (ToolSetMemberEntity member : legacy) {
+            merged.putIfAbsent(member.getToolId(), member.isCritical());
+        }
+        List<String> toolIds = List.copyOf(merged.keySet());
+        List<String> criticalIds = kind == ToolSetKind.TASK_DEFAULT
+                ? merged.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).toList()
                 : List.of();
         return new ToolSetToolIdsResponse(toolIds, criticalIds);
     }
@@ -238,6 +250,7 @@ public class ToolSetMemberService {
                 .orElse(-1) + 1;
     }
 
+    /** Admin 写：仅新 set；全局缺失时按种子 id/type 创建 */
     private WritableSet resolveWritableSet(ToolSetKind kind, String tenantId) {
         if (isTenantScoped(tenantId)) {
             String tid = tenantId.strip();
@@ -246,7 +259,7 @@ public class ToolSetMemberService {
             return new WritableSet(tenantSet);
         }
         ToolSetEntity global = toolSetRepository.findBySetTypeAndTenantId(kind.globalType(), null)
-                .orElseThrow(() -> new BizException(ToolErrorCode.TOOL_SET_NOT_FOUND));
+                .orElseGet(() -> createGlobalSet(kind));
         return new WritableSet(global);
     }
 
@@ -255,6 +268,23 @@ public class ToolSetMemberService {
             return toolSetRepository.findBySetTypeAndTenantId(kind.tenantType(), tenantId.strip());
         }
         return toolSetRepository.findBySetTypeAndTenantId(kind.globalType(), null);
+    }
+
+    private Optional<ToolSetEntity> findLegacySet(ToolSetKind kind, String tenantId) {
+        if (isTenantScoped(tenantId)) {
+            return toolSetRepository.findBySetTypeAndTenantId(kind.legacyTenantType(), tenantId.strip());
+        }
+        return toolSetRepository.findBySetTypeAndTenantId(kind.legacyGlobalType(), null);
+    }
+
+    private ToolSetEntity createGlobalSet(ToolSetKind kind) {
+        ToolSetEntity entity = new ToolSetEntity();
+        entity.setId(kind.globalSetId());
+        entity.setSetType(kind.globalType());
+        entity.setTenantId(null);
+        entity.setDisplayName(kind == ToolSetKind.CHAT_DEFAULT ? "平台 Chat 工具集" : "平台 Task 工具集");
+        entity.setUpdatedAt(Instant.now());
+        return toolSetRepository.save(entity);
     }
 
     private ToolSetEntity createTenantSet(ToolSetKind kind, String tenantId) {

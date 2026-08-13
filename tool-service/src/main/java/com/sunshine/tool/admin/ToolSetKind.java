@@ -1,32 +1,62 @@
 package com.sunshine.tool.admin;
 
-/** 工具集种类常量（全局 + 租户覆盖） */
+/** 默认工具集种类（按会话 kind：chat | task）；读路径兼容旧 react-default | plan-workflow */
 public enum ToolSetKind {
-    REACT_DEFAULT(
+    CHAT_DEFAULT(
+            "chat",
+            "global_chat_default",
+            "tenant_chat_default",
+            "global-chat-default",
+            "租户 Chat 工具集",
+            "tenant-%s-chat-default",
             "global_react_default",
             "tenant_react_default",
-            "global-react-default",
-            "租户 ReAct 工具集",
-            "tenant-%s-react-default"),
-    PLAN_WORKFLOW(
+            "global-react-default"),
+    TASK_DEFAULT(
+            "task",
+            "global_task_default",
+            "tenant_task_default",
+            "global-task-default",
+            "租户 Task 工具集",
+            "tenant-%s-task-default",
             "global_plan_workflow",
             "tenant_plan_workflow",
-            "global-plan-workflow",
-            "租户 Plan-Workflow 工具集",
-            "tenant-%s-plan-workflow");
+            "global-plan-workflow");
 
+    private final String path;
     private final String globalType;
     private final String tenantType;
     private final String globalSetId;
     private final String tenantDisplayName;
     private final String tenantSetIdPattern;
+    private final String legacyGlobalType;
+    private final String legacyTenantType;
+    private final String legacyGlobalSetId;
 
-    ToolSetKind(String globalType, String tenantType, String globalSetId, String tenantDisplayName, String tenantSetIdPattern) {
+    ToolSetKind(
+            String path,
+            String globalType,
+            String tenantType,
+            String globalSetId,
+            String tenantDisplayName,
+            String tenantSetIdPattern,
+            String legacyGlobalType,
+            String legacyTenantType,
+            String legacyGlobalSetId) {
+        this.path = path;
         this.globalType = globalType;
         this.tenantType = tenantType;
         this.globalSetId = globalSetId;
         this.tenantDisplayName = tenantDisplayName;
         this.tenantSetIdPattern = tenantSetIdPattern;
+        this.legacyGlobalType = legacyGlobalType;
+        this.legacyTenantType = legacyTenantType;
+        this.legacyGlobalSetId = legacyGlobalSetId;
+    }
+
+    /** 对外 wire：仅 chat | task */
+    public String path() {
+        return path;
     }
 
     public String globalType() {
@@ -49,10 +79,22 @@ public enum ToolSetKind {
         return tenantSetIdPattern;
     }
 
+    public String legacyGlobalType() {
+        return legacyGlobalType;
+    }
+
+    public String legacyTenantType() {
+        return legacyTenantType;
+    }
+
+    public String legacyGlobalSetId() {
+        return legacyGlobalSetId;
+    }
+
     public static ToolSetKind fromPath(String kind) {
         return switch (kind) {
-            case "react-default" -> REACT_DEFAULT;
-            case "plan-workflow" -> PLAN_WORKFLOW;
+            case "chat", "react-default" -> CHAT_DEFAULT;
+            case "task", "plan-workflow" -> TASK_DEFAULT;
             default -> throw new IllegalArgumentException("unknown tool set kind: " + kind);
         };
     }
