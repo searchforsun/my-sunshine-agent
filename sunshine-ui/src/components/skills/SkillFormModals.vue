@@ -11,9 +11,7 @@ const kindOptions = [
   { label: '任务', value: 'task' },
 ]
 
-const bizSceneOptions = computed(() =>
-  page.activeBizScenes.map(code => ({ label: code, value: code })),
-)
+const bizSceneOptions = computed(() => page.bizSceneOptions)
 </script>
 
 <template>

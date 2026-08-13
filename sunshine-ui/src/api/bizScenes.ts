@@ -27,12 +27,6 @@ export interface BizScenePolicyEntry {
   updatedAt?: string | null
 }
 
-/** 业务场景 Lab active 码闭集（Skill/Agent 表单 biz_scene 下拉） */
-export async function listActiveBizSceneCodes(): Promise<string[]> {
-  const res = await fetch(apiUrl('/api/biz-scenes/active-codes'), { headers: apiHeaders() })
-  return parseApiResponse<string[]>(res)
-}
-
 export async function listBizScenes(): Promise<BizSceneEntry[]> {
   const res = await fetch(apiUrl('/api/biz-scenes'), { headers: apiHeaders() })
   return parseApiResponse<BizSceneEntry[]>(res)

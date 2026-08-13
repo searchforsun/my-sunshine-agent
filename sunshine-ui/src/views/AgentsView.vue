@@ -42,7 +42,7 @@ import {
   type AgentEntry,
 } from '../api/agents'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
-import { listActiveBizSceneCodes } from '../api/bizScenes'
+import { listBizScenes, type BizSceneEntry } from '../api/bizScenes'
 import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
 import {
   catalogEnabledModelOptions,
@@ -677,14 +677,18 @@ watch(
   },
 )
 
-/** 业务场景 Lab active 码（biz_scene 下拉选项） */
-const activeBizScenes = ref<string[]>([])
+/** 业务场景 Lab active 条目（biz_scene 下拉选项；value=code、label=中文名） */
+const activeBizScenes = ref<BizSceneEntry[]>([])
+
+const bizSceneOptions = computed(() =>
+  activeBizScenes.value.map(s => ({ label: s.displayName || s.bizScene, value: s.bizScene })),
+)
 
 onMounted(() => {
   window.addEventListener('keydown', handleEscape)
   void refreshPage()
-  void listActiveBizSceneCodes()
-    .then(codes => { activeBizScenes.value = codes })
+  void listBizScenes()
+    .then(scenes => { activeBizScenes.value = scenes.filter(s => s.status === 'active') })
     .catch(() => { activeBizScenes.value = [] })
 })
 
@@ -854,7 +858,7 @@ onUnmounted(() => {
                   <NSelect v-model:value="editForm.kind" class="sun-field" :disabled="!isEditing" :options="[{ label: '全部', value: 'all' },{ label: '对话', value: 'chat' },{ label: '任务', value: 'task' }]" :menu-props="{ class: 'agent-select-menu' }" />
                 </NFormItem>
                 <NFormItem label="业务场景">
-                  <NSelect v-model:value="editForm.bizScene" class="sun-field" :disabled="!isEditing" :options="activeBizScenes.map(code => ({ label: code, value: code }))" :menu-props="{ class: 'agent-select-menu' }" clearable placeholder="不绑定" />
+                  <NSelect v-model:value="editForm.bizScene" class="sun-field" :disabled="!isEditing" :options="bizSceneOptions" :menu-props="{ class: 'agent-select-menu' }" clearable placeholder="不绑定" />
                 </NFormItem>
                 <NFormItem label="关联 Skill">
                   <NSelect v-model:value="editForm.skillIds" class="sun-field" multiple filterable :disabled="!isEditing" :options="skillSelectOptions" :menu-props="{ class: 'agent-select-menu' }" placeholder="可选 0~N 个 Skill" />

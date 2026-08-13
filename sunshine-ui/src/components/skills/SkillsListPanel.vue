@@ -59,7 +59,9 @@ function kindLabel(kind: string | undefined): string {
             <div class="skill-card-top">
               <div class="skill-card-names">
                 <span class="skill-title">{{ skill.id }}</span>
-                <span v-if="skill.kind && skill.kind !== 'all'" class="skill-kind">{{ kindLabel(skill.kind) }}</span>
+                <span v-if="skill.kind && skill.kind !== 'all'" class="skill-kind">
+                  <NTag :bordered="false" size="tiny" class="meta-chip">{{ kindLabel(skill.kind) }}</NTag>
+                </span>
                 <span v-if="skill.displayName && skill.displayName !== skill.id" class="skill-subtitle">{{ skill.displayName }}</span>
                 <span class="skill-version-line">{{ listCardActiveVersionLine(skill) }}</span>
                 <span v-if="listCardMaintainer(skill)" class="skill-maintainer">{{ listCardMaintainer(skill) }}</span>
@@ -246,12 +248,13 @@ function kindLabel(kind: string | undefined): string {
 
 .skill-kind {
   flex-shrink: 0;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--sun-accent);
-  border: 1px solid var(--sun-border);
-  border-radius: 3px;
+}
+
+.meta-chip {
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
+  --n-text-color: var(--sun-text-secondary) !important;
+  --n-border: none !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
 }
 
 .skill-subtitle {

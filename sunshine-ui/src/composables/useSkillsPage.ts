@@ -32,7 +32,7 @@ import {
   type SkillVersion,
 } from '../api/skills'
 import { friendlyErrorMessage } from '../api/apiError'
-import { listActiveBizSceneCodes } from '../api/bizScenes'
+import { listBizScenes, type BizSceneEntry } from '../api/bizScenes'
 import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFileTree'
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import {
@@ -72,8 +72,12 @@ export function useSkillsPage() {
 
   const showCreate = ref(false)
   const showEdit = ref(false)
-  /** 业务场景 Lab active 码（biz_scene 下拉选项） */
-  const activeBizScenes = ref<string[]>([])
+  /** 业务场景 Lab active 条目（biz_scene 下拉选项；value=code、label=中文名） */
+  const activeBizScenes = ref<BizSceneEntry[]>([])
+
+  const bizSceneOptions = computed(() =>
+    activeBizScenes.value.map(s => ({ label: s.displayName || s.bizScene, value: s.bizScene })),
+  )
   const createForm = ref({ id: '', displayName: '', description: '', kind: 'all', bizScene: null as string | null })
   const editTargetSkill = ref<SkillEntry | null>(null)
   const editForm = ref({ displayName: '', description: '', kind: 'all', bizScene: null as string | null })
@@ -917,8 +921,8 @@ export function useSkillsPage() {
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
     void refreshPage()
-    void listActiveBizSceneCodes()
-      .then(codes => { activeBizScenes.value = codes })
+    void listBizScenes()
+      .then(scenes => { activeBizScenes.value = scenes.filter(s => s.status === 'active') })
       .catch(() => { activeBizScenes.value = [] })
   })
 
@@ -946,6 +950,7 @@ export function useSkillsPage() {
     editTargetSkill,
     editForm,
     activeBizScenes,
+    bizSceneOptions,
     creating,
     savingEdit,
     uploading,
