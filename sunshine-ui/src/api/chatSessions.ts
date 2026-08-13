@@ -139,7 +139,7 @@ export function useChatSessions(
     const s = activeSession.value
     if (!s || s.loading) return
 
-    const pref = options?.executionPreference ?? 'auto'
+    const pref = options?.executionPreference ?? 'fast'
     s.messages.push({ role: 'user', content, executionPreference: pref })
     s.loading = true
     s.generationId = undefined
@@ -152,10 +152,7 @@ export function useChatSessions(
     onProgress?.(sessionId)
 
     try {
-      const body: Record<string, string> = { content, conversationId: convId }
-      if (pref !== 'auto') {
-        body.executionPreference = pref
-      }
+      const body: Record<string, string> = { content, conversationId: convId, executionPreference: pref }
       if (options?.workflowId) {
         body.workflowId = options.workflowId
       }

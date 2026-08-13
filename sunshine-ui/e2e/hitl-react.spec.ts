@@ -22,11 +22,11 @@ async function loginViaApi(page: import('@playwright/test').Page) {
   }, token)
 }
 
-async function selectReactMode(page: import('@playwright/test').Page) {
+async function selectFastMode(page: import('@playwright/test').Page) {
   const trigger = page.locator('.mode-selector').first()
   await expect(trigger).toBeVisible({ timeout: 15_000 })
   await trigger.click()
-  await page.getByRole('option', { name: '自主推理' }).click()
+  await page.getByRole('option', { name: '快速' }).click()
 }
 
 async function fillComposer(page: import('@playwright/test').Page, text: string) {
@@ -48,7 +48,7 @@ test.describe('ReAct HITL 工具确认 UI', () => {
     await page.goto('/chat')
     await expect(page.getByRole('heading', { name: '有什么可以帮你的？' })).toBeVisible({ timeout: 15_000 })
 
-    await selectReactMode(page)
+    await selectFastMode(page)
     await fillComposer(page, '请调用 sdk__sunshine-oa__approve_oa_task 工具审批 OA 待办 taskId=T1001，不要查询其它工具。')
     await page.keyboard.press('Enter')
 

@@ -151,7 +151,7 @@ export function segmentChatMentionsForMessage(
   catalogs: ChatMentionCatalogs,
   executionPreference?: ExecutionPreference,
 ): ChatMentionSegment[] {
-  const pref = executionPreference ?? 'auto'
+  const pref = executionPreference ?? 'fast'
   return segmentChatMentions(content, catalogs, allowsForPreference(pref))
 }
 

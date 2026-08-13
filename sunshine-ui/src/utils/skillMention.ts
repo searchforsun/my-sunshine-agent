@@ -57,7 +57,7 @@ export function segmentSkillMentionsForMessage(
   catalog: SkillCatalogIndexEntry[],
   executionPreference?: ExecutionPreference,
 ): SkillMentionSegment[] {
-  const pref = executionPreference ?? 'auto'
+  const pref = executionPreference ?? 'fast'
   if (!allowsSkillMention(pref)) {
     return [{ type: 'text', value: content }]
   }
@@ -81,7 +81,7 @@ export function resolveSkillBindingForSend(
   catalog: SkillCatalogIndexEntry[],
   executionPreference?: ExecutionPreference,
 ): SkillBindingForSend {
-  const pref = executionPreference ?? 'auto'
+  const pref = executionPreference ?? 'fast'
   if (!allowsSkillMention(pref)) {
     return {}
   }

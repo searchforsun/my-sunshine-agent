@@ -54,7 +54,7 @@ export function segmentAgentMentionsForMessage(
   catalog: AgentCatalogIndexEntry[],
   executionPreference?: ExecutionPreference,
 ): AgentMentionSegment[] {
-  const pref = executionPreference ?? 'auto'
+  const pref = executionPreference ?? 'fast'
   if (!allowsAgentMention(pref)) {
     return [{ type: 'text', value: content }]
   }

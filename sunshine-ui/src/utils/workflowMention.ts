@@ -54,7 +54,7 @@ export function segmentWorkflowMentionsForMessage(
   catalog: WorkflowCatalogEntry[],
   executionPreference?: ExecutionPreference,
 ): WorkflowMentionSegment[] {
-  const pref = executionPreference ?? 'auto'
+  const pref = executionPreference ?? 'fast'
   if (!allowsWorkflowMention(pref)) {
     return [{ type: 'text', value: content }]
   }
@@ -71,7 +71,7 @@ export function resolveWorkflowBindingForSend(
   catalog: WorkflowCatalogEntry[],
   executionPreference?: ExecutionPreference,
 ): WorkflowBindingForSend {
-  const pref = executionPreference ?? 'auto'
+  const pref = executionPreference ?? 'fast'
   if (!allowsWorkflowMention(pref)) {
     return {}
   }

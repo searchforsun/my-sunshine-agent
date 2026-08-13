@@ -1,7 +1,7 @@
 import { apiHeaders } from '../stores/authStore'
 import { resolveApiBase } from './config'
 import type { ExecutionPreference } from './executionModes'
-import { isExecutionPreference } from './executionModes'
+import { normalizeExecutionPreference } from './executionModes'
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
 import { normalizeStep, parseContentBlocks } from './processingSteps'
@@ -75,6 +75,11 @@ function requireConversationId(raw: Record<string, unknown>): string {
   return raw.id
 }
 
+function mapStoredExecutionPreference(raw: unknown): ExecutionPreference | undefined {
+  if (raw == null || raw === '') return undefined
+  return normalizeExecutionPreference(raw)
+}
+
 function mapSummary(raw: Record<string, unknown>): ConversationSummary {
   const pref = raw.executionPreference
   return {
@@ -82,7 +87,7 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
     title: String(raw.title ?? '新对话'),
     createdAt: toTimestamp(raw.createdAt as string | undefined),
     updatedAt: toTimestamp(raw.updatedAt as string | undefined),
-    executionPreference: isExecutionPreference(pref) ? pref : undefined,
+    executionPreference: mapStoredExecutionPreference(pref),
     kbId: typeof raw.kbId === 'string' ? raw.kbId : null,
     modelName: typeof raw.modelName === 'string' ? raw.modelName : null,
     kind: typeof raw.kind === 'string' ? raw.kind : undefined,
@@ -139,7 +144,7 @@ function parseMessage(m: Record<string, unknown>): ConversationMessage {
     createdAt: m.createdAt as string | undefined,
     updatedAt: m.updatedAt as string | undefined,
     executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
-    executionPreference: isExecutionPreference(m.executionPreference) ? m.executionPreference : undefined,
+    executionPreference: mapStoredExecutionPreference(m.executionPreference),
   }
   if (msg.role === 'assistant') {
     sanitizePlanAssistantMessage(msg)

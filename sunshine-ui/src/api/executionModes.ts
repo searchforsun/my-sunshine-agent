@@ -1,10 +1,6 @@
-/** Chat 底栏执行模式 — 与后端 ExecutionPreference / ExecutionMode 对齐 */
+/** Chat 底栏执行模式 — 与后端 ExecutionPreference / ExecutionMode 对齐（routing v6） */
 
-export type ExecutionPreference =
-  | 'auto'
-  | 'react'
-  | 'workflow'
-  | 'plan-workflow'
+export type ExecutionPreference = 'fast' | 'pro' | 'workflow'
 
 export interface ExecutionModeOption {
   value: ExecutionPreference
@@ -18,21 +14,21 @@ export interface ExecutionModeOption {
 
 export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
   {
-    value: 'auto',
-    label: '自动',
-    shortLabel: '自动',
-    description: '根据提问意图自动选择执行方式',
+    value: 'fast',
+    label: '快速',
+    shortLabel: '快速',
+    description: 'ReAct 多工具自主分析，可委派子智能体',
     allowsSkillMention: true,
     allowsAgentMention: true,
-    allowsWorkflowMention: true,
+    allowsWorkflowMention: false,
   },
   {
-    value: 'react',
-    label: '自主推理',
-    shortLabel: '推理',
-    description: 'ReAct 多工具自主分析',
+    value: 'pro',
+    label: '专业',
+    shortLabel: '专业',
+    description: 'Planner-Executor 规划并执行复杂任务',
     allowsSkillMention: true,
-    allowsAgentMention: false,
+    allowsAgentMention: true,
     allowsWorkflowMention: false,
   },
   {
@@ -43,15 +39,6 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     allowsSkillMention: false,
     allowsAgentMention: false,
     allowsWorkflowMention: true,
-  },
-  {
-    value: 'plan-workflow',
-    label: '动态规划',
-    shortLabel: '规划',
-    description: 'Planner 动态编排多步 DAG',
-    allowsSkillMention: true,
-    allowsAgentMention: false,
-    allowsWorkflowMention: false,
   },
 ]
 
@@ -73,9 +60,15 @@ export function allowsWorkflowMention(preference: ExecutionPreference): boolean 
 
 export const EXECUTION_PREFERENCE_STORAGE_KEY = 'sunshine-execution-preference'
 
+/** 新 wire 三值；旧 localStorage / API 值经 normalize 映射 */
 export function isExecutionPreference(raw: unknown): raw is ExecutionPreference {
-  return raw === 'auto'
-    || raw === 'react'
-    || raw === 'workflow'
-    || raw === 'plan-workflow'
+  return raw === 'fast' || raw === 'pro' || raw === 'workflow'
+}
+
+/** 读路径兼容：auto/react→fast，plan-workflow→pro；未知回退 fast */
+export function normalizeExecutionPreference(raw: unknown): ExecutionPreference {
+  if (raw === 'pro' || raw === 'plan-workflow') return 'pro'
+  if (raw === 'workflow') return 'workflow'
+  if (raw === 'fast' || raw === 'auto' || raw === 'react') return 'fast'
+  return 'fast'
 }
