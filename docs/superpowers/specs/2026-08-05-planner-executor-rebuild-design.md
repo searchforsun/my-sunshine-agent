@@ -1,12 +1,14 @@
 # Planner-Executor 架构重建 — 取代动态 Plan-Workflow
 
-> **状态**：**内核 H-0～H-4 + 过渡入口 ✅** · **H-5 ✅**（[routing v6+H-5 plan](../plans/2026-08-13-unified-routing-v6-h5.md)）· **H-6 ✅**（[planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md)）· **H-7 / 阶段 D ⬜** · **4.14 唯一 SSOT**（原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
+> **状态**：**内核 H-0～H-4 + 过渡入口 ✅** · **H-5 ✅**（[routing v6+H-5 plan](../plans/2026-08-13-unified-routing-v6-h5.md)）· **H-6 ✅**（[planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md)）· **H-7 代码 ✅ / Live 待部署跑**（[planner-h7-live](../plans/2026-08-13-planner-h7-live.md)）· **阶段 D ⬜** · **4.14 唯一 SSOT**（原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
 > **v2（2026-08-05）**：简化决议 S1–S7（§0.1）。**v3（2026-08-07）**：§3.1.1 上下文契约。**v4（2026-08-10）**：S5 单一循环（无 full/hier）。**v5（2026-08-10）**：§4 分层普通时间线 + TaskBoard。**v6（2026-08-10）**：归档 harness；§5.0 PlanNotebook 定稿模型 + §5.4 S6 重规划表迁入本文。
 > **v7（2026-08-13）**：勘误 D6/`PlanValidator`/Redis key/TTL/GoalAlignment/`CollapsibleConfirmPanel`；**长负载预算**上调（§5.0 / §8.1，对齐现网 `react.task-max-iters` / spawn·exec-wall）。
 > **v8（2026-08-13）**：命名对齐 routing **四轴**——会话形态 `kind`（废 `scene`）；执行模式 `executionMode`；业务域 `biz_scene`（暂不动）；LLM 调用点 `callSite` / DB·MQ `call_site`（废 `call_scene`）。正文若仍写 `scene=chat|task` 均读作 `kind`。
 > **v9（2026-08-13）**：§7 落地进度——H-0～H-4 + 过渡入口 ✅。
 > **v10（2026-08-13）**：H-5 ✅（routing v6：`fast`/`pro`/`workflow` + ResourceDispatcher；`pro`→harness）。
 > **v11（2026-08-13）**：H-6 ✅（分层时间线 + Composer UX；TaskBoard H1 待 harness `tasks` SSE）；H-7 全量 Live / 阶段 D（R-4）**未做**。
+> **v12（2026-08-13）**：对照代码冻结 H-7 缺口；实施计划 [planner-h7-live](../plans/2026-08-13-planner-h7-live.md)。
+> **v13（2026-08-13）**：H-7 **代码**落地（`tasks` SSE / handoff / `planner-answer` / follow-up obsolete / `plan.worker_*` / `verify_planner_executor_live.py`）；单测绿；**全量 Live 需部署 orchestrator 后跑脚本**；阶段 D 仍后置。
 > **日期**：2026-08-05
 > **编号**：阶段四增量（重建 Planner-Executor，删除动态 Plan-Workflow）
 > **前置**：
@@ -444,8 +446,8 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 | **过渡入口**（kernel 附带） | ✅ | 已被 H-5 取代主路径；历史：`harness.enabled`∧`PLAN_WORKFLOW`→harness |
 | **H-5** routing v6 三模式 | ✅ | [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)：`fast`/`pro`/`workflow` + ResourceDispatcher；`pro`→harness；冒烟 `verify_routing_v6_smoke.py` |
 | **H-6** 前端时间线+TaskBoard | ✅ | [planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md)：分层时间线 + Composer（task 三模式、分支下移、去 AI 提示）；**follow-up**：TaskBoard 一级 H1 需 harness `tasks` SSE |
-| **H-7** Live 全量 | ⬜ | §9.2 P1–P8；现仅有 **kernel smoke** + routing v6 smoke |
-| **阶段 D** 删旧 plan-workflow | ⬜ | = routing **R-4**；禁止在 H-7 前删源码；主路径已不进 PlanWorkflow |
+| **H-7** Live 全量 | 🟡 | [planner-h7-live](../plans/2026-08-13-planner-h7-live.md)：G1–G6 代码 ✅ + `verify_planner_executor_live.py`；**部署后**跑 P1–P8；现网 Gateway 未起时 Live 未绿 |
+| **阶段 D** 删旧 plan-workflow | ⬜ | = routing **R-4**；禁止在 H-7 Live 绿前删源码；主路径已不进 PlanWorkflow |
 
 **代码落点**：`orchestrator/.../plan/harness/*` · 灰度 `docs/nacos/sunshine-orchestrator.yaml` → `agent.execution.harness.enabled` · 冒烟 `scripts/verify_planner_harness_kernel_smoke.py`。
 
@@ -508,11 +510,15 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 - [x] **Composer UX**：`kind=task` 亦可选 `fast|pro|workflow`；`GitBranchSelector` 在输入框下方；去掉「AI 生成内容仅供参考」提示
 - **出口**：视觉验收 ✅
 
-### 阶段 H-7：Live 验收 ⬜
+### 阶段 H-7：Live 验收 🟡
 
-- `scripts/verify_planner_executor_live.py`（对齐 §9.2 P1–P8；检查门列表写在 implementation plan，勿再引用已归档 v8 §12.2 编号）
-- 回归：静态 Workflow（golden set B/C/D/I）、ReAct、spawn
-- **已有**：`verify_planner_harness_kernel_smoke.py`（Redis notebook + plan SSE；**不**替代本阶段）
+> 实施计划：[planner-h7-live](../plans/2026-08-13-planner-h7-live.md)（代码 ✅）
+
+- [x] **验收前置**：H1→`tasks` SSE；worker 步 handoff 文案；`planner-answer` 步；follow-up 目标变更→`obsolete`；薄审计 `plan.worker_*`
+- [x] `scripts/verify_planner_executor_live.py`（§9.2 P1–P8；`--suite p1,p3,p4` 最短三角）
+- [ ] **全量 Live 绿**：部署 `feature/planner-h7-live` → `python scripts/start.py --restart orchestrator` → 跑脚本
+- 回归：静态 Workflow、ReAct、spawn
+- **已有**：`verify_planner_harness_kernel_smoke.py`（不替代本阶段）
 
 ### 阶段 D（删除）：旧 plan-workflow 代码清理 ⬜
 

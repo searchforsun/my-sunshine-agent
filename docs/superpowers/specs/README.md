@@ -130,10 +130,11 @@ flowchart TB
 | Spec | 角色 | 硬依赖 | 被谁依赖 |
 |------|------|--------|----------|
 | [unified-routing v6](./2026-07-29-unified-routing-design.md) | 执行模式中枢 | multi-agent（主体 ✅）；**R-0～R-3 ✅** / **R-4 ⬜** | 4.14 H-5（✅）、task-scene、skill-sticky、biz、stateless 分发 |
-| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-6 ✅**；H-7 / 阶段 D ⬜；TaskBoard H1 待 `tasks` SSE；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | task-scene（H1）、D12、stateless B2/B3、phase5 长任务 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-7 代码 ✅**；Live 待部署 [plan](../plans/2026-08-13-planner-h7-live.md)；阶段 D ⬜；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | D12、stateless B2/B3、phase5 长任务 |
 | [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ | — | task-scene、skill-sticky、biz 挂载纪律 |
 | [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 | routing + 压缩点；pro 边界要 H1 | — |
-| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat） |
+| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat）；码表/工具集见下行 |
+| [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) | 资源 `kind` 过滤 · 业务场景 Lab · 工具集 chat/task · 退役 react-prompt | routing + business-context + toolset | 计划 [kind-biz-scene-catalog](../plans/2026-08-13-kind-biz-scene-catalog.md) ⬜ K0～K4 |
 | [skill-sticky](./2026-08-12-skill-sticky-process-chain-design.md) | 可发现≠触发；触发保真 + 轻 sticky（v3.1） | routing 轨 A | — |
 | [goal-alignment](./2026-07-27-react-goal-alignment-design.md) | 机械门禁 | TaskBoard/AS2（已有） | rebuild S6（可同批） |
 | [orchestrator-stateless](./2026-08-03-orchestrator-stateless-design.md) | 物理无状态 | 波次 A 独立；B2/B3 要 harness | 多实例生产 |
@@ -143,15 +144,15 @@ flowchart TB
 **推荐落地顺序**
 
 1. **已完成**：4.14 **H-0～H-4 + 过渡入口** — [kernel plan](../plans/2026-08-13-planner-executor-kernel.md) ✅；**routing v6 R-0～R-3 + H-5** — [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) ✅；**H-6 前端** — [planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md) ✅（分层时间线 + Composer UX；TaskBoard H1 待 `tasks` SSE）；旁路仍可并行：stateless **波次 A** ∥ 观测 6.2/6.4、phase5 **5.2**
-2. **下一波**：H-7 全量 Live → **阶段 D / routing R-4**（删 PlanWorkflow 源码）→ skill-sticky → D12
-3. **第三波**：五层 §5.5 压缩点（优先 task）→ task-scene → business-context（可与 task-scene 并行）
+2. **下一波**：部署后跑 [H-7 Live](../plans/2026-08-13-planner-h7-live.md) → **阶段 D / routing R-4**（删 PlanWorkflow 源码）→ skill-sticky → D12
+3. **第三波**：五层 §5.5 压缩点（优先 task）→ task-scene → business-context（可与 task-scene 并行）→ [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（工具集/Lab/退役 react-prompt，可与 biz 同波）
 4. **刻意后置**：stateless B2/B3/拆进程、phase5 5.1/5.4/5.7、压缩点全面铺 chat
 
 **routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；R-4 / 阶段 D；H-7；harness `tasks` SSE（TaskBoard H1）。
 
 **现状提醒（2026-08-13）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码仍在**（主路径已断）。CLAUDE「4.14 🟡」= H-0～H-6 ✅ / H-7+阶段 D ⬜；架构表勿写「PlanWorkflow 已删」直至阶段 D。
 
-**命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**；执行模式 **`executionMode`**。详见 [routing v6 命名四轴](./2026-07-29-unified-routing-design.md)。
+**命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`；Catalog 资源同轴另含 `all`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**（码表 = 业务场景 Lab）；执行模式 **`executionMode`**；默认工具集按会话 `kind`（废 ReAct/Plan-Workflow 集）。详见 [routing v6](./2026-07-29-unified-routing-design.md) · [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)。
 
 ---
 
