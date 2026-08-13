@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,9 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.Optional;
 
-/** L3：Intent 改写 + LLM 意图分类（语义路由兜底） */
+/**
+ * L3：Intent 改写 + LLM 意图分类 — 仅填充绑定；mode 恒为 ctx.effectiveLockedMode()。
+ */
 @Component
 @RequiredArgsConstructor
 public class LlmClassifierRoutingPolicy implements RoutingPolicy {
@@ -26,7 +29,8 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
 
     @Override
     public Mono<Optional<ExecutionPlan>> tryRoute(RoutingContext ctx) {
-        return classifyWithOptionalIntentRewrite(ctx)
+        ExecutionMode locked = ctx.effectiveLockedMode();
+        return classifyWithOptionalIntentRewrite(ctx.withLockedMode(locked))
                 .map(Optional::of);
     }
 
@@ -42,14 +46,7 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
                     String query = StringUtils.hasText(outcome.effectiveQuery())
                             ? outcome.effectiveQuery()
                             : userMessage;
-                    return intentRouter.classifyPlan(new RoutingContext(
-                            query,
-                            ctx.traceMessageId(),
-                            ctx.preference(),
-                            ctx.forcedWorkflowId(),
-                            ctx.clientSkillId(),
-                            ctx.memory(),
-                            ctx.lockedMode()));
+                    return intentRouter.classifyPlan(ctx.withUserMessage(query));
                 });
     }
 }

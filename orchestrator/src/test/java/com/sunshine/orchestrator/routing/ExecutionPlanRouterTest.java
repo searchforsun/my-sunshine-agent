@@ -1,9 +1,11 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.catalog.AgentBindingParser;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
+import com.sunshine.orchestrator.routing.policy.AgentBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
@@ -39,6 +41,8 @@ class ExecutionPlanRouterTest {
     @Mock
     private SkillBindingParser skillBindingParser;
     @Mock
+    private AgentBindingParser agentBindingParser;
+    @Mock
     private IntentRouter intentRouter;
     @Mock
     private SkillCatalogService skillCatalogService;
@@ -53,10 +57,18 @@ class ExecutionPlanRouterTest {
         SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
+        AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
+        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
+                com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
+        when(agentBindingParser.stripAgentMentions(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> inv.getArgument(0));
         router = new ExecutionPlanRouter(
                 new SkillDiscoveryService(skillCatalogService),
-                new ForcedExecutionRouter(skillPolicy, catalogHolder, intentRouter, workflowPolicy),
-                skillBindingParser);
+                new ForcedExecutionRouter(
+                        skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
+                        new WorkflowBindingParser(workflowCatalog)),
+                skillBindingParser,
+                agentBindingParser);
         when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString())
                 ).thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());

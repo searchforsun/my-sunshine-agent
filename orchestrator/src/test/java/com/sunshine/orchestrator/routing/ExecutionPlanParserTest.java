@@ -75,6 +75,20 @@ class ExecutionPlanParserTest {
     }
 
     @Test
+    void parsesTrackAFields_ignoresPlanModeAndExecutionMode() {
+        String json = """
+                {"planMode":"harness","executionMode":"workflow","agentIds":["a1","a2"],\
+                "skillIds":["s1","s2"],"reason":"轨A"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        // mode 缺省 → FAST；planMode/executionMode 不参与 mode
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        assertThat(plan.params()).containsEntry("agentIds", "a1,a2");
+        assertThat(plan.params()).containsEntry("skillIds", "s1,s2");
+        assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "s1");
+    }
+
+    @Test
     void parseStoredIntentPlanWorkflow() {
         ExecutionPlan plan = parser.parseStoredIntent("plan-workflow");
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);

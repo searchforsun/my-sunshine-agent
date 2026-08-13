@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
+import com.sunshine.orchestrator.routing.policy.AgentBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
@@ -32,6 +33,8 @@ class ForcedExecutionRouterTest {
     @Mock
     private SkillBindingRoutingPolicy skillBindingRoutingPolicy;
     @Mock
+    private AgentBindingRoutingPolicy agentBindingRoutingPolicy;
+    @Mock
     private IntentRouter intentRouter;
     @Mock
     private WorkflowCatalog workflowCatalog;
@@ -44,8 +47,12 @@ class ForcedExecutionRouterTest {
         catalogHolder = RoutingCatalogFixtures.seedHolder();
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
-        router = new ForcedExecutionRouter(skillBindingRoutingPolicy, catalogHolder, intentRouter, workflowPolicy);
+        WorkflowBindingParser wbp = new WorkflowBindingParser(workflowCatalog);
+        router = new ForcedExecutionRouter(
+                skillBindingRoutingPolicy, agentBindingRoutingPolicy, catalogHolder, intentRouter,
+                workflowPolicy, wbp);
         when(workflowCatalog.isKnownWorkflow(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+        when(agentBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
     }
 
     @Test

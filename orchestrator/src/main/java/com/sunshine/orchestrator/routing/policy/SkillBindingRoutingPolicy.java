@@ -7,7 +7,6 @@ import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
-import com.sunshine.orchestrator.skill.SkillBindingSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -17,7 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-/** L0：@ / 强提示 Skill 硬绑定 */
+/** L0：@ / 强提示 Skill 硬绑定（仅轨 A；不改写 executionMode） */
 @Component
 @RequiredArgsConstructor
 public class SkillBindingRoutingPolicy implements RoutingPolicy {
@@ -32,7 +31,7 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
 
     @Override
     public Mono<Optional<ExecutionPlan>> tryRoute(RoutingContext ctx) {
-        if (!ctx.allowsSkillBinding()) {
+        if (!ctx.allowsSkillBinding() || ctx.isWorkflowTrack()) {
             return Mono.just(Optional.empty());
         }
         SkillBindingOutcome binding = StringUtils.hasText(ctx.clientSkillId())
@@ -52,12 +51,13 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
             case HINT_PATTERN -> "skill:hint";
             case CLIENT -> "skill:client";
         };
+        ExecutionMode locked = ctx.effectiveLockedMode();
         if (UnifiedRuleRoutingPolicy.looksLikeStructural(
                 promptCatalogHolder.snapshot().routingRules(), binding.effectiveQuery())) {
             params.put(SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
             return Mono.just(Optional.of(new ExecutionPlan(
-                    ExecutionMode.PRO, null, params, reason + ":5b-skill-plan")));
+                    locked, null, params, reason + ":5b-skill-plan")));
         }
-        return Mono.just(Optional.of(new ExecutionPlan(ExecutionMode.FAST, null, params, reason)));
+        return Mono.just(Optional.of(new ExecutionPlan(locked, null, params, reason)));
     }
 }

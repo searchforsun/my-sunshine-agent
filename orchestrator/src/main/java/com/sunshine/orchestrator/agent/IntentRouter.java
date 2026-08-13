@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 意图识别 — 输出 ExecutionPlan（workflow / react / plan-workflow + 可选 skillId）
+ * 意图识别 — 分轨收集绑定（轨 A：skill/agent；轨 B：workflow）；禁止改写 executionMode。
  */
 @Slf4j
 @Component
@@ -33,6 +34,8 @@ public class IntentRouter {
 
     /** 意图分类注入的近期轮次上限（L1 mid/near 尾部）。 */
     private static final int MAX_INTENT_CONTEXT_TURNS = 4;
+    private static final String PARAM_AGENT_IDS = "agentIds";
+    private static final String PARAM_REACT_PROMPT = "reactPromptId";
 
     private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
@@ -51,10 +54,11 @@ public class IntentRouter {
      */
     @SuppressWarnings("unchecked")
     public Mono<ExecutionPlan> classifyPlan(RoutingContext ctx) {
-        String classifierPrompt = renderClassifierPrompt();
+        String classifierPrompt = renderClassifierPrompt(ctx);
         if (classifierPrompt.isEmpty()) {
             log.warn("[IntentRouter] catalog intent.classifier 未配置，默认 react");
-            return Mono.just(ExecutionPlan.reactFallback("no classifier prompt"));
+            return Mono.just(applyLockedMode(
+                    ExecutionPlan.reactFallback("no classifier prompt"), ctx.effectiveLockedMode()));
         }
         String userContent = buildClassifierUserMessage(ctx);
 
@@ -72,50 +76,82 @@ public class IntentRouter {
         }
 
         return llmGateway.completeRaw(request)
-                .map(resp -> extractContent(resp))
+                .map(IntentRouter::extractContent)
                 .defaultIfEmpty("")
                 .map(planParser::parse)
-                .map(plan -> ctx.lockedMode() != null
-                        ? applyLockedMode(plan, ctx.lockedMode())
+                .map(plan -> ctx.lockedMode() != null || ctx.preference() != null
+                        ? applyLockedMode(plan, ctx.effectiveLockedMode())
                         : workflowCatalog.sanitize(plan))
                 .map(skillCatalogService::sanitizeSkillPlan)
-                .doOnNext(plan -> log.info("[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}, locked={}",
+                .doOnNext(plan -> log.info(
+                        "[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}, locked={}, kind={}",
                         plan.mode(),
                         plan.workflowId(),
-                        plan.params() != null ? plan.params().get("skill") : null,
+                        plan.params() != null ? plan.params().get(SkillBindingOutcome.PARAM_SKILL) : null,
                         plan.reason(),
-                        ctx.lockedMode()));
+                        ctx.effectiveLockedMode(),
+                        ctx.kindOrDefault()));
     }
 
-    /** 强制模式：解析后锁死 mode，保留 LLM 给出的绑定字段 */
-    static ExecutionPlan applyLockedMode(ExecutionPlan plan, ExecutionMode locked) {
-        if (locked == null || plan == null || plan.mode() == locked) {
+    /**
+     * 强制模式：锁死 mode，并按轨裁剪绑定（轨 A 去 workflowId；轨 B 去 skill/agent）。
+     * 忽略 LLM 输出的 planMode / executionMode（解析阶段亦不采纳）。
+     */
+    public static ExecutionPlan applyLockedMode(ExecutionPlan plan, ExecutionMode locked) {
+        if (plan == null) {
+            return null;
+        }
+        if (locked == null) {
             return plan;
         }
-        return new ExecutionPlan(locked, plan.workflowId(), plan.params(), plan.reason(), plan.ruleId());
+        String workflowId = locked == ExecutionMode.WORKFLOW ? plan.workflowId() : null;
+        Map<String, String> params = filterParamsForTrack(plan.params(), locked);
+        return new ExecutionPlan(locked, workflowId, params, plan.reason(), plan.ruleId());
+    }
+
+    private static Map<String, String> filterParamsForTrack(Map<String, String> params, ExecutionMode locked) {
+        if (params == null || params.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : params.entrySet()) {
+            if (!StringUtils.hasText(e.getKey()) || !StringUtils.hasText(e.getValue())) {
+                continue;
+            }
+            if (locked == ExecutionMode.WORKFLOW) {
+                if (SkillBindingOutcome.PARAM_SKILL.equals(e.getKey())
+                        || PARAM_AGENT_IDS.equals(e.getKey())
+                        || SkillBindingOutcome.PARAM_PLANNER_MODE.equals(e.getKey())
+                        || PARAM_REACT_PROMPT.equals(e.getKey())) {
+                    continue;
+                }
+            }
+            out.put(e.getKey(), e.getValue());
+        }
+        return out.isEmpty() ? Map.of() : Map.copyOf(out);
     }
 
     /**
      * lockedMode 时跳过 {@link WorkflowCatalog#sanitize}：sanitize 会把未知/缺定义 workflow
      * 降级为 react，随后再锁回 WORKFLOW 会丢掉 workflowId；强制路径由 ForcedExecutionRouter 校验。
      */
-    private String renderClassifierPrompt() {
+    private String renderClassifierPrompt(RoutingContext ctx) {
         String prompt = catalogHolder.snapshot().text("intent.classifier").map(String::strip).orElse("");
         if (!StringUtils.hasText(prompt)) {
             return "";
         }
+        // 目录仍全量注入；输出字段由【模式锁定·轨A/B】+ applyLockedMode 约束
         prompt = workflowCatalog.renderIntoClassifier(prompt);
         return skillCatalogService.renderIntoClassifier(prompt);
     }
 
     static String buildClassifierUserMessage(RoutingContext ctx) {
         StringBuilder sb = new StringBuilder();
-        if (ctx.lockedMode() != null) {
-            sb.append("【模式锁定】执行模式已固定为 ")
-                    .append(lockedModeLabel(ctx.lockedMode()))
-                    .append("，输出 JSON 的 mode 必须为此值；勿改 mode，仅填写该模式下的 workflowId / skillId / reactPromptId / params。\n");
+        ExecutionMode locked = ctx.lockedMode() != null ? ctx.lockedMode() : null;
+        if (locked != null) {
+            sb.append(trackLockInstruction(locked));
         }
-        if (StringUtils.hasText(ctx.clientSkillId())) {
+        if (StringUtils.hasText(ctx.clientSkillId()) && ctx.isAgentSkillTrack()) {
             sb.append("【会话态】UI 已选 Skill: ").append(ctx.clientSkillId().strip()).append('\n');
         }
         AssembledContext memory = ctx.memory();
@@ -147,6 +183,17 @@ public class IntentRouter {
         }
         sb.append("【当前问题】\n").append(ctx.userMessage());
         return sb.toString();
+    }
+
+    private static String trackLockInstruction(ExecutionMode locked) {
+        return switch (locked) {
+            case FAST, PRO -> "【模式锁定·轨A】执行模式已固定为 " + lockedModeLabel(locked)
+                    + "。只回复一行 JSON，字段仅允许 agentIds/skillIds/confidence/reason"
+                    + "（可用 skillId 单数）；禁止输出 executionMode、planMode、mode、workflowId。\n";
+            case WORKFLOW -> "【模式锁定·轨B】执行模式已固定为 workflow。"
+                    + "只回复一行 JSON，字段仅允许 workflowId/confidence/reason；"
+                    + "禁止输出 executionMode、planMode、mode、agentIds、skillIds、skillId。\n";
+        };
     }
 
     private static String lockedModeLabel(ExecutionMode mode) {

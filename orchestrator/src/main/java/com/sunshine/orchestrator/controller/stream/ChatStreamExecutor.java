@@ -222,7 +222,9 @@ public class ChatStreamExecutor {
                         ctx.executionPreference(),
                         ctx.forcedWorkflowId(),
                         ctx.clientSkillId(),
-                        ctx.memory()))
+                        ctx.memory(),
+                        null,
+                        StringUtils.hasText(ctx.conversationKind()) ? ctx.conversationKind() : "chat"))
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->

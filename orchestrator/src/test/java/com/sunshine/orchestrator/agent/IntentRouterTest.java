@@ -48,13 +48,13 @@ class IntentRouterTest {
         RoutingContext ctx = new RoutingContext("制度怎么说", null)
                 .withLockedMode(ExecutionMode.FAST);
         String content = IntentRouter.buildClassifierUserMessage(ctx);
-        assertThat(content).contains("【模式锁定】");
+        assertThat(content).contains("【模式锁定·轨A】");
         assertThat(content).contains("fast");
         assertThat(content).contains("【当前问题】");
     }
 
     @Test
-    void applyLockedMode_overridesModeKeepsBindings() {
+    void applyLockedMode_overridesModeAndStripsCrossTrackBindings() {
         ExecutionPlan llm = new ExecutionPlan(
                 ExecutionMode.WORKFLOW,
                 "finance-smart",
@@ -62,7 +62,32 @@ class IntentRouterTest {
                 "llm");
         ExecutionPlan locked = IntentRouter.applyLockedMode(llm, ExecutionMode.FAST);
         assertThat(locked.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(locked.workflowId()).isEqualTo("finance-smart");
+        assertThat(locked.workflowId()).isNull();
         assertThat(locked.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
+        assertThat(locked.params()).containsEntry("skill", "x");
+    }
+
+    @Test
+    void applyLockedMode_workflowTrack_stripsSkillAndAgent() {
+        ExecutionPlan llm = new ExecutionPlan(
+                ExecutionMode.FAST,
+                "knowledge-qa",
+                Map.of("skill", "x", "agentIds", "a1", "status", "pending"),
+                "llm");
+        ExecutionPlan locked = IntentRouter.applyLockedMode(llm, ExecutionMode.WORKFLOW);
+        assertThat(locked.mode()).isEqualTo(ExecutionMode.WORKFLOW);
+        assertThat(locked.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(locked.params()).containsEntry("status", "pending");
+        assertThat(locked.params()).doesNotContainKey("skill");
+        assertThat(locked.params()).doesNotContainKey("agentIds");
+    }
+
+    @Test
+    void buildClassifierUserMessage_trackAForbidsModeFields() {
+        RoutingContext ctx = new RoutingContext("制度怎么说", null)
+                .withLockedMode(ExecutionMode.FAST);
+        String content = IntentRouter.buildClassifierUserMessage(ctx);
+        assertThat(content).contains("轨A");
+        assertThat(content).contains("禁止输出 executionMode、planMode");
     }
 }
