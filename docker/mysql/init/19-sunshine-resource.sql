@@ -9,6 +9,7 @@ CREATE TABLE skill_definition (
     enabled         TINYINT(1) NOT NULL DEFAULT 1,
     active_version  INT NOT NULL DEFAULT 1,
     kind            VARCHAR(16) NOT NULL DEFAULT 'all' COMMENT '会话形态：chat|task|all（与 conversation.kind 同轴）',
+    biz_scene       VARCHAR(64) NULL COMMENT '业务场景闭集码（业务场景 Lab 管理；空=不触发结构化业务记忆）',
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -50,6 +51,7 @@ CREATE TABLE agent_definition (
     permissions_json VARCHAR(512) NOT NULL DEFAULT '{}',
     model_config_json VARCHAR(512) NOT NULL DEFAULT '{}',
     kind            VARCHAR(16) NOT NULL DEFAULT 'all' COMMENT '会话形态：chat|task|all（与 conversation.kind 同轴）',
+    biz_scene       VARCHAR(64) NULL COMMENT '业务场景闭集码（业务场景 Lab 管理；空=不触发结构化业务记忆）',
     max_iters       INT NOT NULL DEFAULT 2,
     max_handoffs    INT NOT NULL DEFAULT 5,
     source          VARCHAR(16) NOT NULL DEFAULT 'INTERNAL',
@@ -507,3 +509,42 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 NULL, '初始种子', 'agent');
 
 UPDATE prompt_catalog_meta SET catalog_version = 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1;
+
+-- =============================================================================
+-- 业务场景 Lab（K2）：biz_scene 闭集码表 + 场景 Policy（与 kind-biz-scene-catalog §3 同码空间）
+-- =============================================================================
+CREATE TABLE biz_scene_definition (
+    biz_scene   VARCHAR(64) PRIMARY KEY,
+    display_name VARCHAR(128) NOT NULL,
+    description VARCHAR(512),
+    status      VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT 'active|retired（retired 不可绑到新资源）',
+    tenant_id   VARCHAR(32) NOT NULL DEFAULT 'default',
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE biz_scene_policy (
+    policy_id       BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id       VARCHAR(32) NOT NULL DEFAULT 'default',
+    biz_scene       VARCHAR(64) NOT NULL,
+    version         INT NOT NULL DEFAULT 1,
+    status          VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT 'active|retired',
+    rules_json      TEXT NOT NULL,
+    effective_from  TIMESTAMP NULL,
+    effective_to    TIMESTAMP NULL,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_biz_scene_policy (tenant_id, biz_scene, version),
+    CONSTRAINT fk_biz_scene_policy_def FOREIGN KEY (biz_scene)
+        REFERENCES biz_scene_definition (biz_scene)
+);
+
+-- 演示码（与原 react-prompt 场景同名对齐，无 react-prompt. 前缀）
+INSERT INTO biz_scene_definition (biz_scene, display_name, description, status) VALUES
+('compliance-review', '费用合规审查', '报销合规对照场景：命中时装载费用制度 Policy', 'active'),
+('expense-assist', '报销助手', '报销查询/提交辅助场景', 'active'),
+('policy-qa', '制度问答', '企业制度/流程知识问答场景', 'active'),
+('travel-budget', '差旅预算', '差旅额度与预算管控场景', 'active');
+
+INSERT INTO biz_scene_policy (tenant_id, biz_scene, version, status, rules_json) VALUES
+('default', 'compliance-review', 1, 'active',
+'{"hitl_confirm_before_submit":true,"red_lines":["不可代他人提交报销","单笔金额超过 5000 元需人工复核"],"read_only_tools":true}');
