@@ -3,6 +3,7 @@ package com.sunshine.skill.dto;
 public record SkillUpdateRequest(
         String displayName,
         String description,
-        String kind
+        String kind,
+        String bizScene
 ) {
 }

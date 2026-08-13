@@ -8,7 +8,8 @@ public record AgentCatalogIndexEntry(
         String description,
         boolean enabled,
         String tenantId,
-        String kind
+        String kind,
+        String bizScene
 ) {
     public AgentCatalogIndexEntry {
         if (kind == null || kind.isBlank()) {
@@ -18,6 +19,7 @@ public record AgentCatalogIndexEntry(
 
     public static AgentCatalogIndexEntry from(AgentCatalogEntry full) {
         return new AgentCatalogIndexEntry(
-                full.id(), full.displayName(), full.description(), full.enabled(), full.tenantId(), full.kind());
+                full.id(), full.displayName(), full.description(), full.enabled(), full.tenantId(),
+                full.kind(), full.bizScene());
     }
 }

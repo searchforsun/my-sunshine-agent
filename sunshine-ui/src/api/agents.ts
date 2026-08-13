@@ -14,6 +14,8 @@ export interface AgentCatalogIndexEntry {
   source?: string
   /** 会话形态：chat | task | all */
   kind?: string
+  /** 业务场景闭集码（业务场景 Lab；空=不触发结构化业务记忆） */
+  bizScene?: string | null
 }
 
 export interface AgentEntry {
@@ -38,6 +40,8 @@ export interface AgentEntry {
   endpointOverride?: string
   /** 会话形态：chat | task | all */
   kind?: string
+  /** 业务场景闭集码（业务场景 Lab；空=不触发结构化业务记忆） */
+  bizScene?: string | null
 }
 
 export async function listAgents(): Promise<AgentEntry[]> {

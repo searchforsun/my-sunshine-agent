@@ -8,7 +8,8 @@ public record SkillCatalogIndexEntry(
         int version,
         boolean enabled,
         String sandbox,
-        String kind
+        String kind,
+        String bizScene
 ) {
     public SkillCatalogIndexEntry {
         if (sandbox == null || sandbox.isBlank()) {
@@ -27,6 +28,7 @@ public record SkillCatalogIndexEntry(
                 full.version(),
                 full.enabled(),
                 full.sandbox(),
-                full.kind());
+                full.kind(),
+                full.bizScene());
     }
 }

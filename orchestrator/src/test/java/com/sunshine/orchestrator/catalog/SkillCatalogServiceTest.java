@@ -34,7 +34,7 @@ class SkillCatalogServiceTest {
     @Test
     void refresh_loadsIndexOnly() {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of(
-                new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "d", 1, true, "none", "all")));
+                new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "d", 1, true, "none", "all", null)));
         service.refresh();
         assertThat(service.indexEntries()).hasSize(1);
         assertThat(service.findIndex("finance-analysis")).isPresent();
@@ -43,9 +43,9 @@ class SkillCatalogServiceTest {
     @Test
     void find_fetchesDetailOnDemand() {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of(
-                new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "d", 1, true, "none", "all")));
+                new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "d", 1, true, "none", "all", null)));
         when(catalogClient.fetchSkillDetail("finance-analysis")).thenReturn(Optional.of(
-                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay text", 1, true, "none", null, "all")));
+                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay text", 1, true, "none", null, "all", null)));
         service.refresh();
         assertThat(service.find("finance-analysis")).isPresent();
         assertThat(service.overlayOrEmpty("finance-analysis")).isEqualTo("overlay text");
@@ -55,7 +55,7 @@ class SkillCatalogServiceTest {
     @Test
     void renderForClassifier_includesSandboxCapability() {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of(
-                new SkillCatalogIndexEntry("sandbox-coding-demo", "沙箱编码演示", "docker 示例", 1, true, "docker", "all")));
+                new SkillCatalogIndexEntry("sandbox-coding-demo", "沙箱编码演示", "docker 示例", 1, true, "docker", "all", null)));
         service.refresh();
         assertThat(service.renderForClassifier())
                 .contains("sandbox-coding-demo")

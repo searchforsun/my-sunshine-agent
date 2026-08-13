@@ -5,7 +5,8 @@ public record AgentCatalogIndexEntry(
         String displayName,
         String description,
         boolean enabled,
-        String kind
+        String kind,
+        String bizScene
 ) {
     public AgentCatalogIndexEntry {
         if (kind == null || kind.isBlank()) {

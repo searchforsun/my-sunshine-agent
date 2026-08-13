@@ -3,7 +3,10 @@ package com.sunshine.orchestrator.execution;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.biz.BizSceneResolver;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.client.BizSceneCatalogClient;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
@@ -32,6 +35,8 @@ public class ReactExecutor {
 
     private final AgentRuntime agentRuntime;
     private final AgentCatalogService agentCatalogService;
+    private final SkillCatalogService skillCatalogService;
+    private final BizSceneCatalogClient bizSceneCatalogClient;
     private final AgentExecutionProperties executionProperties;
     private final PromptCatalogHolder catalogHolder;
     private final ObjectProvider<GenerationRegistry> generationRegistry;
@@ -46,6 +51,8 @@ public class ReactExecutor {
                 : ctx.userContent();
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
         String reactPromptId = blankToNull(params.get("reactPromptId"));
+        // K2 资源召回后解析会话 biz_scene（结构化日志；完整权威层装载见 Task 6 标注的 P3）
+        logResolvedBizScene(skillId, params.get(PARAM_AGENT_IDS));
         return executeWithInjected(ctx, List.of(), query, skillId, reactPromptId);
     }
 
@@ -214,5 +221,37 @@ public class ReactExecutor {
 
     private static String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.strip() : null;
+    }
+
+    /**
+     * K2：资源召回后解析会话 biz_scene（agent 优先 → skill 第一非空 → null）。
+     * 完整结构化权威层（Policy/任务板/偏好）装载 → 权威层 P3（business-context 后续）。
+     */
+    private void logResolvedBizScene(String skillId, String agentIdsRaw) {
+        try {
+            List<BizSceneResolver.SceneTagged> agents = new ArrayList<>();
+            if (StringUtils.hasText(agentIdsRaw)) {
+                for (String id : agentIdsRaw.split(",")) {
+                    String aid = id.strip();
+                    if (aid.isEmpty()) {
+                        continue;
+                    }
+                    agentCatalogService.find(aid)
+                            .ifPresent(entry -> agents.add(new BizSceneResolver.SceneTagged(
+                                    entry.id(), entry.bizScene())));
+                }
+            }
+            List<BizSceneResolver.SceneTagged> skills = new ArrayList<>();
+            if (StringUtils.hasText(skillId)) {
+                skillCatalogService.find(skillId)
+                        .ifPresent(entry -> skills.add(new BizSceneResolver.SceneTagged(
+                                entry.id(), entry.bizScene())));
+            }
+            String scene = BizSceneResolver.resolve(agents, skills, bizSceneCatalogClient.activeCodes())
+                    .orElse(null);
+            log.info("[BizScene] resolved scene={} skill={} agents={}", scene, skillId, agentIdsRaw);
+        } catch (Exception e) {
+            log.warn("[BizScene] resolve failed: {}", e.getMessage());
+        }
     }
 }

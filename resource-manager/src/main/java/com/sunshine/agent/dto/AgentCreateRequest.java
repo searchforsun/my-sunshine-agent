@@ -19,6 +19,7 @@ public record AgentCreateRequest(
         String modelConfigJson,
         Integer maxIters,
         Integer maxHandoffs,
-        String kind
+        String kind,
+        String bizScene
 ) {
 }

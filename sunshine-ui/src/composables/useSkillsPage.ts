@@ -32,6 +32,7 @@ import {
   type SkillVersion,
 } from '../api/skills'
 import { friendlyErrorMessage } from '../api/apiError'
+import { listActiveBizSceneCodes } from '../api/bizScenes'
 import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFileTree'
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import {
@@ -71,9 +72,11 @@ export function useSkillsPage() {
 
   const showCreate = ref(false)
   const showEdit = ref(false)
-  const createForm = ref({ id: '', displayName: '', description: '', kind: 'all' })
+  /** 业务场景 Lab active 码（biz_scene 下拉选项） */
+  const activeBizScenes = ref<string[]>([])
+  const createForm = ref({ id: '', displayName: '', description: '', kind: 'all', bizScene: null as string | null })
   const editTargetSkill = ref<SkillEntry | null>(null)
-  const editForm = ref({ displayName: '', description: '', kind: 'all' })
+  const editForm = ref({ displayName: '', description: '', kind: 'all', bizScene: null as string | null })
   const creating = ref(false)
   const savingEdit = ref(false)
   const uploading = ref(false)
@@ -500,11 +503,12 @@ export function useSkillsPage() {
         createForm.value.displayName.trim(),
         createForm.value.description.trim(),
         createForm.value.kind,
+        createForm.value.bizScene,
       )
       skills.value = [...skills.value, created]
       selectedId.value = created.id
       showCreate.value = false
-      createForm.value = { id: '', displayName: '', description: '', kind: 'all' }
+      createForm.value = { id: '', displayName: '', description: '', kind: 'all', bizScene: null }
       message.success('Skill 已创建，请上传 Skill 文件夹')
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '创建失败'))
@@ -607,6 +611,7 @@ export function useSkillsPage() {
       displayName: skill.displayName,
       description: skill.description ?? '',
       kind: skill.kind ?? 'all',
+      bizScene: skill.bizScene ?? null,
     }
     showEdit.value = true
   }
@@ -625,6 +630,7 @@ export function useSkillsPage() {
         editForm.value.displayName.trim(),
         editForm.value.description.trim(),
         editForm.value.kind,
+        editForm.value.bizScene,
       )
       skills.value = skills.value.map(s => (s.id === updated.id ? updated : s))
       showEdit.value = false
@@ -911,6 +917,9 @@ export function useSkillsPage() {
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
     void refreshPage()
+    void listActiveBizSceneCodes()
+      .then(codes => { activeBizScenes.value = codes })
+      .catch(() => { activeBizScenes.value = [] })
   })
 
   onBeforeUnmount(() => {
@@ -936,6 +945,7 @@ export function useSkillsPage() {
     createForm,
     editTargetSkill,
     editForm,
+    activeBizScenes,
     creating,
     savingEdit,
     uploading,

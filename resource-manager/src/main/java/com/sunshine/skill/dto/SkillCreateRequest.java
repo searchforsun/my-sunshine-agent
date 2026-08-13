@@ -8,6 +8,7 @@ public record SkillCreateRequest(
         String description,
         String sandbox,
         SandboxPolicy sandboxPolicy,
-        String kind
+        String kind,
+        String bizScene
 ) {
 }

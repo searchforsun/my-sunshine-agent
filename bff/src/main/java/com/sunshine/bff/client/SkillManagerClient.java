@@ -209,6 +209,11 @@ public class SkillManagerClient {
         return get("/api/skills/" + id + "/catalog");
     }
 
+    /** 业务场景 Lab active 码闭集（K2；Skill/Agent 表单下拉用） */
+    public Mono<Map<String, Object>> activeBizSceneCodes() {
+        return get("/api/biz-scenes/active-codes");
+    }
+
     private Mono<Map<String, Object>> get(String path) {
         return webClient.get()
                 .uri(path)

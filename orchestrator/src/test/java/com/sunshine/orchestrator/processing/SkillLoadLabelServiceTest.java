@@ -28,7 +28,7 @@ class SkillLoadLabelServiceTest {
     @Test
     void afterLine_includesSkillIdAndDisplayName() {
         when(skillCatalogService.findIndex("skill-demo")).thenReturn(Optional.of(
-                new SkillCatalogIndexEntry("skill-demo", "测试技能", "desc", 1, true, "none", "all")));
+                new SkillCatalogIndexEntry("skill-demo", "测试技能", "desc", 1, true, "none", "all", null)));
         SkillLoadLabelService service = new SkillLoadLabelService(skillCatalogService, TimelinePromptCatalog.withDefaults());
         service.init();
         assertThat(SkillLoadLabels.after("skill-demo")).isEqualTo("skill-demo 测试技能");

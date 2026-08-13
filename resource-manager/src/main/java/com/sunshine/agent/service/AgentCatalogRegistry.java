@@ -80,7 +80,8 @@ public class AgentCatalogRegistry {
                 def.getAgentCardUrl(),
                 def.getAuthConfigJson(),
                 def.getEndpointOverride(),
-                def.getKind() != null ? def.getKind() : "all");
+                        def.getKind() != null ? def.getKind() : "all",
+                        def.getBizScene());
     }
 
     private static List<String> parseTags(String json) {

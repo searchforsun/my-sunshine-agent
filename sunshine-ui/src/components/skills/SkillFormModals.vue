@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import { NButton, NForm, NFormItem, NInput, NModal, NSelect } from 'naive-ui'
 import { SKILLS_PAGE_KEY, type SkillsPageApi } from '../../composables/useSkillsPage'
 
@@ -10,6 +10,10 @@ const kindOptions = [
   { label: '对话', value: 'chat' },
   { label: '任务', value: 'task' },
 ]
+
+const bizSceneOptions = computed(() =>
+  page.activeBizScenes.map(code => ({ label: code, value: code })),
+)
 </script>
 
 <template>
@@ -26,6 +30,16 @@ const kindOptions = [
       </NFormItem>
       <NFormItem label="会话形态">
         <NSelect v-model:value="page.createForm.kind" class="sun-field" :options="kindOptions" size="small" />
+      </NFormItem>
+      <NFormItem label="业务场景">
+        <NSelect
+          v-model:value="page.createForm.bizScene"
+          class="sun-field"
+          :options="bizSceneOptions"
+          size="small"
+          clearable
+          placeholder="不绑定"
+        />
       </NFormItem>
     </NForm>
     <template #action>
@@ -58,6 +72,16 @@ const kindOptions = [
       </NFormItem>
       <NFormItem label="会话形态">
         <NSelect v-model:value="page.editForm.kind" class="sun-field" :options="kindOptions" size="small" />
+      </NFormItem>
+      <NFormItem label="业务场景">
+        <NSelect
+          v-model:value="page.editForm.bizScene"
+          class="sun-field"
+          :options="bizSceneOptions"
+          size="small"
+          clearable
+          placeholder="不绑定"
+        />
       </NFormItem>
     </NForm>
     <template #action>

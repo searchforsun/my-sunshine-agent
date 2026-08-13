@@ -32,6 +32,9 @@ public class SkillDefinitionEntity {
     @Column(length = 16, nullable = false)
     private String kind = "all";
 
+    @Column(name = "biz_scene", length = 64)
+    private String bizScene;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 

@@ -42,6 +42,7 @@ import {
   type AgentEntry,
 } from '../api/agents'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
+import { listActiveBizSceneCodes } from '../api/bizScenes'
 import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
 import {
   catalogEnabledModelOptions,
@@ -88,6 +89,7 @@ const editForm = ref({
   maxIters: '',
   maxHandoffs: '',
   kind: 'all' as string,
+  bizScene: null as string | null,
 })
 
 // ---- 外部智能体 ----
@@ -292,6 +294,7 @@ const isFormDirty = computed(() => {
     || editForm.value.modelName !== parseModelConfigModel(agent.modelConfigJson)
     || editForm.value.maxIters !== String(agent.maxIters ?? 0)
     || editForm.value.maxHandoffs !== String(agent.maxHandoffs ?? 0)
+    || editForm.value.bizScene !== (agent.bizScene ?? null)
 })
 
 function isAgentComplete(agent: AgentEntry): boolean {
@@ -346,6 +349,7 @@ function loadEditForm(agent: AgentEntry) {
     maxIters: String(agent.maxIters ?? 0),
     maxHandoffs: String(agent.maxHandoffs ?? 0),
     kind: agent.kind ?? 'all',
+    bizScene: agent.bizScene ?? null,
   }
 }
 
@@ -600,6 +604,7 @@ async function handleSave() {
           maxIters: Number(editForm.value.maxIters) || 0,
           maxHandoffs: Number(editForm.value.maxHandoffs) || 0,
           kind: editForm.value.kind,
+          bizScene: editForm.value.bizScene ?? null,
         },
       )
     }
@@ -672,9 +677,15 @@ watch(
   },
 )
 
+/** 业务场景 Lab active 码（biz_scene 下拉选项） */
+const activeBizScenes = ref<string[]>([])
+
 onMounted(() => {
   window.addEventListener('keydown', handleEscape)
   void refreshPage()
+  void listActiveBizSceneCodes()
+    .then(codes => { activeBizScenes.value = codes })
+    .catch(() => { activeBizScenes.value = [] })
 })
 
 onUnmounted(() => {
@@ -841,6 +852,9 @@ onUnmounted(() => {
               <div class="form-grid form-grid-config">
                 <NFormItem label="会话形态">
                   <NSelect v-model:value="editForm.kind" class="sun-field" :disabled="!isEditing" :options="[{ label: '全部', value: 'all' },{ label: '对话', value: 'chat' },{ label: '任务', value: 'task' }]" :menu-props="{ class: 'agent-select-menu' }" />
+                </NFormItem>
+                <NFormItem label="业务场景">
+                  <NSelect v-model:value="editForm.bizScene" class="sun-field" :disabled="!isEditing" :options="activeBizScenes.map(code => ({ label: code, value: code }))" :menu-props="{ class: 'agent-select-menu' }" clearable placeholder="不绑定" />
                 </NFormItem>
                 <NFormItem label="关联 Skill">
                   <NSelect v-model:value="editForm.skillIds" class="sun-field" multiple filterable :disabled="!isEditing" :options="skillSelectOptions" :menu-props="{ class: 'agent-select-menu' }" placeholder="可选 0~N 个 Skill" />

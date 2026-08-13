@@ -13,6 +13,8 @@ import com.sunshine.agent.entity.AgentSkillLinkId;
 import com.sunshine.agent.exception.AgentErrorCode;
 import com.sunshine.agent.repo.AgentDefinitionRepository;
 import com.sunshine.agent.repo.AgentSkillLinkRepository;
+import com.sunshine.bizscene.exception.BizSceneErrorCode;
+import com.sunshine.bizscene.service.BizSceneAdminService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,7 @@ public class AgentAdminService {
     private final AgentDefinitionRepository definitionRepository;
     private final AgentSkillLinkRepository skillLinkRepository;
     private final AgentCatalogRegistry catalogRegistry;
+    private final BizSceneAdminService bizSceneAdminService;
 
     public List<AgentCatalogEntry> listAll() {
         return definitionRepository.findAll().stream()
@@ -103,6 +106,7 @@ public class AgentAdminService {
         def.setAuthConfigJson(request.authConfigJson() != null ? request.authConfigJson().strip() : null);
         def.setEndpointOverride(request.endpointOverride() != null ? request.endpointOverride().strip() : null);
         def.setKind(normalizeKind(request.kind()));
+        def.setBizScene(normalizeBizScene(request.bizScene()));
         def.setCreatedAt(now);
         def.setUpdatedAt(now);
         definitionRepository.save(def);
@@ -156,6 +160,7 @@ public class AgentAdminService {
             def.setEndpointOverride(request.endpointOverride().strip());
         }
         def.setKind(normalizeKind(request.kind()));
+        def.setBizScene(normalizeBizScene(request.bizScene()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         replaceSkillLinks(agentId, request.skillIds());
@@ -299,6 +304,18 @@ public class AgentAdminService {
             case "chat", "task", "all" -> v;
             default -> "all";
         };
+    }
+
+    /** 业务场景码：空→null；非空必须在业务场景 Lab 且 active，否则拒绝保存（K2） */
+    private String normalizeBizScene(String bizScene) {
+        if (!StringUtils.hasText(bizScene)) {
+            return null;
+        }
+        String v = bizScene.strip();
+        if (!bizSceneAdminService.isActiveBizScene(v)) {
+            throw new BizException(BizSceneErrorCode.SCENE_NOT_ACTIVE);
+        }
+        return v;
     }
 
     private void replaceSkillLinks(String agentId, List<String> skillIds) {

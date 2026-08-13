@@ -22,7 +22,8 @@ public record AgentCatalogEntry(
         String agentCardUrl,
         String authConfigJson,
         String endpointOverride,
-        String kind
+        String kind,
+        String bizScene
 ) {
     public AgentCatalogEntry {
         if (kind == null || kind.isBlank()) {

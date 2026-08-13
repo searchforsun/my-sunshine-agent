@@ -15,6 +15,8 @@ import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
 import com.sunshine.skill.repo.SkillDefinitionRepository;
 import com.sunshine.skill.repo.SkillVersionRepository;
+import com.sunshine.bizscene.exception.BizSceneErrorCode;
+import com.sunshine.bizscene.service.BizSceneAdminService;
 import com.sunshine.skill.skillmd.SkillMdDocument;
 import com.sunshine.skill.skillmd.SkillPackage;
 import com.sunshine.skill.storage.SkillStorageService;
@@ -42,6 +44,7 @@ public class SkillAdminService {
     private final SkillVersionRepository versionRepository;
     private final SkillStorageService skillStorageService;
     private final SkillCatalogRegistry catalogRegistry;
+    private final BizSceneAdminService bizSceneAdminService;
 
     public List<SkillCatalogEntry> listAll() {
         return definitionRepository.findAll().stream()
@@ -79,6 +82,7 @@ public class SkillAdminService {
         def.setEnabled(false);
         def.setActiveVersion(1);
         def.setKind(normalizeKind(request.kind()));
+        def.setBizScene(normalizeBizScene(request.bizScene()));
         definitionRepository.save(def);
 
         SkillVersionEntity version = new SkillVersionEntity();
@@ -120,6 +124,7 @@ public class SkillAdminService {
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description() != null ? request.description().strip() : "");
         def.setKind(normalizeKind(request.kind()));
+        def.setBizScene(normalizeBizScene(request.bizScene()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         catalogRegistry.refresh();
@@ -400,7 +405,8 @@ public class SkillAdminService {
                         isPublishedVersion(ver),
                         ver.getSandbox() != null ? ver.getSandbox() : "none",
                         SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson()),
-                        def.getKind() != null ? def.getKind() : "all"));
+                        def.getKind() != null ? def.getKind() : "all",
+                        def.getBizScene()));
     }
 
     /** 写入 sandbox + policy；policy 可为 null（docker 时运行时用默认）；非法取值 → BizException */
@@ -450,5 +456,17 @@ public class SkillAdminService {
             case "chat", "task", "all" -> v;
             default -> "all";
         };
+    }
+
+    /** 业务场景码：空→null；非空必须在业务场景 Lab 且 active，否则拒绝保存（K2） */
+    private String normalizeBizScene(String bizScene) {
+        if (!StringUtils.hasText(bizScene)) {
+            return null;
+        }
+        String v = bizScene.strip();
+        if (!bizSceneAdminService.isActiveBizScene(v)) {
+            throw new BizException(BizSceneErrorCode.SCENE_NOT_ACTIVE);
+        }
+        return v;
     }
 }

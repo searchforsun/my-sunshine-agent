@@ -12,7 +12,8 @@ public record SkillCatalogEntry(
         boolean enabled,
         String sandbox,
         SandboxPolicy sandboxPolicy,
-        String kind
+        String kind,
+        String bizScene
 ) {
     public SkillCatalogEntry {
         if (kind == null || kind.isBlank()) {

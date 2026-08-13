@@ -38,6 +38,8 @@ export interface SkillEntry {
   sandboxPolicy?: SandboxPolicy | null
   /** 会话形态：chat | task | all */
   kind?: string
+  /** 业务场景闭集码（业务场景 Lab；空=不触发结构化业务记忆） */
+  bizScene?: string | null
 }
 
 export interface SkillVersion {
@@ -82,6 +84,7 @@ export async function createSkill(
   displayName: string,
   description?: string,
   kind?: string,
+  bizScene?: string | null,
 ): Promise<SkillEntry> {
   const res = await fetch(apiUrl('/api/skills'), {
     method: 'POST',
@@ -91,6 +94,7 @@ export async function createSkill(
       displayName,
       description: description ?? '',
       kind: kind ?? 'all',
+      bizScene: bizScene ?? null,
     }),
   })
   return parseApiResponse<SkillEntry>(res)
@@ -110,6 +114,7 @@ export async function updateSkill(
   displayName: string,
   description?: string,
   kind?: string,
+  bizScene?: string | null,
 ): Promise<SkillEntry> {
   const res = await fetch(apiUrl(`/api/skills/${encodeURIComponent(id)}`), {
     method: 'PUT',
@@ -118,6 +123,7 @@ export async function updateSkill(
       displayName,
       description: description ?? '',
       kind: kind ?? 'all',
+      bizScene: bizScene ?? null,
     }),
   })
   return parseApiResponse<SkillEntry>(res)

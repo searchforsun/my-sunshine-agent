@@ -45,6 +45,8 @@ public class AgentDefinitionEntity {
     private int maxHandoffs = 5;
     @Column(length = 16, nullable = false)
     private String kind = "all";
+    @Column(name = "biz_scene", length = 64)
+    private String bizScene;
     @Column(name = "source", length = 16, nullable = false)
     private String source = "INTERNAL";
     @Column(name = "agent_card_url", length = 512)
