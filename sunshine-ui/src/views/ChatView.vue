@@ -535,7 +535,7 @@ async function measureComposerToolbarCollision(force = false) {
   lastToolbarLeftWidth = width
   // 已是图标且未变宽：无需展开测量（避免闪全文）
   if (kbIconOnly.value && (!widthChanged || widthDelta <= 0)) return
-  // 测量时禁止分支收缩，否则 flex 会先吃掉空间，永远测不出「碰撞」
+  // 测量时先展开知识库全文，再按自然宽度判断是否与 Mode 碰撞
   kbIconOnly.value = false
   toolbarMeasuring.value = true
   await nextTick()
@@ -2078,21 +2078,10 @@ watch(
                 class="composer-toolbar-left"
                 :class="{ 'is-measuring': toolbarMeasuring }"
               >
-                <template v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)">
-                  <GitBranchSelector
-                    :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
-                    :model-value="taskBranch"
-                    :active-branch="taskActiveBranch"
-                    :create-mode="!!(chatStore.newTaskMode || chatStore.pendingWorkspace)"
-                    @update:model-value="taskBranch = $event"
-                  />
-                </template>
-                <template v-else-if="!(chatStore.newTaskMode || chatStore.pendingWorkspace)">
-                  <ExecutionModeSelector
-                    :model-value="preference"
-                    @update:model-value="setPreference"
-                  />
-                </template>
+                <ExecutionModeSelector
+                  :model-value="preference"
+                  @update:model-value="setPreference"
+                />
                 <KbSelector
                   v-if="!voiceListening"
                   :kbs="chatKbs"
@@ -2154,7 +2143,18 @@ watch(
             </div>
           </div>
         </div>
-        <p class="composer-hint">AI 生成内容仅供参考，请核实重要信息</p>
+        <div
+          v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
+          class="composer-subbar"
+        >
+          <GitBranchSelector
+            :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
+            :model-value="taskBranch"
+            :active-branch="taskActiveBranch"
+            :create-mode="!!(chatStore.newTaskMode || chatStore.pendingWorkspace)"
+            @update:model-value="taskBranch = $event"
+          />
+        </div>
       </div>
     </footer>
       </div>
@@ -3057,7 +3057,7 @@ watch(
   align-items: stretch;
   max-width: 720px;
   margin: 0 auto;
-  padding-bottom: 18px;
+  padding-bottom: 4px;
   pointer-events: auto;
 }
 
@@ -3250,21 +3250,9 @@ watch(
   overflow: hidden;
 }
 
-.composer-toolbar-left :deep(.branch-dropdown-root) {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 180px;
-}
-
 .composer-toolbar-left :deep(.kb-dropdown-root),
 .composer-toolbar-left :deep(.mode-dropdown-root) {
   flex: 0 0 auto;
-}
-
-/* 测量碰撞：按自然宽度排布，避免分支先 ellipsis 掩盖溢出 */
-.composer-toolbar-left.is-measuring :deep(.branch-dropdown-root) {
-  flex: 0 0 auto;
-  max-width: none;
 }
 
 .composer-toolbar-right {
@@ -3273,6 +3261,24 @@ watch(
   flex-wrap: nowrap;
   flex-shrink: 0;
   gap: 4px;
+}
+
+/* task / newTask / pendingWs：分支在输入框下方（对齐 Cursor 底栏密度） */
+.composer-subbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 0 4px 2px;
+  min-height: 28px;
+  background: transparent;
+}
+
+.composer-subbar :deep(.branch-dropdown-root) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 240px;
 }
 
 .skill-suggest {
@@ -3588,19 +3594,6 @@ watch(
   box-shadow: 0 2px 12px rgba(255, 255, 255, 0.12);
 }
 
-.composer-hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  margin: 0;
-  text-align: center;
-  font-size: var(--sun-font-xs);
-  line-height: 1.3;
-  color: var(--sun-text-muted);
-  pointer-events: none;
-  user-select: none;
-}
 </style>
 
 <style>
