@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NModal, NSpace } from 'naive-ui'
+import { NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace } from 'naive-ui'
 import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/useWorkflowsPage'
 
 const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
+
+const kindOptions = [
+  { label: '全部', value: 'all' },
+  { label: '对话', value: 'chat' },
+  { label: '任务', value: 'task' },
+]
 </script>
 
 <template>
@@ -37,6 +43,9 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
           :autosize="{ minRows: 2, maxRows: 4 }"
           placeholder="用于路由命中，不可为空"
         />
+      </NFormItem>
+      <NFormItem label="会话形态">
+        <NSelect v-model:value="page.createDraft.kind" class="sun-field" :options="kindOptions" size="small" />
       </NFormItem>
     </NForm>
     <template #footer>
@@ -75,6 +84,9 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
           :autosize="{ minRows: 2, maxRows: 4 }"
           placeholder="用于路由命中"
         />
+      </NFormItem>
+      <NFormItem label="会话形态">
+        <NSelect v-model:value="page.editForm.kind" class="sun-field" :options="kindOptions" size="small" />
       </NFormItem>
     </NForm>
     <template #footer>

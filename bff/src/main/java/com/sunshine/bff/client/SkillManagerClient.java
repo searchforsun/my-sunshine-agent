@@ -238,6 +238,14 @@ public class SkillManagerClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    public Mono<Map<String, Object>> deleteBizScene(String code) {
+        return webClient.delete()
+                .uri("/api/biz-scenes/{code}", code)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> listBizScenePolicies(String tenantId) {
         return webClient.get()
                 .uri(uri -> uri.path("/api/biz-scenes/policies").queryParam("tenantId", tenantId).build())
@@ -251,6 +259,14 @@ public class SkillManagerClient {
                 .uri(uri -> uri.path("/api/biz-scenes/policies").queryParam("tenantId", tenantId).build())
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> deleteBizScenePolicy(Long policyId) {
+        return webClient.delete()
+                .uri("/api/biz-scenes/policies/{policyId}", policyId)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});

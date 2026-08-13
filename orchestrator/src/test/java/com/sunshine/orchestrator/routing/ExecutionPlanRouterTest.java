@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
@@ -48,6 +49,8 @@ class ExecutionPlanRouterTest {
     @Mock
     private SkillCatalogService skillCatalogService;
     @Mock
+    private AgentCatalogService agentCatalogService;
+    @Mock
     private WorkflowCatalog workflowCatalog;
 
     private ExecutionPlanRouter router;
@@ -55,7 +58,7 @@ class ExecutionPlanRouterTest {
     @BeforeEach
     void setUp() {
         PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
-        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser);
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
@@ -67,7 +70,8 @@ class ExecutionPlanRouterTest {
                 new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
-                        new WorkflowBindingParser(workflowCatalog)),
+                        new WorkflowBindingParser(workflowCatalog), skillCatalogService,
+                        agentCatalogService, workflowCatalog),
                 skillBindingParser,
                 agentBindingParser);
         when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString())
@@ -78,8 +82,8 @@ class ExecutionPlanRouterTest {
     }
 
     @Test
-    void multiStepQuery_withPro_hitsStructuralRule() {
-        String query = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论";
+    void policyQuery_withPro_hitsSharedTrackARule() {
+        String query = "差旅办法制度怎么说";
         when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
 
         ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
@@ -87,7 +91,7 @@ class ExecutionPlanRouterTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
-        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
@@ -109,7 +113,7 @@ class ExecutionPlanRouterTest {
     }
 
     @Test
-    void atSkillMultiStep_withPro_keepsSkillDrivenParams() {
+    void atSkillMultiStep_withPro_bindsSkillKeepsMode() {
         String query = "@finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
@@ -119,8 +123,7 @@ class ExecutionPlanRouterTest {
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.params().get(SkillBindingOutcome.PARAM_PLANNER_MODE))
-                .isEqualTo(SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
+        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_PLANNER_MODE);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
 

@@ -91,6 +91,19 @@ export function resolveTaskBoardPrimaryItems(step: ProcessingStep): TaskBoardIte
   return step.metadata?.tasks ?? []
 }
 
+/** 路由链路可观测：mode → track → L0 → rule → L3 → final（intent 步抽屉） */
+export interface RoutingTrace {
+  layer?: string
+  label?: string
+  detail?: string
+}
+
+/** intent 步路由过程（完整 traces；老消息返回空数组） */
+export function resolveIntentRoutingTraces(step: ProcessingStep): RoutingTrace[] {
+  if (step.phase !== 'intent') return []
+  return step.metadata?.routingTraces ?? []
+}
+
 /** 已收到 manage_tasks / H1 投影后的真实清单（占位步无 revision/items） */
 export function hasRealTaskBoardItems(step: ProcessingStep): boolean {
   const tasks = resolveTaskBoardPrimaryItems(step)
@@ -221,6 +234,8 @@ export interface StepMetadata {
   editDiff?: SandboxEditDiffMeta
   /** ReAct request_decision（SSE metadata.decision，勿截断 title/questions） */
   decision?: DecisionMeta
+  /** 路由链路可观测：mode → track → L0 → rule → L3 → final（intent 步抽屉） */
+  routingTraces?: RoutingTrace[]
 }
 
 

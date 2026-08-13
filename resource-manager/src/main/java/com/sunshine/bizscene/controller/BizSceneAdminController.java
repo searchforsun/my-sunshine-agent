@@ -8,6 +8,7 @@ import com.sunshine.bizscene.dto.BizSceneUpdateRequest;
 import com.sunshine.bizscene.service.BizSceneAdminService;
 import com.sunshine.common.core.result.R;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +48,12 @@ public class BizSceneAdminController {
         return R.ok(bizSceneAdminService.updateScene(bizScene, request));
     }
 
+    @DeleteMapping("/{bizScene}")
+    public R<Void> delete(@PathVariable String bizScene) {
+        bizSceneAdminService.deleteScene(bizScene);
+        return R.ok();
+    }
+
     @GetMapping("/policies")
     public R<List<BizScenePolicyView>> listPolicies(@RequestParam(defaultValue = "default") String tenantId) {
         return R.ok(bizSceneAdminService.listPolicies(tenantId));
@@ -56,5 +63,11 @@ public class BizSceneAdminController {
     public R<BizScenePolicyView> createPolicy(@RequestParam(defaultValue = "default") String tenantId,
             @RequestBody BizScenePolicySaveRequest request) {
         return R.ok(bizSceneAdminService.createPolicy(tenantId, request));
+    }
+
+    @DeleteMapping("/policies/{policyId}")
+    public R<Void> deletePolicy(@PathVariable Long policyId) {
+        bizSceneAdminService.deletePolicy(policyId);
+        return R.ok();
     }
 }

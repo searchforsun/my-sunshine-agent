@@ -79,6 +79,7 @@ public class UserService {
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
+                .defaultKbId(blankToNull(user.getDefaultKbId()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
                 .githubToken(blankToNull(user.getGithubToken()))
@@ -112,6 +113,11 @@ public class UserService {
         }
         if (request.getSidebarSectionsLayout() != null && !request.getSidebarSectionsLayout().isBlank()) {
             user.setSidebarSectionsLayout(SidebarSectionsLayoutSupport.from(request.getSidebarSectionsLayout()));
+        }
+        // 默认知识库三态：null=不修改；空白=清空；其余 trim 保存
+        if (request.getDefaultKbId() != null) {
+            String trimmed = request.getDefaultKbId().trim();
+            user.setDefaultKbId(trimmed.isEmpty() ? null : trimmed);
         }
         // 个人规则三态：null=不修改；空白=清空；其余 trim 保存
         if (request.getPersonalRules() != null) {
@@ -254,6 +260,7 @@ public class UserService {
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
+                .defaultKbId(blankToNull(user.getDefaultKbId()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
                 .githubToken(blankToNull(user.getGithubToken()))
@@ -272,6 +279,7 @@ public class UserService {
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
                 .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
+                .defaultKbId(blankToNull(user.getDefaultKbId()))
                 .personalRules(user.getPersonalRules())
                 .githubUrl(blankToNull(user.getGithubUrl()))
                 .githubToken(blankToNull(user.getGithubToken()))

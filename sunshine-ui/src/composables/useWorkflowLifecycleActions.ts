@@ -97,9 +97,9 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
   const showEdit = ref(false)
   const showDeleteConfirm = ref(false)
   const showDeleteVersionConfirm = ref(false)
-  const createDraft = ref({ id: '', displayName: '', description: '' })
+  const createDraft = ref({ id: '', displayName: '', description: '', kind: 'all' })
   const createSeedPackage = ref<{ plan: WorkflowPlan; catalog: Record<string, unknown> } | null>(null)
-  const editForm = ref({ displayName: '', description: '' })
+  const editForm = ref({ displayName: '', description: '', kind: 'all' })
   const editTarget = ref<WorkflowEntry | null>(null)
   const deleteTarget = ref<WorkflowEntry | null>(null)
 
@@ -209,7 +209,11 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
 
   function openEdit(wf: WorkflowEntry) {
     editTarget.value = wf
-    editForm.value = { displayName: wf.displayName, description: wf.description ?? '' }
+    editForm.value = {
+      displayName: wf.displayName,
+      description: wf.description ?? '',
+      kind: wf.kind || 'all',
+    }
     showEdit.value = true
   }
 
@@ -224,6 +228,7 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
         editTarget.value.id,
         editForm.value.displayName.trim(),
         editForm.value.description.trim(),
+        editForm.value.kind || 'all',
       )
       showEdit.value = false
       await refreshPage()
@@ -370,6 +375,7 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
         newId,
         createDraft.value.displayName.trim(),
         createDraft.value.description.trim(),
+        createDraft.value.kind || 'all',
       )
       if (seed) {
         const normalized = applyPlanDefaults(
@@ -400,10 +406,12 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
   function openDuplicateAsNew() {
     if (!plan.value || !selectedId.value) return
     const id = selectedId.value
+    const sourceKind = workflows.value.find(w => w.id === id)?.kind || 'all'
     createDraft.value = {
       id: suggestDuplicateWorkflowId(id),
       displayName: `${definitionDisplayName.value.trim() || id} 副本`,
       description: definitionDescription.value.trim(),
+      kind: sourceKind,
     }
     const examples = catalogExamples.value.split('\n').map(s => s.trim()).filter(Boolean)
     createSeedPackage.value = {
@@ -415,12 +423,12 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
 
   function closeCreateModal() {
     showCreate.value = false
-    createDraft.value = { id: '', displayName: '', description: '' }
+    createDraft.value = { id: '', displayName: '', description: '', kind: 'all' }
     createSeedPackage.value = null
   }
 
   function openCreateModal() {
-    createDraft.value = { id: '', displayName: '', description: '' }
+    createDraft.value = { id: '', displayName: '', description: '', kind: 'all' }
     createSeedPackage.value = null
     showCreate.value = true
   }

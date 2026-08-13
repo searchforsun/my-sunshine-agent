@@ -56,11 +56,7 @@ public final class TimelineLabelTestSupport {
         AwaitToolRunLabels.bind(new AwaitToolRunLabelService(timelineCatalog));
         TimelineStepLabelService timelineStepLabelService = new TimelineStepLabelService(timelineCatalog);
         ThinkStepLabelService thinkStepLabelService = new ThinkStepLabelService(timelineCatalog);
-        IntentLabelService intentLabelService = new IntentLabelService(
-                timelineCatalog,
-                workflowCatalog,
-                catalogRegistry,
-                workflowLabels);
+        IntentLabelService intentLabelService = new IntentLabelService(timelineCatalog);
         IntentLabels.bind(intentLabelService);
         TimelineLabels.bind(timelineStepLabelService);
         TimelineStepLabels.bind(timelineStepLabelService);

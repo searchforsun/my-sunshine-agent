@@ -100,7 +100,7 @@ export function usePromptList(deps: PromptListDeps) {
 
   const createModalTitle = computed(() => '新建规则')
 
-  const createIdPlaceholder = computed(() => 'structural-plan')
+  const createIdPlaceholder = computed(() => 'policy-qa-bind')
 
   async function refreshList(keepSelection = true) {
     loading.value = true

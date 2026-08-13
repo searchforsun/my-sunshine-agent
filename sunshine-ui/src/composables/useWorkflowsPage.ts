@@ -107,6 +107,7 @@ function useWorkflowsPageImpl() {
   const catalogIntentAfter = ref('')
   const definitionDisplayName = ref('')
   const definitionDescription = ref('')
+  const definitionKind = ref('all')
   const editStatus = ref('draft')
   const editVersion = ref(0)
   const selectedNodeId = ref<string | null>(null)
@@ -213,6 +214,7 @@ function useWorkflowsPageImpl() {
       definition: {
         displayName: definitionDisplayName.value.trim(),
         description: definitionDescription.value.trim(),
+        kind: definitionKind.value,
       },
       selectedNodeId: selectedNodeId.value,
     })
@@ -222,7 +224,7 @@ function useWorkflowsPageImpl() {
     const data = JSON.parse(raw) as {
       plan: WorkflowPlan
       catalog: { examples?: string[]; intentAfter?: string }
-      definition: { displayName: string; description: string }
+      definition: { displayName: string; description: string; kind?: string }
       selectedNodeId?: string | null
     }
     return {
@@ -233,6 +235,7 @@ function useWorkflowsPageImpl() {
       catalogIntentAfter: typeof data.catalog?.intentAfter === 'string' ? data.catalog.intentAfter : '',
       definitionDisplayName: data.definition.displayName,
       definitionDescription: data.definition.description,
+      definitionKind: data.definition.kind || 'all',
       selectedNodeId: data.selectedNodeId ?? FLOW_CONFIG_SELECTION,
     }
   }
@@ -244,6 +247,7 @@ function useWorkflowsPageImpl() {
     catalogIntentAfter,
     definitionDisplayName,
     definitionDescription,
+    definitionKind,
     selectedNodeId,
     serializeSnapshot: snapshot,
     parseSnapshot,
@@ -253,6 +257,7 @@ function useWorkflowsPageImpl() {
     const wf = workflows.value.find(w => w.id === wfId)
     definitionDisplayName.value = wf?.displayName ?? ''
     definitionDescription.value = wf?.description ?? ''
+    definitionKind.value = wf?.kind || 'all'
   }
 
   async function persistDefinitionIfDirty(): Promise<void> {
@@ -261,12 +266,13 @@ function useWorkflowsPageImpl() {
     if (!wf) return
     const name = definitionDisplayName.value.trim()
     const desc = definitionDescription.value.trim()
+    const kind = definitionKind.value || 'all'
     if (!name || !desc) return
-    if (name === wf.displayName && desc === (wf.description ?? '')) return
-    await updateWorkflow(selectedId.value, name, desc)
+    if (name === wf.displayName && desc === (wf.description ?? '') && kind === (wf.kind || 'all')) return
+    await updateWorkflow(selectedId.value, name, desc, kind)
     const idx = workflows.value.findIndex(w => w.id === selectedId.value)
     if (idx >= 0) {
-      workflows.value[idx] = { ...workflows.value[idx], displayName: name, description: desc }
+      workflows.value[idx] = { ...workflows.value[idx], displayName: name, description: desc, kind }
     }
   }
 
@@ -869,6 +875,7 @@ function useWorkflowsPageImpl() {
     catalogIntentAfter,
     definitionDisplayName,
     definitionDescription,
+    definitionKind,
     isFlowConfigSelected,
     editStatus,
     editVersion,

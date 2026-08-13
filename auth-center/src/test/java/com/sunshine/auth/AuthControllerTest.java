@@ -317,6 +317,57 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("profile 写 defaultKbId 后 me / login 可读到；空串清空")
+    void updateProfile_changesDefaultKbId() throws Exception {
+        registerUser("kbpref01");
+        String token = loginAndGetToken("kbpref01");
+
+        MvcResult profileResult = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"KbPref","tenantId":"default","defaultKbId":"finance"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.defaultKbId").value("finance"))
+                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andReturn();
+
+        JsonNode profileBody = objectMapper.readTree(profileResult.getResponse().getContentAsString());
+        String newToken = profileBody.path("data").path("token").asText();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultKbId").value("finance"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"kbpref01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultKbId").value("finance"));
+
+        String token2 = loginAndGetToken("kbpref01");
+        MvcResult cleared = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token2)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"KbPref","tenantId":"default","defaultKbId":"  "}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultKbId").doesNotExist())
+                .andReturn();
+        String token3 = objectMapper.readTree(cleared.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token3))
+                .andExpect(jsonPath("$.data.defaultKbId").doesNotExist());
+    }
+
+    @Test
     @DisplayName("profile 写 sidebarSectionsLayout=horizontal 后 me 可读到；非法值回落 vertical")
     void updateProfile_changesSidebarSectionsLayout() throws Exception {
         registerUser("sidebar01");

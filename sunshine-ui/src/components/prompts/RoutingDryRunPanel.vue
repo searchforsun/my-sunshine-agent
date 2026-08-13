@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import { NButton, NFormItem, NInput, NSpin, NTag } from 'naive-ui'
+import { NButton, NFormItem, NInput, NSelect, NSpin, NTag } from 'naive-ui'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import { shortPromptId } from '../../api/prompts'
+import { EXECUTION_MODE_OPTIONS } from '../../api/executionModes'
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
 const MODE_LABELS: Record<string, string> = {
   workflow: '工作流',
-  'plan-workflow': '动态规划',
-  react: '自主推理',
+  fast: '快速',
+  pro: '专业',
 }
 
+const modeOptions = EXECUTION_MODE_OPTIONS.map(o => ({ label: o.label, value: o.value }))
+
 const STAGE_LABELS: Record<string, string> = {
-  'rule-engine': '规则引擎命中',
-  would_llm: '将走意图识别',
+  rule: '同轨规则命中',
+  l3: 'L3 补绑定',
 }
 
 const stageLabel = computed(() => {
@@ -36,20 +39,24 @@ const matchedRuleLabel = computed(() => {
 
 const nextStepLabel = computed(() => {
   if (!page.dryRunResult) return '—'
-  if (page.dryRunResult.wouldLlm) {
-    return '未命中规则，将交给大模型做意图分类（L3）'
+  if (page.dryRunResult.stage === 'l3') {
+    return '未命中同轨规则，将走 L3 补绑定（不改锁定模式）'
   }
-  return '已命中规则，按下方执行计划处理'
+  return '已命中同轨规则，按下方执行计划处理'
 })
 
+/** 执行计划：适用轨道 · 绑定（workflowId / skill / agent） */
 const planLabel = computed(() => {
   const plan = page.dryRunResult?.plan
   if (!plan?.mode) return null
-  const mode = MODE_LABELS[plan.mode] ?? plan.mode
-  if (plan.workflowId) return `${mode} · ${plan.workflowId}`
-  const reactId = plan.params?.reactPromptId
-  if (reactId) return `${mode} · ${shortPromptId(reactId)}`
-  return mode
+  const mode = plan.mode === 'fast' ? '快速 / 专业' : MODE_LABELS[plan.mode] ?? plan.mode
+  const binds: string[] = []
+  if (plan.workflowId) binds.push(`工作流 ${plan.workflowId}`)
+  const params = plan.params ?? {}
+  if (params.skill) binds.push(`绑定技能 ${params.skill}`)
+  if (params.agentIds) binds.push(`绑定助手 ${params.agentIds}`)
+  if (binds.length === 0) return mode
+  return `${mode} · ${binds.join(' · ')}`
 })
 </script>
 
@@ -61,13 +68,22 @@ const planLabel = computed(() => {
       </div>
     </div>
     <div class="detail-scroll">
+      <div class="mode-row">
+        <span class="mode-label">模拟锁定模式</span>
+        <NSelect
+          v-model:value="page.dryRunMode"
+          class="mode-select sun-field"
+          :options="modeOptions"
+          :consistent-menu-width="false"
+        />
+      </div>
       <NFormItem label="样例问句" :show-feedback="false">
         <NInput
           v-model:value="page.dryRunQuery"
           class="sun-field"
           type="textarea"
           :autosize="{ minRows: 4, maxRows: 10 }"
-          placeholder="输入一句用户问题，验证会命中哪条规则"
+          placeholder="输入一句用户问题，验证会命中哪条同轨规则"
           @keydown.ctrl.enter="page.runDryRun()"
         />
       </NFormItem>
@@ -163,6 +179,23 @@ const planLabel = computed(() => {
   font-size: 13px;
   font-weight: 500;
   padding-bottom: 8px;
+}
+
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mode-label {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+  font-weight: 500;
+}
+
+.mode-select {
+  width: 160px;
 }
 
 .result-box {

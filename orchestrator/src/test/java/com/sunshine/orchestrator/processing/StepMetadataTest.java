@@ -83,7 +83,7 @@ class StepMetadataTest {
                         com.sunshine.orchestrator.routing.ExecutionMode.FAST,
                         null,
                         java.util.Map.of(),
-                        "user:forced-react"));
+                        "user:forced-fast"));
         assertThat(metadata).isNotNull();
         assertThat(metadata.isEmpty()).isFalse();
     }

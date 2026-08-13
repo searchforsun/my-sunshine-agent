@@ -11,6 +11,8 @@ export interface AuthUser {
   defaultWriteHitlMode?: string
   /** vertical|horizontal 侧栏平台/对话/任务排布 */
   sidebarSectionsLayout?: string
+  /** 对话默认知识库 ID；null/缺省表示未配置 */
+  defaultKbId?: string | null
   /** 用户个人规则（soul），注入系统提示；null/缺省表示未配置 */
   personalRules?: string | null
   /** GitHub 基础地址 */
@@ -77,6 +79,7 @@ export async function updateProfile(
   gitlabUrl?: string | null,
   gitlabToken?: string | null,
   sidebarSectionsLayout?: string,
+  defaultKbId?: string | null,
 ): Promise<UpdateProfileResult> {
   const body: Record<string, unknown> = { nickname, tenantId }
   if (defaultWriteHitlMode !== undefined) body.defaultWriteHitlMode = defaultWriteHitlMode
@@ -86,6 +89,7 @@ export async function updateProfile(
   if (gitlabUrl !== undefined) body.gitlabUrl = gitlabUrl
   if (gitlabToken !== undefined) body.gitlabToken = gitlabToken
   if (sidebarSectionsLayout !== undefined) body.sidebarSectionsLayout = sidebarSectionsLayout
+  if (defaultKbId !== undefined) body.defaultKbId = defaultKbId ?? ''
   const res = await fetch(`${resolveApiBase()}/api/auth/profile`, {
     method: 'PATCH',
     headers: apiHeaders(),

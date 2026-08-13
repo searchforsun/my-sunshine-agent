@@ -84,14 +84,23 @@ public class BizSceneAdminService {
         return toView(definitionRepository.save(def));
     }
 
+    /** 删除场景：级联删除其全部 Policy；已被 Skill/Agent 引用时解析视为无效（无 FK，由运行时跳过） */
+    @Transactional
+    public void deleteScene(String bizScene) {
+        BizSceneDefinitionEntity def = requireScene(bizScene);
+        policyRepository.deleteAll(policyRepository.findByBizSceneOrderByVersionDesc(bizScene));
+        definitionRepository.delete(def);
+    }
+
+    /** 规则列表：按场景、序号升序（每条规则独立一项，不做版本语义） */
     public List<BizScenePolicyView> listPolicies(String tenantId) {
-        return policyRepository.findByTenantIdOrderByBizSceneAscVersionDesc(
+        return policyRepository.findByTenantIdOrderByBizSceneAscVersionAsc(
                         StringUtils.hasText(tenantId) ? tenantId : "default").stream()
                 .map(BizSceneAdminService::toView)
                 .toList();
     }
 
-    /** 新增 Policy：码必须存在且 active（禁止无 Lab 码创建 Policy）；版本在既有基础上单调递增 */
+    /** 新增规则：码必须存在且 active（禁止无 Lab 码创建）；序号在既有基础上单调递增 */
     @Transactional
     public BizScenePolicyView createPolicy(String tenantId, BizScenePolicySaveRequest request) {
         if (request == null || !StringUtils.hasText(request.bizScene())) {
@@ -104,17 +113,26 @@ public class BizSceneAdminService {
         }
         List<BizScenePolicyEntity> existing =
                 policyRepository.findByBizSceneOrderByVersionDesc(scene);
-        int nextVersion = existing.isEmpty() ? 1 : existing.get(0).getVersion() + 1;
+        int nextSeq = existing.isEmpty() ? 1 : existing.get(0).getVersion() + 1;
 
         BizScenePolicyEntity policy = new BizScenePolicyEntity();
         policy.setTenantId(StringUtils.hasText(tenantId) ? tenantId : "default");
         policy.setBizScene(scene);
-        policy.setVersion(nextVersion);
+        policy.setVersion(nextSeq);
         policy.setStatus("active");
-        policy.setRulesJson(request.rulesJson() != null ? request.rulesJson() : "{}");
+        policy.setRulesJson(request.rulesJson() != null ? request.rulesJson() : "");
         policy.setEffectiveFrom(request.effectiveFrom());
         policy.setEffectiveTo(request.effectiveTo());
         return toView(policyRepository.save(policy));
+    }
+
+    /** 删除单条规则（按 policyId），其余规则不受影响 */
+    @Transactional
+    public void deletePolicy(Long policyId) {
+        if (policyId == null || !policyRepository.existsById(policyId)) {
+            throw new BizException(BizSceneErrorCode.POLICY_NOT_FOUND);
+        }
+        policyRepository.deleteById(policyId);
     }
 
     /** Skill/Agent 保存校验 + 运行时场景解析（Task 6）：仅 active 码可绑/可解析 */

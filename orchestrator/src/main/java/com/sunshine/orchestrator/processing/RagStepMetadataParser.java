@@ -35,12 +35,12 @@ final class RagStepMetadataParser {
         if (sources.isEmpty() && summarizedText != null && !summarizedText.isBlank()) {
             sources = parseSources(summarizedText);
         }
-        return new StepMetadata(hitCount, sources, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return new StepMetadata(hitCount, sources, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private static StepMetadata emptyRag() {
         return new StepMetadata(0, List.of(), null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private static boolean isEmptyRagOutput(String text) {

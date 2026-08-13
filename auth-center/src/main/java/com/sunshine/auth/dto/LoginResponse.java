@@ -17,6 +17,8 @@ public class LoginResponse {
     private String defaultWriteHitlMode;
     /** vertical|horizontal */
     private String sidebarSectionsLayout;
+    /** 对话默认知识库 ID */
+    private String defaultKbId;
     /** 用户个人规则（soul） */
     private String personalRules;
     private String githubUrl;

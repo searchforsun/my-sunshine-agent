@@ -2,6 +2,11 @@ package com.sunshine.orchestrator.routing;
 
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.catalog.AgentCatalogIndexEntry;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
+import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.AgentBindingRoutingPolicy;
@@ -27,6 +32,7 @@ import java.util.Optional;
 /**
  * 钉死 executionMode 的分轨资源收集：
  * 轨 A（FAST|PRO）skill/agent；轨 B（WORKFLOW）仅 workflowId；永不改 mode。
+ * routingTraces 文案面向用户（处理方式 / 匹配 / 绑定结论），不暴露内部 layer 与 id。
  */
 @Slf4j
 @Component
@@ -44,6 +50,9 @@ public class ForcedExecutionRouter {
     private final IntentRouter intentRouter;
     private final WorkflowBindingRoutingPolicy workflowBindingRoutingPolicy;
     private final WorkflowBindingParser workflowBindingParser;
+    private final SkillCatalogService skillCatalogService;
+    private final AgentCatalogService agentCatalogService;
+    private final WorkflowCatalog workflowCatalog;
 
     public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionPreference preference, String workflowId) {
         if (preference == null) {
@@ -73,15 +82,16 @@ public class ForcedExecutionRouter {
     }
 
     /** #workflow 硬绑定：policy plan 不带 trace，这里补 mode/track/L0/final */
-    private static ExecutionPlan appendWorkflowL0Traces(ExecutionPlan plan, RoutingContext ctx) {
+    private ExecutionPlan appendWorkflowL0Traces(ExecutionPlan plan, RoutingContext ctx) {
         List<RoutingTrace> traces = new ArrayList<>();
-        traces.add(RoutingTrace.of("mode", "模式锁定", "workflow（用户所选）"));
-        traces.add(RoutingTrace.of("track", "轨道", "轨 B：仅 workflow"));
+        traces.add(RoutingTrace.of("mode", "处理方式", modeTraceText(ExecutionMode.WORKFLOW)));
+        traces.add(RoutingTrace.of("track", "匹配方式", trackTraceText(ExecutionMode.WORKFLOW)));
         if (StringUtils.hasText(plan.workflowId())) {
-            traces.add(RoutingTrace.of("L0", "#工作流", "workflowId=" + plan.workflowId()));
+            traces.add(RoutingTrace.of("L0", "绑定流程",
+                    "使用流程" + bracket(workflowDisplayName(plan.workflowId()))));
         }
-        traces.add(RoutingTrace.of("final", "绑定结果",
-                StringUtils.hasText(plan.workflowId()) ? "workflow=" + plan.workflowId() : "未绑定 workflow"));
+        traces.add(RoutingTrace.of("final", "执行方案", finalBindingText(ExecutionMode.WORKFLOW,
+                plan.workflowId(), Map.of())));
         return new ExecutionPlan(plan.mode(), plan.workflowId(), plan.params(), plan.reason(), plan.ruleId(),
                 List.copyOf(traces));
     }
@@ -92,8 +102,8 @@ public class ForcedExecutionRouter {
             warnAndIgnoreHashWorkflow(lockedCtx);
         }
         BindingAcc acc = new BindingAcc(locked, reason);
-        acc.trace("mode", "模式锁定", lockedModeLabel(locked));
-        acc.trace("track", "轨道", locked == ExecutionMode.WORKFLOW ? "轨 B：仅 workflow" : "轨 A：skill + agent");
+        acc.trace("mode", "处理方式", modeTraceText(locked));
+        acc.trace("track", "匹配方式", trackTraceText(locked));
         Mono<BindingAcc> pipeline = Mono.just(acc);
         if (lockedCtx.allowsSkillBinding()) {
             pipeline = pipeline.flatMap(a -> agentBindingRoutingPolicy.tryRoute(lockedCtx).map(opt -> {
@@ -101,7 +111,8 @@ public class ForcedExecutionRouter {
                     ExecutionPlan agentPlan = opt.get();
                     a.mergeParamsFillGaps(agentPlan.params());
                     if (StringUtils.hasText(agentPlan.params().get(PARAM_AGENT_IDS))) {
-                        a.trace("L0", "@智能体", "agent=" + agentPlan.params().get(PARAM_AGENT_IDS));
+                        a.trace("L0", "绑定助手",
+                                "使用助手" + bracket(agentDisplayName(agentPlan.params().get(PARAM_AGENT_IDS))) + "处理");
                     }
                 }
                 return a;
@@ -111,7 +122,8 @@ public class ForcedExecutionRouter {
                     ExecutionPlan skillPlan = opt.get();
                     a.mergeParamsFillGaps(skillPlan.params());
                     if (StringUtils.hasText(skillPlan.params().get(SkillBindingOutcome.PARAM_SKILL))) {
-                        a.trace("L0", "/Skill", "skill=" + skillPlan.params().get(SkillBindingOutcome.PARAM_SKILL));
+                        a.trace("L0", "绑定技能",
+                                "使用技能" + bracket(skillDisplayName(skillPlan.params().get(SkillBindingOutcome.PARAM_SKILL))) + "处理");
                     }
                 }
                 return a;
@@ -130,33 +142,105 @@ public class ForcedExecutionRouter {
                         }
                         String l3Detail = describeL3Binding(a);
                         if (StringUtils.hasText(l3Detail)) {
-                            a.trace("L3", "意图分类", l3Detail);
+                            a.trace("L3", "意图识别", l3Detail);
                         }
                         return Mono.just(a.toPlan());
                     });
         });
     }
 
-    private static String describeL3Binding(BindingAcc a) {
+    private String describeL3Binding(BindingAcc a) {
         if (a.locked == ExecutionMode.WORKFLOW) {
-            return StringUtils.hasText(a.workflowId) ? "命中 workflowId=" + a.workflowId : null;
+            return StringUtils.hasText(a.workflowId)
+                    ? "识别为流程" + bracket(workflowDisplayName(a.workflowId))
+                    : null;
         }
         String skill = a.params.get(SkillBindingOutcome.PARAM_SKILL);
         String agents = a.params.get(PARAM_AGENT_IDS);
         if (StringUtils.hasText(skill) || StringUtils.hasText(agents)) {
             return StringUtils.hasText(skill)
-                    ? "命中 skill=" + skill
-                    : "命中 agent=" + agents;
+                    ? "识别出应使用技能" + bracket(skillDisplayName(skill))
+                    : "识别出应使用助手" + bracket(agentDisplayName(agents));
         }
         return null;
     }
 
-    private static String lockedModeLabel(ExecutionMode mode) {
+    private String finalBindingText(ExecutionMode locked, String workflowId, Map<String, String> params) {
+        if (locked == ExecutionMode.WORKFLOW) {
+            return StringUtils.hasText(workflowId)
+                    ? "将执行" + bracket(workflowDisplayName(workflowId)) + "流程"
+                    : "未匹配到可用流程";
+        }
+        String skill = params.get(SkillBindingOutcome.PARAM_SKILL);
+        String agents = params.get(PARAM_AGENT_IDS);
+        if (StringUtils.hasText(skill) && StringUtils.hasText(agents)) {
+            return "使用技能" + bracket(skillDisplayName(skill))
+                    + "与助手" + bracket(agentDisplayName(agents)) + "处理";
+        }
+        if (StringUtils.hasText(skill)) {
+            return "使用技能" + bracket(skillDisplayName(skill)) + "处理";
+        }
+        if (StringUtils.hasText(agents)) {
+            return "使用助手" + bracket(agentDisplayName(agents)) + "处理";
+        }
+        return locked == ExecutionMode.FAST ? "交由智能体自主分析作答" : "动态规划多步执行";
+    }
+
+    private static String modeDisplayName(ExecutionMode mode) {
         return switch (mode) {
-            case FAST -> "fast（快速）";
-            case PRO -> "pro（专业）";
-            case WORKFLOW -> "workflow（工作流）";
+            case FAST -> "快速";
+            case PRO -> "专业";
+            case WORKFLOW -> "工作流";
         };
+    }
+
+    private static String modeTraceText(ExecutionMode mode) {
+        return "按您选择的「" + modeDisplayName(mode) + "」模式处理";
+    }
+
+    private static String trackTraceText(ExecutionMode mode) {
+        return mode == ExecutionMode.WORKFLOW ? "直接按流程模板执行" : "自动匹配技能与助手";
+    }
+
+    private String skillDisplayName(String skillId) {
+        if (!StringUtils.hasText(skillId)) {
+            return skillId;
+        }
+        Optional<SkillCatalogIndexEntry> entry = skillCatalogService.findIndex(skillId.strip());
+        return entry.map(SkillCatalogIndexEntry::displayName)
+                .filter(StringUtils::hasText)
+                .orElse(skillId.strip());
+    }
+
+    private String agentDisplayName(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return agentId;
+        }
+        Optional<AgentCatalogIndexEntry> entry = agentCatalogService.findIndex(agentId.strip());
+        return entry.map(AgentCatalogIndexEntry::displayName)
+                .filter(StringUtils::hasText)
+                .orElse(agentId.strip());
+    }
+
+    private String workflowDisplayName(String workflowId) {
+        if (!StringUtils.hasText(workflowId)) {
+            return workflowId;
+        }
+        WorkflowManagerClient.WorkflowCatalogEntryDto entry = workflowCatalog.findEntry(workflowId.strip());
+        if (entry == null) {
+            return workflowId.strip();
+        }
+        if (StringUtils.hasText(entry.displayName())) {
+            return entry.displayName().strip();
+        }
+        if (StringUtils.hasText(entry.description())) {
+            return entry.description().strip();
+        }
+        return workflowId.strip();
+    }
+
+    private static String bracket(String name) {
+        return "「" + (name != null ? name : "") + "」";
     }
 
     private void warnAndIgnoreHashWorkflow(RoutingContext ctx) {
@@ -188,7 +272,7 @@ public class ForcedExecutionRouter {
         }
         if (StringUtils.hasText(plan.ruleId())) {
             acc.ruleId = plan.ruleId();
-            acc.trace("rule", "统一规则", "ruleId=" + plan.ruleId());
+            acc.trace("rule", "智能匹配", "命中常用处理规则");
         }
     }
 
@@ -209,7 +293,7 @@ public class ForcedExecutionRouter {
     }
 
     /** 钉死路径绑定累积：高优先级已有键不覆盖；同时记录各层命中 trace */
-    private static final class BindingAcc {
+    private final class BindingAcc {
         private final ExecutionMode locked;
         private final String reason;
         private String workflowId;
@@ -266,7 +350,7 @@ public class ForcedExecutionRouter {
         }
 
         private ExecutionPlan toPlan() {
-            traces.add(RoutingTrace.of("final", "绑定结果", bindingSummary()));
+            traces.add(RoutingTrace.of("final", "执行方案", finalBindingText(locked, workflowId, params)));
             return new ExecutionPlan(
                     locked,
                     locked == ExecutionMode.WORKFLOW ? workflowId : null,
@@ -274,24 +358,6 @@ public class ForcedExecutionRouter {
                     reason,
                     ruleId,
                     List.copyOf(traces));
-        }
-
-        private String bindingSummary() {
-            if (locked == ExecutionMode.WORKFLOW) {
-                return StringUtils.hasText(workflowId) ? "workflow=" + workflowId : "未绑定 workflow";
-            }
-            String skill = params.get(SkillBindingOutcome.PARAM_SKILL);
-            String agents = params.get(PARAM_AGENT_IDS);
-            if (StringUtils.hasText(skill) && StringUtils.hasText(agents)) {
-                return "skill=" + skill + " · agent=" + agents;
-            }
-            if (StringUtils.hasText(skill)) {
-                return "skill=" + skill;
-            }
-            if (StringUtils.hasText(agents)) {
-                return "agent=" + agents;
-            }
-            return locked == ExecutionMode.FAST ? "fast 自主分析（未绑定）" : "pro 规划执行（未绑定）";
         }
     }
 }

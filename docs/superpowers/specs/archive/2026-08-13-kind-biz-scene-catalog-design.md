@@ -1,7 +1,7 @@
 # 会话 kind 资源过滤 · 业务场景 Lab · 工具集轴迁移
 
 > **日期**：2026-08-13  
-> **状态**：🟡 设计已评审 · 实现计划已写（[plan](../plans/2026-08-13-kind-biz-scene-catalog.md)；待执行 K0～K4）  
+> **状态**：✅ 已实现（K0～K4 全绿；Live `scripts/verify_kind_biz_scene_live.py`；[plan](../plans/2026-08-13-kind-biz-scene-catalog.md)）  
 > **定位**：把「会话形态 `kind`」贯穿 Catalog 可发现面与默认工具集；建立独立 **业务场景 Lab**（`biz_scene` 闭集码表）；退役 React Prompt 场景与按执行模式划分的工具集 Tab。  
 > **关联**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md) · [task-scene-context](./2026-08-01-task-scene-context-design.md) · [toolset-membership](./archive/2026-07-11-toolset-membership-design.md)（历史）· [prompt-ops](./2026-07-20-prompt-ops-routing-catalog-design.md)
 

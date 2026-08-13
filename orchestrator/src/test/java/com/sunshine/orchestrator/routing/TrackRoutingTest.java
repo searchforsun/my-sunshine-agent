@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.AgentBindingRoutingPolicy;
@@ -40,7 +41,7 @@ import static org.mockito.Mockito.when;
 class TrackRoutingTest {
 
     private static final String COMPLIANCE_QUERY = "待审批是否合规";
-    private static final String STRUCTURAL_QUERY = "先查制度再查待审批并对合规分析";
+    private static final String POLICY_QUERY = "差旅办法制度怎么说";
 
     @Mock
     private SkillBindingParser skillBindingParser;
@@ -50,6 +51,8 @@ class TrackRoutingTest {
     private IntentRouter intentRouter;
     @Mock
     private SkillCatalogService skillCatalogService;
+    @Mock
+    private AgentCatalogService agentCatalogService;
     @Mock
     private WorkflowCatalog workflowCatalog;
 
@@ -61,7 +64,7 @@ class TrackRoutingTest {
     void setUp() {
         catalogHolder = RoutingCatalogFixtures.seedHolder();
         rules = catalogHolder.snapshot().routingRules();
-        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser);
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
@@ -69,7 +72,8 @@ class TrackRoutingTest {
                 new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
-                        new WorkflowBindingParser(workflowCatalog)),
+                        new WorkflowBindingParser(workflowCatalog), skillCatalogService,
+                        agentCatalogService, workflowCatalog),
                 skillBindingParser,
                 agentBindingParser);
 
@@ -111,21 +115,24 @@ class TrackRoutingTest {
     }
 
     @Test
-    void sameStructuralQuery_proHitsStructural_workflowSkipsProRule() {
+    void trackARule_sharedByFastAndPro_workflowSkips() {
+        Optional<ExecutionPlan> trackFast = UnifiedRuleRoutingPolicy.matchForLockedMode(
+                rules, POLICY_QUERY, ExecutionMode.FAST);
         Optional<ExecutionPlan> trackPro = UnifiedRuleRoutingPolicy.matchForLockedMode(
-                rules, STRUCTURAL_QUERY, ExecutionMode.PRO);
+                rules, POLICY_QUERY, ExecutionMode.PRO);
         Optional<ExecutionPlan> trackWorkflow = UnifiedRuleRoutingPolicy.matchForLockedMode(
-                rules, STRUCTURAL_QUERY, ExecutionMode.WORKFLOW);
+                rules, POLICY_QUERY, ExecutionMode.WORKFLOW);
 
+        assertThat(trackFast).isPresent();
         assertThat(trackPro).isPresent();
-        assertThat(trackPro.get().ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        assertThat(trackPro.get().ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         assertThat(trackWorkflow).isEmpty();
 
-        ExecutionPlan proPlan = router.route(ctx(ExecutionPreference.PRO, STRUCTURAL_QUERY, null, "task"))
+        ExecutionPlan proPlan = router.route(ctx(ExecutionPreference.PRO, POLICY_QUERY, null, "task"))
                 .block();
         assertThat(proPlan).isNotNull();
         assertThat(proPlan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(proPlan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        assertThat(proPlan.params()).containsEntry("skill", "policy-qa");
     }
 
     @Test

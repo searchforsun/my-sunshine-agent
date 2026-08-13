@@ -25,7 +25,9 @@ import { useAuthStore } from '../stores/authStore'
 import { copyText } from '../utils/stream-markdown/clipboard'
 import {
   useContextRouteState,
+  type ContextKindTab,
   type ContextTab,
+  type ContextTaskTab,
 } from './useContextRouteState'
 import {
   KIND_META,
@@ -49,15 +51,17 @@ export function useContextPage() {
     (routeState.readTenant() || auth.user?.tenantId || 'default') as TenantId,
   )
   const filterUserId = ref(routeState.readUser() || auth.user?.userId || '')
+  /** 上侧 kind Tab：对话 | 任务（对齐智能体管理页；任务上下文非 L1/L2/L3） */
+  const kindTab = ref<ContextKindTab>(routeState.readKind())
   const activeTab = ref<ContextTab>(routeState.readTab())
+  /** 任务分层上下文 tab（对齐对话 L1/L2/L3 分层结构） */
+  const taskTab = ref<ContextTaskTab>(routeState.readTaskTab())
   const routeReady = ref(false)
 
   const authUsers = ref<Array<{ userId: string; username: string; nickname: string }>>([])
   const conversations = ref<ConversationSummary[]>([])
   const convSearch = ref('')
   const selectedConvId = ref<string | null>(routeState.readConv())
-  /** 会话列表分栏：chat | task（K4；会话 kind 轴对齐记忆闸门） */
-  const convKindFilter = ref<'all' | 'chat' | 'task'>('all')
 
   const loadingUsers = ref(false)
   const loadingConvs = ref(false)
@@ -96,10 +100,8 @@ export function useContextPage() {
   const l2StatusFilter = ref<string | null>(null)
 
   const filteredConversations = computed(() => {
-    let list = conversations.value
-    if (convKindFilter.value !== 'all') {
-      list = list.filter(c => (c.kind || 'chat') === convKindFilter.value)
-    }
+    // 上侧 kind Tab 过滤：会话 kind 缺省 chat
+    const list = conversations.value.filter(c => (c.kind || 'chat') === kindTab.value)
     const q = convSearch.value.trim().toLowerCase()
     if (!q) return list
     return list.filter(c => {
@@ -107,9 +109,6 @@ export function useContextPage() {
       return title.includes(q) || c.id.toLowerCase().includes(q)
     })
   })
-
-  /** 当前选中会话 kind（缺省按 chat）；驱动右侧 Tab 载体 */
-  const selectedConvKind = computed(() => selectedConv.value?.kind || 'chat')
 
   const filteredL2Entries = computed(() => {
     const q = l2Search.value.trim().toLowerCase()
@@ -223,10 +222,12 @@ export function useContextPage() {
 
   function pushRoute() {
     routeState.syncQuery({
+      kind: kindTab.value,
       tenant: filterTenantId.value || null,
       user: filterUserId.value.trim() || null,
       conv: selectedConvId.value,
       tab: activeTab.value,
+      taskTab: taskTab.value,
     })
   }
 
@@ -493,29 +494,18 @@ export function useContextPage() {
     await refreshAll()
   })
 
-  /** 会话 kind 轴：切换会话时保证 activeTab 落在该 kind 合法集合内 */
-  watch(selectedConvKind, () => {
+  /** 上侧 kind Tab：切换后选中会话落在该 kind 内第一条，并重置分层 tab */
+  watch(kindTab, async () => {
     if (!routeReady.value) return
-    const legal = selectedConvKind.value === 'task' ? ['l1', 'task'] : ['l1', 'l2', 'l3']
-    if (!legal.includes(activeTab.value)) {
-      activeTab.value = selectedConvKind.value === 'task' ? 'task' : 'l1'
-    }
-  })
-
-  /** 分栏切换：选中会话不在该栏时落到栏内第一条 */
-  watch(convKindFilter, () => {
-    if (!routeReady.value) return
-    const list = filteredConversations.value
-    if (!list.some(c => c.id === selectedConvId.value)) {
-      selectedConvId.value = list[0]?.id ?? null
-      if (selectedConvId.value) {
-        void loadL1(selectedConvId.value)
-        void loadL3Entries(selectedConvId.value)
-      } else {
-        l1Snapshot.value = null
-        l3Entries.value = []
-      }
-    }
+    selectedConvId.value = null
+    l1Snapshot.value = null
+    selectedL2Id.value = null
+    activeTab.value = 'l1'
+    taskTab.value = 'w0'
+    convSearch.value = ''
+    l2Search.value = ''
+    l2StatusFilter.value = null
+    await refreshAll()
   })
 
   watch([l2Search, l2StatusFilter], () => {
@@ -524,7 +514,7 @@ export function useContextPage() {
   })
 
   watch(
-    [filterTenantId, filterUserId, selectedConvId, activeTab],
+    [kindTab, filterTenantId, filterUserId, selectedConvId, activeTab, taskTab],
     () => {
       if (!routeReady.value) return
       pushRoute()
@@ -542,12 +532,12 @@ export function useContextPage() {
   return reactive({
     filterTenantId,
     filterUserId,
+    kindTab,
     activeTab,
+    taskTab,
     authUsers,
     conversations,
     convSearch,
-    convKindFilter,
-    selectedConvKind,
     selectedConvId,
     loadingUsers,
     loadingConvs,

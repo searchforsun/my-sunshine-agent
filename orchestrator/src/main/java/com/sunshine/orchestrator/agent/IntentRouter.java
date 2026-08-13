@@ -139,7 +139,7 @@ public class IntentRouter {
             return "";
         }
         // 目录按会话 kind 过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A/B】+ applyLockedMode 约束
-        prompt = workflowCatalog.renderIntoClassifier(prompt);
+        prompt = workflowCatalog.renderIntoClassifier(prompt, ctx.kindOrDefault());
         return skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
     }
 

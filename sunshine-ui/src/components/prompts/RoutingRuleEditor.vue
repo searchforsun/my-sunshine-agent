@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NDropdown,
@@ -16,6 +16,8 @@ import {
 } from 'naive-ui'
 import { AddOutline, EllipsisHorizontal, TrashOutline } from '@vicons/ionicons5'
 import { shortPromptId } from '../../api/prompts'
+import { listAgents } from '../../api/agents'
+import { listSkills } from '../../api/skills'
 import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/usePromptsPage'
 import ConfigFieldHelp from '../knowledge/ConfigFieldHelp.vue'
 import { routingFieldHelp } from './routingFieldHelp'
@@ -35,10 +37,43 @@ const matchOptions = [
 ]
 
 const planModeOptions = [
-  { label: '工作流', value: 'workflow' },
-  { label: '动态规划', value: 'plan-workflow' },
-  { label: '自主推理', value: 'react' },
+  { label: '快速 / 专业（匹配技能/助手）', value: 'fast' },
+  { label: '工作流（匹配工作流模板）', value: 'workflow' },
 ]
+
+const bindTypeOptions = [
+  { label: '技能', value: 'skill' },
+  { label: '助手', value: 'agent' },
+]
+
+const resourceOptions = ref<{ skill: { label: string; value: string }[]; agent: { label: string; value: string }[] }>({
+  skill: [],
+  agent: [],
+})
+
+onMounted(async () => {
+  try {
+    const [skills, agents] = await Promise.all([listSkills(), listAgents()])
+    resourceOptions.value = {
+      skill: skills
+        .filter(s => s.enabled)
+        .map(s => ({
+          label: s.displayName && s.displayName !== s.id ? `${s.displayName}（${s.id}）` : s.id,
+          value: s.id,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'zh')),
+      agent: agents
+        .filter(a => a.enabled)
+        .map(a => ({
+          label: a.displayName && a.displayName !== a.id ? `${a.displayName}（${a.id}）` : a.id,
+          value: a.id,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'zh')),
+    }
+  } catch {
+    // 目录加载失败不阻塞表单编辑
+  }
+})
 
 function ensurePatterns(): string[] {
   if (!Array.isArray(page.routingForm.patterns)) {
@@ -124,7 +159,7 @@ const paramsText = computed({
   },
   set: (v: string) => {
     if (!page.routingForm.plan) {
-      page.routingForm.plan = { mode: 'react', workflowId: null, params: {} }
+      page.routingForm.plan = { mode: 'fast', workflowId: null, params: {} }
     }
     const params: Record<string, string> = {}
     for (const line of v.split('\n')) {
@@ -140,7 +175,7 @@ const paramsText = computed({
 
 function ensurePlan() {
   if (!page.routingForm.plan) {
-    page.routingForm.plan = { mode: 'react', workflowId: null, params: {} }
+    page.routingForm.plan = { mode: 'fast', workflowId: null, params: {} }
   }
   if (!page.routingForm.plan.params) {
     page.routingForm.plan.params = {}
@@ -149,7 +184,7 @@ function ensurePlan() {
 }
 
 const planMode = computed({
-  get: () => ensurePlan().mode ?? 'react',
+  get: () => ensurePlan().mode ?? 'fast',
   set: (v: string) => { ensurePlan().mode = v },
 })
 
@@ -158,11 +193,46 @@ const workflowId = computed({
   set: (v: string | null) => { ensurePlan().workflowId = v?.trim() || null },
 })
 
+const bindType = computed({
+  get: () => {
+    const params = ensurePlan().params!
+    return params.agentIds ? 'agent' : 'skill'
+  },
+  set: (v: string) => {
+    const params = ensurePlan().params!
+    if (v === 'agent') {
+      delete params.skill
+      if (!params.agentIds) params.agentIds = ''
+    } else {
+      delete params.agentIds
+      if (!params.skill) params.skill = ''
+    }
+  },
+})
+
+const boundSkill = computed({
+  get: () => ensurePlan().params!.skill ?? '',
+  set: (v: string) => {
+    const params = ensurePlan().params!
+    if (v?.trim()) params.skill = v.trim()
+    else delete params.skill
+  },
+})
+
+const boundAgent = computed({
+  get: () => ensurePlan().params!.agentIds ?? '',
+  set: (v: string) => {
+    const params = ensurePlan().params!
+    if (v?.trim()) params.agentIds = v.trim()
+    else delete params.agentIds
+  },
+})
+
 const matchType = computed(() => page.routingForm.matchType || 'regex')
 const showMatch = computed(() => matchType.value === 'regex')
 const showDomainGroups = computed(() => matchType.value === 'structural')
 const showWorkflowId = computed(() => planMode.value === 'workflow')
-const showPlanParams = computed(() => planMode.value === 'workflow')
+const showTrackABind = computed(() => planMode.value === 'fast')
 
 const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
 </script>
@@ -442,12 +512,12 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
 
           <section class="form-section">
             <header class="form-section-head">
-              <h4 class="form-section-title">目标 Plan</h4>
+              <h4 class="form-section-title">绑定资源</h4>
             </header>
             <NFormItem>
               <template #label>
                 <span class="field-label-row">
-                  执行模式
+                  适用模式
                   <ConfigFieldHelp :text="routingFieldHelp('mode')" />
                 </span>
               </template>
@@ -458,40 +528,94 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
                 :disabled="formLocked"
               />
             </NFormItem>
-            <NFormItem v-if="showWorkflowId">
-              <template #label>
-                <span class="field-label-row">
-                  工作流
-                  <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
-                </span>
-              </template>
-              <NSelect
-                v-model:value="workflowId"
-                class="sun-field"
-                clearable
-                filterable
-                placeholder="从工作流目录选择"
-                :options="page.workflowOptions"
-                :consistent-menu-width="false"
-                :disabled="formLocked"
-              />
-            </NFormItem>
-            <NFormItem v-if="showPlanParams">
-              <template #label>
-                <span class="field-label-row">
-                  附加参数
-                  <ConfigFieldHelp :text="routingFieldHelp('params')" />
-                </span>
-              </template>
-              <NInput
-                v-model:value="paramsText"
-                class="sun-field mono"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 6 }"
-                placeholder="每行 key=value，如：status=pending"
-                :disabled="formLocked"
-              />
-            </NFormItem>
+            <template v-if="showTrackABind">
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    绑定类型
+                    <ConfigFieldHelp :text="routingFieldHelp('bindType')" />
+                  </span>
+                </template>
+                <NSelect
+                  v-model:value="bindType"
+                  class="sun-field"
+                  :options="bindTypeOptions"
+                  :disabled="formLocked"
+                />
+              </NFormItem>
+              <NFormItem v-if="bindType === 'skill'">
+                <template #label>
+                  <span class="field-label-row">
+                    技能
+                    <ConfigFieldHelp :text="routingFieldHelp('skill')" />
+                  </span>
+                </template>
+                <NSelect
+                  v-model:value="boundSkill"
+                  class="sun-field"
+                  clearable
+                  filterable
+                  placeholder="从技能目录选择"
+                  :options="resourceOptions.skill"
+                  :consistent-menu-width="false"
+                  :disabled="formLocked"
+                />
+              </NFormItem>
+              <NFormItem v-else>
+                <template #label>
+                  <span class="field-label-row">
+                    助手
+                    <ConfigFieldHelp :text="routingFieldHelp('agentIds')" />
+                  </span>
+                </template>
+                <NSelect
+                  v-model:value="boundAgent"
+                  class="sun-field"
+                  clearable
+                  filterable
+                  placeholder="从助手目录选择"
+                  :options="resourceOptions.agent"
+                  :consistent-menu-width="false"
+                  :disabled="formLocked"
+                />
+              </NFormItem>
+            </template>
+            <template v-else>
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    工作流
+                    <ConfigFieldHelp :text="routingFieldHelp('workflowId')" />
+                  </span>
+                </template>
+                <NSelect
+                  v-model:value="workflowId"
+                  class="sun-field"
+                  clearable
+                  filterable
+                  placeholder="从工作流目录选择"
+                  :options="page.workflowOptions"
+                  :consistent-menu-width="false"
+                  :disabled="formLocked"
+                />
+              </NFormItem>
+              <NFormItem>
+                <template #label>
+                  <span class="field-label-row">
+                    附加参数
+                    <ConfigFieldHelp :text="routingFieldHelp('params')" />
+                  </span>
+                </template>
+                <NInput
+                  v-model:value="paramsText"
+                  class="sun-field mono"
+                  type="textarea"
+                  :autosize="{ minRows: 2, maxRows: 6 }"
+                  placeholder="每行 key=value，如：status=pending"
+                  :disabled="formLocked"
+                />
+              </NFormItem>
+            </template>
           </section>
         </NForm>
       </div>

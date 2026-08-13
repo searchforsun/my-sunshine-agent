@@ -1,35 +1,17 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import { NEmpty, NIcon, NInput, NSpin, NTag, NTabs, NTabPane } from 'naive-ui'
+import { NEmpty, NIcon, NInput, NSpin, NTag } from 'naive-ui'
 import { SearchOutline, TimeOutline } from '@vicons/ionicons5'
 import { CONTEXT_PAGE_KEY, type ContextPageApi } from '../../composables/useContextPage'
 
 const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
-
-const kindTabs = [
-  { name: 'all', label: '全部' },
-  { name: 'chat', label: '聊天' },
-  { name: 'task', label: '任务' },
-] as const
 </script>
 
 <template>
   <aside class="list-panel">
     <div class="panel-head">
-      <span class="panel-title">会话</span>
-      <NTabs
-        v-model:value="page.convKindFilter"
-        type="segment"
-        size="small"
-        class="kind-tabs"
-      >
-        <NTabPane
-          v-for="t in kindTabs"
-          :key="t.name"
-          :name="t.name"
-          :tab="t.label"
-        />
-      </NTabs>
+      <span class="panel-title">{{ page.kindTab === 'task' ? '任务会话' : '对话会话' }}</span>
+      <NTag :bordered="false" size="tiny" round>{{ page.filteredConversations.length }}</NTag>
     </div>
     <div class="list-search">
       <NInput
@@ -100,15 +82,6 @@ const kindTabs = [
   gap: 8px;
   padding: 14px 14px 0;
   flex-shrink: 0;
-}
-
-.kind-tabs {
-  --n-tab-text-color: var(--sun-text-muted) !important;
-  --n-tab-text-color-active: var(--sun-text) !important;
-  --n-tab-text-color-hover: var(--sun-text) !important;
-  --n-color: var(--sun-black) !important;
-  --n-color-active: var(--sun-border-strong, rgba(255, 255, 255, 0.12)) !important;
-  --n-border-radius: 6px !important;
 }
 
 .kind-tag {

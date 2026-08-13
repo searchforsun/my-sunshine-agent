@@ -3,6 +3,7 @@
 const FLOW_HELP: Record<string, string> = {
   displayName: '工作流在路由目录、Chat # 补全与意图步骤中展示的中文名称。',
   description: '写入路由 Catalog，供 L3 意图分类理解本流程适用场景。',
+  kind: '会话形态：chat/task/all。路由按会话 kind 过滤，仅命中同 kind 或 all 的流程。',
   planReason: '当前版本规划说明，持久化到 plan.reason，便于 Studio 与审计辨识版本用途。',
   catalogExamples: '每行一条用户问法示例，用于 L2/L3 路由命中与 Chat # 补全。Chat 中输入 #{workflowId} 可强制绑定本流程（如 #finance-list）。',
   catalogIntentAfter: '意图步骤完成后的摘要模板。占位符：{query} 用户问句、{displayName} 流程名、{workflowId} 流程 ID。',

@@ -2,6 +2,7 @@ package com.sunshine.bff.controller;
 
 import com.sunshine.bff.client.SkillManagerClient;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,6 +41,11 @@ public class BizScenesController {
         return skillManagerClient.updateBizScene(code, body);
     }
 
+    @DeleteMapping("/api/biz-scenes/{code}")
+    public Mono<Map<String, Object>> delete(@PathVariable String code) {
+        return skillManagerClient.deleteBizScene(code);
+    }
+
     @GetMapping("/api/biz-scenes/policies")
     public Mono<Map<String, Object>> listPolicies(@RequestParam(defaultValue = "default") String tenantId) {
         return skillManagerClient.listBizScenePolicies(tenantId);
@@ -50,5 +56,10 @@ public class BizScenesController {
             @RequestParam(defaultValue = "default") String tenantId,
             @RequestBody Map<String, Object> body) {
         return skillManagerClient.createBizScenePolicy(tenantId, body);
+    }
+
+    @DeleteMapping("/api/biz-scenes/policies/{policyId}")
+    public Mono<Map<String, Object>> deletePolicy(@PathVariable Long policyId) {
+        return skillManagerClient.deleteBizScenePolicy(policyId);
     }
 }

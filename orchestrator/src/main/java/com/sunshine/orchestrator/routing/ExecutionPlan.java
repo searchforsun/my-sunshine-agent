@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.routing;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -10,10 +11,20 @@ public record ExecutionPlan(
         String workflowId,
         Map<String, String> params,
         String reason,
-        String ruleId
+        String ruleId,
+        List<RoutingTrace> routingTraces
 ) {
     public ExecutionPlan(ExecutionMode mode, String workflowId, Map<String, String> params, String reason) {
-        this(mode, workflowId, params, reason, null);
+        this(mode, workflowId, params, reason, null, null);
+    }
+
+    public ExecutionPlan(
+            ExecutionMode mode,
+            String workflowId,
+            Map<String, String> params,
+            String reason,
+            String ruleId) {
+        this(mode, workflowId, params, reason, ruleId, null);
     }
 
     public static ExecutionPlan reactFallback(String reason) {

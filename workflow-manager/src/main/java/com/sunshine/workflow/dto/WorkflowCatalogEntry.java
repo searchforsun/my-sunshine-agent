@@ -8,6 +8,7 @@ public record WorkflowCatalogEntry(
         String mode,
         String displayName,
         String description,
+        String kind,
         List<String> examples,
         List<String> nodes,
         String intentAfter) {

@@ -44,6 +44,10 @@ const isError = computed(() => lifecycle.value === 'error')
 const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
 const awaitingConfirm = computed(() => stepHasHitlAwaiting(props.step))
 const label = computed(() => formatStepLabel(props.step) || '子任务')
+/** active 文案已以省略号结尾时，op-pulse 不再追加，避免重复 */
+function endsWithEllipsis(text: string): boolean {
+  return text.endsWith('…') || text.endsWith('...')
+}
 const headerText = computed(() => {
   // paused：after 已在 status 黄标展示，主行不再重复
   if (isPaused.value) return ''
@@ -153,7 +157,7 @@ async function onStop(e: Event): Promise<void> {
           class="subagent-summary"
           :class="{ 'op-shimmer': showShimmer }"
         >
-          {{ headerText }}<span v-if="isRunning && live && !awaitingConfirm" class="op-pulse">…</span>
+          {{ headerText }}<span v-if="isRunning && live && !awaitingConfirm && !endsWithEllipsis(headerText)" class="op-pulse">…</span>
         </span>
       </span>
       <span class="subagent-trailing">

@@ -56,7 +56,7 @@ class ProcessingTimelineSessionTest {
         assertEquals("pending", emitted.get(0).lifecycle());
         assertEquals("running", emitted.get(1).lifecycle());
         assertEquals("done", emitted.get(2).lifecycle());
-        assertThat(emitted.get(2).summary().after()).contains("知识库查询");
+        assertThat(emitted.get(2).summary().after()).isEqualTo("已完成意图识别");
         assertThat(emitted.get(2).summary().after()).doesNotContain("年假政策");
         assertTrue(session.lastChanged().isPresent());
         assertEquals("done", session.lastChanged().get().lifecycle());
@@ -274,22 +274,19 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
-    void completeIntent_skill5B_exposesRoutingMetadata() {
+    void completeIntent_skillBinding_exposesRoutingMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("@finance-analysis 先查制度再分析");
         session.pending("intent", "intent");
         session.start("intent", "intent");
-        Map<String, String> params = Map.of(
-                SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
-                SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
+        Map<String, String> params = Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
         session.completeIntent(new ExecutionPlan(
-                ExecutionMode.PRO, null, params, "skill:@mention:5b-skill-plan"));
+                ExecutionMode.PRO, null, params, "skill:@mention"));
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
         assertThat(intent.metadata().skillId()).isEqualTo("finance-analysis");
-        assertThat(intent.metadata().plannerMode()).isEqualTo("skill-driven");
-        assertThat(intent.metadata().routingReason()).contains("5b-skill-plan");
+        assertThat(intent.metadata().routingReason()).contains("skill:@mention");
     }
 
     @Test
@@ -462,28 +459,12 @@ class ProcessingTimelineSessionTest {
 
         ExecutionPlan plan = new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test");
-        WorkflowCatalogRegistry registry = org.mockito.Mockito.mock(WorkflowCatalogRegistry.class);
-        WorkflowManagerClient client = org.mockito.Mockito.mock(WorkflowManagerClient.class);
-        WorkflowManagerClient.WorkflowCatalogEntryDto entry =
-                new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "finance-smart", "workflow", "财务智能分析", "财务分析", List.of(), List.of(), null);
-        org.mockito.Mockito.when(registry.entries()).thenReturn(List.of(entry));
-        org.mockito.Mockito.when(registry.find("finance-smart")).thenReturn(entry);
-        WorkflowCatalog workflowCatalog = new WorkflowCatalog(registry, client);
-        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
-                workflowCatalog,
-                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class));
-        WorkflowNodeLabels.bind(workflowLabels);
-        IntentLabels.bind(new IntentLabelService(
-                TimelinePromptCatalog.withDefaults(),
-                workflowCatalog,
-                registry,
-                workflowLabels));
+        IntentLabels.bind(new IntentLabelService(TimelinePromptCatalog.withDefaults()));
         try {
             session.completeIntent(plan);
             ProcessingStep intent = session.snapshot().stream()
                     .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
-            assertThat(intent.summary().after()).contains("财务智能分析");
+            assertThat(intent.summary().after()).isEqualTo("已完成意图识别");
             assertThat(intent.detail()).isNull();
         } finally {
             IntentLabels.bind(null);

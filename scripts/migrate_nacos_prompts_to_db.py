@@ -60,14 +60,13 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "timeline.steps.skill": "时间线「Skill 绑定」步骤的 before/active/after 展示文案。",
     "timeline.steps.tasks": "时间线「任务看板」步骤的 before/active/after 展示文案。",
     "timeline.steps.subagent": "时间线「子任务」步骤的 before/active/after 展示文案。",
-    "routing-rule.structural-plan": "句式+多领域结构命中时走动态规划（plan-workflow），处理「先…再…」等跨域多步问题。",
-    "routing-rule.react-policy-qa": "命中制度/办法/规定类咨询时走自主推理，并绑 skill policy-qa。",
-    "routing-rule.react-travel-standard": "命中差旅/住宿/补贴标准类问法时走 ReAct，绑 skill travel-budget。",
-    "routing-rule.react-expense-progress": "命中报销/付款进度与单据状态问法时走 ReAct，绑 skill expense-assist。",
-    "routing-rule.react-compliance-risk": "命中风险点/合规风险审查类问法时走 ReAct，绑 skill compliance-review。",
-    "routing-rule.rule-finance-smart-compliance": "命中合规审查类问法时走 finance-smart 静态工作流。",
-    "routing-rule.rule-knowledge-budget-travel": "命中预算与出差相关问法时走 knowledge-qa 知识问答工作流。",
-    "routing-rule.rule-finance-list-pending": "命中待审批列表查询类问法时走 finance-list 工作流。",
+    "routing-rule.react-policy-qa": "命中制度/办法/规定类咨询时绑定技能 policy-qa（轨 A：快速/专业模式共用）。",
+    "routing-rule.react-travel-standard": "命中差旅/住宿/补贴标准类问法时绑定技能 travel-budget（轨 A：快速/专业模式共用）。",
+    "routing-rule.react-expense-progress": "命中报销/付款进度与单据状态问法时绑定技能 expense-assist（轨 A：快速/专业模式共用）。",
+    "routing-rule.react-compliance-risk": "命中风险点/合规风险审查类问法时绑定技能 compliance-review（轨 A：快速/专业模式共用）。",
+    "routing-rule.rule-finance-smart-compliance": "命中合规审查类问法时走 finance-smart 静态工作流（轨 B：仅工作流模式）。",
+    "routing-rule.rule-knowledge-budget-travel": "命中预算与出差相关问法时走 knowledge-qa 知识问答工作流（轨 B：仅工作流模式）。",
+    "routing-rule.rule-finance-list-pending": "命中待审批列表查询类问法时走 finance-list 工作流（轨 B：仅工作流模式）。",
 }
 
 DISPLAY_NAMES: dict[str, str] = {

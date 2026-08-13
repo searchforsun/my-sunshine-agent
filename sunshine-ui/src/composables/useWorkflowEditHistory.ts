@@ -10,6 +10,7 @@ export type WorkflowEditSnapshotPayload = {
   catalogIntentAfter: string
   definitionDisplayName: string
   definitionDescription: string
+  definitionKind: string
   selectedNodeId: string | null
 }
 
@@ -20,6 +21,7 @@ type SnapshotSource = {
   catalogIntentAfter: Ref<string>
   definitionDisplayName: Ref<string>
   definitionDescription: Ref<string>
+  definitionKind: Ref<string>
   selectedNodeId: Ref<string | null>
   serializeSnapshot: () => string
   parseSnapshot: (raw: string) => WorkflowEditSnapshotPayload
@@ -41,6 +43,7 @@ export function useWorkflowEditHistory(source: SnapshotSource) {
     source.catalogIntentAfter.value = payload.catalogIntentAfter
     source.definitionDisplayName.value = payload.definitionDisplayName
     source.definitionDescription.value = payload.definitionDescription
+    source.definitionKind.value = payload.definitionKind
     source.selectedNodeId.value = payload.selectedNodeId
   }
 
@@ -124,6 +127,7 @@ export function useWorkflowEditHistory(source: SnapshotSource) {
       source.catalogIntentAfter.value,
       source.definitionDisplayName.value,
       source.definitionDescription.value,
+      source.definitionKind.value,
       source.canEditPlan.value,
     ] as const,
     () => scheduleHistoryRecord(),

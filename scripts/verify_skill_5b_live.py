@@ -11,10 +11,10 @@
   SKILL_5B_TIMEOUT_SEC（默认 180，Planner+DAG 较慢）
   SKILL_MANAGER_URL（可选 preflight，默认 http://ecs4c16g:8225）
 
-断言（routing-golden-set §E3 / E-Live）:
-  - intent 步 metadata: skillId + plannerMode=skill-driven
-  - plan 步 detail 含 planId=（成功路径有 DAG）
-  - 可选 GET /api/execution-plans/{planId} 校验 status
+断言（routing-golden-set §E3 / E-Live，v6 语义）:
+  - intent 步 metadata: skillId 绑定成功
+  - intent 步 after 统一文案「已完成意图识别」
+  - 可选：plan 步出现则校验 lifecycle/planId（v6 下 skill 绑定走轨 A，通常无 plan 步）
 """
 from __future__ import annotations
 
@@ -217,7 +217,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print(f"[skill-5b] GATEWAY={GATEWAY_URL} timeout={TIMEOUT_SEC}s")
-    print(f"[skill-5b] query={args.query!r} expect skill={args.skill} plannerMode=skill-driven")
+    print(f"[skill-5b] query={args.query!r} expect skill={args.skill}")
 
     if not args.skip_preflight:
         preflight_skill(args.skill)
@@ -241,24 +241,19 @@ def main() -> int:
     print(f"[skill-5b] intent.metadata: {json.dumps(meta, ensure_ascii=False)}")
 
     skill_id = meta.get("skillId")
-    planner_mode = meta.get("plannerMode")
     routing_reason = meta.get("routingReason")
     errors: list[str] = []
 
     if skill_id != args.skill:
         errors.append(f"intent.metadata.skillId={skill_id!r} 期望 {args.skill!r}")
-    if planner_mode != "skill-driven":
-        errors.append(f"intent.metadata.plannerMode={planner_mode!r} 期望 'skill-driven'")
-    if routing_reason and "5b-skill-plan" not in str(routing_reason):
-        errors.append(f"intent.metadata.routingReason 应含 5b-skill-plan: {routing_reason!r}")
-    if intent_after and "动态规划" not in str(intent_after):
-        errors.append(f"intent after 应含「动态规划」: {intent_after!r}")
+    if intent_after and "已完成意图识别" not in str(intent_after):
+        errors.append(f"intent after 应含「已完成意图识别」: {intent_after!r}")
+    if routing_reason:
+        print(f"[skill-5b] intent.metadata.routingReason: {routing_reason!r}")
 
     plan = latest_step(steps, "plan")
     plan_id: str | None = None
-    if not plan:
-        errors.append("未收到 plan 步（可能 Planner 失败降级 ReAct）")
-    else:
+    if plan:
         plan_lifecycle = plan.get("lifecycle")
         plan_detail = plan.get("detail")
         plan_after = (plan.get("summary") or {}).get("after") or plan.get("after")
@@ -279,6 +274,8 @@ def main() -> int:
                     errors.append("成功 5B 路径不应在 plan 前出现 think 步")
             except ValueError:
                 pass
+    else:
+        print("[skill-5b] 未出现 plan 步（v6 下 skill 绑定走轨 A，符合预期）")
 
     if errors:
         print("FAIL:", file=sys.stderr)
@@ -286,7 +283,7 @@ def main() -> int:
             print(f"  - {e}", file=sys.stderr)
         return 1
 
-    print("PASS: intent metadata（skillId + plannerMode）+ plan 步 planId")
+    print("PASS: intent metadata（skillId 绑定）+ intent 统一文案")
 
     if plan_id and not args.no_plan_api:
         try:

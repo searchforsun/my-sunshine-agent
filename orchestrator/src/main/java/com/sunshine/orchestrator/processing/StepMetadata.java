@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.RoutingTrace;
 import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import org.springframework.util.StringUtils;
 
@@ -52,7 +53,9 @@ public record StepMetadata(
         /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
         SandboxEditDiff editDiff,
         /** ReAct request_decision：选择题载荷（勿截断 question/options） */
-        DecisionStepMeta decision
+        DecisionStepMeta decision,
+        /** 路由链路可观测：模式 → 轨 → L0 → 规则 → L3 → 最终绑定（intent 步抽屉） */
+        List<RoutingTrace> routingTraces
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -167,6 +170,7 @@ public record StepMetadata(
                 && !StringUtils.hasText(spawnPrompt)
                 && (cancellable == null || !cancellable)
                 && editDiff == null
-                && decision == null;
+                && decision == null
+                && (routingTraces == null || routingTraces.isEmpty());
     }
 }

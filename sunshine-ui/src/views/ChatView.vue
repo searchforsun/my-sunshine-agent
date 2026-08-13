@@ -59,7 +59,6 @@ import {
 import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
 import ModelSelector from '../components/chat/ModelSelector.vue'
-import KbSelector from '../components/knowledge/KbSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
@@ -67,13 +66,11 @@ import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
 import { useKbPreference } from '../composables/useKbPreference'
 import { useModelPreference } from '../composables/useModelPreference'
-import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import {
   catalogUserSelectableOptions,
   fetchModelCatalog,
   type ModelCatalogDefinition,
 } from '../api/models'
-import { useTenantPreference } from '../composables/useTenantPreference'
 import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
@@ -449,11 +446,8 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
 )
 const inputText = ref('')
 const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
-const { kbId, setKbId, applyConversationKb } = useKbPreference()
+const { kbId, applyConversationKb } = useKbPreference()
 const { modelName, setModelName, applyConversationModel } = useModelPreference()
-const { tenantId } = useTenantPreference()
-const chatKbs = ref<KnowledgeBase[]>([])
-const loadingChatKbs = ref(false)
 const chatModelDefs = ref<ModelCatalogDefinition[]>([])
 
 async function loadChatModels() {
@@ -490,86 +484,12 @@ const chatModelOptions = computed(() =>
   }),
 )
 
-async function loadChatKbs() {
-  loadingChatKbs.value = true
-  try {
-    chatKbs.value = await listKbs(tenantId.value)
-    if (!kbId.value) {
-      const def = chatKbs.value.find((k) => k.isDefault) ?? chatKbs.value[0]
-      if (def) setKbId(def.kbId)
-    }
-  } catch (e) {
-    console.warn('[ChatView] 加载知识库列表失败', e)
-  } finally {
-    loadingChatKbs.value = false
-  }
-}
-
-function onKbChange(next: string) {
-  setKbId(next)
-  const convId = chatStore.currentId
-  if (convId) chatStore.updateKbIdLocal(convId, next)
-}
-
 function onModelChange(next: string | null) {
   setModelName(next)
   const convId = chatStore.currentId
   if (convId) chatStore.updateModelNameLocal(convId, next)
 }
 
-/** 底栏左侧：按自然宽度测到真实碰撞后，知识库才收成图标 */
-const composerToolbarLeftRef = ref<HTMLElement | null>(null)
-const kbIconOnly = ref(false)
-const toolbarMeasuring = ref(false)
-let toolbarCollisionRaf = 0
-let toolbarResizeObserver: ResizeObserver | null = null
-let lastToolbarLeftWidth = -1
-
-async function measureComposerToolbarCollision(force = false) {
-  const el = composerToolbarLeftRef.value
-  if (!el) return
-  if (force) lastToolbarLeftWidth = -1
-  const width = el.clientWidth
-  const widthDelta = width - lastToolbarLeftWidth
-  const widthChanged = lastToolbarLeftWidth < 0 || Math.abs(widthDelta) >= 1
-  lastToolbarLeftWidth = width
-  // 已是图标且未变宽：无需展开测量（避免闪全文）
-  if (kbIconOnly.value && (!widthChanged || widthDelta <= 0)) return
-  // 测量时先展开知识库全文，再按自然宽度判断是否与 Mode 碰撞
-  kbIconOnly.value = false
-  toolbarMeasuring.value = true
-  await nextTick()
-  const collided = el.scrollWidth > el.clientWidth + 1
-  toolbarMeasuring.value = false
-  kbIconOnly.value = collided
-}
-
-function scheduleComposerToolbarCollisionCheck(force = false) {
-  if (toolbarCollisionRaf) cancelAnimationFrame(toolbarCollisionRaf)
-  toolbarCollisionRaf = requestAnimationFrame(() => {
-    toolbarCollisionRaf = 0
-    void measureComposerToolbarCollision(force)
-  })
-}
-
-function bindComposerToolbarCollisionObserver() {
-  toolbarResizeObserver?.disconnect()
-  const el = composerToolbarLeftRef.value
-  if (!el || typeof ResizeObserver === 'undefined') return
-  toolbarResizeObserver = new ResizeObserver(() => scheduleComposerToolbarCollisionCheck())
-  toolbarResizeObserver.observe(el)
-  scheduleComposerToolbarCollisionCheck()
-}
-
-watch(composerToolbarLeftRef, (el) => {
-  if (el) bindComposerToolbarCollisionObserver()
-})
-
-onUnmounted(() => {
-  if (toolbarCollisionRaf) cancelAnimationFrame(toolbarCollisionRaf)
-  toolbarResizeObserver?.disconnect()
-  toolbarResizeObserver = null
-})
 const {
   inputRef,
   skillCatalog,
@@ -661,20 +581,6 @@ let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 
 /** workspace task：分支选择（分支名，与 checkout 目录解耦） */
 const taskBranch = ref('')
-
-// 依赖 taskBranch，须放在其声明之后
-watch(
-  [
-    kbId,
-    taskBranch,
-    preference,
-    voiceListening,
-    () => chatStore.newTaskMode,
-    () => chatStore.pendingWorkspace,
-    () => chatKbs.value.map((kb) => `${kb.kbId}:${kb.displayName}`).join('|'),
-  ],
-  () => scheduleComposerToolbarCollisionCheck(true),
-)
 
 /** 当前会话实际绑定的 checkoutId（由分支 ensure 得到，用于 checkoutPath / 文件树）；无绑定为空串 */
 const taskCheckoutId = ref('')
@@ -1477,7 +1383,6 @@ onMounted(async () => {
     applyConversationKb(chatStore.current?.kbId)
     applyConversationModel(chatStore.current?.modelName)
     void applyConversationCheckout()
-    void loadChatKbs()
     void loadChatModels()
     ensureActive(cid)
     const pendingReconnect = !!(active?.conversationId === cid)
@@ -2073,23 +1978,18 @@ watch(
               @keydown="handleKeydown"
             />
             <div class="composer-toolbar">
-              <div
-                ref="composerToolbarLeftRef"
-                class="composer-toolbar-left"
-                :class="{ 'is-measuring': toolbarMeasuring }"
-              >
+              <div class="composer-toolbar-left">
                 <ExecutionModeSelector
                   :model-value="preference"
                   @update:model-value="setPreference"
                 />
-                <KbSelector
-                  v-if="!voiceListening"
-                  :kbs="chatKbs"
-                  :model-value="kbId"
-                  :loading="loadingChatKbs"
-                  :show-create="false"
-                  :icon-only="kbIconOnly"
-                  @update:model-value="onKbChange"
+                <GitBranchSelector
+                  v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
+                  :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
+                  :model-value="taskBranch"
+                  :active-branch="taskActiveBranch"
+                  :create-mode="!!(chatStore.newTaskMode || chatStore.pendingWorkspace)"
+                  @update:model-value="taskBranch = $event"
                 />
               </div>
               <div class="composer-toolbar-right">
@@ -2142,18 +2042,6 @@ watch(
               </div>
             </div>
           </div>
-        </div>
-        <div
-          v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
-          class="composer-subbar"
-        >
-          <GitBranchSelector
-            :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
-            :model-value="taskBranch"
-            :active-branch="taskActiveBranch"
-            :create-mode="!!(chatStore.newTaskMode || chatStore.pendingWorkspace)"
-            @update:model-value="taskBranch = $event"
-          />
         </div>
       </div>
     </footer>
@@ -3250,9 +3138,15 @@ watch(
   overflow: hidden;
 }
 
-.composer-toolbar-left :deep(.kb-dropdown-root),
-.composer-toolbar-left :deep(.mode-dropdown-root) {
+.composer-toolbar-left :deep(.mode-dropdown-root),
+.composer-toolbar-left :deep(.branch-dropdown-root) {
   flex: 0 0 auto;
+}
+
+.composer-toolbar-left :deep(.branch-dropdown-root) {
+  max-width: 240px;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .composer-toolbar-right {
@@ -3261,24 +3155,6 @@ watch(
   flex-wrap: nowrap;
   flex-shrink: 0;
   gap: 4px;
-}
-
-/* task / newTask / pendingWs：分支在输入框下方（对齐 Cursor 底栏密度） */
-.composer-subbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  margin-top: 6px;
-  padding: 0 4px 2px;
-  min-height: 28px;
-  background: transparent;
-}
-
-.composer-subbar :deep(.branch-dropdown-root) {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 240px;
 }
 
 .skill-suggest {

@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -46,6 +47,8 @@ class ExecutionPlanRouterV6Test {
     @Mock
     private SkillCatalogService skillCatalogService;
     @Mock
+    private AgentCatalogService agentCatalogService;
+    @Mock
     private WorkflowCatalog workflowCatalog;
 
     private ExecutionPlanRouter router;
@@ -53,7 +56,7 @@ class ExecutionPlanRouterV6Test {
     @BeforeEach
     void setUp() {
         PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
-        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser);
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
@@ -65,7 +68,8 @@ class ExecutionPlanRouterV6Test {
                 new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
-                        new WorkflowBindingParser(workflowCatalog)),
+                        new WorkflowBindingParser(workflowCatalog), skillCatalogService,
+                        agentCatalogService, workflowCatalog),
                 skillBindingParser,
                 agentBindingParser);
         when(skillBindingParser.parse(any(), any(), any())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));

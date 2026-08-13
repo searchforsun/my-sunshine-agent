@@ -573,6 +573,10 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
     && (step.subSteps?.length || step.contentBlocks?.length)) {
     return true
   }
+  // intent 步：有路由过程 → 可展开看「路由过程」
+  if (step.phase === 'intent' && step.metadata?.routingTraces?.length) {
+    return true
+  }
   if (isSandboxExecStep(step) && extractSandboxExecCommand(step)) {
     return true
   }

@@ -3,7 +3,7 @@
 > **日期**：2026-08-13  
 > **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
-> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）
+> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
 
 ---
 
@@ -53,7 +53,7 @@
 | Skill | `skill_definition.biz_scene`（可空 VARCHAR） | `19-sunshine-resource.sql` |
 | 子 Agent | `agent_definition.biz_scene`（可空 VARCHAR） | 同上 |
 
-`biz_scene` 取值必须落在 Policy/任务板使用的闭集码表（与 `biz_scene_policy.biz_scene` 对齐）；空 = 该资源不触发结构化业务记忆。
+`biz_scene` 取值必须落在 **业务场景 Lab** 闭集码表（与 `biz_scene_policy.biz_scene` 同码空间；见 [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) §3）；空 = 该资源不触发结构化业务记忆。码表**不**挂在「提示词 / react-prompt」下。
 
 **解析算法（唯一）**：
 
@@ -68,8 +68,8 @@
    - biz_scene == null → **跳过**结构化业务层；退化为既有「L1 上下文 + 用户提问 → L3 语义召回」
 ```
 
-**不做**：用户选场景 UI、低置信追问、独立 `BizSceneResolver` LLM 分类、AI 动态建 scene。  
-**扩场景**：运营给 Skill/Agent 填 `biz_scene` + 配 Policy，无需改分类 prompt。
+**不做**：用户选场景 UI、低置信追问、独立 `BizSceneResolver` LLM 分类、AI 动态建 scene、用 `reactPromptId` 充当业务域。  
+**扩场景**：运营在 **业务场景 Lab** 建码 → 配 Policy → Skill/Agent 打标；无需改分类 prompt。原 `react-prompt.*` 场景退役，文案迁 Skill overlay（见 kind-biz-scene-catalog §5）。
 
 **装配时序**：结构化业务块必须在**资源召回之后**组装（或召回后补注入）；禁止在未知 skill/agent 时空想 `biz_scene`。细则见 §2.2。
 
@@ -396,9 +396,10 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 |------|------|
 | 五层压缩 | 压缩与会话记忆 SSOT；本层为**业务权威前缀**，优先级写入其装配序旁注 |
 | task-scene | chat/task 记忆隔离；本层一期主挂 chat；task 不强制 |
-| routing v6 | 产品 `scene` / `executionMode`；本层新增 `biz_scene` 第三业务轴 |
+| routing v6 | 产品 `kind` / `executionMode`；本层 `biz_scene` 业务轴 |
 | request_decision | 仅业务工具确认等既有 HITL；**不**用于选场景/选任务板焦点 |
-| Skill / Agent Catalog | `biz_scene` 元数据 SSOT 入口；与路由召回同链路 |
+| Skill / Agent Catalog | `biz_scene` **引用**入口；码表 SSOT = 业务场景 Lab；与路由召回同链路 |
+| [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) | Lab UI/DDL、资源 `kind` 过滤、工具集 chat/task、退役 react-prompt |
 
 ---
 
@@ -415,3 +416,4 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 | D7 | `biz_scene` 由 Skill/Agent 元数据带出；无则跳过结构化层 → L1+L3 语义；无用户选场景、无独立分类器 | 2026-08-13 |
 | D8 | 目标时序：先意图收 Skill/Agent，再结构化记忆；L3 方案 A（路由后，可与 P3 并行）；并行组 P0–P4 见 §2.2 | 2026-08-13 |
 | D9 | 本层一期 = chat；与压缩点正交；挂载遵守 prefix/Tier/L3 尾部纪律（§2.3）；task 默认不启用 | 2026-08-13 |
+| D10 | `biz_scene` 码表 = 独立业务场景 Lab（非 Prompt 子页）；与 kind-biz-scene-catalog 对齐 | 2026-08-13 |

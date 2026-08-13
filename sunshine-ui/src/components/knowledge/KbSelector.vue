@@ -23,6 +23,9 @@ const showCreateButton = computed(() => props.showCreate)
 const variant = computed(() => props.variant ?? 'compact')
 const popoverPlacement = computed(() => (variant.value === 'block' ? 'bottom-start' : 'top-start'))
 
+const COMPACT_MENU_WIDTH = 304
+const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : COMPACT_MENU_WIDTH))
+
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   create: []
@@ -63,7 +66,7 @@ function onShowUpdate(next: boolean) {
       trigger="click"
       content-class="kb-selector-popover"
       :placement="popoverPlacement"
-      :width="304"
+      :width="popoverWidth"
       :disabled="loading"
       raw
       :show-arrow="false"
@@ -134,6 +137,16 @@ function onShowUpdate(next: boolean) {
   max-width: 100%;
 }
 
+.kb-dropdown-root.variant-block {
+  display: block;
+  width: 100%;
+}
+
+.kb-dropdown-root.variant-block :deep(> *) {
+  display: block;
+  width: 100%;
+}
+
 .kb-trigger {
   display: inline-flex;
   align-items: center;
@@ -149,6 +162,19 @@ function onShowUpdate(next: boolean) {
   flex-shrink: 0;
   max-width: 140px;
   transition: background 0.15s, color 0.15s;
+}
+
+.kb-dropdown-root.variant-block .kb-trigger {
+  width: 100%;
+  max-width: none;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md, 10px);
+  justify-content: space-between;
+  background: var(--n-color, var(--sun-black));
+  color: var(--sun-text, #ececec);
+  font-size: var(--sun-font-base, 14px);
 }
 
 .kb-trigger:hover:not(:disabled) {

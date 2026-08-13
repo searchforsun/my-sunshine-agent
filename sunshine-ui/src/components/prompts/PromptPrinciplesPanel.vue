@@ -10,7 +10,7 @@ const ROUTING_STEPS = [
   { key: '模式', title: '模式锁定', detail: '底栏 fast / pro / workflow；锁定后不再由意图自动改道' },
   { key: '轨道', title: '轨道分流', detail: '轨 A：skill + agent；轨 B：仅 workflow' },
   { key: 'L0', title: '硬绑定', detail: '#工作流 / $智能体 / /Skill → 立刻锁定' },
-  { key: '规则', title: '同轨规则', detail: 'Catalog 路由规则（routing-rule）按 priority 首命中，仅匹配同 mode' },
+  { key: '规则', title: '同轨规则', detail: 'Catalog 路由规则按 priority 首命中：轨 A（技能/助手）对快速/专业共用；轨 B 仅工作流' },
   { key: 'L3', title: '补绑定', detail: '未命中 → intent.classifier 补 skill / workflowId（不改模式）' },
   { key: '执行', title: '分发', detail: 'fast → ReAct · pro → Planner-Executor · workflow → 工作流' },
 ] as const

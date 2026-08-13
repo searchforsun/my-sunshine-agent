@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.taskboard;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -52,6 +53,8 @@ class ReactTaskBoardRoutingTest {
     @Mock
     private SkillCatalogService skillCatalogService;
     @Mock
+    private AgentCatalogService agentCatalogService;
+    @Mock
     private WorkflowCatalog workflowCatalog;
 
     private ExecutionPlanRouter router;
@@ -59,7 +62,7 @@ class ReactTaskBoardRoutingTest {
     @BeforeEach
     void setUp() {
         PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
-        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser);
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
@@ -71,7 +74,8 @@ class ReactTaskBoardRoutingTest {
                 new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
-                        new WorkflowBindingParser(workflowCatalog)),
+                        new WorkflowBindingParser(workflowCatalog), skillCatalogService,
+                        agentCatalogService, workflowCatalog),
                 skillBindingParser,
                 agentBindingParser);
         when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
@@ -104,15 +108,15 @@ class ReactTaskBoardRoutingTest {
     }
 
     @Test
-    void fn1_mainAcceptance_withPro_hitsStructuralNotReact() {
-        String query = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论";
+    void fn1_mainAcceptance_withPro_hitsSharedTrackARule() {
+        String query = "差旅办法制度怎么说";
 
         ExecutionPlan plan = router.route(new RoutingContext(
                 query, null, ExecutionPreference.PRO, null, null)).block();
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
-        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
 }

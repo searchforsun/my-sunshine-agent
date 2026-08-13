@@ -9,9 +9,9 @@
 
 | 层级 | Policy | 配置 | 产出 |
 |:----:|--------|------|------|
-| L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `@` 硬编码 | 单步：`REACT`+skillId；多步 `@`/强提示：`PLAN_WORKFLOW` **5B**；L3 后自动发现 skill |
-| L1 | `UnifiedRuleRoutingPolicy` | Catalog `matchType=structural`（priority 100） | `PLAN_WORKFLOW` |
-| L2 | （同上引擎） | Catalog `matchType=regex`（workflow P20/15/10；**react+reactPromptId** P40/28/22/18） | 静态 `WORKFLOW` 或带场景的 `REACT` |
+| L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `@` 硬编码 | 轨 A：`skillId` 绑定（不改 executionMode）；L3 后自动发现 skill |
+| L1 | `UnifiedRuleRoutingPolicy` | Catalog `routing-rule.*`（轨 A：`mode=fast` 绑 skill；轨 B：`mode=workflow` 绑 workflowId） | 轨 A：`FAST/PRO` 命中快专业共享规则；轨 B：`WORKFLOW` 命中工作流规则 |
+| L2 | （同上引擎） | Catalog `matchType=regex`（轨 A：`mode=fast` P40/28/22/18 绑 skill；轨 B：`mode=workflow` P20/15/10） | 轨 A：技能/助手绑定；轨 B：静态工作流 |
 | L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow；强制路径可带 `lockedMode` |
 | **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | **锁死 mode**；仍跑同 mode 规则/L3 解析绑定；见 [§J](#j-chat-executionpreference-强制路由p0) |
 
@@ -173,7 +173,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 |---|--------|------|
 | E1 | `@policy-review` 审查这条报销 | `REACT` + skill=policy-review（**流程 1** 单步） |
 | E2 | 请使用 compliance-check skill 处理待审批单据 | `REACT` + skill=compliance-check（**流程 2**） |
-| E3 | `@finance-analysis 先查制度再拉待办再分析再润色` | `PLAN_WORKFLOW` + skill=finance-analysis + `plannerMode=skill-driven`（**流程 5B**）；intent 后出 Plan DAG |
+| E3 | `@finance-analysis 先查制度再拉待办再分析再润色` | `FAST`（默认）+ skill=finance-analysis（**Skill 绑定，轨 A**）；ReAct 编排，不再出 Plan DAG |
 | E4 | `@finance-analysis 这笔报销是否合规` | `REACT` + skill=finance-analysis；**不得**走 finance-smart（L0 压过 L2） |
 
 ### E-Live（5B 执行期）
@@ -187,11 +187,11 @@ python scripts/verify_skill_5b_live.py
 
 | 现象 | 含义 |
 |------|------|
-| `intent.metadata.plannerMode=skill-driven` | L0 多步 @ 路由 5B 成功 |
-| `intent.metadata.skillId=finance-analysis` | Skill 已锁定 |
-| plan 步 `detail` 含 `planId=` | Planner 产出合法 DAG（可展示 PlanWorkflowPanel） |
-| orchestrator 日志 `[WorkflowPlanner]` 且 user 含「Skill 正文」 | 5B Planner 已读 L2 overlay |
-| Planner 失败 | 降级 ReAct（见 §A 降级路径）；脚本 exit 1 |
+| `intent.metadata.skillId=finance-analysis` | Skill 绑定成功（轨 A） |
+| intent 步 after=已完成意图识别 | 统一状态文案 |
+| 无 plan 步 | v6 skill 绑定走 ReAct 编排，符合预期 |
+| orchestrator 日志 `[ReAct]` 且 user 含「Skill 正文」 | 已装载 skill L2 overlay |
+| 智能体失败 | 正常报错；脚本 exit 1 |
 
 **3.12 `/skills` 管理页 Live**（与 §E 互补，验 Admin API + UI 手验）：
 
@@ -231,20 +231,20 @@ python3 scripts/verify_skills_ui_live.py
 
 ---
 
-## J. Chat `executionPreference` 强制路由（P0 ✅）
+## J. Chat 执行模式强制路由（v6 语义；P0 ✅）
 
-> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) · [remove-simple-llm](../superpowers/specs/2026-07-17-remove-simple-llm-mode-design.md)  
-> **请求**：SSE 发送体 `executionPreference`（`auto` \| `react` \| `workflow` \| `plan-workflow`）  
+> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) · [unified-routing](docs/superpowers/specs/2026-07-29-unified-routing-design.md)  
+> **请求**：SSE 发送体 `executionMode`（`fast` \| `pro` \| `workflow`；旧 `auto`/`react`/`plan-workflow` 读映射）  
 > **边界**：本节约 **执行路径**；**指定 workflow 模板**用正文 `#id`（4.13 §I），**不在底栏做 catalog 下拉**。
 
-| # | preference | 提示词 | 预期 mode | @skill |
+| # | mode | 提示词 | 预期 mode | @skill |
 |---|------------|--------|-----------|--------|
-| J1 | `react` | 待审批是否合规 | `REACT`；`reason=user:forced-react`（忽略异 mode workflow 规则） | ✅ |
+| J1 | `fast` | 待审批是否合规 | `FAST`；`reason=user:forced-fast`（忽略异 mode workflow 规则） | ✅ |
 | J2 | `workflow` | 有哪些待审批报销 | `WORKFLOW` finance-list（同 mode 规则） | ❌ |
-| J3 | `plan-workflow` | 先查制度再查待审批 | `PLAN_WORKFLOW`；`reason=user:forced-plan-workflow` | ✅ |
+| J3 | `pro` | 先查制度再查待审批 | `PRO`；`reason=user:forced-pro` | ✅ |
 | J4 | `workflow` | `@policy-review 有哪些待审批报销` | `WORKFLOW` finance-list；**忽略** @skill（strip 正文） | ❌ |
-| J5 | `plan-workflow` | `@finance-analysis 是否合规` | `PLAN_WORKFLOW` + `params.skill=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
-| J6 | `react` | 差旅办法制度怎么说 | `REACT` + 同 mode 规则绑定 `reactPromptId=react-prompt.policy-qa`；`reason=user:forced-react` | ✅ |
+| J5 | `pro` | `@finance-analysis 是否合规` | `PRO` + `params.skill=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
+| J6 | `fast` | 差旅办法制度怎么说 | `FAST` + 同 mode 规则绑定 `reactPromptId=react-prompt.policy-qa`；`reason=user:forced-fast` | ✅ |
 
 单测：`ForcedExecutionRouterTest` · `ExecutionPlanRouterTest` · `RoutingGoldenSetTest#forcedJ*`
 
@@ -357,7 +357,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 | 意图步文案 | Catalog `timeline.intent`（`/prompts`） |
 | 语义兜底 | Catalog `intent.classifier`（`/prompts`） |
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
-| Skill `@` / 强提示 / 5B | `agent.skill.hint-patterns`；L0 多步→`plannerMode=skill-driven` |
+| Skill `@` / 强提示 | `agent.skill.hint-patterns`；L0 skill 绑定（轨 A，不再产出 skill-driven Plan） |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
 | ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |

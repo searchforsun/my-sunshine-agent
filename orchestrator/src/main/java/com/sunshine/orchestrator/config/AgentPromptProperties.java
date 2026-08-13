@@ -149,24 +149,9 @@ public class AgentPromptProperties {
         private static IntentTimeline fixtureIntent() {
             var intent = new IntentTimeline();
             intent.setBefore("识别用户意图");
-            intent.setActive("正在匹配最佳处理方式");
+            intent.setActive("正在识别用户意图...");
             intent.setLabel("识别意图");
-            intent.setDefaultAfter("已完成意图判断");
-            intent.setUnmatchedAfter("将按「{detail}」处理");
-            var modes = new java.util.LinkedHashMap<String, ModeIntent>();
-            var react = new ModeIntent();
-            react.setDetail("自主智能体");
-            react.setAfter("将由自主智能体分析并作答");
-            modes.put("react", react);
-            var workflow = new ModeIntent();
-            workflow.setAfter("将按「{displayName}」流程处理");
-            workflow.setForcedAfter("将按您指定的「工作流」模式处理");
-            modes.put("workflow", workflow);
-            var planWorkflow = new ModeIntent();
-            planWorkflow.setDetail("动态规划");
-            planWorkflow.setAfter("将动态规划多步执行");
-            modes.put("plan-workflow", planWorkflow);
-            intent.setModes(modes);
+            intent.setDefaultAfter("已完成意图识别");
             return intent;
         }
 
@@ -352,17 +337,6 @@ public class AgentPromptProperties {
         private String active;
         private String label;
         private String defaultAfter;
-        private String unmatchedAfter;
-        private java.util.LinkedHashMap<String, ModeIntent> modes;
-    }
-
-    @Getter
-    @Setter
-    public static class ModeIntent {
-
-        private String detail;
-        private String after;
-        private String forcedAfter;
     }
 
     public Planner plannerOrDefault() {

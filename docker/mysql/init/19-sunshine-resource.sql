@@ -146,32 +146,29 @@ INSERT INTO prompt_catalog_meta (id, catalog_version) VALUES (1, 1);
 -- ========== Prompt Catalog 全量 v1（由线上 active 收敛导出）==========
 
 INSERT INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version) VALUES
-('routing-rule.react-compliance-risk', 'routing-rule', '风险审查→React合规场景', '命中风险点/合规风险审查类问法时走 ReAct，绑 skill compliance-review（「是否合规」仍优先走 finance-smart）。', 1, 18, 1),
-('routing-rule.react-expense-progress', 'routing-rule', '报销进度→React报销助手', '命中报销/付款进度与单据状态问法时走 ReAct，绑 skill expense-assist（与待审批列表 workflow 错开）。', 1, 22, 1),
-('routing-rule.react-policy-qa', 'routing-rule', '制度咨询→React政策问答', '命中制度/办法/规定类咨询时走自主推理，并绑 skill policy-qa。', 1, 40, 1),
-('routing-rule.react-travel-standard', 'routing-rule', '差旅标准→React预算场景', '命中差旅/住宿/补贴标准类问法时走 ReAct，绑 skill travel-budget（与「预算×出差」workflow 规则错开）。', 1, 28, 1),
-('routing-rule.rule-finance-list-pending', 'routing-rule', '待审批列表→finance-list', '命中待审批列表查询类问法时走 finance-list 工作流。', 1, 10, 1),
-('routing-rule.rule-finance-smart-compliance', 'routing-rule', '财务合规→finance-smart', '命中合规审查类问法时走 finance-smart 静态工作流。', 1, 20, 1),
-('routing-rule.rule-knowledge-budget-travel', 'routing-rule', '预算出差→knowledge-qa', '命中预算与出差相关问法时走 knowledge-qa 知识问答工作流。', 1, 15, 1),
-('routing-rule.structural-plan', 'routing-rule', '多步跨域→Plan', '句式+多领域结构命中时走动态规划（plan-workflow），处理「先…再…」等跨域多步问题。', 1, 100, 1);
+('routing-rule.react-compliance-risk', 'routing-rule', '风险审查→绑定合规技能', '命中风险点/合规风险审查类问法时绑定技能 compliance-review（轨 A：快速/专业模式共用；「是否合规」仍优先走 finance-smart）。', 1, 18, 1),
+('routing-rule.react-expense-progress', 'routing-rule', '报销进度→绑定报销技能', '命中报销/付款进度与单据状态问法时绑定技能 expense-assist（轨 A：快速/专业模式共用；与待审批列表 workflow 错开）。', 1, 22, 1),
+('routing-rule.react-policy-qa', 'routing-rule', '制度咨询→绑定政策技能', '命中制度/办法/规定类咨询时绑定技能 policy-qa（轨 A：快速/专业模式共用）。', 1, 40, 1),
+('routing-rule.react-travel-standard', 'routing-rule', '差旅标准→绑定差旅技能', '命中差旅/住宿/补贴标准类问法时绑定技能 travel-budget（轨 A：快速/专业模式共用；与「预算×出差」workflow 规则错开）。', 1, 28, 1),
+('routing-rule.rule-finance-list-pending', 'routing-rule', '待审批列表→finance-list', '命中待审批列表查询类问法时走 finance-list 工作流（轨 B：仅工作流模式）。', 1, 10, 1),
+('routing-rule.rule-finance-smart-compliance', 'routing-rule', '财务合规→finance-smart', '命中合规审查类问法时走 finance-smart 静态工作流（轨 B：仅工作流模式）。', 1, 20, 1),
+('routing-rule.rule-knowledge-budget-travel', 'routing-rule', '预算出差→knowledge-qa', '命中预算与出差相关问法时走 knowledge-qa 知识问答工作流（轨 B：仅工作流模式）。', 1, 15, 1);
 
 INSERT INTO prompt_version (prompt_id, version, status, content_json) VALUES
 ('routing-rule.react-compliance-risk', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["风险点评估","合规风险审查","审查风险点","对照制度.*风险","有哪些风险点"],"plan":{"mode":"react","params":{"skill":"compliance-review"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["风险点评估","合规风险审查","审查风险点","对照制度.*风险","有哪些风险点"],"plan":{"mode":"fast","params":{"skill":"compliance-review"}}}'),
 ('routing-rule.react-expense-progress', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["报销进度","付款进度","单据状态","报销到哪了","付款到哪了","报销单.*状态"],"plan":{"mode":"react","params":{"skill":"expense-assist"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["报销进度","付款进度","单据状态","报销到哪了","付款到哪了","报销单.*状态"],"plan":{"mode":"fast","params":{"skill":"expense-assist"}}}'),
 ('routing-rule.react-policy-qa', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["制度怎么说","有没有规定","差旅办法","报销规定","考勤制度","人事制度","能不能报(?!销进度)","政策.*怎么规定"],"plan":{"mode":"react","params":{"skill":"policy-qa"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["制度怎么说","有没有规定","差旅办法","报销规定","考勤制度","人事制度","能不能报(?!销进度)","政策.*怎么规定"],"plan":{"mode":"fast","params":{"skill":"policy-qa"}}}'),
 ('routing-rule.react-travel-standard', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["差旅标准","住宿标准","出差补贴","交通补贴标准","超标怎么办","舱位标准"],"plan":{"mode":"react","params":{"skill":"travel-budget"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["差旅标准","住宿标准","出差补贴","交通补贴标准","超标怎么办","舱位标准"],"plan":{"mode":"fast","params":{"skill":"travel-budget"}}}'),
 ('routing-rule.rule-finance-list-pending', 1, 'published',
  '{"matchType":"regex","match":"any","patterns":["有哪些待审批","查询待审批","列出待审批","待审批的.*报销","待审批.*付款"],"plan":{"mode":"workflow","workflowId":"finance-list","params":{"status":"pending"}}}'),
 ('routing-rule.rule-finance-smart-compliance', 1, 'published',
  '{"matchType":"regex","match":"any","patterns":["是否合规","合规吗","合不合规","对比制度"],"plan":{"mode":"workflow","workflowId":"finance-smart","params":{"status":"pending"}}}'),
 ('routing-rule.rule-knowledge-budget-travel', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["预算.*出差","出差.*预算","预算超支","预算不够.*出差"],"plan":{"mode":"workflow","workflowId":"knowledge-qa","params":{}}}'),
-('routing-rule.structural-plan', 1, 'published',
- '{"matchType":"structural","minDomainGroups":2,"patterns":["先.+再","再.+(并|然后|接着)","分步","多步","并对.+?(分析|审查|检查|评估)","完整处理","一套.+(分析|流程|处理)"],"domainGroups":{"knowledge":["制度","检索","知识库","政策","差旅办法","报销规定"],"finance":["待审批","报销","财务","付款","单据"],"analysis":["合规","分析","审查","对比","评估","结论"]},"plan":{"mode":"plan-workflow","params":{}}}');
+ '{"matchType":"regex","match":"any","patterns":["预算.*出差","出差.*预算","预算超支","预算不够.*出差"],"plan":{"mode":"workflow","workflowId":"knowledge-qa","params":{}}}');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('answer.overlay', 'answer', 'Answer 覆盖层', 'Answer 覆盖层：在 answer 模板之上追加的补充约束（可为空）。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('answer.overlay', 1, 'published',
@@ -409,10 +406,10 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 NULL,
 '{"pending":"将调用工具 {toolDisplayName}","awaiting":"等待用户确认执行写操作","approved":"用户已确认，正在调用 {toolDisplayName}","denied":"用户取消调用","skipped-after":"用户取消调用，已跳过"}', '初始种子', 'agent');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.intent', 'timeline', '时间线 · Intent', '意图步骤时间线：识别意图步骤的 label 与 before/active/after（含各模式 after 文案）。', 1, 0, 1, 1);
+INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.intent', 'timeline', '时间线 · Intent', '意图步骤时间线：识别意图步骤的 label 与 before/active/after（主行统一状态文案，模式/轨道细节由 routingTraces 在抽屉展示）。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.intent', 1, 'published',
 NULL,
-'{"label":"识别意图","before":"识别用户意图","active":"正在匹配最佳处理方式","default-after":"已完成意图判断","unmatched-after":"将按「{detail}」处理","modes":{"react":{"detail":"自主智能体","after":"将由自主智能体分析并作答","forced-after":"将按您指定的「自主推理」模式处理"},"plan-workflow":{"detail":"动态规划","after":"将动态规划多步执行","forced-after":"将按您指定的「动态规划」模式处理"}}}', '初始种子', 'agent');
+'{"label":"识别意图","before":"识别用户意图","active":"正在识别用户意图...","default-after":"已完成意图识别"}', 'v6 语义收敛：主行统一状态文案，删除 react/plan-workflow modes', 'agent');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('timeline.plan-approval', 'timeline', '时间线 · Plan 确认', 'Plan 确认步骤时间线：等待用户确认执行计划时的展示文案。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('timeline.plan-approval', 1, 'published',
@@ -543,4 +540,4 @@ INSERT INTO biz_scene_definition (biz_scene, display_name, description, status) 
 
 INSERT INTO biz_scene_policy (tenant_id, biz_scene, version, status, rules_json) VALUES
 ('default', 'compliance-review', 1, 'active',
-'{"hitl_confirm_before_submit":true,"red_lines":["不可代他人提交报销","单笔金额超过 5000 元需人工复核"],"read_only_tools":true}');
+'先检索费用制度与报销规范，再进行报销合规对照；输出结构：结论（合规/存疑/不合规）→ 依据条款 → 风险点 → 建议动作；证据不足时标注「待核实」项，勿武断下结论。');

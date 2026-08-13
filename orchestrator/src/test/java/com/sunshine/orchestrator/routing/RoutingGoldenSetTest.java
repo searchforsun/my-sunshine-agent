@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -55,6 +56,8 @@ class RoutingGoldenSetTest {
     @Mock
     private SkillCatalogService skillCatalogService;
     @Mock
+    private AgentCatalogService agentCatalogService;
+    @Mock
     private WorkflowCatalog workflowCatalog;
 
     private ExecutionPlanRouter router;
@@ -62,7 +65,7 @@ class RoutingGoldenSetTest {
     @BeforeEach
     void setUp() {
         PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
-        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser);
         WorkflowBindingRoutingPolicy workflowPolicy =
                 new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
         AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
@@ -74,7 +77,8 @@ class RoutingGoldenSetTest {
                 new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
                         skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
-                        new WorkflowBindingParser(workflowCatalog)),
+                        new WorkflowBindingParser(workflowCatalog), skillCatalogService,
+                        agentCatalogService, workflowCatalog),
                 skillBindingParser,
                 agentBindingParser);
 
@@ -93,20 +97,19 @@ class RoutingGoldenSetTest {
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
     }
 
-    @ParameterizedTest(name = "pro structural: {0}")
+    @ParameterizedTest(name = "pro shares track-A rule: {0}")
     @ValueSource(strings = {
-            "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论",
-            "先查一下年假制度，再帮我看看待审批的请假单有没有问题",
-            "先检索报销政策，再列出待审批付款，然后逐条审查是否合规",
-            "分步处理：先知识库找差旅标准，再查财务待审批报销",
-            "请完整处理待审批差旅报销：先对照制度，再查单据并给出评估结论",
-            "给我一套差旅报销的分析流程：制度检索、待办查询、合规结论"
+            "差旅办法怎么说",
+            "制度咨询：报销规定",
+            "差旅办法、考勤制度怎么规定的",
+            "人事制度有没有规定",
+            "报销规定和差旅办法是什么"
     })
-    void planWorkflowPrompts_withPro(String query) {
+    void proPrompts_hitSharedTrackARule(String query) {
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
-        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
 
@@ -190,7 +193,7 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void atSkillMultiStep_withPro_keepsSkillDriven() {
+    void atSkill_withPro_bindsSkillKeepsMode() {
         String query = "@finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
@@ -199,8 +202,7 @@ class RoutingGoldenSetTest {
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.params().get(SkillBindingOutcome.PARAM_PLANNER_MODE))
-                .isEqualTo(SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
+        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_PLANNER_MODE);
     }
 
     @Test

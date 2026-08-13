@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '../api/auth'
 import { syncTenantFromAuth } from '../composables/useTenantPreference'
+import { syncKbDefaultFromAuth } from '../composables/useKbPreference'
 import { syncWriteHitlDefaultFromAuth } from '../composables/useWriteHitlMode'
 import { isWriteHitlMode } from '../api/writeHitlModes'
 import { normalizeSidebarSectionsLayout } from '../api/sidebarSectionsLayouts'
@@ -18,6 +19,7 @@ function toAuthUser(res: authApi.AuthUser): authApi.AuthUser {
       ? res.defaultWriteHitlMode
       : 'never',
     sidebarSectionsLayout: normalizeSidebarSectionsLayout(res.sidebarSectionsLayout),
+    defaultKbId: res.defaultKbId?.trim() || null,
     personalRules: res.personalRules ?? null,
     githubUrl: res.githubUrl ?? null,
     githubToken: res.githubToken ?? null,
@@ -49,6 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = toAuthUser(next)
     syncTenantFromAuth(user.value.tenantId)
     syncWriteHitlDefaultFromAuth(user.value.defaultWriteHitlMode)
+    syncKbDefaultFromAuth(user.value.defaultKbId)
   }
 
   async function login(username: string, password: string) {
@@ -88,9 +91,10 @@ export const useAuthStore = defineStore('auth', () => {
     gitlabUrl?: string | null,
     gitlabToken?: string | null,
     sidebarSectionsLayout?: string,
+    defaultKbId?: string | null,
   ) {
     const res = await authApi.updateProfile(nickname, tenantId, defaultWriteHitlMode, personalRules,
-      githubUrl, githubToken, gitlabUrl, gitlabToken, sidebarSectionsLayout)
+      githubUrl, githubToken, gitlabUrl, gitlabToken, sidebarSectionsLayout, defaultKbId)
     if (!res.token?.trim()) {
       throw new Error('资料已保存但登录凭证刷新失败，请重新登录')
     }

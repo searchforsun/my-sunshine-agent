@@ -25,6 +25,10 @@ public class UpdateProfileRequest {
     @Size(max = 16, message = "侧栏排布最长 16 字符")
     private String sidebarSectionsLayout;
 
+    /** 默认知识库；null=不修改，空串=清空，最长 64 字符 */
+    @Size(max = 64, message = "默认知识库 ID 最长 64 字符")
+    private String defaultKbId;
+
     /** 个人规则（soul）；null=不修改，空串=清空，最长 4000 字符 */
     @Size(max = 4000, message = "个人规则最长 4000 字符")
     private String personalRules;

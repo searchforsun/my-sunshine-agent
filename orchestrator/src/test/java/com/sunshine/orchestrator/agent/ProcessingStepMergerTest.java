@@ -161,7 +161,7 @@ class ProcessingStepMergerTest {
                                 com.sunshine.orchestrator.routing.ExecutionMode.FAST,
                                 null,
                                 java.util.Map.of(),
-                                "user:forced-react"));
+                                "user:forced-fast"));
         ProcessingStep intent = new ProcessingStep(
                 "intent",
                 "intent",
@@ -182,7 +182,7 @@ class ProcessingStepMergerTest {
                 null
         );
         String json = ProcessingStepSerde.toPersistJson(List.of(intent));
-        assertThat(json).contains("\"routingReason\":\"user:forced-react\"");
+        assertThat(json).contains("\"routingReason\":\"user:forced-fast\"");
     }
 
     @Test

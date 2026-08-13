@@ -30,20 +30,22 @@
 | **资源（Resource）** | workflow / agent / skill |
 | **主 Agent** | 通用 ReAct（快速）或 Planner（专业）；路由命中的 agent **一律子 Agent**，经 `spawn_subagent` 委派 |
 | **Pre-Routing** | HITL / 续跑等系统等待态复用上次路由结果；**不含** Plan Approval（D5） |
-| **kind**（会话形态） | `chat` / `task`（产品选择；记忆闸门 / 工作区；**正交于**执行模式）。**弃用**字段名 `scene` 承载本语义 |
+| **kind**（会话形态） | `chat` / `task`（产品选择；记忆闸门 / 工作区 / **默认工具集** / 资源可发现过滤；**正交于**执行模式）。**弃用**字段名 `scene` 承载本语义 |
 | **callSite**（LLM 调用点） | `plan` / `worker` / `self-assess` / `rewrite`…（orchestrator 注入，供模型路由/用量）。**弃用** `call_scene` |
-| **biz_scene** | 业务域编码（Policy/任务板；随 Skill/Agent 元数据）。**禁止**写入 `kind` 或 `callSite` |
+| **biz_scene** | 业务域编码（Policy/任务板；随 Skill/Agent 元数据；码表 = 业务场景 Lab）。**禁止**写入 `kind` 或 `callSite`；**禁止**再用 `reactPromptId` 充当业务域 |
 
-### 命名四轴（2026-08-13 · 去 scene  overload）
+### 命名四轴（2026-08-13 · 去 scene overload）
 
 | 轴 | 协议字段 | 旧名（废弃） | 取值 | 定责 |
 |----|----------|--------------|------|------|
-| 会话形态 | `kind` | `scene`（chat/task） | `chat` \| `task` | 用户 / 会话 |
+| 会话形态 | `kind` | `scene`（chat/task） | 会话：`chat` \| `task`；Catalog 资源另含 `all` | 用户 / 会话；资源元数据同轴 |
 | 执行模式 | `executionMode` | — | `fast` \| `pro` \| `workflow` | 用户 |
-| 业务域 | `biz_scene` | —（可二期 `bizDomain`） | 闭集码 | Catalog 资源元数据 |
+| 业务域 | `biz_scene` | —（可二期 `bizDomain`） | 闭集码（Lab） | Catalog Skill/Agent 元数据 |
 | LLM 调用点 | `callSite`（JSON/DB：`call_site`） | `call_scene` | `plan` \| `worker` \| … | orchestrator 注入 |
 
 **禁止**四轴同名字段互写。L3 向量元数据里旧列 `scene=chat|task` → 迁为 `kind`（或过渡双读）。
+
+**资源 `kind` 过滤与默认工具集**（2026-08-13）：意图候选构建前，Skill/Agent/Workflow 仅保留 `kind ∈ {会话.kind, all}`；默认 Toolkit 按会话 `kind` 解析 `chat`/`task` 工具集，**不**按 `executionMode` 选集。细则与 React Prompt 退役见 [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)。
 
 ---
 

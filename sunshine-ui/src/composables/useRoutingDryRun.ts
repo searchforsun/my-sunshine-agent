@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 import { dryRunRouting, type RoutingDryRunResponse } from '../api/prompts'
 import { friendlyErrorMessage } from '../api/apiError'
 import type { usePromptsRouteState } from './usePromptsRouteState'
+import type { ExecutionPreference } from '../api/executionModes'
 
 export interface RoutingDryRunDeps {
   routingPane: Ref<'editor' | 'dry-run'>
@@ -12,6 +13,8 @@ export interface RoutingDryRunDeps {
 export function useRoutingDryRun(deps: RoutingDryRunDeps) {
   const { routingPane, routeState, message } = deps
   const dryRunQuery = ref('')
+  /** 试跑模拟的锁定执行模式（v6 三值；同 Chat 底栏） */
+  const dryRunMode = ref<ExecutionPreference>('fast')
   const dryRunResult = ref<RoutingDryRunResponse | null>(null)
   const dryRunning = ref(false)
 
@@ -28,7 +31,7 @@ export function useRoutingDryRun(deps: RoutingDryRunDeps) {
     }
     dryRunning.value = true
     try {
-      dryRunResult.value = await dryRunRouting(q)
+      dryRunResult.value = await dryRunRouting(q, dryRunMode.value)
     } catch (e) {
       message.error(friendlyErrorMessage(e, '试跑失败'))
       console.error(e)
@@ -39,6 +42,7 @@ export function useRoutingDryRun(deps: RoutingDryRunDeps) {
 
   return {
     dryRunQuery,
+    dryRunMode,
     dryRunResult,
     dryRunning,
     runDryRun,

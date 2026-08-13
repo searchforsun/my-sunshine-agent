@@ -20,6 +20,9 @@ import {
   extractSandboxExecCommand,
   isCancellableSandboxTool,
 } from '../../api/processingSteps'
+import {
+  resolveIntentRoutingTraces,
+} from '../../api/processingSteps'
 import { isThinkStepId } from '../../api/processingStepsNormalize'
 import { useRouter } from 'vue-router'
 import StaticMarkdown from '../StaticMarkdown.vue'
@@ -167,6 +170,11 @@ const headerText = computed(() => {
   }
   return resolveStepHeaderText(props.step)
 })
+
+/** active 文案已以省略号结尾时，op-pulse 不再追加省略号，避免「…」重复 */
+function endsWithEllipsis(text: string): boolean {
+  return text.endsWith('…') || text.endsWith('...')
+}
 const shiftSummary = computed(() => shouldShiftSummaryOnExpand(props.step))
 const { isSandboxTool, editDiffSummary } = useSandboxToolExpand(() => props.step)
 
@@ -179,6 +187,9 @@ const showHeaderPreview = computed(
 const expandPanels = computed(() => resolveStepExpandPanels(props.step))
 const expandSummary = computed(() => expandPanels.value.lead)
 const expandBody = computed(() => expandPanels.value.body)
+
+/** intent 步：抽屉「路由过程」trace 列表（方案 B） */
+const routingTraces = computed(() => resolveIntentRoutingTraces(props.step))
 
 const canExpand = computed(() => !props.hideChevron && hasExpandableContent(props.step))
 const rowClickable = computed(() => canExpand.value || (!props.hideChevron && isSandboxTool.value))
@@ -272,7 +283,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
             <span v-if="editDiffSummary.add" class="op-diff-stat is-add">+{{ editDiffSummary.add }}</span>
             <span v-if="editDiffSummary.del" class="op-diff-stat is-del">-{{ editDiffSummary.del }}</span>
           </span>
-          <span v-if="isRunning && live" class="op-pulse">…</span>
+          <span v-if="isRunning && live && !endsWithEllipsis(headerText)" class="op-pulse">…</span>
         </span>
         <svg
           v-if="showCheckmark"
@@ -338,6 +349,18 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
     />
 
     <div v-if="expanded && canExpand" class="op-detail">
+      <!-- intent 步：路由过程（方案 B；普通 meta-line 样式，对齐 RAG「检索过程」先例） -->
+      <div v-if="routingTraces.length" class="op-routing-block">
+        <p
+          v-for="(trace, traceIdx) in routingTraces"
+          :key="`${trace.layer ?? 'layer'}-${traceIdx}`"
+          class="op-routing-row"
+          :title="`${trace.label || trace.layer} ${trace.detail}`"
+        >
+          <span class="op-routing-key">{{ trace.label || trace.layer }}</span>
+          <span class="op-routing-detail">{{ trace.detail }}</span>
+        </p>
+      </div>
       <SandboxToolExpandPanel
         v-if="isSandboxTool"
         :step="step"
@@ -557,6 +580,36 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 .op-plan-link:hover {
   color: var(--sun-text);
   border-color: var(--sun-border-light);
+}
+
+/* intent 步抽屉：路由过程区块（普通 meta-line 文本行，无边框色块） */
+.op-routing-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.op-routing-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.45;
+}
+
+.op-routing-key {
+  flex-shrink: 0;
+  min-width: 72px;
+  font-weight: 450;
+  color: var(--sun-text-secondary);
+}
+
+.op-routing-detail {
+  min-width: 0;
+  color: var(--sun-text-muted);
+  word-break: break-all;
 }
 
 .op-line.is-running .op-label:not(.op-shimmer) {

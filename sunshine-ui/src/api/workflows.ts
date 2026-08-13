@@ -10,6 +10,7 @@ export interface WorkflowEntry {
   id: string
   displayName: string
   description: string
+  kind: string
   enabled: boolean
   activeVersion: number
   source: string
@@ -32,6 +33,7 @@ export interface WorkflowCatalogEntry {
   mode: string
   displayName: string
   description: string
+  kind: string
   examples: string[]
   nodes: string[]
 }
@@ -157,11 +159,12 @@ export async function createWorkflow(
   id: string,
   displayName: string,
   description: string,
+  kind?: string,
 ): Promise<WorkflowEntry> {
   const res = await fetch(apiUrl('/api/workflows'), {
     method: 'POST',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, displayName, description }),
+    body: JSON.stringify({ id, displayName, description, kind: kind ?? 'all' }),
   })
   return parseApiResponse<WorkflowEntry>(res)
 }
@@ -170,11 +173,12 @@ export async function updateWorkflow(
   id: string,
   displayName: string,
   description: string,
+  kind?: string,
 ): Promise<WorkflowEntry> {
   const res = await fetch(apiUrl(`/api/workflows/${encodeURIComponent(id)}`), {
     method: 'PUT',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName, description }),
+    body: JSON.stringify({ displayName, description, kind: kind ?? 'all' }),
   })
   return parseApiResponse<WorkflowEntry>(res)
 }

@@ -193,6 +193,21 @@ function parseDecision(raw: unknown): DecisionMeta | undefined {
   return { token, title, questions, expiresAt, outcome, answers }
 }
 
+function parseRoutingTraces(raw: unknown): StepMetadata['routingTraces'] {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const traces: StepMetadata['routingTraces'] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const layer = typeof o.layer === 'string' && o.layer.trim() ? o.layer.trim() : undefined
+    const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim() : undefined
+    const detail = typeof o.detail === 'string' && o.detail.trim() ? o.detail.trim() : undefined
+    if (!layer && !label && !detail) continue
+    traces.push({ layer, label, detail })
+  }
+  return traces.length > 0 ? traces : undefined
+}
+
 function parseMetadata(raw: unknown): StepMetadata | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const obj = raw as Record<string, unknown>
@@ -312,6 +327,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const cancellable = obj.cancellable === true ? true : undefined
   const editDiff = parseEditDiff(obj.editDiff)
   const decision = parseDecision(obj.decision)
+  const routingTraces = parseRoutingTraces(obj.routingTraces)
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -335,6 +351,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !cancellable
     && !editDiff
     && !decision
+    && !routingTraces?.length
   ) {
     return undefined
   }
@@ -373,6 +390,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     cancellable,
     editDiff,
     decision,
+    routingTraces,
   }
 }
 

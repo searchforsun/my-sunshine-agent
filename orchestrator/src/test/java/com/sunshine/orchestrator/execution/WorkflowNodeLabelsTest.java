@@ -31,7 +31,7 @@ class WorkflowNodeLabelsTest {
     void setUp() {
         lenient().when(workflowCatalog.findEntry("finance-list")).thenReturn(
                 new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "finance-list", "workflow", "财务待办查询", "财务待办", List.of(), List.of(), null));
+                        "finance-list", "workflow", "财务待办查询", "财务待办", "all", List.of(), List.of(), null));
         labelService = new WorkflowNodeLabelService(workflowCatalog, toolCatalogService);
         WorkflowNodeLabels.bind(labelService);
     }

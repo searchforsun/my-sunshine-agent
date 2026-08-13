@@ -35,7 +35,7 @@ class WorkflowCatalogTest {
     void rendersCatalogForPrompt() {
         when(catalogRegistry.entries()).thenReturn(List.of(
                 new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "knowledge-qa", "workflow", "知识库问答", "查制度",
+                        "knowledge-qa", "workflow", "知识库问答", "查制度", "all",
                         List.of("年假"), List.of("start", "rag", "answer"), null)));
 
         String rendered = catalog.renderForPrompt();
@@ -44,10 +44,30 @@ class WorkflowCatalogTest {
     }
 
     @Test
+    void renderForPromptFiltersByKind() {
+        when(catalogRegistry.entries()).thenReturn(List.of(
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "chat-flow", "workflow", "对话流", "", "chat", List.of(), List.of(), null),
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "task-flow", "workflow", "任务流", "", "task", List.of(), List.of(), null),
+                new WorkflowManagerClient.WorkflowCatalogEntryDto(
+                        "any-flow", "workflow", "通用流", "", "all", List.of(), List.of(), null)));
+
+        String chatRendered = catalog.renderForPrompt("chat");
+        assertThat(chatRendered).contains("chat-flow").contains("any-flow").doesNotContain("task-flow");
+
+        String taskRendered = catalog.renderForPrompt("task");
+        assertThat(taskRendered).contains("task-flow").contains("any-flow").doesNotContain("chat-flow");
+
+        String allRendered = catalog.renderForPrompt(null);
+        assertThat(allRendered).contains("chat-flow").contains("task-flow").contains("any-flow");
+    }
+
+    @Test
     void validateWorkflowIdExists() {
         lenient().when(catalogRegistry.find("knowledge-qa")).thenReturn(
                 new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "knowledge-qa", "workflow", "知识库问答", "查制度", List.of(), List.of(), null));
+                        "knowledge-qa", "workflow", "知识库问答", "查制度", "all", List.of(), List.of(), null));
         lenient().when(catalogRegistry.find("missing")).thenReturn(null);
 
         assertThat(catalog.isKnownWorkflow("knowledge-qa")).isTrue();
@@ -69,9 +89,9 @@ class WorkflowCatalogTest {
     void renderIntoClassifierReplacesPlaceholder() {
         when(catalogRegistry.entries()).thenReturn(List.of(
                 new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "knowledge-qa", "workflow", "知识库问答", "查制度", List.of(), List.of(), null)));
+                        "knowledge-qa", "workflow", "知识库问答", "查制度", "all", List.of(), List.of(), null)));
 
-        String prompt = catalog.renderIntoClassifier("目录：\n{{workflow-catalog}}\n结束");
+        String prompt = catalog.renderIntoClassifier("目录：\n{{workflow-catalog}}\n结束", "chat");
 
         assertThat(prompt).contains("knowledge-qa").doesNotContain("{{workflow-catalog}}");
     }

@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.routing.RoutingTrace;
 import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 
 import java.util.ArrayList;
@@ -334,6 +335,30 @@ public final class ProcessingStepSerde {
         }
         if (metadata.decision() != null) {
             map.put("decision", decisionToMap(metadata.decision()));
+        }
+        if (metadata.routingTraces() != null && !metadata.routingTraces().isEmpty()) {
+            List<Map<String, Object>> traces = new ArrayList<>();
+            for (RoutingTrace trace : metadata.routingTraces()) {
+                if (trace == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                if (hasText(trace.layer())) {
+                    row.put("layer", trace.layer());
+                }
+                if (hasText(trace.label())) {
+                    row.put("label", trace.label());
+                }
+                if (hasText(trace.detail())) {
+                    row.put("detail", trace.detail());
+                }
+                if (!row.isEmpty()) {
+                    traces.add(row);
+                }
+            }
+            if (!traces.isEmpty()) {
+                map.put("routingTraces", traces);
+            }
         }
         return map;
     }

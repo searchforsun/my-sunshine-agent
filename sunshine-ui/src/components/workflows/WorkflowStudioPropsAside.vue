@@ -35,6 +35,12 @@ import {
 import ConditionGroupEditor from './ConditionGroupEditor.vue'
 import type { WorkflowPlanEdgeConditionGroup, WorkflowPlanInputBinding } from '../../api/workflows'
 
+const workflowKindOptions = [
+  { label: '全部', value: 'all' },
+  { label: '对话', value: 'chat' },
+  { label: '任务', value: 'task' },
+]
+
 defineProps<{
   open: boolean
   showExpandBtn?: boolean
@@ -329,6 +335,18 @@ function expand() {
                     type="textarea"
                     :disabled="readOnly"
                     :autosize="{ minRows: 2, maxRows: 5 }"
+                  />
+                </NFormItem>
+                <NFormItem>
+                  <template #label>
+                    <span class="field-label-row">会话形态<ConfigFieldHelp :text="workflowFlowFieldHelp('kind')" /></span>
+                  </template>
+                  <NSelect
+                    v-model:value="page.definitionKind"
+                    class="sun-field"
+                    :options="workflowKindOptions"
+                    size="small"
+                    :disabled="readOnly"
                   />
                 </NFormItem>
                 <NFormItem>

@@ -57,6 +57,14 @@ export async function updateBizScene(
   return parseApiResponse<BizSceneEntry>(res)
 }
 
+export async function deleteBizScene(code: string): Promise<void> {
+  const res = await fetch(apiUrl(`/api/biz-scenes/${encodeURIComponent(code)}`), {
+    method: 'DELETE',
+    headers: apiHeaders(),
+  })
+  await parseApiResponse<null>(res, { allowEmptyData: true })
+}
+
 export async function listBizScenePolicies(tenantId = 'default'): Promise<BizScenePolicyEntry[]> {
   const res = await fetch(apiUrl(`/api/biz-scenes/policies?tenantId=${tenantId}`), { headers: apiHeaders() })
   return parseApiResponse<BizScenePolicyEntry[]>(res)
@@ -72,4 +80,12 @@ export async function createBizScenePolicy(
     body: JSON.stringify(body),
   })
   return parseApiResponse<BizScenePolicyEntry>(res)
+}
+
+export async function deleteBizScenePolicy(policyId: number): Promise<void> {
+  const res = await fetch(apiUrl(`/api/biz-scenes/policies/${policyId}`), {
+    method: 'DELETE',
+    headers: apiHeaders(),
+  })
+  await parseApiResponse<null>(res, { allowEmptyData: true })
 }

@@ -70,6 +70,7 @@ public class WorkflowPackageService {
         });
         def.setDisplayName(WorkflowAdminSupport.stringVal(body.get("displayName"), workflowId));
         def.setDescription(WorkflowAdminSupport.stringVal(body.get("description")).strip());
+        def.setKind(WorkflowAdminSupport.normalizeKind(WorkflowAdminSupport.stringVal(body.get("kind"))));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         @SuppressWarnings("unchecked")
@@ -99,6 +100,7 @@ public class WorkflowPackageService {
         body.put("workflowId", def.workflowId());
         body.put("displayName", def.getDisplayName());
         body.put("description", def.getDescription());
+        body.put("kind", WorkflowAdminSupport.normalizeKind(def.getKind()));
         body.put("version", ver.getVersion());
         body.put("status", ver.getStatus());
         body.put("plan", support.readMap(ver.getPlanJson()));

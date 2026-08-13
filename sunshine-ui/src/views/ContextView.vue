@@ -15,7 +15,8 @@ import ContextConversationList from '../components/context/ContextConversationLi
 import ContextL1Panel from '../components/context/ContextL1Panel.vue'
 import ContextL2Panel from '../components/context/ContextL2Panel.vue'
 import ContextL3Panel from '../components/context/ContextL3Panel.vue'
-import ContextTaskPanels from '../components/context/ContextTaskPanels.vue'
+import ContextTaskW0Panel from '../components/context/ContextTaskW0Panel.vue'
+import ContextTaskEmptyPanel from '../components/context/ContextTaskEmptyPanel.vue'
 import { CONTEXT_PAGE_KEY, useContextPage } from '../composables/useContextPage'
 import '../utils/stream-markdown/styles.css'
 
@@ -60,25 +61,52 @@ provide(CONTEXT_PAGE_KEY, contextPage)
       </NSpace>
     </header>
 
+    <div class="context-tabs">
+      <NTabs
+        v-model:value="contextPage.kindTab"
+        type="line"
+        @update:value="(v: string) => (contextPage.kindTab = v as 'chat' | 'task')"
+      >
+        <NTabPane name="chat" tab="对话" />
+        <NTabPane name="task" tab="任务" />
+      </NTabs>
+    </div>
+
     <div class="context-layout">
       <ContextConversationList />
 
       <main class="detail-panel">
-        <NTabs v-model:value="contextPage.activeTab" type="line" size="small" class="layer-tabs">
-          <NTabPane name="l1" tab="L1 会话快照">
-            <ContextL1Panel />
+        <template v-if="contextPage.kindTab === 'chat'">
+          <NTabs v-model:value="contextPage.activeTab" type="line" size="small" class="layer-tabs">
+            <NTabPane name="l1" tab="L1 会话快照">
+              <ContextL1Panel />
+            </NTabPane>
+
+            <NTabPane name="l2" tab="L2 用户状态">
+              <ContextL2Panel />
+            </NTabPane>
+
+            <NTabPane name="l3" tab="L3 历史索引">
+              <ContextL3Panel />
+            </NTabPane>
+          </NTabs>
+        </template>
+
+        <NTabs v-else v-model:value="contextPage.taskTab" type="line" size="small" class="layer-tabs">
+          <NTabPane name="w0" tab="W0 工作区">
+            <ContextTaskW0Panel />
           </NTabPane>
 
-          <NTabPane v-if="contextPage.selectedConvKind === 'chat'" name="l2" tab="L2 用户状态">
-            <ContextL2Panel />
+          <NTabPane name="t0" tab="T0 任务进度">
+            <ContextTaskEmptyPanel text="暂无任务进度" />
           </NTabPane>
 
-          <NTabPane v-if="contextPage.selectedConvKind === 'chat'" name="l3" tab="L3 历史索引">
-            <ContextL3Panel />
+          <NTabPane name="h1" tab="H1 计划笔记本">
+            <ContextTaskEmptyPanel text="暂无计划笔记本" />
           </NTabPane>
 
-          <NTabPane v-else name="task" tab="任务上下文">
-            <ContextTaskPanels />
+          <NTabPane name="l3" tab="L3 任务检索">
+            <ContextTaskEmptyPanel text="暂无任务检索" />
           </NTabPane>
         </NTabs>
       </main>
@@ -153,6 +181,19 @@ provide(CONTEXT_PAGE_KEY, contextPage)
   --n-text-color-pressed: var(--btn-primary-text) !important;
   --n-text-color-focus: var(--btn-primary-text) !important;
   --n-border: none !important;
+}
+
+.context-tabs {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--sun-border);
+}
+
+.context-tabs :deep(.n-tabs-nav) {
+  padding: 0;
+}
+
+.context-tabs :deep(.n-tabs-nav-scroll-content) {
+  justify-content: flex-start;
 }
 
 .context-layout {

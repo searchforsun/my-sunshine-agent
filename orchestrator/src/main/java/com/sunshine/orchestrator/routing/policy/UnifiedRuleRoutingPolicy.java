@@ -41,9 +41,7 @@ public class UnifiedRuleRoutingPolicy implements RoutingPolicy {
         return new UnifiedRuleEngine(rules).match(userMessage).map(UnifiedRuleRoutingPolicy::toExecutionPlan);
     }
 
-    /**
-     * 分轨匹配：先按 lockedMode 过滤规则再跑引擎，避免错误轨的高优规则抢占。
-     */
+    /** 分轨匹配：先按锁定模式过滤规则再跑引擎，避免错误轨的高优规则抢占。 */
     public static Optional<ExecutionPlan> matchForLockedMode(
             List<RoutingRuleDef> rules, String userMessage, ExecutionMode locked) {
         if (locked == null) {
@@ -55,20 +53,13 @@ public class UnifiedRuleRoutingPolicy implements RoutingPolicy {
         return match(filtered, userMessage);
     }
 
-    /** Skill 5B：仅当命中 structural 规则时升为 plan-workflow */
-    public static boolean looksLikeStructural(List<RoutingRuleDef> rules, String query) {
-        return new UnifiedRuleEngine(rules).match(query)
-                .filter(hit -> hit.reason() != null && hit.reason().startsWith("structural:"))
-                .isPresent();
-    }
-
+    /** 轨 A（fast/pro 共用 mode=fast 规则）；轨 B 仅 mode=workflow。 */
     static boolean isRuleCompatible(RoutingRuleDef rule, ExecutionMode locked) {
         ExecutionMode ruleMode = parseMode(rule.plan() != null ? rule.plan().mode() : null);
         if (locked == ExecutionMode.WORKFLOW) {
             return ruleMode == ExecutionMode.WORKFLOW;
         }
-        // 轨 A：同 locked mode（FAST↔react、PRO↔plan-workflow），永不收 workflow 规则
-        return ruleMode == locked;
+        return ruleMode == ExecutionMode.FAST;
     }
 
     static ExecutionPlan toExecutionPlan(UnifiedRuleEngine.Hit hit) {
@@ -87,6 +78,7 @@ public class UnifiedRuleRoutingPolicy implements RoutingPolicy {
         return new ExecutionPlan(locked, plan.workflowId(), plan.params(), plan.reason(), plan.ruleId());
     }
 
+    /** v6 规则 mode 直值 fast / pro / workflow；兼容旧别名（react→fast、plan-workflow→pro） */
     static ExecutionMode parseMode(String raw) {
         if (raw == null) {
             return ExecutionMode.WORKFLOW;

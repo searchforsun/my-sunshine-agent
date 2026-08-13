@@ -12,7 +12,6 @@ import java.util.List;
  */
 public final class RoutingCatalogFixtures {
 
-    public static final String STRUCTURAL_ID = "routing-rule.structural-plan";
     public static final String REACT_POLICY_QA_ID = "routing-rule.react-policy-qa";
     public static final String FINANCE_SMART_ID = "routing-rule.rule-finance-smart-compliance";
     public static final String KNOWLEDGE_BUDGET_ID = "routing-rule.rule-knowledge-budget-travel";
@@ -33,19 +32,11 @@ public final class RoutingCatalogFixtures {
     public static List<PromptCatalogEntry> seedEntries() {
         List<PromptCatalogEntry> entries = new ArrayList<>();
         entries.addAll(promptTextSeeds());
-        entries.add(entry(STRUCTURAL_ID, "多步跨域→Plan", 100,
-                        "{\"matchType\":\"structural\",\"minDomainGroups\":2,"
-                                + "\"patterns\":[\"先.+再\",\"再.+(并|然后|接着)\",\"分步\",\"多步\","
-                                + "\"并对.+?(分析|审查|检查|评估)\",\"完整处理\",\"一套.+(分析|流程|处理)\"],"
-                                + "\"domainGroups\":{\"knowledge\":[\"制度\",\"检索\",\"知识库\",\"政策\",\"差旅办法\",\"报销规定\"],"
-                                + "\"finance\":[\"待审批\",\"报销\",\"财务\",\"付款\",\"单据\"],"
-                                + "\"analysis\":[\"合规\",\"分析\",\"审查\",\"对比\",\"评估\",\"结论\"]},"
-                                + "\"plan\":{\"mode\":\"plan-workflow\",\"params\":{}}}"));
-        entries.add(entry(REACT_POLICY_QA_ID, "制度咨询→React政策问答", 40,
+        entries.add(entry(REACT_POLICY_QA_ID, "制度咨询→绑定政策技能", 40,
                         "{\"matchType\":\"regex\",\"match\":\"any\","
                                 + "\"patterns\":[\"制度怎么说\",\"有没有规定\",\"差旅办法\",\"报销规定\","
                                 + "\"考勤制度\",\"人事制度\",\"能不能报(?!销进度)\",\"政策.*怎么规定\"],"
-                                + "\"plan\":{\"mode\":\"react\",\"params\":{\"skill\":\"policy-qa\"}}}"));
+                                + "\"plan\":{\"mode\":\"fast\",\"params\":{\"skill\":\"policy-qa\"}}}"));
         entries.add(entry(FINANCE_SMART_ID, "财务合规→finance-smart", 20,
                         "{\"matchType\":\"regex\",\"match\":\"any\","
                                 + "\"patterns\":[\"是否合规\",\"合规吗\",\"合不合规\",\"对比制度\"],"
@@ -89,13 +80,8 @@ public final class RoutingCatalogFixtures {
                         "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"),
                 json("timeline.intent", "timeline",
                         "{\"label\":\"识别意图\",\"before\":\"识别用户意图\","
-                                + "\"active\":\"正在匹配最佳处理方式\","
-                                + "\"default-after\":\"已完成意图判断\","
-                                + "\"unmatched-after\":\"将按「{detail}」处理\","
-                                + "\"modes\":{\"react\":{\"detail\":\"自主智能体\","
-                                + "\"after\":\"将由自主智能体分析并作答\"},"
-                                + "\"plan-workflow\":{\"detail\":\"动态规划\","
-                                + "\"after\":\"将动态规划多步执行\"}}}"));
+                                + "\"active\":\"正在识别用户意图...\","
+                                + "\"default-after\":\"已完成意图识别\"}"));
     }
 
     private static PromptCatalogEntry text(String id, String kind, String contentText) {

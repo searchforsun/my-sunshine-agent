@@ -7,13 +7,16 @@ import ExecutionModeSelector from './chat/ExecutionModeSelector.vue'
 import SidebarSectionsLayoutSelector from './chat/SidebarSectionsLayoutSelector.vue'
 import WriteHitlModeSelector from './sandbox/WriteHitlModeSelector.vue'
 import TenantSelector from './knowledge/TenantSelector.vue'
+import KbSelector from './knowledge/KbSelector.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useKbPreference } from '../composables/useKbPreference'
 import { useWriteHitlMode } from '../composables/useWriteHitlMode'
 import { isWriteHitlMode, type WriteHitlMode } from '../api/writeHitlModes'
 import {
   normalizeSidebarSectionsLayout,
   type SidebarSectionsLayout,
 } from '../api/sidebarSectionsLayouts'
+import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
 import { friendlyErrorMessage } from '../api/apiError'
 import type { TenantId } from '../api/tenants'
 
@@ -33,6 +36,7 @@ const auth = useAuthStore()
 const chatStore = useChatStore()
 const message = useMessage()
 const { globalDefault, setGlobalDefault } = useExecutionPreference()
+const { setGlobalDefaultKb } = useKbPreference()
 const { globalDefault: writeHitlGlobal, setGlobalDefault: setWriteHitlGlobal } = useWriteHitlMode(
   () => chatStore.currentId,
 )
@@ -42,6 +46,9 @@ const defaultMode = ref(globalDefault.value)
 const defaultWriteHitl = ref<WriteHitlMode>(writeHitlGlobal.value)
 const sidebarLayout = ref<SidebarSectionsLayout>('vertical')
 const tenantId = ref<TenantId>('default')
+const defaultKbId = ref<string | null>(null)
+const settingsKbs = ref<KnowledgeBase[]>([])
+const loadingSettingsKbs = ref(false)
 const personalRules = ref('')
 const githubUrl = ref('')
 const githubToken = ref('')
@@ -51,6 +58,26 @@ const gitlabToken = ref('')
 const loadedGithubToken = ref('')
 const loadedGitlabToken = ref('')
 const saving = ref(false)
+
+async function loadSettingsKbs(tid: TenantId, preferredKb: string | null) {
+  loadingSettingsKbs.value = true
+  try {
+    const list = await listKbs(tid)
+    settingsKbs.value = list
+    if (preferredKb && list.some((kb) => kb.kbId === preferredKb)) {
+      defaultKbId.value = preferredKb
+      return
+    }
+    const fallback = list.find((kb) => kb.isDefault) ?? list[0]
+    defaultKbId.value = fallback?.kbId ?? null
+  } catch (e) {
+    settingsKbs.value = []
+    defaultKbId.value = preferredKb
+    console.warn('[UserSettingsModal] 加载知识库列表失败', e)
+  } finally {
+    loadingSettingsKbs.value = false
+  }
+}
 
 watch(
   () => props.show,
@@ -74,9 +101,15 @@ watch(
       gitlabUrl.value = auth.user?.gitlabUrl ?? ''
       loadedGitlabToken.value = auth.user?.gitlabToken ?? ''
       gitlabToken.value = loadedGitlabToken.value
+      await loadSettingsKbs(tenantId.value, auth.user?.defaultKbId ?? null)
     }
   },
 )
+
+watch(tenantId, async (tid, prev) => {
+  if (!props.show || tid === prev) return
+  await loadSettingsKbs(tid, defaultKbId.value)
+})
 
 function close() {
   emit('update:show', false)
@@ -93,12 +126,16 @@ async function handleSave() {
     // PAT：与打开时相同 → null（不修改）；清空 → ""；改写 → 新值
     const nextGithubToken = githubToken.value === loadedGithubToken.value ? null : githubToken.value
     const nextGitlabToken = gitlabToken.value === loadedGitlabToken.value ? null : gitlabToken.value
+    const nextKbId = defaultKbId.value?.trim() || ''
     await auth.updateProfile(value, tenantId.value, defaultWriteHitl.value, personalRules.value,
       githubUrl.value || null, nextGithubToken,
       gitlabUrl.value || null, nextGitlabToken,
-      sidebarLayout.value)
+      sidebarLayout.value, nextKbId)
     setGlobalDefault(defaultMode.value)
     setWriteHitlGlobal(defaultWriteHitl.value)
+    setGlobalDefaultKb(nextKbId || null)
+    const convId = chatStore.currentId
+    if (convId) chatStore.updateKbIdLocal(convId, nextKbId || null)
     message.success('资料已更新')
     close()
   } catch (e) {
@@ -156,6 +193,16 @@ async function handleSave() {
               :model-value="tenantId"
               :disabled="saving"
               @update:model-value="tenantId = $event"
+            />
+          </NFormItem>
+          <NFormItem label="默认知识库">
+            <KbSelector
+              variant="block"
+              :kbs="settingsKbs"
+              :model-value="defaultKbId"
+              :loading="saving || loadingSettingsKbs"
+              :show-create="false"
+              @update:model-value="defaultKbId = $event"
             />
           </NFormItem>
           <NFormItem label="默认执行模式">

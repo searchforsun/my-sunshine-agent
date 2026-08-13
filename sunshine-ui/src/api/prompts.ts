@@ -271,6 +271,22 @@ export async function dryRunRouting(
   return parseApiResponse<RoutingDryRunResponse>(res)
 }
 
+function normalizePlanMode(raw: string | undefined | null): string {
+  if (!raw) return 'fast'
+  switch (raw) {
+    case 'react':
+    case 'agent':
+    case 'auto':
+    case 'plan-workflow':
+    case 'plan':
+      return 'fast'
+    case 'workflow':
+      return 'workflow'
+    default:
+      return raw
+  }
+}
+
 export function parseRoutingContentJson(raw: string | null | undefined): RoutingRuleContent {
   if (!raw?.trim()) {
     return {
@@ -279,7 +295,7 @@ export function parseRoutingContentJson(raw: string | null | undefined): Routing
       patterns: [],
       domainGroups: {},
       minDomainGroups: 2,
-      plan: { mode: 'react', workflowId: null, params: {} },
+      plan: { mode: 'fast', workflowId: null, params: {} },
     }
   }
   try {
@@ -293,7 +309,7 @@ export function parseRoutingContentJson(raw: string | null | undefined): Routing
         : {},
       minDomainGroups: typeof parsed.minDomainGroups === 'number' ? parsed.minDomainGroups : 2,
       plan: {
-        mode: parsed.plan?.mode || 'react',
+        mode: normalizePlanMode(parsed.plan?.mode),
         workflowId: parsed.plan?.workflowId ?? null,
         params: parsed.plan?.params ?? {},
       },
@@ -305,7 +321,7 @@ export function parseRoutingContentJson(raw: string | null | undefined): Routing
       patterns: [],
       domainGroups: {},
       minDomainGroups: 2,
-      plan: { mode: 'react', workflowId: null, params: {} },
+      plan: { mode: 'fast', workflowId: null, params: {} },
     }
   }
 }
@@ -318,7 +334,7 @@ export function serializeRoutingContent(content: RoutingRuleContent): string {
     domainGroups: content.domainGroups ?? {},
     minDomainGroups: content.minDomainGroups ?? 2,
     plan: {
-      mode: content.plan?.mode || 'react',
+      mode: content.plan?.mode || 'fast',
       workflowId: content.plan?.workflowId || null,
       params: content.plan?.params ?? {},
     },

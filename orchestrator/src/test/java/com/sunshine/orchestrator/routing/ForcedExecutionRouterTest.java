@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.AgentBindingRoutingPolicy;
@@ -38,6 +40,10 @@ class ForcedExecutionRouterTest {
     private IntentRouter intentRouter;
     @Mock
     private WorkflowCatalog workflowCatalog;
+    @Mock
+    private SkillCatalogService skillCatalogService;
+    @Mock
+    private AgentCatalogService agentCatalogService;
 
     private PromptCatalogHolder catalogHolder;
     private ForcedExecutionRouter router;
@@ -50,7 +56,7 @@ class ForcedExecutionRouterTest {
         WorkflowBindingParser wbp = new WorkflowBindingParser(workflowCatalog);
         router = new ForcedExecutionRouter(
                 skillBindingRoutingPolicy, agentBindingRoutingPolicy, catalogHolder, intentRouter,
-                workflowPolicy, wbp);
+                workflowPolicy, wbp, skillCatalogService, agentCatalogService, workflowCatalog);
         when(workflowCatalog.isKnownWorkflow(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
         when(agentBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
     }
@@ -123,7 +129,7 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_react_structuralPhrase_doesNotPromoteToPlan() {
+    void resolve_fast_noRuleHit_keepsForcedMode() {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 ExecutionPlan.reactFallback("llm")));
@@ -155,16 +161,17 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_planWorkflow_structural_hitsSameModeRule() {
+    void resolve_planWorkflow_hitsSharedTrackARule() {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("先查制度再查待审批并对合规分析", null, ExecutionPreference.PRO, null, null),
+                new RoutingContext("差旅办法制度怎么说", null, ExecutionPreference.PRO, null, null),
                 ExecutionPreference.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
-        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        assertThat(plan.params()).containsEntry("skill", "policy-qa");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
@@ -224,7 +231,8 @@ class ForcedExecutionRouterTest {
         assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
                 .containsExactly("mode", "track", "L0", "final");
         assertThat(plan.routingTraces()).extracting(RoutingTrace::detail)
-                .contains("pro（专业）", "轨 A：skill + agent", "skill=policy-review", "skill=policy-review");
+                .contains("按您选择的「专业」模式处理", "自动匹配技能与助手",
+                        "使用技能「policy-review」处理", "使用技能「policy-review」处理");
     }
 
     @Test
@@ -239,7 +247,7 @@ class ForcedExecutionRouterTest {
         assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
                 .contains("rule", "final");
         assertThat(plan.routingTraces()).anySatisfy(trace ->
-                assertThat(trace.detail()).isEqualTo("ruleId=" + RoutingCatalogFixtures.REACT_POLICY_QA_ID));
+                assertThat(trace.detail()).isEqualTo("命中常用处理规则"));
     }
 
     @Test
@@ -252,6 +260,6 @@ class ForcedExecutionRouterTest {
         assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
                 .containsExactly("mode", "track", "L0", "final");
         assertThat(plan.routingTraces()).extracting(RoutingTrace::detail)
-                .contains("轨 B：仅 workflow", "workflowId=knowledge-qa", "workflow=knowledge-qa");
+                .contains("直接按流程模板执行", "使用流程「knowledge-qa」", "将执行「knowledge-qa」流程");
     }
 }

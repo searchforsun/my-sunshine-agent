@@ -102,6 +102,7 @@ public class WorkflowManagerClient {
             String mode,
             String displayName,
             String description,
+            String kind,
             List<String> examples,
             List<String> nodes,
             String intentAfter) {
