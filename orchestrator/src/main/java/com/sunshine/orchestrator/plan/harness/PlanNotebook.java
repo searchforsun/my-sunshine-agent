@@ -1,8 +1,14 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,6 +16,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
 
@@ -30,6 +37,7 @@ public class PlanNotebook {
     @Setter
     private String nextDirection;
     @JsonSerialize(using = InstantIsoSerializer.class)
+    @JsonDeserialize(using = InstantIsoDeserializer.class)
     private final Instant createdAt;
     private final int maxRounds;
     private final int maxTotalTasks;
@@ -45,14 +53,42 @@ public class PlanNotebook {
     private String sessionId;
 
     private PlanNotebook(String originalGoal, String userQuery, String scene, int maxRounds, int maxTotalTasks) {
+        this(originalGoal, userQuery, scene, null, null, 0.0, null, Instant.now(),
+                maxRounds, maxTotalTasks, 0, 0, 0, 0, null);
+    }
+
+    @JsonCreator
+    private PlanNotebook(
+            @JsonProperty("originalGoal") String originalGoal,
+            @JsonProperty("userQuery") String userQuery,
+            @JsonProperty("scene") String scene,
+            @JsonProperty("taskQueue") Collection<TaskItem> taskQueue,
+            @JsonProperty("rounds") List<RoundRecord> rounds,
+            @JsonProperty("goalCompletion") double goalCompletion,
+            @JsonProperty("nextDirection") String nextDirection,
+            @JsonProperty("createdAt") Instant createdAt,
+            @JsonProperty("maxRounds") int maxRounds,
+            @JsonProperty("maxTotalTasks") int maxTotalTasks,
+            @JsonProperty("currentRound") int currentRound,
+            @JsonProperty("totalTasksCompleted") int totalTasksCompleted,
+            @JsonProperty("staleRounds") int staleRounds,
+            @JsonProperty("replanCount") int replanCount,
+            @JsonProperty("sessionId") String sessionId) {
         this.originalGoal = originalGoal;
         this.userQuery = userQuery;
         this.scene = scene;
-        this.taskQueue = new ArrayDeque<>();
-        this.rounds = new ArrayList<>();
-        this.createdAt = Instant.now();
+        this.taskQueue = taskQueue != null ? new ArrayDeque<>(taskQueue) : new ArrayDeque<>();
+        this.rounds = rounds != null ? new ArrayList<>(rounds) : new ArrayList<>();
+        this.goalCompletion = goalCompletion;
+        this.nextDirection = nextDirection;
+        this.createdAt = createdAt != null ? createdAt : Instant.now();
         this.maxRounds = maxRounds;
         this.maxTotalTasks = maxTotalTasks;
+        this.currentRound = currentRound;
+        this.totalTasksCompleted = totalTasksCompleted;
+        this.staleRounds = staleRounds;
+        this.replanCount = replanCount;
+        this.sessionId = sessionId;
     }
 
     public static PlanNotebook create(String originalGoal, String userQuery, String scene, int maxRounds, int maxTotalTasks) {
@@ -101,6 +137,13 @@ public class PlanNotebook {
         @Override
         public void serialize(Instant value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
             gen.writeString(value.toString());
+        }
+    }
+
+    static final class InstantIsoDeserializer extends JsonDeserializer<Instant> {
+        @Override
+        public Instant deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            return Instant.parse(p.getText());
         }
     }
 
