@@ -16,12 +16,11 @@ import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
 import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
-import PlanApprovalActions from './PlanApprovalActions.vue'
 import {
-  isPlanApprovalAwaiting,
   isPlanRegenerating,
   resolvePlanApprovalToken,
 } from '../../api/planApprovalSteps'
+// PlanApprovalActions 已断主路径；文件保留至阶段 D 删除（HITL 仍用 CollapsibleConfirmPanel）
 
 const props = defineProps<{
   planStep: ProcessingStep
@@ -121,43 +120,8 @@ const frozenGraph = ref<PlanGraph | null>(null)
 const graphPlanId = ref<string | null>(null)
 const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
 const loadingPlan = ref(false)
-const localRegenerating = ref(false)
 
-const isRegenerating = computed(() =>
-  localRegenerating.value || isPlanRegenerating(props.planStep),
-)
-
-function onPlanApprovalDecided(action: 'approve' | 'regenerate') {
-  if (action === 'regenerate') {
-    localRegenerating.value = true
-  } else {
-    localRegenerating.value = false
-  }
-}
-
-watch(
-  () => [
-    isPlanApprovalAwaiting(props.planStep),
-    props.planStep.metadata?.planApproval?.token,
-    isPlanRegenerating(props.planStep),
-    stepLifecycle(props.planStep),
-  ],
-  () => {
-    if (isPlanApprovalAwaiting(props.planStep)) {
-      localRegenerating.value = false
-      return
-    }
-    if (!isPlanRegenerating(props.planStep) && stepLifecycle(props.planStep) !== 'running') {
-      localRegenerating.value = false
-    }
-  },
-)
-
-const showPlanApproval = computed(() =>
-  isPlanApprovalAwaiting(props.planStep)
-  || !!props.planStep.metadata?.planApproval?.token
-  || (props.planStep.metadata?.planApproval?.rounds?.length ?? 0) > 0,
-)
+const isRegenerating = computed(() => isPlanRegenerating(props.planStep))
 
 const approvalRoundsKey = computed(() =>
   props.planStep.metadata?.planApproval?.rounds
@@ -416,14 +380,8 @@ watch(isRegenerating, () => syncExpandLayer())
       @select="onSelectNode"
       @expand="onExpandDag"
     />
-    <PlanApprovalActions
-      v-if="showPlanApproval"
-      :plan-step="planStep"
-      :regenerating="isRegenerating"
-      @decided="onPlanApprovalDecided"
-    />
     <!-- 放大时保留占位，避免布局跳动 -->
-    <div v-else-if="dagNodes.length && isExpanded(planId)" class="plan-dag-collapsed-slot" aria-hidden="true" />
+    <div v-if="dagNodes.length && isExpanded(planId)" class="plan-dag-collapsed-slot" aria-hidden="true" />
     <div v-else-if="loadingPlan && !frozenGraph" class="plan-dag-skeleton">加载执行图…</div>
   </div>
 </template>
@@ -492,9 +450,5 @@ watch(isRegenerating, () => syncExpandLayer())
 .plan-dag-collapsed-slot {
   margin: 8px 0 4px 0;
   min-height: 94px;
-}
-
-.plan-panel :deep(.collapsible-confirm) {
-  margin-left: 0;
 }
 </style>
