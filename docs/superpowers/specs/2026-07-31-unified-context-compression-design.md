@@ -1342,6 +1342,7 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 | `archive/2026-07-22-context-corruption-audit-design.md` | 腐败审计子设计，本文 §9 引用 |
 | `archive/2026-07-22-l1-admin-window-rows-design.md` | L1 Admin 工具页，小粒度 |
 | `2026-08-01-task-scene-context-design.md` | task 场景适配；压缩点模式据此回写本文 §5.5/§7.5/§8.2（v2 优化） |
+| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业结构化权威前缀（任务板/场景偏好白名单/Policy）；装配序 policy > task > prefs > L1 > L3；不替代本五层管道 |
 | [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 4.14 SSOT：H1 注入 + handoff 双写；压缩点不新建（S3） |
 | [archive/planner-harness-loop](./archive/2026-07-31-planner-harness-loop-design.md) | **已归档**；勿再按该文落地 |
 | [archive/harness-loop-enhancement 4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md) | **已归档**；run 内能力由本文 §4.5 吸收；可选门禁/重试见 [goal-alignment §12](./2026-07-27-react-goal-alignment-design.md) |
