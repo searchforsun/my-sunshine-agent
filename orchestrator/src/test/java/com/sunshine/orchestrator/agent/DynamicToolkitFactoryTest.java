@@ -132,6 +132,25 @@ class DynamicToolkitFactoryTest {
     }
 
     @Test
+    void buildForPlanner_doesNotRegisterRequestDecision() {
+        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
+            setEnabled(true);
+        }});
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+
+        var toolkit = factory.buildForPlanner("default", null, "u1");
+
+        assertThat(toolkit.getToolNames()).doesNotContain(RequestDecisionTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(SpawnSubagentTool.NAME);
+    }
+
+    @Test
     void build_alwaysRegistersSearchKnowledgeAndSandbox_evenWithEmptyWhitelist() {
         List<AgentTool> sandboxTools = stubSandboxTools();
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());

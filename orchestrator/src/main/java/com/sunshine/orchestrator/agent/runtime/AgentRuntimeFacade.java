@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
-/** 按 AgentRole 路由至 ReAct / Planner 运行时 */
+/** 按 AgentRole 路由至 ReAct / Planner 运行时。PLANNER → PlannerAgentRuntime（ReAct harness）；MAIN/SUB/WORKER → ReAct。 */
 @Primary
 @Component
 public class AgentRuntimeFacade implements AgentRuntime {

@@ -52,6 +52,14 @@ public record AgentRunRequest(
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride);
     }
 
+    public AgentRunRequest withReactPromptId(String reactPromptId) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride);
+    }
+
     /** MAIN 每 run 独立 main-{runId}；SUB/WORKER 用角色前缀（SSE 经 bindHitlBridge 映射 assistantMessageId） */
     public String resolveBridgeId() {
         if (role == AgentRole.SUB) {
@@ -59,6 +67,9 @@ public record AgentRunRequest(
         }
         if (role == AgentRole.WORKER) {
             return "worker-" + runId;
+        }
+        if (role == AgentRole.PLANNER) {
+            return "planner-" + runId;
         }
         return "main-" + runId;
     }
@@ -276,30 +287,42 @@ public record AgentRunRequest(
                 null);
     }
 
-    /** Planner — 仅 plan 步 Timeline */
+    /** Planner-Executor — ReAct + Catalog {@code planner.harness}；H1 经 injectedBlocks */
     public static AgentRunRequest planner(
             String query,
             String userId,
             String tenantId,
             String assistantMessageId) {
+        return planner(AssembledContext.empty(), query, List.of(), userId, tenantId, assistantMessageId, null, 0);
+    }
+
+    public static AgentRunRequest planner(
+            AssembledContext memory,
+            String query,
+            List<String> injectedBlocks,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            String conversationId,
+            int maxIters) {
         return new AgentRunRequest(
                 AgentRole.PLANNER,
                 UUID.randomUUID().toString(),
                 null,
-                AssembledContext.empty(),
+                memory,
                 query,
-                List.of(),
+                injectedBlocks,
                 userId,
                 tenantId,
                 assistantMessageId,
                 null,
                 null,
                 null,
-                1,
+                maxIters,
                 TimelineBinding.PLANNER_ONLY,
                 false,
-                null,
-                null,
+                "planner.harness",
+                conversationId,
                 0,
                 null,
                 null,

@@ -76,7 +76,15 @@ public class ReActAgentRuntime implements AgentRuntime {
     public Flux<StreamToken> run(AgentRunRequest request) {
         if (request.role() == AgentRole.PLANNER) {
             return Flux.error(new UnsupportedOperationException(
-                    "PLANNER 角色由 PlannerAgentRuntime 实现（Task 3.10.4）"));
+                    "PLANNER 角色由 PlannerAgentRuntime 实现（ReAct + planner.harness）"));
+        }
+        return runReAct(request);
+    }
+
+    /** Facade / PlannerAgentRuntime：PLANNER 走 ReAct 流；{@link #run} 仍拒绝直调以免绕过 Facade。 */
+    public Flux<StreamToken> runPlannerReAct(AgentRunRequest request) {
+        if (request == null || request.role() != AgentRole.PLANNER) {
+            return Flux.error(new IllegalArgumentException("runPlannerReAct 仅接受 PLANNER"));
         }
         return runReAct(request);
     }

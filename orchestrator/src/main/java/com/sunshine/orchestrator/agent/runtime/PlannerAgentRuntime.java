@@ -1,49 +1,40 @@
 package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.orchestrator.client.StreamToken;
-import com.sunshine.orchestrator.execution.ExecutionStreamContext;
-import com.sunshine.orchestrator.plan.PlanTimeline;
-import com.sunshine.orchestrator.plan.PlanJson;
-import com.sunshine.orchestrator.plan.WorkflowPlanner;
-import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
-import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
-import com.sunshine.orchestrator.routing.ExecutionMode;
-import com.sunshine.orchestrator.routing.ExecutionPlan;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
-import java.util.List;
-
-/** Planner 专用运行时 — 产出 plan 步 Timeline（不含节点执行） */
+/**
+ * Planner-Executor 运行时 — ReAct + Catalog {@code planner.harness} + H1 injectedBlocks。
+ * 不再依赖 {@code WorkflowPlanner}；旧 plan-workflow 仍由 {@code PlanWorkflowExecutor} 直调。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class PlannerAgentRuntime implements AgentRuntime {
 
-    private final WorkflowPlanner workflowPlanner;
+    public static final String HARNESS_PROMPT_ID = "planner.harness";
+
+    private final ReActAgentRuntime reactAgentRuntime;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
-        ExecutionStreamContext ctx = new ExecutionStreamContext(
-                null,
-                request.assistantMessageId(),
-                request.query(),
-                request.memory(),
-                null,
-                null,
-                request.userId(),
-                request.tenantId(),
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, java.util.Map.of(), "planner"));
-        return workflowPlanner.plan(ctx)
-                .flatMapMany(this::planTokensOnly)
-                .doOnError(e -> log.warn("[PlannerAgentRuntime] plan failed: {}", e.getMessage()));
+        AgentRunRequest harness = ensureHarnessPrompt(request);
+        log.info("[PlannerAgentRuntime] ReAct harness runId={} prompt={}",
+                harness.runId(), harness.reactPromptId());
+        return reactAgentRuntime.runPlannerReAct(harness);
     }
 
-    private Flux<StreamToken> planTokensOnly(PlanJson planJson) {
-        ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
-        List<StreamToken> tokens = PlanTimeline.planStep(session, planJson);
-        return Flux.fromIterable(tokens);
+    static AgentRunRequest ensureHarnessPrompt(AgentRunRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("AgentRunRequest 不能为空");
+        }
+        if (StringUtils.hasText(request.reactPromptId())) {
+            return request;
+        }
+        return request.withReactPromptId(HARNESS_PROMPT_ID);
     }
 }

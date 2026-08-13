@@ -3,7 +3,7 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import java.util.List;
 
-/** L1 Mid/Near 轮次 + L2/Far/L3 system 块。SUB/PLANNER 用 empty/forSubAgent；WORKER 用 forWorker。 */
+/** L1 Mid/Near 轮次 + L2/Far/L3 system 块。SUB 用 empty/forSubAgent；PLANNER 复用 assemble + H1 injectedBlocks；WORKER 用 forWorker。 */
 public record AssembledContext(
         String l2SystemBlock,
         String farSummaryBlock,

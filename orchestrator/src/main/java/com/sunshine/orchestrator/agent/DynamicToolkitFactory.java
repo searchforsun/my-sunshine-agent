@@ -68,8 +68,14 @@ public class DynamicToolkitFactory {
         return buildFromWhitelist(whitelist, ToolkitScope.SUB, skillId, userId, tenantId);
     }
 
+    /** Planner-Executor：MAIN 工具集减去 request_decision（D12 延后）；dispatch_worker 由 Factory 注册 */
+    public Toolkit buildForPlanner(String tenantId, String skillId, String userId) {
+        return buildFromWhitelist(
+                toolSetResolver.resolveReactTools(tenantId), ToolkitScope.PLANNER, skillId, userId, tenantId);
+    }
+
     private enum ToolkitScope {
-        MAIN, SUB
+        MAIN, SUB, PLANNER
     }
 
     private Toolkit buildFromWhitelist(
@@ -81,7 +87,7 @@ public class DynamicToolkitFactory {
         Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();
 
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB || scope == ToolkitScope.PLANNER) {
             tk.registerAgentTool(ragTool);
             registered.add(RagTool.NAME);
         }
@@ -117,18 +123,20 @@ public class DynamicToolkitFactory {
             }, () -> missing.add(toolName));
         }
 
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB || scope == ToolkitScope.PLANNER) {
             tk.registerTool(thinkSummaryTool);
             registered.add(ThinkSummaryTool.NAME);
         }
-        if (scope == ToolkitScope.MAIN) {
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.PLANNER) {
             AgentExecutionProperties.React react = executionProperties.getReact();
             // 原生 todo_write 由 ReActAgent.enableTaskList 在 build 时注册；timeline tasks 步投影由 TodoTasksBridge 完成。
             if (react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
                 tk.registerAgentTool(spawnSubagentTool);
                 registered.add(SpawnSubagentTool.NAME);
             }
-            if (react != null && react.getDecision() != null && react.getDecision().isEnabled()) {
+            // D12：PLANNER 即使 decision.enabled 也不注册 request_decision
+            if (react != null && react.getDecision() != null && react.getDecision().isEnabled()
+                    && scope == ToolkitScope.MAIN) {
                 tk.registerAgentTool(requestDecisionTool);
                 registered.add(RequestDecisionTool.NAME);
             }
@@ -137,7 +145,7 @@ public class DynamicToolkitFactory {
                 registered.add(AwaitToolRunTool.NAME);
             }
         }
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB) {
+        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB || scope == ToolkitScope.PLANNER) {
             for (AgentTool t : sandboxAgentTools.all()) {
                 tk.registerAgentTool(t);
                 registered.add(t.getName());

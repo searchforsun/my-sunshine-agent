@@ -196,6 +196,7 @@ public class WorkerDispatchTool implements AgentTool {
     }
 
     private static void appendRound(PlanNotebook nb, TaskItem task, String status, String summary) {
+        // Round 所有权：仅本工具在 Worker 完成/失败时追加。HarnessPlanner / Loop 禁止再 appendRound。
         int roundIndex = nb.getCurrentRound();
         nb.appendRound(new RoundRecord(
                 roundIndex,

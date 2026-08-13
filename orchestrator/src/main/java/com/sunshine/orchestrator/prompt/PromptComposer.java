@@ -208,11 +208,17 @@ public class PromptComposer {
             return "";
         }
         PromptCatalogEntry e = entry.get();
-        if (!"react-prompt".equals(e.kind()) || !e.enabled()) {
-            log.warn("[PromptComposer] react scenario invalid id={} kind={} enabled={}", id, e.kind(), e.enabled());
+        String kind = e.kind();
+        if (!e.enabled() || !isScenarioOverlayKind(kind)) {
+            log.warn("[PromptComposer] react scenario invalid id={} kind={} enabled={}", id, kind, e.enabled());
             return "";
         }
         return e.contentText() != null ? e.contentText().strip() : "";
+    }
+
+    /** react-prompt 场景 overlay；planner.harness 的 kind=planner 同样走此层。 */
+    private static boolean isScenarioOverlayKind(String kind) {
+        return "react-prompt".equals(kind) || "planner".equals(kind);
     }
 
     private String resolveSkillOverlay(String skillId) {

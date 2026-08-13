@@ -105,6 +105,25 @@ class ReActAgentRuntimeTest {
     }
 
     @Test
+    void runPlannerReAct_acceptsPlannerWithoutDecisionResume() {
+        Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
+        when(promptComposer.composeReactInputs(any())).thenReturn(List.of(userMsg));
+        AgentRunRequest req = AgentRunRequest.planner("plan next", "u1", "default", "msg-p");
+        when(agentHolder.get(req)).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class)))
+                .thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+
+        List<StreamToken> tokens = runtime.runPlannerReAct(req).collectList().block();
+
+        assertThat(tokens).isNotNull();
+        ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
+        verify(promptComposer).composeReactInputs(composeCaptor.capture());
+        assertThat(composeCaptor.getValue().reactPromptId()).isEqualTo("planner.harness");
+        verify(sandboxSessionLifecycle).prepareRun(req);
+        verify(sandboxSessionLifecycle).closeQuietly(req);
+    }
+
+    @Test
     void run_workerAcceptedAndKeepsForWorkerMemory() {
         Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of(userMsg));

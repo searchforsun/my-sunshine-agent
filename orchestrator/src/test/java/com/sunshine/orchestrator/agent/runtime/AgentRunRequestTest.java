@@ -139,4 +139,23 @@ class AgentRunRequestTest {
         assertThat(req.assistantMessageId()).isEqualTo("a1");
         assertThat(req.resolveBridgeId()).isEqualTo("worker-" + req.runId());
     }
+
+    @Test
+    void plannerFactorySetsHarnessPromptAndInjectedBlocks() {
+        AgentRunRequest req = AgentRunRequest.planner(
+                AssembledContext.empty(),
+                "plan next",
+                java.util.List.of("## Goal\n完成调研"),
+                "u1",
+                "default",
+                "msg-p",
+                "conv-1",
+                0);
+        assertThat(req.role()).isEqualTo(AgentRole.PLANNER);
+        assertThat(req.reactPromptId()).isEqualTo("planner.harness");
+        assertThat(req.injectedBlocks()).containsExactly("## Goal\n完成调研");
+        assertThat(req.conversationId()).isEqualTo("conv-1");
+        assertThat(req.timeline()).isEqualTo(TimelineBinding.PLANNER_ONLY);
+        assertThat(req.resolveBridgeId()).isEqualTo("planner-" + req.runId());
+    }
 }

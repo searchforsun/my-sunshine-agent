@@ -242,6 +242,23 @@ class PromptComposerTest {
     }
 
     @Test
+    void composeReactInputs_loadsPlannerHarnessKindPlanner() {
+        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
+                textEntry("mode-overlay.react", "mode-overlay", "BASE"),
+                textEntry("planner.harness", "planner", "PLANNER-HARNESS"),
+                textEntry("context.layer-prompt", "context", ""),
+                textEntry("context.usage-rules", "context", ""),
+                textEntry("context.current-user-marker", "context", USER_MARKER),
+                textEntry("scope-prompt", "scope", ""),
+                textEntry("hitl.agent-prompt", "hitl", ""))));
+
+        List<Msg> inputs = composer.composeReactInputs(
+                PromptComposeRequest.forReact(
+                        AssembledContext.empty(), "问", null, List.of(), false, "planner.harness"));
+        assertThat(inputs.stream().map(Msg::getTextContent)).contains("PLANNER-HARNESS");
+    }
+
+    @Test
     void composeReactInputs_skipsBlankInjectedContexts() {
         replaceCatalogTexts(Map.of(
                 "context.layer-prompt", "",

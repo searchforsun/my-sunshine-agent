@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +18,7 @@ import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -44,6 +46,8 @@ public class ReActAgentFactory {
     /** @LoadBalanced WebClient.Builder 由 sunshine-common 自动注入，走 Nacos 服务发现 */
     private final WebClient.Builder webClientBuilder;
     private final ModelSceneResolver modelSceneResolver;
+    /** 惰性注入，避免 Factory → DispatchTool → AgentRuntime → Factory 环 */
+    private final ObjectProvider<WorkerDispatchTool> workerDispatchTool;
 
     private LoadBalancedWebClientTransport transport;
 
@@ -193,8 +197,15 @@ public class ReActAgentFactory {
             return dynamicToolkitFactory.buildForSubAgent(
                     request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
         }
-        // Task 8：PLANNER toolkit 组装后须调用 WorkerDispatchTool.registerIntoPlannerToolkit(tk)
-        // （dispatch_worker 仅 PLANNER；勿注入 MAIN/SUB）
+        if (request.role() == AgentRole.PLANNER) {
+            Toolkit tk = dynamicToolkitFactory.buildForPlanner(
+                    request.tenantId(), request.skillId(), request.userId());
+            var dispatch = workerDispatchTool.getIfAvailable();
+            if (dispatch != null) {
+                dispatch.registerIntoPlannerToolkit(tk);
+            }
+            return tk;
+        }
         return dynamicToolkitFactory.build(request.tenantId(), request.skillId(), request.userId());
     }
 
@@ -214,6 +225,9 @@ public class ReActAgentFactory {
         }
         if (request.role() == AgentRole.WORKER) {
             return "Sunshine-Worker";
+        }
+        if (request.role() == AgentRole.PLANNER) {
+            return "Sunshine-Planner";
         }
         return "Sunshine-Assistant";
     }
