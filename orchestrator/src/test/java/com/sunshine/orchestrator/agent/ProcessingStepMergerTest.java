@@ -158,7 +158,7 @@ class ProcessingStepMergerTest {
         com.sunshine.orchestrator.processing.StepMetadata metadata =
                 com.sunshine.orchestrator.processing.StepMetadata.fromRouting(
                         new com.sunshine.orchestrator.routing.ExecutionPlan(
-                                com.sunshine.orchestrator.routing.ExecutionMode.REACT,
+                                com.sunshine.orchestrator.routing.ExecutionMode.FAST,
                                 null,
                                 java.util.Map.of(),
                                 "user:forced-react"));

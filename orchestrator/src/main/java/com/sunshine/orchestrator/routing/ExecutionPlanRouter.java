@@ -27,11 +27,11 @@ public class ExecutionPlanRouter {
     }
 
     public Mono<ExecutionPlan> route(RoutingContext ctx) {
-        ExecutionPreference preference = ctx.preference() != null ? ctx.preference() : ExecutionPreference.AUTO;
+        ExecutionPreference preference = ctx.preference() != null ? ctx.preference() : ExecutionPreference.FAST;
         RoutingContext routedCtx = routingContextForForcedPreference(ctx, preference);
         if (preference.isForced()) {
             return forcedExecutionRouter.resolve(routedCtx, preference, ctx.forcedWorkflowId())
-                    .map(plan -> preference == ExecutionPreference.REACT
+                    .map(plan -> preference == ExecutionPreference.FAST
                             ? skillDiscoveryService.enrich(plan, routedCtx.userMessage())
                             : plan);
         }

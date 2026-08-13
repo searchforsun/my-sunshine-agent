@@ -124,9 +124,9 @@ class GenerationReconnectIntegrationTest {
             redis.delete(keys);
         }
         when(intentRouter.classifyPlan(any(com.sunshine.orchestrator.routing.policy.RoutingContext.class)))
-                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test")));
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test")));
         when(llmGateway.streamContinue(any(AssembledContext.class), anyString(), anyString()))
                 .thenReturn(Flux.just(StreamToken.content(" continued")));
     }

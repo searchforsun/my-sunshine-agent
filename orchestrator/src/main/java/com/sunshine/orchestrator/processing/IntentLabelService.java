@@ -37,11 +37,11 @@ public class IntentLabelService {
 
     public String intentDetail(ExecutionPlan plan) {
         if (plan == null) {
-            return modeDetail(modeConfig(ExecutionMode.REACT), "自主智能体");
+            return modeDetail(modeConfig(ExecutionMode.FAST), "自主智能体");
         }
         return switch (plan.mode()) {
-            case REACT -> modeDetail(modeConfig(ExecutionMode.REACT), "自主智能体");
-            case PLAN_WORKFLOW -> modeDetail(modeConfig(ExecutionMode.PLAN_WORKFLOW), "动态规划");
+            case FAST -> modeDetail(modeConfig(ExecutionMode.FAST), "自主智能体");
+            case PRO -> modeDetail(modeConfig(ExecutionMode.PRO), "动态规划");
             case WORKFLOW -> workflowNodeLabelService.workflowDisplayName(plan.workflowId());
         };
     }
@@ -77,11 +77,11 @@ public class IntentLabelService {
             return forcedIntentAfterForPlan(q, plan);
         }
         return switch (plan.mode()) {
-            case REACT -> TimelineLabelTemplates.applyTemplate(
-                    modeAfter(modeConfig(ExecutionMode.REACT), "将由自主智能体分析并作答"),
+            case FAST -> TimelineLabelTemplates.applyTemplate(
+                    modeAfter(modeConfig(ExecutionMode.FAST), "将由自主智能体分析并作答"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
-            case PLAN_WORKFLOW -> TimelineLabelTemplates.applyTemplate(
-                    modeAfter(modeConfig(ExecutionMode.PLAN_WORKFLOW), "将动态规划多步执行"),
+            case PRO -> TimelineLabelTemplates.applyTemplate(
+                    modeAfter(modeConfig(ExecutionMode.PRO), "将动态规划多步执行"),
                     TimelineLabelTemplates.vars(q, intentDetail(plan), null, null));
             case WORKFLOW -> {
                 WorkflowManagerClient.WorkflowCatalogEntryDto entry = workflowCatalog.findEntry(plan.workflowId());
@@ -162,9 +162,9 @@ public class IntentLabelService {
             return mode.getForcedAfter();
         }
         return switch (executionMode) {
-            case REACT -> "将按您指定的「自主推理」模式处理";
+            case FAST -> "将按您指定的「自主推理」模式处理";
             case WORKFLOW -> "将按您指定的「工作流」模式处理";
-            case PLAN_WORKFLOW -> "将按您指定的「动态规划」模式处理";
+            case PRO -> "将按您指定的「动态规划」模式处理";
         };
     }
 

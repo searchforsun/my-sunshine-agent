@@ -41,7 +41,7 @@ public final class ThinkStepIds {
 
     /** 时间线展示用中文标题，SSOT 见 Nacos agent.timeline.steps.think */
     public static String displayLabel(String stepId) {
-        return displayLabel(stepId, ExecutionMode.REACT);
+        return displayLabel(stepId, ExecutionMode.FAST);
     }
 
     public static String displayLabel(String stepId, ExecutionMode mode) {

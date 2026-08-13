@@ -63,7 +63,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "@finance-analysis 是否合规", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.REACT, null,
+                new ExecutionPlan(ExecutionMode.FAST, null,
                         Map.of(
                                 SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
                                 SkillBindingOutcome.PARAM_EFFECTIVE_QUERY, "是否合规"),
@@ -86,7 +86,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "查财务待审批", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"));
 
         List<StreamToken> tokens = reactExecutor.execute(ctx).collectList().block();
         assertThat(tokens).isNotNull();
@@ -109,7 +109,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "执行沙箱任务", AssembledContext.empty(),
                 null, null, "u1", "default", null,
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"),
                 null, null, null, false, false, null, null, "task");
 
         reactExecutor.execute(ctx).collectList().block();
@@ -127,7 +127,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "普通聊天", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"));
 
         reactExecutor.execute(ctx).collectList().block();
 
@@ -144,7 +144,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "你好", AssembledContext.empty(),
                 null, null, "u1", "default", null,
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"),
                 null, null, null, false, false, null, "用文言文回答", null);
 
         reactExecutor.execute(ctx).collectList().block();
@@ -163,7 +163,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "你好", AssembledContext.empty(),
                 null, null, "u1", "default", null,
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"),
                 null, null, null, false, false, null, "用文言文回答", null);
 
         reactExecutor.executeWithInjected(ctx, List.of("上游节点输出")).collectList().block();
@@ -182,7 +182,7 @@ class ReactExecutorTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "c1", "msg-1", "你好", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"));
 
         reactExecutor.executeWithInjected(ctx, List.of("上游节点输出")).collectList().block();
 

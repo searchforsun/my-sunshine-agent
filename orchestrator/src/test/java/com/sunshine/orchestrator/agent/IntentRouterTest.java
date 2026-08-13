@@ -46,10 +46,10 @@ class IntentRouterTest {
     @Test
     void buildClassifierUserMessage_includesLockedMode() {
         RoutingContext ctx = new RoutingContext("制度怎么说", null)
-                .withLockedMode(ExecutionMode.REACT);
+                .withLockedMode(ExecutionMode.FAST);
         String content = IntentRouter.buildClassifierUserMessage(ctx);
         assertThat(content).contains("【模式锁定】");
-        assertThat(content).contains("react");
+        assertThat(content).contains("fast");
         assertThat(content).contains("【当前问题】");
     }
 
@@ -60,8 +60,8 @@ class IntentRouterTest {
                 "finance-smart",
                 Map.of("reactPromptId", "react-prompt.policy-qa", "skill", "x"),
                 "llm");
-        ExecutionPlan locked = IntentRouter.applyLockedMode(llm, ExecutionMode.REACT);
-        assertThat(locked.mode()).isEqualTo(ExecutionMode.REACT);
+        ExecutionPlan locked = IntentRouter.applyLockedMode(llm, ExecutionMode.FAST);
+        assertThat(locked.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(locked.workflowId()).isEqualTo("finance-smart");
         assertThat(locked.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
     }

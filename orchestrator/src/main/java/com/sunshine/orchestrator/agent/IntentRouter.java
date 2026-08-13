@@ -151,8 +151,8 @@ public class IntentRouter {
 
     private static String lockedModeLabel(ExecutionMode mode) {
         return switch (mode) {
-            case REACT -> "react";
-            case PLAN_WORKFLOW -> "plan-workflow";
+            case FAST -> "fast";
+            case PRO -> "pro";
             case WORKFLOW -> "workflow";
         };
     }

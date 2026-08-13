@@ -25,7 +25,7 @@ class JoinNodeHandlerTest {
         return new ExecutionStreamContext(
                 "c1", "m1", "汇总", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, "dynamic", Map.of(), "test"));
     }
 
     private void putBranch(WorkflowContext ctx, String nodeId, String text) {

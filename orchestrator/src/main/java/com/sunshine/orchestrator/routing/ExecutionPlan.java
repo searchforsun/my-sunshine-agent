@@ -17,15 +17,15 @@ public record ExecutionPlan(
     }
 
     public static ExecutionPlan reactFallback(String reason) {
-        return new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), reason);
+        return new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), reason);
     }
 
-    /** 写入 DB / Generation / 审计的简短标签（兼容原 intent 字段） */
+    /** 写入 DB / Generation / 审计的简短标签（协议 wire：fast|pro|workflow:…） */
     public String intentLabel() {
         return switch (mode) {
             case WORKFLOW -> "workflow:" + (workflowId != null ? workflowId : "unknown");
-            case REACT -> "react";
-            case PLAN_WORKFLOW -> "plan-workflow";
+            case FAST -> "fast";
+            case PRO -> "pro";
         };
     }
 }

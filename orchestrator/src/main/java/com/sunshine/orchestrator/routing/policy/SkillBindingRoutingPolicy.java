@@ -56,8 +56,8 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
                 promptCatalogHolder.snapshot().routingRules(), binding.effectiveQuery())) {
             params.put(SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
             return Mono.just(Optional.of(new ExecutionPlan(
-                    ExecutionMode.PLAN_WORKFLOW, null, params, reason + ":5b-skill-plan")));
+                    ExecutionMode.PRO, null, params, reason + ":5b-skill-plan")));
         }
-        return Mono.just(Optional.of(new ExecutionPlan(ExecutionMode.REACT, null, params, reason)));
+        return Mono.just(Optional.of(new ExecutionPlan(ExecutionMode.FAST, null, params, reason)));
     }
 }

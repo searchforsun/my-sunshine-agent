@@ -3,7 +3,6 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
 import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
@@ -29,10 +28,14 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Task 1：三模式均钉死（无 auto 自判）；默认 preference=FAST 走 ForcedExecutionRouter。
+ */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ExecutionPlanRouterTest {
@@ -71,87 +74,80 @@ class ExecutionPlanRouterTest {
     }
 
     @Test
-    void multiStepQueryRoutesToPlanWorkflowBeforeRules() {
+    void multiStepQuery_withPro_hitsStructuralRule() {
         String query = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论";
         when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
 
-        ExecutionPlan plan = router.route(query).block();
+        ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
 
         assertThat(plan).isNotNull();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.STRUCTURAL_ID);
-        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.anyString());
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
+        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
-    void atSkillBindingSingleStepRoutesToReact() {
+    void atSkillBindingSingleStep_withFast_keepsSkillAndMayCallL3() {
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
         when(skillBindingParser.parse("@finance-analysis 是否合规")).thenReturn(binding);
+        when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
+                new ExecutionPlan(ExecutionMode.FAST, null,
+                        Map.of("reactPromptId", "react-prompt.from-llm"), "llm")));
 
-        ExecutionPlan plan = router.route("@finance-analysis 是否合规").block();
+        ExecutionPlan plan = router.route(ctx("@finance-analysis 是否合规", ExecutionPreference.FAST)).block();
         assertThat(plan).isNotNull();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.anyString());
+        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.from-llm");
     }
 
     @Test
-    void atSkillMultiStepRoutesToPlanWorkflow5B() {
+    void atSkillMultiStep_withPro_keepsSkillDrivenParams() {
         String query = "@finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
         when(skillBindingParser.parse(query)).thenReturn(binding);
 
-        ExecutionPlan plan = router.route(query).block();
+        ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_PLANNER_MODE))
                 .isEqualTo(SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
-        assertThat(plan.reason()).contains("5b-skill-plan");
+        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
     }
 
     @Test
-    void ruleHitSkipsIntentRewrite() {
+    void ruleHit_withWorkflow_bindsFinanceList() {
         String query = "有哪些待审批报销";
         when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
 
-        ExecutionPlan plan = router.route(query).block();
+        ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.WORKFLOW)).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-list");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
         verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());
-        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.anyString());
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
-    void shortQueryUsesIntentRewriteBeforeClassify() {
-        when(skillBindingParser.parse("待审批"))
-                .thenReturn(SkillBindingOutcome.none("待审批"));
-        when(queryRewriteService.shouldRewriteIntent("待审批")).thenReturn(true);
-        when(queryRewriteService.rewriteForIntent("待审批", null, null))
-                .thenReturn(QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销消息", 0));
-        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-list", Map.of(), "llm");
-        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
-                .thenReturn(Mono.just(plan));
-
-        assertThat(router.route("待审批").block()).isEqualTo(plan);
-        verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.<RoutingContext>argThat(
-                ctx -> "查询待审批报销消息".equals(ctx.userMessage())));
-    }
-
-    @Test
-    void longQuerySkipsIntentRewrite() {
+    void defaultRoute_pinsFast_withoutAutoJudge() {
         String query = "青松假有多少天、怎么申请";
-        when(skillBindingParser.parse(query))
-                .thenReturn(SkillBindingOutcome.none(query));
-        when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
-        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm");
-        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
-                .thenReturn(Mono.just(plan));
+        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
+                new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa",
+                        Map.of("reactPromptId", "react-prompt.x"), "llm")));
 
-        assertThat(router.route(query).block()).isEqualTo(plan);
+        ExecutionPlan plan = router.route(query).block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.x");
         verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    private static RoutingContext ctx(String message, ExecutionPreference preference) {
+        return new RoutingContext(message, null, preference, null, null);
     }
 }

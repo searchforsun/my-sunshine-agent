@@ -142,6 +142,6 @@ class PlannerHarnessExecutorTest {
                 null,
                 "u1",
                 "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "test"));
     }
 }

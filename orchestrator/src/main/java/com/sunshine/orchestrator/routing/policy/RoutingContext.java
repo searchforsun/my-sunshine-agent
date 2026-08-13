@@ -16,7 +16,7 @@ public record RoutingContext(
         ExecutionMode lockedMode) {
 
     public RoutingContext(String userMessage, String traceMessageId) {
-        this(userMessage, traceMessageId, ExecutionPreference.AUTO, null, null, null, null);
+        this(userMessage, traceMessageId, ExecutionPreference.FAST, null, null, null, null);
     }
 
     public RoutingContext(
@@ -39,7 +39,7 @@ public record RoutingContext(
     }
 
     public static RoutingContext of(String userMessage) {
-        return new RoutingContext(userMessage, null, ExecutionPreference.AUTO, null, null, null, null);
+        return new RoutingContext(userMessage, null, ExecutionPreference.FAST, null, null, null, null);
     }
 
     public RoutingContext withLockedMode(ExecutionMode mode) {

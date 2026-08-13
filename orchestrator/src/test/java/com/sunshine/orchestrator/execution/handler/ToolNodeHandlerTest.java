@@ -143,7 +143,7 @@ class ToolNodeHandlerTest {
         ExecutionStreamContext streamCtx = new ExecutionStreamContext(
                 "c1", "m1", "审批", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"))
+                new ExecutionPlan(ExecutionMode.PRO, "dynamic", Map.of(), "test"))
                 .withWorkflowHitl(hitl);
         when(hitlConfirmationService.shouldConfirmWorkflow(eq("sdk__sunshine-oa__approve_oa_task"), eq(hitl))).thenReturn(true);
         when(hitlConfirmationService.awaitWorkflowConfirmation(eq(hitl), eq("m1"), eq("sdk__sunshine-oa__approve_oa_task"), any()))
@@ -196,6 +196,6 @@ class ToolNodeHandlerTest {
         return new ExecutionStreamContext(
                 "c1", "m1", "查待办", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, "dynamic", Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, "dynamic", Map.of(), "test"));
     }
 }

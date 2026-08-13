@@ -13,9 +13,9 @@ final class TimelineLabelTemplates {
     }
 
     static String modeConfigKey(ExecutionMode mode) {
-        return switch (mode != null ? mode : ExecutionMode.REACT) {
+        return switch (mode != null ? mode : ExecutionMode.FAST) {
             case WORKFLOW -> "workflow";
-            case PLAN_WORKFLOW -> "plan-workflow";
+            case PRO -> "plan-workflow";
             default -> "react";
         };
     }

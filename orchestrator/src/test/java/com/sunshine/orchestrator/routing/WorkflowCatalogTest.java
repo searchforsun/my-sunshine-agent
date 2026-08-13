@@ -62,7 +62,7 @@ class WorkflowCatalogTest {
                 ExecutionMode.WORKFLOW, "unknown", java.util.Map.of(), "test");
 
         ExecutionPlan sanitized = catalog.sanitize(plan);
-        assertThat(sanitized.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(sanitized.mode()).isEqualTo(ExecutionMode.FAST);
     }
 
     @Test

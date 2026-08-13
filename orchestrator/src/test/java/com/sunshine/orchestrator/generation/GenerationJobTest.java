@@ -140,7 +140,7 @@ class GenerationJobTest {
                 content -> { },
                 done::countDown,
                 errorRef::set,
-                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.REACT)
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.FAST)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -306,7 +306,7 @@ class GenerationJobTest {
                 content -> { },
                 done::countDown,
                 error -> { },
-                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.REACT)
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.FAST)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();

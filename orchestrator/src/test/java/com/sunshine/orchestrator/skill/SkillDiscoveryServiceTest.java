@@ -33,7 +33,7 @@ class SkillDiscoveryServiceTest {
     @Test
     void enrichKeepsValidSkillFromL3() {
         ExecutionPlan react = new ExecutionPlan(
-                ExecutionMode.REACT, null,
+                ExecutionMode.FAST, null,
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm");
         when(skillCatalogService.sanitizeSkillPlan(react)).thenReturn(react);
 
@@ -45,9 +45,9 @@ class SkillDiscoveryServiceTest {
     @Test
     void enrichStripsUnknownSkillViaCatalogSanitize() {
         ExecutionPlan react = new ExecutionPlan(
-                ExecutionMode.REACT, null,
+                ExecutionMode.FAST, null,
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "not-exists"), "llm");
-        ExecutionPlan sanitized = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
+        ExecutionPlan sanitized = new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm");
         when(skillCatalogService.sanitizeSkillPlan(react)).thenReturn(sanitized);
 
         ExecutionPlan enriched = service.enrich(react, "随便聊聊");

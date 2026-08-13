@@ -79,11 +79,11 @@ class ReactTaskBoardRoutingTest {
         String query = "帮我查待审批报销，并对有风险的单据逐条说明原因";
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(com.sunshine.orchestrator.routing.policy.RoutingContext.class)))
-                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm")));
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.any(com.sunshine.orchestrator.routing.policy.RoutingContext.class));
     }
 
@@ -92,11 +92,11 @@ class ReactTaskBoardRoutingTest {
         String query = "用财务工具汇总各状态数量，并解释异常偏多的状态";
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(com.sunshine.orchestrator.routing.policy.RoutingContext.class)))
-                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm")));
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
     }
 
     @Test
@@ -105,7 +105,7 @@ class ReactTaskBoardRoutingTest {
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.STRUCTURAL_ID);
         verify(intentRouter, never()).classifyPlan(anyString());
     }

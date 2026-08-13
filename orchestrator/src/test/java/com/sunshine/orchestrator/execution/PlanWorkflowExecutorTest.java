@@ -158,7 +158,7 @@ class PlanWorkflowExecutorTest {
         return new ExecutionStreamContext(
                 "c1", "msg-1", "跨领域任务", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "test"));
     }
 
     private static final class PlanNodeStub {

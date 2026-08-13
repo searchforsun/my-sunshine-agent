@@ -23,11 +23,11 @@ public class ExecutionDispatcher {
     private final AgentExecutionProperties executionProperties;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
-        ExecutionMode mode = ctx.plan() != null ? ctx.plan().mode() : ExecutionMode.REACT;
+        ExecutionMode mode = ctx.plan() != null ? ctx.plan().mode() : ExecutionMode.FAST;
         return switch (mode) {
             case WORKFLOW -> workflowExecutor.execute(ctx);
-            case REACT -> reactExecutor.execute(ctx);
-            case PLAN_WORKFLOW -> harnessEnabled()
+            case FAST -> reactExecutor.execute(ctx);
+            case PRO -> harnessEnabled()
                     ? plannerHarnessExecutor.execute(ctx)
                     : planWorkflowExecutor.execute(ctx);
         };

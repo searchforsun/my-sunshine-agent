@@ -48,7 +48,7 @@ public class ThinkStepLabelService {
 
     private String applyThinkTemplate(String stepId, ExecutionMode mode, String clippedQuery,
             String toolDisplayName, ThinkPhase phase) {
-        ExecutionMode resolved = mode != null ? mode : ExecutionMode.REACT;
+        ExecutionMode resolved = mode != null ? mode : ExecutionMode.FAST;
         AgentPromptProperties.StepTimeline root = stepTemplate(TimelineStepId.THINK.id());
         if (root == null) {
             return null;

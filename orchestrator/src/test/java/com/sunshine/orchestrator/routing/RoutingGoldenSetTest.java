@@ -154,7 +154,7 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
 
         assertThat(plan.reason()).isEqualTo("rule:" + RoutingCatalogFixtures.STRUCTURAL_ID);
 
@@ -246,7 +246,7 @@ class RoutingGoldenSetTest {
 
         when(queryRewriteService.shouldRewriteIntent("先帮我写一封邮件再总结一下")).thenReturn(false);
 
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
+        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm");
 
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(llmPlan));
@@ -301,7 +301,7 @@ class RoutingGoldenSetTest {
 
         when(queryRewriteService.shouldRewriteIntent("随便聊聊")).thenReturn(false);
 
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm:fallback");
+        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm:fallback");
 
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(llmPlan));
@@ -322,7 +322,7 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_PLANNER_MODE))
                 .isEqualTo(SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
@@ -333,7 +333,7 @@ class RoutingGoldenSetTest {
     void autoDiscoverSkillAfterReactClassify() {
         String query = "帮我做一笔报销的合规分析";
         when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null,
+        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.FAST, null,
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm matched skill");
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(llmPlan));
@@ -341,7 +341,7 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.reason()).isEqualTo("llm matched skill");
     }
@@ -355,7 +355,7 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan plan = router.route(query).block();
 
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.workflowId()).isNull();
     }
@@ -366,8 +366,8 @@ class RoutingGoldenSetTest {
     void forcedJ2_react() {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.REACT, "待审批是否合规", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, "待审批是否合规", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-react");
     }
 
@@ -385,8 +385,8 @@ class RoutingGoldenSetTest {
     @Test
     void forcedJ4_planWorkflow() {
         ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.PLAN_WORKFLOW, "先查制度再查待审批", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+                ExecutionPreference.PRO, "先查制度再查待审批", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
     }
 
@@ -410,8 +410,8 @@ class RoutingGoldenSetTest {
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
         when(skillBindingParser.parse(query)).thenReturn(binding);
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PLAN_WORKFLOW, query, null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
     }
@@ -461,7 +461,7 @@ class RoutingGoldenSetTest {
     void workflowI6_clientWorkflowIdBindsWithoutLlm() {
         when(workflowCatalog.isKnownWorkflow("security-analyze")).thenReturn(true);
         ExecutionPlan plan = router.route(new RoutingContext(
-                "请继续分析", null, ExecutionPreference.AUTO, "security-analyze", null)).block();
+                "请继续分析", null, ExecutionPreference.FAST, "security-analyze", null)).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("security-analyze");
         assertThat(plan.reason()).isEqualTo("workflow:client");
@@ -475,7 +475,7 @@ class RoutingGoldenSetTest {
         when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
-                ExecutionMode.REACT, null, Map.of(), "llm")));
+                ExecutionMode.FAST, null, Map.of(), "llm")));
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.workflowId()).isNull();
         assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);

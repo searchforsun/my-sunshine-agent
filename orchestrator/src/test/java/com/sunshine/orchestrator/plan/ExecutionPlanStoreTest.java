@@ -60,7 +60,7 @@ class ExecutionPlanStoreTest {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
                 "conv-1", "msg-1", "query", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "test"));
         PlanJson planJson = new PlanJson(null, "跨领域", List.of(
                 new PlanNode("n1", "llm", Map.of()),
                 new PlanNode("ans", "answer", Map.of())), List.of());

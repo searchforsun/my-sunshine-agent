@@ -43,7 +43,7 @@ public final class StepLabels {
     /** think / tool / node 步骤 fallback；intent/plan/rag/generate/skill 见 Nacos {@link TimelineStepLabelService} */
     public static String beforeFor(String stepId) {
         if (ThinkStepIds.isThinkStep(stepId)) {
-            return ThinkStepLabels.before(stepId, ExecutionMode.REACT, "", null);
+            return ThinkStepLabels.before(stepId, ExecutionMode.FAST, "", null);
         }
         if (TimelineStepId.isNodeStep(stepId)) {
             return ToolNodeLabels.nodeBefore(stepId, null, null);
@@ -56,7 +56,7 @@ public final class StepLabels {
 
     public static String activeFor(String stepId) {
         if (ThinkStepIds.isThinkStep(stepId)) {
-            return ThinkStepLabels.active(stepId, ExecutionMode.REACT, "", null);
+            return ThinkStepLabels.active(stepId, ExecutionMode.FAST, "", null);
         }
         if (TimelineStepId.isNodeStep(stepId)) {
             return ToolNodeLabels.nodeActive(stepId, null);
@@ -72,7 +72,7 @@ public final class StepLabels {
             if (detail != null && !detail.isBlank()) {
                 return detail;
             }
-            return ThinkStepLabels.after(stepId, ExecutionMode.REACT, "", null);
+            return ThinkStepLabels.after(stepId, ExecutionMode.FAST, "", null);
         }
         if (TimelineStepId.isNodeStep(stepId)) {
             return ToolNodeLabels.nodeAfter(stepId, detail, null);

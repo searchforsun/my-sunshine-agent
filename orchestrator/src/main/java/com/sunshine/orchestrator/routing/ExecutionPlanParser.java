@@ -47,13 +47,14 @@ public class ExecutionPlanParser {
             String workflowId = stored.substring("workflow:".length());
             return new ExecutionPlan(ExecutionMode.WORKFLOW, workflowId, Map.of(), "stored");
         }
-        if ("react".equalsIgnoreCase(stored)) {
-            return ExecutionPlan.reactFallback("stored");
-        }
-        if ("plan-workflow".equalsIgnoreCase(stored)) {
-            return new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "stored");
-        }
-        return ExecutionPlan.reactFallback("unknown stored intent: " + stored);
+        String norm = stored.toLowerCase().replace('_', '-');
+        return switch (norm) {
+            case "fast", "react", "agent", "auto" ->
+                    new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "stored");
+            case "pro", "plan-workflow", "plan" ->
+                    new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "stored");
+            default -> ExecutionPlan.reactFallback("unknown stored intent: " + stored);
+        };
     }
 
     private static Map<String, String> parseParams(JsonNode paramsNode) {

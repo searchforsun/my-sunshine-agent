@@ -132,9 +132,9 @@ class ConversationIntegrationTest {
             redis.delete(keys);
         }
         when(intentRouter.classifyPlan(any(com.sunshine.orchestrator.routing.policy.RoutingContext.class)))
-                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test")));
         when(intentRouter.classifyPlan(anyString())).thenReturn(Mono.just(
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test")));
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test")));
         when(llmGateway.streamWithMemory(any(AssembledContext.class), anyString()))
                 .thenAnswer(inv -> {
                     String userMsg = inv.getArgument(1);

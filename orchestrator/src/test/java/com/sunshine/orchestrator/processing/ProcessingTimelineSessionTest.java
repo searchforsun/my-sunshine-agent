@@ -260,7 +260,7 @@ class ProcessingTimelineSessionTest {
 
         QueryRewriteOutcome rewrite = QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 15L);
         session.completeIntent(
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"),
                 rewrite);
 
         ProcessingStep intent = session.snapshot().stream()
@@ -283,7 +283,7 @@ class ProcessingTimelineSessionTest {
                 SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
                 SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
         session.completeIntent(new ExecutionPlan(
-                ExecutionMode.PLAN_WORKFLOW, null, params, "skill:@mention:5b-skill-plan"));
+                ExecutionMode.PRO, null, params, "skill:@mention:5b-skill-plan"));
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();

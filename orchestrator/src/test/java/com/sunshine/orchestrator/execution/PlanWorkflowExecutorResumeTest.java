@@ -171,6 +171,6 @@ class PlanWorkflowExecutorResumeTest {
         return new ExecutionStreamContext(
                 "c1", "msg-1", "query", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "test"));
     }
 }

@@ -45,7 +45,7 @@ class ThinkStepMapperTest {
     @Test
     void contentCompletesThink_reactDoesNotOpenGenerate() {
         List<ProcessingStep> steps = new ArrayList<>();
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello", mode);
 
         mapper.map(StreamToken.reasoning("思考"));
@@ -76,7 +76,7 @@ class ThinkStepMapperTest {
     @Test
     void contentOnly_reactDoesNotOpenGenerate() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(doneStep("intent")));
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "hello", mode);
 
         List<StreamToken> mapped = mapper.map(StreamToken.content("直接回答"));
@@ -106,7 +106,7 @@ class ThinkStepMapperTest {
     @Test
     void reactContent_finishDoesNotOpenGenerate() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(runningStep("think")));
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "有哪些待审批报销", mode);
 
         List<StreamToken> mapped = mapper.map(StreamToken.content("回答正文"));
@@ -130,7 +130,7 @@ class ThinkStepMapperTest {
         List<ProcessingStep> steps = new ArrayList<>(List.of(
                 doneStep("think"),
                 doneStep("tool-sdk__sunshine-oa__list_oa_tasks@1")));
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "查待办", mode);
 
         List<StreamToken> mapped = mapper.map(StreamToken.content("过渡语", "think"));
@@ -159,7 +159,7 @@ class ThinkStepMapperTest {
     @Test
     void reactMode_usesToolPlanningWording() {
         List<ProcessingStep> steps = new ArrayList<>(List.of(doneStep("intent")));
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         ThinkStepMapper mapper = new ThinkStepMapper(steps, "个人所得税专项附加扣除怎么填", mode);
 
         applyMapped(mapper, steps, StreamToken.reasoning("规划填报步骤"));

@@ -35,14 +35,13 @@ public class ForcedExecutionRouter {
     private final IntentRouter intentRouter;
 
     public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionPreference preference, String workflowId) {
-        if (preference == null || preference == ExecutionPreference.AUTO) {
-            return Mono.error(new IllegalStateException("ForcedExecutionRouter 仅处理非 auto preference"));
+        if (preference == null) {
+            return Mono.error(new IllegalStateException("ForcedExecutionRouter 需要非空 preference"));
         }
         return switch (preference) {
-            case REACT -> resolveForced(ctx, ExecutionMode.REACT, REASON_REACT, null);
-            case PLAN_WORKFLOW -> resolveForced(ctx, ExecutionMode.PLAN_WORKFLOW, REASON_PLAN, null);
+            case FAST -> resolveForced(ctx, ExecutionMode.FAST, REASON_REACT, null);
+            case PRO -> resolveForced(ctx, ExecutionMode.PRO, REASON_PLAN, null);
             case WORKFLOW -> resolveForced(ctx, ExecutionMode.WORKFLOW, REASON_WORKFLOW, workflowId);
-            default -> Mono.error(new IllegalStateException("unsupported preference: " + preference));
         };
     }
 
@@ -135,8 +134,8 @@ public class ForcedExecutionRouter {
         private boolean needsL3() {
             return switch (locked) {
                 case WORKFLOW -> !StringUtils.hasText(workflowId);
-                case REACT -> !StringUtils.hasText(params.get(PARAM_REACT_PROMPT));
-                case PLAN_WORKFLOW -> !sameModeRuleHit && !StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_SKILL));
+                case FAST -> !StringUtils.hasText(params.get(PARAM_REACT_PROMPT));
+                case PRO -> !sameModeRuleHit && !StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_SKILL));
             };
         }
 

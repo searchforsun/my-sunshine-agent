@@ -67,7 +67,7 @@ class SkillCatalogServiceTest {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of());
         service.refresh();
         ExecutionPlan plan = new ExecutionPlan(
-                ExecutionMode.REACT, null,
+                ExecutionMode.FAST, null,
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "missing"), "llm");
         ExecutionPlan sanitized = service.sanitizeSkillPlan(plan);
         assertThat(sanitized.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);

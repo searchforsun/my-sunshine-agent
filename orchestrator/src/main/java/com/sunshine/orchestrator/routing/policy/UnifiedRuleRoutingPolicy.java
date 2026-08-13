@@ -58,9 +58,9 @@ public class UnifiedRuleRoutingPolicy implements RoutingPolicy {
         if (raw == null) {
             return ExecutionMode.WORKFLOW;
         }
-        return switch (raw.toLowerCase()) {
-            case "react" -> ExecutionMode.REACT;
-            case "plan-workflow", "plan_workflow", "plan" -> ExecutionMode.PLAN_WORKFLOW;
+        return switch (raw.toLowerCase().replace('_', '-')) {
+            case "fast", "react", "agent", "auto" -> ExecutionMode.FAST;
+            case "pro", "plan-workflow", "plan" -> ExecutionMode.PRO;
             default -> ExecutionMode.WORKFLOW;
         };
     }

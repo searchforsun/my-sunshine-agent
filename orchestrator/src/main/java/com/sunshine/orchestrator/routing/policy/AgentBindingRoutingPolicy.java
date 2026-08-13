@@ -50,6 +50,6 @@ public class AgentBindingRoutingPolicy implements RoutingPolicy {
                 binding.agentIds().stream().collect(Collectors.joining(",")));
         params.put("effectiveQuery", binding.effectiveQuery());
         return Mono.just(Optional.of(new ExecutionPlan(
-                ExecutionMode.REACT, null, params, "agent:$mention")));
+                ExecutionMode.FAST, null, params, "agent:$mention")));
     }
 }

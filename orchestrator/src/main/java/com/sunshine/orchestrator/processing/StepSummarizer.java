@@ -68,11 +68,11 @@ public final class StepSummarizer {
     }
 
     public static String before(String stepId, String userQuery) {
-        return before(stepId, userQuery, null, ExecutionMode.REACT);
+        return before(stepId, userQuery, null, ExecutionMode.FAST);
     }
 
     public static String before(String stepId, String userQuery, String lastToolDisplayName) {
-        return before(stepId, userQuery, lastToolDisplayName, ExecutionMode.REACT);
+        return before(stepId, userQuery, lastToolDisplayName, ExecutionMode.FAST);
     }
 
     public static String before(String stepId, String userQuery, String lastToolDisplayName, ExecutionMode mode) {
@@ -103,11 +103,11 @@ public final class StepSummarizer {
     }
 
     public static String active(String stepId, String userQuery) {
-        return active(stepId, userQuery, null, ExecutionMode.REACT);
+        return active(stepId, userQuery, null, ExecutionMode.FAST);
     }
 
     public static String active(String stepId, String userQuery, String lastToolDisplayName) {
-        return active(stepId, userQuery, lastToolDisplayName, ExecutionMode.REACT);
+        return active(stepId, userQuery, lastToolDisplayName, ExecutionMode.FAST);
     }
 
     public static String active(String stepId, String userQuery, String lastToolDisplayName, ExecutionMode mode) {
@@ -138,11 +138,11 @@ public final class StepSummarizer {
     }
 
     public static String after(String stepId, String userQuery, String detail) {
-        return after(stepId, userQuery, detail, null, ExecutionMode.REACT);
+        return after(stepId, userQuery, detail, null, ExecutionMode.FAST);
     }
 
     public static String after(String stepId, String userQuery, String detail, String lastToolDisplayName) {
-        return after(stepId, userQuery, detail, lastToolDisplayName, ExecutionMode.REACT);
+        return after(stepId, userQuery, detail, lastToolDisplayName, ExecutionMode.FAST);
     }
 
     public static String after(String stepId, String userQuery, String detail, String lastToolDisplayName,

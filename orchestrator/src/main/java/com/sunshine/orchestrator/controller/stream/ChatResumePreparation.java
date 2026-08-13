@@ -35,7 +35,7 @@ public record ChatResumePreparation(
                 false,
                 userId,
                 tenantId,
-                ExecutionPreference.AUTO,
+                ExecutionPreference.FAST,
                 null,
                 null,
                 kbId,

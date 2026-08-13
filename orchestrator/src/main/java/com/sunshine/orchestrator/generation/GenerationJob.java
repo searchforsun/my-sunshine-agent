@@ -106,7 +106,7 @@ public class GenerationJob {
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError) {
         start(llmFlux, mysqlBuffer, "", java.util.List.of(), flushPartial, onComplete, onError,
-                new AtomicReference<>(ExecutionMode.REACT));
+                new AtomicReference<>(ExecutionMode.FAST));
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
@@ -203,7 +203,7 @@ public class GenerationJob {
         if (chunkEmitter == null) {
             if (thinkMapper == null) {
                 thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery,
-                        new AtomicReference<>(ExecutionMode.REACT));
+                        new AtomicReference<>(ExecutionMode.FAST));
             }
             chunkEmitter = newChunkEmitter();
         }

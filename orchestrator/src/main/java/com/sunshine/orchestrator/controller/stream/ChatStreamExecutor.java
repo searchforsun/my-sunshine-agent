@@ -191,8 +191,8 @@ public class ChatStreamExecutor {
             ChatStreamContext ctx, AtomicReference<ExecutionMode> executionMode, boolean resume) {
         var resumablePlan = executionPlanStore.findResumableForMessage(ctx.assistantMsgId());
         if (resumablePlan.isPresent()) {
-            ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "resume");
-            executionMode.set(ExecutionMode.PLAN_WORKFLOW);
+            ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "resume");
+            executionMode.set(ExecutionMode.PRO);
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan)
                     .withPersistedPlanId(resumablePlan.get().getId());
             return prepareChunkFlux(planWorkflowExecutor.resumePaused(execCtx, resumablePlan.get()));
@@ -254,7 +254,7 @@ public class ChatStreamExecutor {
     }
 
     public AtomicReference<ExecutionMode> initialExecutionMode(ChatStreamContext ctx) {
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         if (ctx.intent() != null) {
             mode.set(executionPlanParser.parseStoredIntent(ctx.intent()).mode());
         }
@@ -270,7 +270,7 @@ public class ChatStreamExecutor {
             return true;
         }
         ExecutionMode mode = executionPlanParser.parseStoredIntent(intent).mode();
-        return mode == ExecutionMode.REACT;
+        return mode == ExecutionMode.FAST;
     }
 
     private static ExecutionStreamContext toExecutionContext(ChatStreamContext ctx, ExecutionPlan plan) {

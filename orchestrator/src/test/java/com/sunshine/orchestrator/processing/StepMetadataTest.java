@@ -80,7 +80,7 @@ class StepMetadataTest {
     void isEmpty_falseWhenOnlyRoutingReason() {
         StepMetadata metadata = StepMetadata.fromRouting(
                 new com.sunshine.orchestrator.routing.ExecutionPlan(
-                        com.sunshine.orchestrator.routing.ExecutionMode.REACT,
+                        com.sunshine.orchestrator.routing.ExecutionMode.FAST,
                         null,
                         java.util.Map.of(),
                         "user:forced-react"));
