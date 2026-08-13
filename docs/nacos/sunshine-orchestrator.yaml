@@ -103,6 +103,28 @@ agent:
         on-timeout: fallback_react
         max-user-rounds: 10
         # user-modification-template → Catalog id=plan-workflow.user-modification
+    harness:
+      enabled: false
+      max-rounds: 12
+      max-total-tasks: 24
+      max-duration-ms: 14400000
+      stale-rounds-threshold: 3
+      task:
+        max-retries: 2
+      planner:
+        timeout-ms: 300000
+        max-attempts: 3
+        max-replans: 6
+      worker:
+        timeout-ms: 3600000
+        max-sub-agents: 5
+      notebook:
+        redis-ttl-seconds: 604800
+        key-prefix: "sunshine:plan:notebook:"
+        compression:
+          near-keep-rounds: 10
+      session:
+        idle-timeout-ms: 14400000
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码
     hint-patterns:

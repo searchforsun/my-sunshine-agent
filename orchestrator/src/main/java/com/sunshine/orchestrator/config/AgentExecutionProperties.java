@@ -5,8 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
 /**
- * Agent 执行模式配置 — react / plan-workflow 运行时策略（Nacos agent.execution）。
- * 提示词正文 SSOT = Catalog（react.subagent.* / plan-workflow.*）。
+ * Agent 执行模式配置 — react / plan-workflow / harness 运行时策略（Nacos agent.execution）。
+ * 提示词正文 SSOT = Catalog（react.subagent.* / plan-workflow.* / planner.harness）。
  */
 @Data
 @RefreshScope
@@ -16,6 +16,8 @@ public class AgentExecutionProperties {
     private String defaultMode = "react";
     private React react = new React();
     private PlanWorkflow planWorkflow = new PlanWorkflow();
+    /** 4.14 Planner-Executor harness — SSOT：Nacos agent.execution.harness（非 AgentScope HarnessAgent） */
+    private Harness harness = new Harness();
 
     @Data
     public static class React {
@@ -104,6 +106,55 @@ public class AgentExecutionProperties {
             private int maxUserRounds = 10;
             /** 超时策略：fallback_react 降级 ReAct；auto_approve 视同用户确认并执行 Plan */
             private String onTimeout = "fallback_react";
+        }
+    }
+
+    @Data
+    public static class Harness {
+        private boolean enabled = false;
+        private int maxRounds = 12;
+        private int maxTotalTasks = 24;
+        private long maxDurationMs = 14_400_000L;
+        private int staleRoundsThreshold = 3;
+        private Task task = new Task();
+        private Planner planner = new Planner();
+        private Worker worker = new Worker();
+        private Notebook notebook = new Notebook();
+        private Session session = new Session();
+
+        @Data
+        public static class Task {
+            private int maxRetries = 2;
+        }
+
+        @Data
+        public static class Planner {
+            private long timeoutMs = 300_000L;
+            private int maxAttempts = 3;
+            private int maxReplans = 6;
+        }
+
+        @Data
+        public static class Worker {
+            private long timeoutMs = 3_600_000L;
+            private int maxSubAgents = 5;
+        }
+
+        @Data
+        public static class Notebook {
+            private long redisTtlSeconds = 604_800L;
+            private String keyPrefix = "sunshine:plan:notebook:";
+            private Compression compression = new Compression();
+
+            @Data
+            public static class Compression {
+                private int nearKeepRounds = 10;
+            }
+        }
+
+        @Data
+        public static class Session {
+            private long idleTimeoutMs = 14_400_000L;
         }
     }
 
