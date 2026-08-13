@@ -87,7 +87,7 @@ flowchart TB
 
   subgraph hub [中枢]
     R[routing v6 R-0～R-3 ✅<br/>R-4 ⬜]
-    PE[4.14 rebuild<br/>H-0～H-5 ✅]
+    PE[4.14 rebuild<br/>H-0～H-6 ✅]
   end
 
   subgraph ctx [上下文增强]
@@ -130,7 +130,7 @@ flowchart TB
 | Spec | 角色 | 硬依赖 | 被谁依赖 |
 |------|------|--------|----------|
 | [unified-routing v6](./2026-07-29-unified-routing-design.md) | 执行模式中枢 | multi-agent（主体 ✅）；**R-0～R-3 ✅** / **R-4 ⬜** | 4.14 H-5（✅）、task-scene、skill-sticky、biz、stateless 分发 |
-| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-5 ✅**；H-6～H-7 / 阶段 D ⬜；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | task-scene（H1）、D12、stateless B2/B3、phase5 长任务 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-6 ✅**；H-7 / 阶段 D ⬜；TaskBoard H1 待 `tasks` SSE；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | task-scene（H1）、D12、stateless B2/B3、phase5 长任务 |
 | [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ | — | task-scene、skill-sticky、biz 挂载纪律 |
 | [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 | routing + 压缩点；pro 边界要 H1 | — |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat） |
@@ -142,14 +142,14 @@ flowchart TB
 
 **推荐落地顺序**
 
-1. **已完成**：4.14 **H-0～H-4 + 过渡入口** — [kernel plan](../plans/2026-08-13-planner-executor-kernel.md) ✅；**routing v6 R-0～R-3 + H-5** — [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) ✅（冒烟 `verify_routing_v6_smoke.py`）；旁路仍可并行：stateless **波次 A** ∥ 观测 6.2/6.4、phase5 **5.2**
-2. **下一波**：rebuild **H-6～H-7** → **阶段 D / routing R-4**（删 PlanWorkflow 源码）→ skill-sticky → D12
+1. **已完成**：4.14 **H-0～H-4 + 过渡入口** — [kernel plan](../plans/2026-08-13-planner-executor-kernel.md) ✅；**routing v6 R-0～R-3 + H-5** — [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) ✅；**H-6 前端** — [planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md) ✅（分层时间线 + Composer UX；TaskBoard H1 待 `tasks` SSE）；旁路仍可并行：stateless **波次 A** ∥ 观测 6.2/6.4、phase5 **5.2**
+2. **下一波**：H-7 全量 Live → **阶段 D / routing R-4**（删 PlanWorkflow 源码）→ skill-sticky → D12
 3. **第三波**：五层 §5.5 压缩点（优先 task）→ task-scene → business-context（可与 task-scene 并行）
 4. **刻意后置**：stateless B2/B3/拆进程、phase5 5.1/5.4/5.7、压缩点全面铺 chat
 
-**routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；R-4 / 阶段 D；H-6 / H-7。
+**routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；R-4 / 阶段 D；H-7；harness `tasks` SSE（TaskBoard H1）。
 
-**现状提醒（2026-08-13）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码仍在**（主路径已断）。CLAUDE「4.14 🟡」= H-0～H-5 ✅ / H-6～H-7+阶段 D ⬜；架构表勿写「PlanWorkflow 已删」直至阶段 D。
+**现状提醒（2026-08-13）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码仍在**（主路径已断）。CLAUDE「4.14 🟡」= H-0～H-6 ✅ / H-7+阶段 D ⬜；架构表勿写「PlanWorkflow 已删」直至阶段 D。
 
 **命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**；执行模式 **`executionMode`**。详见 [routing v6 命名四轴](./2026-07-29-unified-routing-design.md)。
 
