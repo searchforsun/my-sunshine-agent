@@ -86,25 +86,26 @@ class ExecutionPlanRouterTest {
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
-    void atSkillBindingSingleStep_withFast_keepsSkillAndMayCallL3() {
+    void atSkillBindingSingleStep_withFast_skipsL3WhenSkillBound() {
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
         when(skillBindingParser.parse(eq("@finance-analysis 是否合规"), any(), any())).thenReturn(binding);
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.FAST, null,
-                        Map.of("reactPromptId", "react-prompt.from-llm"), "llm")));
+                        Map.of("status", "pending"), "llm")));
 
         ExecutionPlan plan = router.route(ctx("@finance-analysis 是否合规", ExecutionPreference.FAST)).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.from-llm");
+        assertThat(plan.params()).doesNotContainKey("status");
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
@@ -120,7 +121,7 @@ class ExecutionPlanRouterTest {
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_PLANNER_MODE))
                 .isEqualTo(SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
 
     @Test
@@ -141,12 +142,12 @@ class ExecutionPlanRouterTest {
         when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa",
-                        Map.of("reactPromptId", "react-prompt.x"), "llm")));
+                        Map.of("status", "draft"), "llm")));
 
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
-        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.x");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
+        assertThat(plan.params()).containsEntry("status", "draft");
     }
 
     private static RoutingContext ctx(String message, ExecutionPreference preference) {

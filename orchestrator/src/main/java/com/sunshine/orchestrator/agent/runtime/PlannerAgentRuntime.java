@@ -24,7 +24,7 @@ public class PlannerAgentRuntime implements AgentRuntime {
     public Flux<StreamToken> run(AgentRunRequest request) {
         AgentRunRequest harness = ensureHarnessPrompt(request);
         log.info("[PlannerAgentRuntime] ReAct harness runId={} prompt={}",
-                harness.runId(), harness.reactPromptId());
+                harness.runId(), harness.harnessPromptId());
         return reactAgentRuntime.runPlannerReAct(harness);
     }
 
@@ -32,9 +32,9 @@ public class PlannerAgentRuntime implements AgentRuntime {
         if (request == null) {
             throw new IllegalArgumentException("AgentRunRequest 不能为空");
         }
-        if (StringUtils.hasText(request.reactPromptId())) {
+        if (StringUtils.hasText(request.harnessPromptId())) {
             return request;
         }
-        return request.withReactPromptId(HARNESS_PROMPT_ID);
+        return request.withHarnessPromptId(HARNESS_PROMPT_ID);
     }
 }

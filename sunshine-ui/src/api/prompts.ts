@@ -10,7 +10,6 @@ export type PromptKind =
   | 'system'
   | 'mode-overlay'
   | 'react-fragment'
-  | 'react-prompt'
   | 'intent'
   | 'planner'
   | 'answer'
@@ -117,7 +116,7 @@ export interface RoutingValidateResponse {
 
 export interface RoutingDryRunResponse {
   matchedRuleId: string | null
-  wouldLlm: boolean
+  /** rule=同轨规则命中；l3=将走 L3 补绑定（不改模式） */
   stage: string | null
   plan?: {
     mode?: string
@@ -130,7 +129,6 @@ export const PROMPT_KIND_LABELS: Record<string, string> = {
   system: '系统',
   'mode-overlay': '模式叠加',
   'react-fragment': 'ReAct 片段',
-  'react-prompt': 'React 场景',
   react: 'ReAct 运行时',
   intent: '意图',
   planner: '规划',
@@ -153,7 +151,6 @@ export function promptKindLabel(kind: string): string {
 /** 列表/详情展示用：去掉 Tab 内重复的 kind 前缀 */
 export function shortPromptId(id: string): string {
   if (id.startsWith('routing-rule.')) return id.slice('routing-rule.'.length)
-  if (id.startsWith('react-prompt.')) return id.slice('react-prompt.'.length)
   return id
 }
 
@@ -163,9 +160,6 @@ export function ensurePromptIdPrefix(id: string, kind: string): string {
   if (!trimmed) return trimmed
   if (kind === 'routing-rule' && !trimmed.startsWith('routing-rule.')) {
     return `routing-rule.${trimmed}`
-  }
-  if (kind === 'react-prompt' && !trimmed.startsWith('react-prompt.')) {
-    return `react-prompt.${trimmed}`
   }
   return trimmed
 }
@@ -267,12 +261,12 @@ export async function validateRoutingRules(
 
 export async function dryRunRouting(
   query: string,
-  includeL0Hints = false,
+  mode: string,
 ): Promise<RoutingDryRunResponse> {
   const res = await fetch(apiUrl('/api/prompts/routing/dry-run'), {
     method: 'POST',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, includeL0Hints }),
+    body: JSON.stringify({ query, mode }),
   })
   return parseApiResponse<RoutingDryRunResponse>(res)
 }

@@ -35,7 +35,6 @@ public class IntentRouter {
     /** 意图分类注入的近期轮次上限（L1 mid/near 尾部）。 */
     private static final int MAX_INTENT_CONTEXT_TURNS = 4;
     private static final String PARAM_AGENT_IDS = "agentIds";
-    private static final String PARAM_REACT_PROMPT = "reactPromptId";
 
     private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
@@ -121,8 +120,7 @@ public class IntentRouter {
             if (locked == ExecutionMode.WORKFLOW) {
                 if (SkillBindingOutcome.PARAM_SKILL.equals(e.getKey())
                         || PARAM_AGENT_IDS.equals(e.getKey())
-                        || SkillBindingOutcome.PARAM_PLANNER_MODE.equals(e.getKey())
-                        || PARAM_REACT_PROMPT.equals(e.getKey())) {
+                        || SkillBindingOutcome.PARAM_PLANNER_MODE.equals(e.getKey())) {
                     continue;
                 }
             }

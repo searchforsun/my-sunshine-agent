@@ -26,6 +26,5 @@ export function versionStatusTagType(status: PromptVersionStatus): 'success' | '
 
 export function tabForKind(kind: string): PromptsTab {
   if (kind === 'routing-rule') return 'routing'
-  if (kind === 'react-prompt') return 'react'
   return 'system'
 }

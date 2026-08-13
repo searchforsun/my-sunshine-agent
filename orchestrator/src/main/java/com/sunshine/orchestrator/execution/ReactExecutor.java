@@ -50,10 +50,9 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
-        String reactPromptId = blankToNull(params.get("reactPromptId"));
         // K2 资源召回后解析会话 biz_scene（结构化日志；完整权威层装载见 Task 6 标注的 P3）
         logResolvedBizScene(skillId, params.get(PARAM_AGENT_IDS));
-        return executeWithInjected(ctx, List.of(), query, skillId, reactPromptId);
+        return executeWithInjected(ctx, List.of(), query, skillId);
     }
 
     /** plan-workflow 降级 ReAct - 注入已成功节点上下文 */
@@ -64,16 +63,14 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
-        String reactPromptId = blankToNull(params.get("reactPromptId"));
-        return executeWithInjected(ctx, injectedBlocks, query, skillId, reactPromptId);
+        return executeWithInjected(ctx, injectedBlocks, query, skillId);
     }
 
     private Flux<StreamToken> executeWithInjected(
             ExecutionStreamContext ctx,
             List<String> injectedBlocks,
             String query,
-            String skillId,
-            String reactPromptId) {
+            String skillId) {
         if (ctx.assistantMsgId() != null) {
             StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
                     ctx.conversationId(),
@@ -147,7 +144,7 @@ public class ReactExecutor {
         return agentRuntime.run(AgentRunRequest.main(
                         ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
                         blocks, skillId, ctx.reactRestart(),
-                        ctx.conversationId(), reactPromptId, checkpointThinkIteration,
+                        ctx.conversationId(), checkpointThinkIteration,
                         resolveMaxItersByKind(ctx))
                 .withConversationKind(ctx.conversationKind())
                 .withModelOverride(ctx.modelOverride()));

@@ -196,10 +196,6 @@ export function usePromptVersionOps(deps: PromptVersionOpsDeps) {
       message.warning('请先复制为草稿后再修改')
       return
     }
-    if (detail.value.kind === 'react-prompt' && !editDescription.value.trim()) {
-      message.warning('请填写场景描述（写清适用问法，便于路由绑定命中）')
-      return
-    }
     saving.value = true
     try {
       await updatePrompt(selectedId.value, {
@@ -222,10 +218,6 @@ export function usePromptVersionOps(deps: PromptVersionOpsDeps) {
     if (!selectedId.value || !detail.value) return
     if (status === 'draft' && !isContentEditable.value) {
       message.warning('生效版本不可直接修改，请先「复制为草稿」')
-      return
-    }
-    if (detail.value.kind === 'react-prompt' && !editDescription.value.trim()) {
-      message.warning('请填写场景描述（写清适用问法，便于路由绑定命中）')
       return
     }
     const raw = editContentText.value

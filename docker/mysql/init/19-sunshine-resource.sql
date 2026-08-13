@@ -146,10 +146,10 @@ INSERT INTO prompt_catalog_meta (id, catalog_version) VALUES (1, 1);
 -- ========== Prompt Catalog 全量 v1（由线上 active 收敛导出）==========
 
 INSERT INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version) VALUES
-('routing-rule.react-compliance-risk', 'routing-rule', '风险审查→React合规场景', '命中风险点/合规风险审查类问法时走 ReAct，绑定 react-prompt.compliance-review（「是否合规」仍优先走 finance-smart）。', 1, 18, 1),
-('routing-rule.react-expense-progress', 'routing-rule', '报销进度→React报销助手', '命中报销/付款进度与单据状态问法时走 ReAct，绑定 react-prompt.expense-assist（与待审批列表 workflow 错开）。', 1, 22, 1),
-('routing-rule.react-policy-qa', 'routing-rule', '制度咨询→React政策问答', '命中制度/办法/规定类咨询时走自主推理，并绑定 react-prompt.policy-qa。', 1, 40, 1),
-('routing-rule.react-travel-standard', 'routing-rule', '差旅标准→React预算场景', '命中差旅/住宿/补贴标准类问法时走 ReAct，绑定 react-prompt.travel-budget（与「预算×出差」workflow 规则错开）。', 1, 28, 1),
+('routing-rule.react-compliance-risk', 'routing-rule', '风险审查→React合规场景', '命中风险点/合规风险审查类问法时走 ReAct，绑 skill compliance-review（「是否合规」仍优先走 finance-smart）。', 1, 18, 1),
+('routing-rule.react-expense-progress', 'routing-rule', '报销进度→React报销助手', '命中报销/付款进度与单据状态问法时走 ReAct，绑 skill expense-assist（与待审批列表 workflow 错开）。', 1, 22, 1),
+('routing-rule.react-policy-qa', 'routing-rule', '制度咨询→React政策问答', '命中制度/办法/规定类咨询时走自主推理，并绑 skill policy-qa。', 1, 40, 1),
+('routing-rule.react-travel-standard', 'routing-rule', '差旅标准→React预算场景', '命中差旅/住宿/补贴标准类问法时走 ReAct，绑 skill travel-budget（与「预算×出差」workflow 规则错开）。', 1, 28, 1),
 ('routing-rule.rule-finance-list-pending', 'routing-rule', '待审批列表→finance-list', '命中待审批列表查询类问法时走 finance-list 工作流。', 1, 10, 1),
 ('routing-rule.rule-finance-smart-compliance', 'routing-rule', '财务合规→finance-smart', '命中合规审查类问法时走 finance-smart 静态工作流。', 1, 20, 1),
 ('routing-rule.rule-knowledge-budget-travel', 'routing-rule', '预算出差→knowledge-qa', '命中预算与出差相关问法时走 knowledge-qa 知识问答工作流。', 1, 15, 1),
@@ -157,13 +157,13 @@ INSERT INTO prompt_definition (id, kind, display_name, description, enabled, pri
 
 INSERT INTO prompt_version (prompt_id, version, status, content_json) VALUES
 ('routing-rule.react-compliance-risk', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["风险点评估","合规风险审查","审查风险点","对照制度.*风险","有哪些风险点"],"plan":{"mode":"react","params":{"reactPromptId":"react-prompt.compliance-review"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["风险点评估","合规风险审查","审查风险点","对照制度.*风险","有哪些风险点"],"plan":{"mode":"react","params":{"skill":"compliance-review"}}}'),
 ('routing-rule.react-expense-progress', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["报销进度","付款进度","单据状态","报销到哪了","付款到哪了","报销单.*状态"],"plan":{"mode":"react","params":{"reactPromptId":"react-prompt.expense-assist"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["报销进度","付款进度","单据状态","报销到哪了","付款到哪了","报销单.*状态"],"plan":{"mode":"react","params":{"skill":"expense-assist"}}}'),
 ('routing-rule.react-policy-qa', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["制度怎么说","有没有规定","差旅办法","报销规定","考勤制度","人事制度","能不能报(?!销进度)","政策.*怎么规定"],"plan":{"mode":"react","params":{"reactPromptId":"react-prompt.policy-qa"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["制度怎么说","有没有规定","差旅办法","报销规定","考勤制度","人事制度","能不能报(?!销进度)","政策.*怎么规定"],"plan":{"mode":"react","params":{"skill":"policy-qa"}}}'),
 ('routing-rule.react-travel-standard', 1, 'published',
- '{"matchType":"regex","match":"any","patterns":["差旅标准","住宿标准","出差补贴","交通补贴标准","超标怎么办","舱位标准"],"plan":{"mode":"react","params":{"reactPromptId":"react-prompt.travel-budget"}}}'),
+ '{"matchType":"regex","match":"any","patterns":["差旅标准","住宿标准","出差补贴","交通补贴标准","超标怎么办","舱位标准"],"plan":{"mode":"react","params":{"skill":"travel-budget"}}}'),
 ('routing-rule.rule-finance-list-pending', 1, 'published',
  '{"matchType":"regex","match":"any","patterns":["有哪些待审批","查询待审批","列出待审批","待审批的.*报销","待审批.*付款"],"plan":{"mode":"workflow","workflowId":"finance-list","params":{"status":"pending"}}}'),
 ('routing-rule.rule-finance-smart-compliance', 1, 'published',
@@ -328,30 +328,26 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 '用户已取消子任务。请主 Agent 自行完成以下任务（勿再次 spawn 同一任务）：\n{prompt}',
 NULL, '初始种子', 'agent');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react-prompt.compliance-review', 'react-prompt', '合规风险审查', '适用：是否合规、合不合规、对比制度审查、风险点评估。需结合制度检索与待审批/报销事实做对照分析。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react-prompt.compliance-review', 1, 'published',
+-- K3：业务场景文案迁 Skill overlay + Lab 码打标；demo-scenario 兜底由 mode-overlay.react 承接
+INSERT IGNORE INTO skill_definition (id, display_name, description, enabled, active_version, kind, biz_scene) VALUES
+('compliance-review', '费用合规审查', '报销合规对照场景：命中时装载费用制度 Policy', 1, 1, 'chat', 'compliance-review'),
+('expense-assist', '报销助手', '报销查询/提交辅助场景', 1, 1, 'chat', 'expense-assist'),
+('policy-qa', '制度问答', '企业制度/流程知识问答场景', 1, 1, 'chat', 'policy-qa'),
+('travel-budget', '差旅预算', '差旅额度与预算管控场景', 1, 1, 'chat', 'travel-budget');
+
+INSERT IGNORE INTO skill_version (skill_id, version, system_overlay, tools_json, max_iters, side_effect, sandbox, status, maintainer) VALUES
+('compliance-review', 1,
 '## 场景：合规风险审查\n- 先检索相关制度，再必要时查询财务待审批/单据事实，最后给出对照结论\n- 输出结构：结论（合规/存疑/不合规）→ 依据条款 → 风险点 → 建议动作\n- 证据不足时标注「待核实」项，勿武断下结论\n- 语言专业、克制，避免恐吓式措辞',
-NULL, '初始种子', 'agent');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react-prompt.demo-scenario', 'react-prompt', '通用简洁作答（兜底）', '适用：未单独建场景、或底栏强制自主推理时的通用方向。问法宽泛、无强领域约束时可用。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react-prompt.demo-scenario', 1, 'published',
-'## 场景方向（示例）\n- 优先用简洁中文分点作答\n- 涉及制度/政策时先检索再结论\n- 不确定时说明依据与局限',
-NULL, '初始种子', 'agent');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react-prompt.expense-assist', 'react-prompt', '报销与待审批助手', '适用：待审批列表、报销进度、付款单据查询与操作指引。偏财务工具调用，少空谈制度。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react-prompt.expense-assist', 1, 'published',
+'[]', 4, 'read', 'none', 'published', 'agent'),
+('expense-assist', 1,
 '## 场景：报销与待审批助手\n- 优先调用财务相关工具获取真实单据/待审批数据，再总结状态\n- 列表类回答：状态、金额、关键人、时间；缺参时主动询问（如 status）\n- 写操作须走 HITL 确认；解释清楚将执行的动作与影响\n- 不编造单据号；工具失败时说明原因与重试建议',
-NULL, '初始种子', 'agent');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react-prompt.policy-qa', 'react-prompt', '制度政策问答', '适用：差旅办法、报销规定、考勤人事等制度政策咨询；用户问「能不能报」「有没有规定」「制度怎么说」。命中后应先检索知识库再给结论。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react-prompt.policy-qa', 1, 'published',
+'[]', 4, 'read', 'none', 'published', 'agent'),
+('policy-qa', 1,
 '## 场景：制度政策问答\n- 涉及制度/政策/办法时，**必须先**调用知识库检索，再基于检索结果作答\n- 结论需标注依据来源（文档名/条款要点）；检索不到时明确说明并给通用建议边界\n- 用简洁中文分点回答；避免编造未检索到的条款编号\n- 若问句同时涉及财务单据与制度，先厘清制度口径再谈操作步骤',
-NULL, '初始种子', 'agent');
-
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('react-prompt.travel-budget', 'react-prompt', '预算与出差规划', '适用：出差预算、预算够不够、差旅标准、超支怎么办。需结合差旅制度与预算口径。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('react-prompt.travel-budget', 1, 'published',
+'[]', 4, 'read', 'none', 'published', 'agent'),
+('travel-budget', 1,
 '## 场景：预算与出差规划\n- 先检索差旅/预算相关制度，明确可报销范围与标准\n- 若用户给出行程与金额，按制度拆解：交通/住宿/补贴是否超标\n- 超标时给出合规替代方案（降舱、换酒店档、拆分事项）\n- 需要业务系统数据时再调工具；否则基于制度给出可执行清单',
-NULL, '初始种子', 'agent');
+'[]', 4, 'read', 'none', 'published', 'agent');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('rewrite.intent', 'rewrite', '改写 · Intent', '意图补全改写：结合近期对话补全过短输入并还原指代，供意图路由使用。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('rewrite.intent', 1, 'published',
@@ -538,7 +534,7 @@ CREATE TABLE biz_scene_policy (
         REFERENCES biz_scene_definition (biz_scene)
 );
 
--- 演示码（与原 react-prompt 场景同名对齐，无 react-prompt. 前缀）
+-- 演示码（与业务场景 Skill 同名对齐）
 INSERT INTO biz_scene_definition (biz_scene, display_name, description, status) VALUES
 ('compliance-review', '费用合规审查', '报销合规对照场景：命中时装载费用制度 Policy', 'active'),
 ('expense-assist', '报销助手', '报销查询/提交辅助场景', 'active'),

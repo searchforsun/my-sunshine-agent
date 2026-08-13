@@ -12,8 +12,7 @@ function onToggle(item: PromptListItem, enabled: boolean) {
 }
 
 function onCreate() {
-  if (page.activeTab === 'routing') page.openCreateModal('routing')
-  else if (page.activeTab === 'react') page.openCreateModal('react')
+  if (page.activeTab === 'routing') page.openCreateModal()
 }
 
 const showKindTag = () => page.activeTab === 'system'

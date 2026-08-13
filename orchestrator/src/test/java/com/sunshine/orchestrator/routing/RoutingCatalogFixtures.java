@@ -45,7 +45,7 @@ public final class RoutingCatalogFixtures {
                         "{\"matchType\":\"regex\",\"match\":\"any\","
                                 + "\"patterns\":[\"制度怎么说\",\"有没有规定\",\"差旅办法\",\"报销规定\","
                                 + "\"考勤制度\",\"人事制度\",\"能不能报(?!销进度)\",\"政策.*怎么规定\"],"
-                                + "\"plan\":{\"mode\":\"react\",\"params\":{\"reactPromptId\":\"react-prompt.policy-qa\"}}}"));
+                                + "\"plan\":{\"mode\":\"react\",\"params\":{\"skill\":\"policy-qa\"}}}"));
         entries.add(entry(FINANCE_SMART_ID, "财务合规→finance-smart", 20,
                         "{\"matchType\":\"regex\",\"match\":\"any\","
                                 + "\"patterns\":[\"是否合规\",\"合规吗\",\"合不合规\",\"对比制度\"],"

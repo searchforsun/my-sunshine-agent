@@ -16,7 +16,7 @@ import { friendlyErrorMessage } from '../api/apiError'
 import { tabForKind } from '../utils/prompts/promptVersionUtils'
 import type { PromptsTab, usePromptsRouteState } from './usePromptsRouteState'
 
-export type CreateModalKind = 'routing' | 'react'
+export type CreateModalKind = 'routing'
 
 export interface PromptListDeps {
   activeTab: Ref<PromptsTab>
@@ -68,13 +68,9 @@ export function usePromptList(deps: PromptListDeps) {
       list = list
         .filter(p => p.kind === 'routing-rule')
         .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
-    } else if (activeTab.value === 'react') {
-      list = list
-        .filter(p => p.kind === 'react-prompt')
-        .sort((a, b) => a.id.localeCompare(b.id))
     } else {
       list = list
-        .filter(p => p.kind !== 'routing-rule' && p.kind !== 'react-prompt')
+        .filter(p => p.kind !== 'routing-rule')
         .sort((a, b) => {
           if (a.kind !== b.kind) return a.kind.localeCompare(b.kind)
           return a.id.localeCompare(b.id)
@@ -91,29 +87,20 @@ export function usePromptList(deps: PromptListDeps) {
 
   const listPanelTitle = computed(() => {
     if (activeTab.value === 'routing') return '路由规则'
-    if (activeTab.value === 'react') return 'React 提示词'
     return '系统配置'
   })
 
-  const showListCreateButton = computed(
-    () => activeTab.value === 'routing' || activeTab.value === 'react',
-  )
+  const showListCreateButton = computed(() => activeTab.value === 'routing')
 
-  const listCreateButtonLabel = computed(() =>
-    activeTab.value === 'routing' ? '新建规则' : '新建场景',
-  )
+  const listCreateButtonLabel = computed(() => '新建规则')
 
   const selectedListItem = computed(() =>
     prompts.value.find(p => p.id === selectedId.value) ?? null,
   )
 
-  const createModalTitle = computed(() =>
-    createModalKind.value === 'routing' ? '新建规则' : '新建场景',
-  )
+  const createModalTitle = computed(() => '新建规则')
 
-  const createIdPlaceholder = computed(() =>
-    createModalKind.value === 'routing' ? 'structural-plan' : 'demo-scenario',
-  )
+  const createIdPlaceholder = computed(() => 'structural-plan')
 
   async function refreshList(keepSelection = true) {
     loading.value = true
@@ -176,24 +163,14 @@ export function usePromptList(deps: PromptListDeps) {
     }
   }
 
-  function openCreateModal(tabKind: CreateModalKind) {
-    createModalKind.value = tabKind
-    if (tabKind === 'routing') {
-      createDraft.value = {
-        id: '',
-        kind: 'routing-rule',
-        displayName: '',
-        description: '',
-        priority: 10,
-      }
-    } else {
-      createDraft.value = {
-        id: '',
-        kind: 'react-prompt',
-        displayName: '',
-        description: '',
-        priority: 0,
-      }
+  function openCreateModal() {
+    createModalKind.value = 'routing'
+    createDraft.value = {
+      id: '',
+      kind: 'routing-rule',
+      displayName: '',
+      description: '',
+      priority: 10,
     }
     showCreateModal.value = true
   }
@@ -207,16 +184,8 @@ export function usePromptList(deps: PromptListDeps) {
       message.warning('请填写 ID 与展示名')
       return
     }
-    if (createModalKind.value === 'react' && !description) {
-      message.warning('请填写场景描述（写清适用问法，便于路由绑定命中）')
-      return
-    }
-    if (createModalKind.value === 'routing' && kind !== 'routing-rule') {
+    if (kind !== 'routing-rule') {
       message.warning('路由规则类型固定为 routing-rule')
-      return
-    }
-    if (createModalKind.value === 'react' && kind !== 'react-prompt') {
-      message.warning('场景类型固定为 react-prompt')
       return
     }
     const id = ensurePromptIdPrefix(rawId, kind)

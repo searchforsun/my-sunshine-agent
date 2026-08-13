@@ -1,10 +1,10 @@
 import { useRoute, useRouter } from 'vue-router'
 
-export type PromptsTab = 'system' | 'routing' | 'react'
+export type PromptsTab = 'system' | 'routing'
 export type PromptsRoutingPane = 'editor' | 'dry-run'
 export type PromptsSystemPane = 'editor' | 'principles'
 
-const VALID_TABS = new Set<string>(['system', 'routing', 'react', 'all'])
+const VALID_TABS = new Set<string>(['system', 'routing', 'all'])
 
 function queryString(value: unknown): string | null {
   if (typeof value !== 'string') return null

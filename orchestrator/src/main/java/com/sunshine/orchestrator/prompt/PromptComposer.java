@@ -77,7 +77,7 @@ public class PromptComposer {
         addReactUser(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
         // 用户个人规则（soul）：mode-overlay 之后独立注入层；空不注入
         addReactUser(inputs, PersonalRulesSupport.wrap(request.personalRules()));
-        addReactUser(inputs, resolveReactScenarioOverlay(request.reactPromptId()));
+        addReactUser(inputs, resolveHarnessOverlay(request.harnessPromptId()));
         addReactUser(inputs, resolveReactRestartOverlay(request));
         addReactUser(inputs, resolveHitlOverlay(request.mode()));
         addReactUser(inputs, resolveSkillOverlay(request.skillId()));
@@ -197,28 +197,23 @@ public class PromptComposer {
         return catalogText("mode-overlay.react-restart");
     }
 
-    private String resolveReactScenarioOverlay(String reactPromptId) {
-        if (!StringUtils.hasText(reactPromptId)) {
+    /** Planner-Executor harness overlay；仅接受 kind=planner（机制层） */
+    private String resolveHarnessOverlay(String harnessPromptId) {
+        if (!StringUtils.hasText(harnessPromptId)) {
             return "";
         }
-        String id = reactPromptId.strip();
+        String id = harnessPromptId.strip();
         var entry = catalogHolder.snapshot().entry(id);
         if (entry.isEmpty()) {
-            log.warn("[PromptComposer] react scenario missing id={}", id);
+            log.warn("[PromptComposer] harness missing id={}", id);
             return "";
         }
         PromptCatalogEntry e = entry.get();
-        String kind = e.kind();
-        if (!e.enabled() || !isScenarioOverlayKind(kind)) {
-            log.warn("[PromptComposer] react scenario invalid id={} kind={} enabled={}", id, kind, e.enabled());
+        if (!e.enabled() || !"planner".equals(e.kind())) {
+            log.warn("[PromptComposer] harness invalid id={} kind={} enabled={}", id, e.kind(), e.enabled());
             return "";
         }
         return e.contentText() != null ? e.contentText().strip() : "";
-    }
-
-    /** react-prompt 场景 overlay；planner.harness 的 kind=planner 同样走此层。 */
-    private static boolean isScenarioOverlayKind(String kind) {
-        return "react-prompt".equals(kind) || "planner".equals(kind);
     }
 
     private String resolveSkillOverlay(String skillId) {

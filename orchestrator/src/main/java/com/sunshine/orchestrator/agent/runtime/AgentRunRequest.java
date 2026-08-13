@@ -22,7 +22,8 @@ public record AgentRunRequest(
         int maxIters,
         TimelineBinding timeline,
         boolean reactRestart,
-        String reactPromptId,
+        /** Planner-Executor harness overlay id（仅 PLANNER；机制层，见 PromptComposer.resolveHarnessOverlay） */
+        String harnessPromptId,
         /** 对话级沙箱复用键；MAIN 必填方可跨 run 保留 workspace */
         String conversationId,
         /** ReAct checkpoint 续跑：中断前最大 think 轮次，用于 session.resumeFromCheckpoint */
@@ -50,16 +51,7 @@ public record AgentRunRequest(
         return new AgentRunRequest(
                 role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
-                reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
-                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
-                conversationKind);
-    }
-
-    public AgentRunRequest withReactPromptId(String reactPromptId) {
-        return new AgentRunRequest(
-                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
-                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
-                reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
                 conversationKind);
     }
@@ -69,7 +61,17 @@ public record AgentRunRequest(
         return new AgentRunRequest(
                 role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
-                reactRestart, reactPromptId, conversationId, checkpointThinkIteration,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind);
+    }
+
+    /** Planner-Executor harness overlay（机制层）；仅 PLANNER 使用 */
+    public AgentRunRequest withHarnessPromptId(String harnessPromptId) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
                 conversationKind);
     }
@@ -97,7 +99,7 @@ public record AgentRunRequest(
             String assistantMessageId,
             List<String> injectedBlocks,
             String skillId) {
-        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, false, null, null);
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, false, null, 0);
     }
 
     public static AgentRunRequest main(
@@ -109,7 +111,7 @@ public record AgentRunRequest(
             List<String> injectedBlocks,
             String skillId,
             boolean reactRestart) {
-        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, reactRestart, null, null);
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, reactRestart, null, 0);
     }
 
     public static AgentRunRequest main(
@@ -123,7 +125,7 @@ public record AgentRunRequest(
             boolean reactRestart,
             String conversationId) {
         return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, skillId, reactRestart,
-                conversationId, null);
+                conversationId, 0);
     }
 
     public static AgentRunRequest main(
@@ -136,10 +138,9 @@ public record AgentRunRequest(
             String skillId,
             boolean reactRestart,
             String conversationId,
-            String reactPromptId,
             int checkpointThinkIteration) {
         return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks,
-                skillId, reactRestart, conversationId, reactPromptId, checkpointThinkIteration, 0);
+                skillId, reactRestart, conversationId, checkpointThinkIteration, 0);
     }
 
     /** MAIN — 显式指定 ReAct 轮数上限（0 = 取 Nacos 默认） */
@@ -153,7 +154,6 @@ public record AgentRunRequest(
             String skillId,
             boolean reactRestart,
             String conversationId,
-            String reactPromptId,
             int checkpointThinkIteration,
             int maxIters) {
         return new AgentRunRequest(
@@ -172,7 +172,7 @@ public record AgentRunRequest(
                 maxIters,
                 TimelineBinding.MAIN_FULL,
                 reactRestart,
-                reactPromptId,
+                null,
                 conversationId,
                 checkpointThinkIteration,
                 null,
@@ -189,28 +189,13 @@ public record AgentRunRequest(
             String userId,
             String tenantId,
             String assistantMessageId,
-            List<String> injectedBlocks,
-            String skillId,
-            boolean reactRestart,
-            String conversationId,
-            String reactPromptId) {
-        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks,
-                skillId, reactRestart, conversationId, reactPromptId, 0);
-    }
-
-    public static AgentRunRequest main(
-            AssembledContext memory,
-            String query,
-            String userId,
-            String tenantId,
-            String assistantMessageId,
             List<String> injectedBlocks) {
-        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, null, false, null, null);
+        return main(memory, query, userId, tenantId, assistantMessageId, injectedBlocks, null, false, null, 0);
     }
 
     public static AgentRunRequest main(
             AssembledContext memory, String query, String userId, String tenantId, String assistantMessageId) {
-        return main(memory, query, userId, tenantId, assistantMessageId, List.of(), null, false, null, null);
+        return main(memory, query, userId, tenantId, assistantMessageId, List.of(), null, false, null, 0);
     }
 
     /** Workflow 子 Agent — 不绑定 assistantMessageId，压缩 Timeline */
@@ -337,7 +322,7 @@ public record AgentRunRequest(
                 maxIters,
                 TimelineBinding.PLANNER_ONLY,
                 false,
-                "planner.harness",
+                HARNESS_PROMPT_ID,
                 conversationId,
                 0,
                 null,
@@ -347,6 +332,9 @@ public record AgentRunRequest(
                 null,
                 null);
     }
+
+    /** Planner-Executor harness overlay id（机制层；PromptComposer 仅接受 kind=planner） */
+    public static final String HARNESS_PROMPT_ID = "planner.harness";
 
     /** Planner-Executor Worker — forWorker 记忆 + 工具白名单 + WORKER_NESTED Timeline */
     public static AgentRunRequest worker(

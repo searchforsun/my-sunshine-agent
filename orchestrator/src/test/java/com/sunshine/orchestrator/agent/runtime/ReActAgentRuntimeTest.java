@@ -118,7 +118,7 @@ class ReActAgentRuntimeTest {
         assertThat(tokens).isNotNull();
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
         verify(promptComposer).composeReactInputs(composeCaptor.capture());
-        assertThat(composeCaptor.getValue().reactPromptId()).isEqualTo("planner.harness");
+        assertThat(composeCaptor.getValue().harnessPromptId()).isEqualTo("planner.harness");
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
     }

@@ -61,7 +61,7 @@ class PromptCatalogHolderTest {
         holder.replace(PromptCatalogSnapshot.of(1L, List.of()));
         PromptCatalogSnapshot next = PromptCatalogSnapshot.of(2L, List.of(
                 new PromptCatalogEntry("routing-rule.react-policy-qa", "routing-rule", "react", true, 40, 1, null,
-                        "{\"matchType\":\"regex\",\"match\":\"any\",\"patterns\":[\"差旅办法\"],\"plan\":{\"mode\":\"react\",\"params\":{\"reactPromptId\":\"react-prompt.policy-qa\"}}}")));
+                        "{\"matchType\":\"regex\",\"match\":\"any\",\"patterns\":[\"差旅办法\"],\"plan\":{\"mode\":\"react\",\"params\":{\"skill\":\"policy-qa\"}}}")));
         boolean replaced = holder.refreshSafely(() -> next);
         assertThat(replaced).isTrue();
         assertThat(holder.snapshot()).isSameAs(next);

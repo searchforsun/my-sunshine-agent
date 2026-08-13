@@ -58,12 +58,12 @@ class IntentRouterTest {
         ExecutionPlan llm = new ExecutionPlan(
                 ExecutionMode.WORKFLOW,
                 "finance-smart",
-                Map.of("reactPromptId", "react-prompt.policy-qa", "skill", "x"),
+                Map.of("status", "pending", "skill", "x"),
                 "llm");
         ExecutionPlan locked = IntentRouter.applyLockedMode(llm, ExecutionMode.FAST);
         assertThat(locked.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(locked.workflowId()).isNull();
-        assertThat(locked.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
+        assertThat(locked.params()).containsEntry("status", "pending");
         assertThat(locked.params()).containsEntry("skill", "x");
     }
 

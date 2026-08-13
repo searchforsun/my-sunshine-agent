@@ -4,7 +4,6 @@ import {
   getPrompt,
   parseRoutingContentJson,
   serializeRoutingContent,
-  shortPromptId,
   updatePrompt,
   validateRoutingRules,
   type PromptDetail,
@@ -51,21 +50,6 @@ export function useRoutingRuleOps(deps: RoutingRuleOpsDeps) {
   const validating = ref(false)
 
   const isRoutingSelected = computed(() => selectedListItem.value?.kind === 'routing-rule')
-
-  const reactPromptOptions = computed(() =>
-    prompts.value
-      .filter(p => p.kind === 'react-prompt')
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map(p => {
-        const shortId = shortPromptId(p.id)
-        const name = p.displayName?.trim() || shortId
-        const desc = String((p as PromptListItem & { description?: string | null }).description ?? '').trim()
-        return {
-          label: desc ? `${name}｜${desc}` : name,
-          value: p.id,
-        }
-      }),
-  )
 
   const workflowOptions = computed(() =>
     workflowCatalog.value
@@ -134,7 +118,6 @@ export function useRoutingRuleOps(deps: RoutingRuleOpsDeps) {
     routingWarnings,
     validating,
     isRoutingSelected,
-    reactPromptOptions,
     workflowOptions,
     applyRoutingContent,
     saveRoutingRule,

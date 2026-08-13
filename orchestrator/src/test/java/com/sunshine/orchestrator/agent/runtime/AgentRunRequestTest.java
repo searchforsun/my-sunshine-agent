@@ -107,11 +107,10 @@ class AgentRunRequestTest {
     }
 
     @Test
-    void main_carriesReactPromptId() {
+    void main_defaultsHarnessPromptIdNull() {
         AgentRunRequest req = AgentRunRequest.main(
-                AssembledContext.empty(), "q", "u1", "default", "msg-1",
-                java.util.List.of(), null, false, null, "react-prompt.demo-scenario");
-        assertThat(req.reactPromptId()).isEqualTo("react-prompt.demo-scenario");
+                AssembledContext.empty(), "q", "u1", "default", "msg-1");
+        assertThat(req.harnessPromptId()).isNull();
     }
 
     @Test
@@ -152,7 +151,7 @@ class AgentRunRequestTest {
                 "conv-1",
                 0);
         assertThat(req.role()).isEqualTo(AgentRole.PLANNER);
-        assertThat(req.reactPromptId()).isEqualTo("planner.harness");
+        assertThat(req.harnessPromptId()).isEqualTo("planner.harness");
         assertThat(req.injectedBlocks()).containsExactly("## Goal\n完成调研");
         assertThat(req.conversationId()).isEqualTo("conv-1");
         assertThat(req.timeline()).isEqualTo(TimelineBinding.PLANNER_ONLY);

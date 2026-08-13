@@ -125,7 +125,7 @@ class HarnessPlannerTest {
         verify(agentRuntime).run(captor.capture());
         AgentRunRequest req = captor.getValue();
         assertThat(req.role()).isEqualTo(AgentRole.PLANNER);
-        assertThat(req.reactPromptId()).isEqualTo(HarnessPlanner.CATALOG_ID);
+        assertThat(req.harnessPromptId()).isEqualTo(HarnessPlanner.CATALOG_ID);
         assertThat(req.injectedBlocks()).isNotEmpty();
         assertThat(req.injectedBlocks().get(0)).contains("## Goal").contains("完成调研");
         assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();

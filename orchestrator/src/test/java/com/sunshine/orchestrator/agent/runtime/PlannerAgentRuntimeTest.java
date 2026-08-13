@@ -32,7 +32,7 @@ class PlannerAgentRuntimeTest {
         ArgumentCaptor<AgentRunRequest> captor = ArgumentCaptor.forClass(AgentRunRequest.class);
         verify(reactAgentRuntime).runPlannerReAct(captor.capture());
         assertThat(captor.getValue().role()).isEqualTo(AgentRole.PLANNER);
-        assertThat(captor.getValue().reactPromptId()).isEqualTo(PlannerAgentRuntime.HARNESS_PROMPT_ID);
+        assertThat(captor.getValue().harnessPromptId()).isEqualTo(PlannerAgentRuntime.HARNESS_PROMPT_ID);
     }
 
     @Test
@@ -42,6 +42,6 @@ class PlannerAgentRuntimeTest {
                 "q", java.util.List.of(), "u1", "default", "msg", null, null, null, 0,
                 TimelineBinding.PLANNER_ONLY, false, null, null, 0, null, null, null, null, null, null);
         AgentRunRequest filled = PlannerAgentRuntime.ensureHarnessPrompt(blank);
-        assertThat(filled.reactPromptId()).isEqualTo("planner.harness");
+        assertThat(filled.harnessPromptId()).isEqualTo("planner.harness");
     }
 }

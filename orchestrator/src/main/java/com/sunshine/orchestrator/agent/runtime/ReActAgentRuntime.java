@@ -184,8 +184,13 @@ public class ReActAgentRuntime implements AgentRuntime {
                 }
             }
             List<Msg> inputs = promptComposer.composeReactInputs(
-                    PromptComposeRequest.forReact(memory, query, request.skillId(), injectedBlocks,
-                            request.reactRestart(), request.reactPromptId(), null, convKind, workspaceCheckout));
+                    request.role() == AgentRole.PLANNER
+                            ? PromptComposeRequest.forPlannerHarness(
+                                    memory, query, injectedBlocks, request.reactRestart(),
+                                    request.harnessPromptId(), convKind, workspaceCheckout)
+                            : PromptComposeRequest.forReact(
+                                    memory, query, request.skillId(), injectedBlocks,
+                                    request.reactRestart(), null, convKind, workspaceCheckout));
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
             StringBuilder answerContent = new StringBuilder();

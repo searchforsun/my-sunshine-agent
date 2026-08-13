@@ -56,29 +56,27 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_react_withSkillBinding_stillCallsL3ForReactPrompt() {
+    void resolve_react_withSkillBinding_skipsL3AndDropsLlmtParams() {
         ExecutionPlan skillPlan = new ExecutionPlan(
                 ExecutionMode.FAST, null, Map.of("skill", "finance-analysis"), "skill:@mention");
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "finance-smart",
-                Map.of("reactPromptId", "react-prompt.from-llm"), "llm")));
+                Map.of("status", "pending"), "llm")));
 
         ExecutionPlan plan = router.resolve(
                 new RoutingContext("@finance-analysis 分析", null, ExecutionPreference.FAST, null, null),
                 ExecutionPreference.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
         assertThat(plan.params()).containsEntry("skill", "finance-analysis");
-        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.from-llm");
-        ArgumentCaptor<RoutingContext> cap = ArgumentCaptor.forClass(RoutingContext.class);
-        verify(intentRouter).classifyPlan(cap.capture());
-        assertThat(cap.getValue().lockedMode()).isEqualTo(ExecutionMode.FAST);
+        assertThat(plan.params()).doesNotContainKey("status");
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
     @Test
-    void resolve_react_policyPhrase_bindsReactPromptFromRule() {
+    void resolve_react_policyPhrase_bindsSkillFromRule() {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
 
         ExecutionPlan plan = router.resolve(
@@ -86,8 +84,8 @@ class ForcedExecutionRouterTest {
                 ExecutionPreference.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
-        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
+        assertThat(plan.params()).containsEntry("skill", "policy-qa");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
@@ -104,7 +102,7 @@ class ForcedExecutionRouterTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params()).containsEntry("skill", "policy-review");
-        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.policy-qa");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
@@ -120,7 +118,7 @@ class ForcedExecutionRouterTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.workflowId()).isNull();
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
         assertThat(plan.ruleId()).isNull();
     }
 
@@ -135,7 +133,7 @@ class ForcedExecutionRouterTest {
                 ExecutionPreference.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
 
     @Test
@@ -151,7 +149,7 @@ class ForcedExecutionRouterTest {
                 ExecutionPreference.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.params()).containsEntry("skill", "policy-review");
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
@@ -165,7 +163,7 @@ class ForcedExecutionRouterTest {
                 ExecutionPreference.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
@@ -210,5 +208,50 @@ class ForcedExecutionRouterTest {
         ArgumentCaptor<RoutingContext> cap = ArgumentCaptor.forClass(RoutingContext.class);
         verify(intentRouter).classifyPlan(cap.capture());
         assertThat(cap.getValue().lockedMode()).isEqualTo(ExecutionMode.WORKFLOW);
+    }
+
+    @Test
+    void resolve_pro_withSkill_recordsModeTrackL0FinalTraces() {
+        ExecutionPlan skillPlan = new ExecutionPlan(
+                ExecutionMode.FAST, null, Map.of("skill", "policy-review"), "skill:@mention");
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("@policy-review 请事假合规吗", null, ExecutionPreference.PRO, null, null),
+                ExecutionPreference.PRO, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.routingTraces()).isNotNull();
+        assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
+                .containsExactly("mode", "track", "L0", "final");
+        assertThat(plan.routingTraces()).extracting(RoutingTrace::detail)
+                .contains("pro（专业）", "轨 A：skill + agent", "skill=policy-review", "skill=policy-review");
+    }
+
+    @Test
+    void resolve_fast_policyRule_recordsRuleTrace() {
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("差旅办法制度怎么说", null, ExecutionPreference.FAST, null, null),
+                ExecutionPreference.FAST, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.routingTraces()).isNotNull();
+        assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
+                .contains("rule", "final");
+        assertThat(plan.routingTraces()).anySatisfy(trace ->
+                assertThat(trace.detail()).isEqualTo("ruleId=" + RoutingCatalogFixtures.REACT_POLICY_QA_ID));
+    }
+
+    @Test
+    void resolve_workflow_withExplicitId_recordsWorkflowL0Traces() {
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("年假", null, ExecutionPreference.WORKFLOW, "knowledge-qa", null),
+                ExecutionPreference.WORKFLOW, "knowledge-qa").block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.routingTraces()).isNotNull();
+        assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
+                .containsExactly("mode", "track", "L0", "final");
+        assertThat(plan.routingTraces()).extracting(RoutingTrace::detail)
+                .contains("轨 B：仅 workflow", "workflowId=knowledge-qa", "workflow=knowledge-qa");
     }
 }

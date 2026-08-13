@@ -53,7 +53,6 @@ onMounted(() => {
     <NTabs v-model:value="page.activeTab" type="line" :animated="false" class="prompts-tabs">
       <NTabPane name="system" tab="系统配置" />
       <NTabPane name="routing" tab="路由规则" />
-      <NTabPane name="react" tab="React 提示词" />
     </NTabs>
 
     <div v-if="page.activeTab === 'system'" class="prompts-layout">
@@ -66,11 +65,6 @@ onMounted(() => {
       <PromptsListPanel />
       <RoutingDryRunPanel v-if="page.routingPane === 'dry-run'" />
       <RoutingRuleEditor v-else />
-    </div>
-
-    <div v-else class="prompts-layout">
-      <PromptsListPanel />
-      <PromptDetailPanel />
     </div>
 
     <NModal
@@ -91,24 +85,18 @@ onMounted(() => {
           <NInput
             v-model:value="page.createDraft.displayName"
             class="sun-field"
-            :placeholder="page.createModalKind === 'routing' ? '我的规则' : '我的场景'"
+            placeholder="我的规则"
           />
         </NFormItem>
-        <NFormItem
-          :label="page.createModalKind === 'react' ? '描述（适用问法，必填）' : '描述'"
-          :required="page.createModalKind === 'react'"
-        >
+        <NFormItem label="描述">
           <NInput
             v-model:value="page.createDraft.description"
             class="sun-field"
             type="textarea"
             :autosize="{ minRows: 2, maxRows: 4 }"
-            :placeholder="page.createModalKind === 'react'
-              ? '写清适用问法，例如：待审批列表、报销进度查询…'
-              : ''"
           />
         </NFormItem>
-        <NFormItem v-if="page.createModalKind === 'routing'" label="优先级">
+        <NFormItem label="优先级">
           <NInputNumber
             v-model:value="page.createDraft.priority"
             class="sun-field"

@@ -132,7 +132,7 @@ class TrackRoutingTest {
     void trackA_ignoresHashWorkflowMention() {
         when(intentRouter.classifyPlan(any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
-                        ExecutionMode.FAST, null, Map.of("reactPromptId", "react-prompt.x"), "llm")));
+                        ExecutionMode.FAST, null, Map.of("status", "draft"), "llm")));
 
         ExecutionPlan plan = router.route(
                 ctx(ExecutionPreference.FAST, "#knowledge-qa 制度怎么说", null, "chat")).block();
@@ -140,7 +140,7 @@ class TrackRoutingTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.workflowId()).isNull();
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
 
     @Test

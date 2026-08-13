@@ -19,7 +19,8 @@ public record PromptComposeRequest(
         List<String> injectedUserContexts,
         String partialAssistant,
         boolean reactRestart,
-        String reactPromptId,
+        /** Planner-Executor harness overlay id（机制层；仅 kind=planner 生效，见 PromptComposer.resolveHarnessOverlay） */
+        String harnessPromptId,
         String personalRules,
         String kind,
         /** 工作区 checkout 目录（kind=task 会话）；非空时注入「当前工作目录」提示 */
@@ -82,31 +83,32 @@ public record PromptComposeRequest(
 
     public static PromptComposeRequest forReact(
             AssembledContext context, String userMessage, String skillId,
-            List<String> injectedUserContexts, boolean reactRestart, String reactPromptId) {
-        return forReact(context, userMessage, skillId, injectedUserContexts, reactRestart, reactPromptId, null);
+            List<String> injectedUserContexts, boolean reactRestart, String personalRules) {
+        return forReact(context, userMessage, skillId, injectedUserContexts, reactRestart, personalRules, null);
     }
 
     public static PromptComposeRequest forReact(
             AssembledContext context, String userMessage, String skillId,
-            List<String> injectedUserContexts, boolean reactRestart, String reactPromptId, String personalRules) {
-        return forReact(context, userMessage, skillId, injectedUserContexts, reactRestart, reactPromptId, personalRules, null);
+            List<String> injectedUserContexts, boolean reactRestart, String personalRules, String kind) {
+        return forReact(context, userMessage, skillId, injectedUserContexts, reactRestart, personalRules, kind, null);
     }
 
     public static PromptComposeRequest forReact(
             AssembledContext context, String userMessage, String skillId,
-            List<String> injectedUserContexts, boolean reactRestart, String reactPromptId,
-            String personalRules, String kind) {
-        return forReact(context, userMessage, skillId, injectedUserContexts, reactRestart, reactPromptId,
-                personalRules, kind, null);
-    }
-
-    public static PromptComposeRequest forReact(
-            AssembledContext context, String userMessage, String skillId,
-            List<String> injectedUserContexts, boolean reactRestart, String reactPromptId,
-            String personalRules, String kind, String workspaceCheckout) {
+            List<String> injectedUserContexts, boolean reactRestart, String personalRules, String kind,
+            String workspaceCheckout) {
         return new PromptComposeRequest(
                 PromptMode.REACT, context, userMessage, null, skillId, null, injectedUserContexts, null,
-                reactRestart, reactPromptId, personalRules, kind, workspaceCheckout);
+                reactRestart, null, personalRules, kind, workspaceCheckout);
+    }
+
+    /** Planner-Executor — ReAct + {@code harnessPromptId}（mechanism overlay，仅 kind=planner） */
+    public static PromptComposeRequest forPlannerHarness(
+            AssembledContext context, String userMessage, List<String> injectedUserContexts,
+            boolean reactRestart, String harnessPromptId, String kind, String workspaceCheckout) {
+        return new PromptComposeRequest(
+                PromptMode.REACT, context, userMessage, null, null, null, injectedUserContexts, null,
+                reactRestart, harnessPromptId, null, kind, workspaceCheckout);
     }
 
     /** workflow llm 节点 — nodePrompt 为 TemplateResolver 渲染后的第 6 层 */

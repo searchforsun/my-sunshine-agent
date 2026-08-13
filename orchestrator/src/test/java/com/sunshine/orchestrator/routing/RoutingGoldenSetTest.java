@@ -105,7 +105,7 @@ class RoutingGoldenSetTest {
     void planWorkflowPrompts_withPro(String query) {
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.STRUCTURAL_ID);
         verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
@@ -155,7 +155,7 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, "先帮我写一封邮件再总结一下", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
 
     @Test
@@ -184,7 +184,7 @@ class RoutingGoldenSetTest {
 
         ExecutionPlan plan = router.route("随便聊聊").block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
         verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.<RoutingContext>argThat(
                 ctx -> "随便聊聊".equals(ctx.userMessage())));
     }
@@ -216,7 +216,7 @@ class RoutingGoldenSetTest {
         ExecutionPlan plan = router.route(query).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
 
     @Test
@@ -227,7 +227,7 @@ class RoutingGoldenSetTest {
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
-                        ExecutionMode.FAST, null, Map.of("reactPromptId", "react-prompt.x"), "llm")));
+                        ExecutionMode.FAST, null, Map.of("status", "pending"), "llm")));
 
         ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
@@ -243,7 +243,7 @@ class RoutingGoldenSetTest {
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
         ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, "待审批是否合规", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
 
     @Test
@@ -261,7 +261,7 @@ class RoutingGoldenSetTest {
     void forcedJ4_planWorkflow() {
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, "先查制度再查待审批", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
 
     @Test
@@ -285,7 +285,7 @@ class RoutingGoldenSetTest {
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
     }
 

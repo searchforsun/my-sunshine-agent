@@ -119,7 +119,6 @@ const paramsText = computed({
   get: () => {
     const params = page.routingForm.plan?.params ?? {}
     return Object.entries(params)
-      .filter(([k]) => k !== 'reactPromptId')
       .map(([k, val]) => `${k}=${val}`)
       .join('\n')
   },
@@ -127,7 +126,6 @@ const paramsText = computed({
     if (!page.routingForm.plan) {
       page.routingForm.plan = { mode: 'react', workflowId: null, params: {} }
     }
-    const existingReactPromptId = page.routingForm.plan.params?.reactPromptId
     const params: Record<string, string> = {}
     for (const line of v.split('\n')) {
       const trimmed = line.trim()
@@ -136,7 +134,6 @@ const paramsText = computed({
       if (idx <= 0) continue
       params[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim()
     }
-    if (existingReactPromptId) params.reactPromptId = existingReactPromptId
     page.routingForm.plan.params = params
   },
 })
@@ -161,21 +158,10 @@ const workflowId = computed({
   set: (v: string | null) => { ensurePlan().workflowId = v?.trim() || null },
 })
 
-const reactPromptId = computed({
-  get: () => ensurePlan().params?.reactPromptId || null,
-  set: (v: string | null) => {
-    const plan = ensurePlan()
-    if (!plan.params) plan.params = {}
-    if (v) plan.params.reactPromptId = v
-    else delete plan.params.reactPromptId
-  },
-})
-
 const matchType = computed(() => page.routingForm.matchType || 'regex')
 const showMatch = computed(() => matchType.value === 'regex')
 const showDomainGroups = computed(() => matchType.value === 'structural')
 const showWorkflowId = computed(() => planMode.value === 'workflow')
-const showReactPrompt = computed(() => planMode.value === 'react')
 const showPlanParams = computed(() => planMode.value === 'workflow')
 
 const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
@@ -486,24 +472,6 @@ const formLocked = computed(() => !page.isContentEditable || page.isActionBusy)
                 filterable
                 placeholder="从工作流目录选择"
                 :options="page.workflowOptions"
-                :consistent-menu-width="false"
-                :disabled="formLocked"
-              />
-            </NFormItem>
-            <NFormItem v-if="showReactPrompt">
-              <template #label>
-                <span class="field-label-row">
-                  React 提示词
-                  <ConfigFieldHelp :text="routingFieldHelp('reactPromptId')" />
-                </span>
-              </template>
-              <NSelect
-                v-model:value="reactPromptId"
-                class="sun-field"
-                clearable
-                filterable
-                placeholder="可选：绑定 React 场景"
-                :options="page.reactPromptOptions"
                 :consistent-menu-width="false"
                 :disabled="formLocked"
               />

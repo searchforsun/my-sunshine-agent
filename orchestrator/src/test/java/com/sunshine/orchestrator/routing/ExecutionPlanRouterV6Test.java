@@ -77,15 +77,15 @@ class ExecutionPlanRouterV6Test {
     void userPro_neverBecomesFast_evenIfL3SaysReact() {
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.FAST, null,
-                        Map.of("reactPromptId", "react-prompt.from-llm"), "llm:says-react")));
+                        Map.of("status", "pending"), "llm:says-react")));
 
         ExecutionPlan plan = router.route(new RoutingContext(
                 "随便聊聊", null, ExecutionPreference.PRO, null, null)).block();
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
-        assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.from-llm");
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
+        assertThat(plan.params()).containsEntry("status", "pending");
     }
 
     @Test

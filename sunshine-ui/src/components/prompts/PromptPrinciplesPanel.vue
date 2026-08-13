@@ -5,19 +5,21 @@ import { PROMPTS_PAGE_KEY, type PromptsPageApi } from '../../composables/useProm
 
 const page = inject(PROMPTS_PAGE_KEY) as PromptsPageApi
 
-/** 意图链路；底栏强制只锁执行方式，仍可解析 # / $ / / */
+/** 意图链路（v6）：模式锁定 → 轨道分流 → 各层绑定 → 分发 */
 const ROUTING_STEPS = [
+  { key: '模式', title: '模式锁定', detail: '底栏 fast / pro / workflow；锁定后不再由意图自动改道' },
+  { key: '轨道', title: '轨道分流', detail: '轨 A：skill + agent；轨 B：仅 workflow' },
   { key: 'L0', title: '硬绑定', detail: '#工作流 / $智能体 / /Skill → 立刻锁定' },
-  { key: '规则', title: '统一规则', detail: 'Catalog 路由规则（routing-rule）按 priority 首命中' },
-  { key: 'L3', title: '意图分类', detail: '未命中 → intent.classifier' },
-  { key: '执行', title: '分发', detail: 'workflow / plan-workflow / react' },
+  { key: '规则', title: '同轨规则', detail: 'Catalog 路由规则（routing-rule）按 priority 首命中，仅匹配同 mode' },
+  { key: 'L3', title: '补绑定', detail: '未命中 → intent.classifier 补 skill / workflowId（不改模式）' },
+  { key: '执行', title: '分发', detail: 'fast → ReAct · pro → Planner-Executor · workflow → 工作流' },
 ] as const
 
 /** 底栏强制执行模式（≠ 自动） */
 const FORCE_ROWS = [
   {
     item: '触发',
-    detail: 'Chat 底栏执行模式 ≠ 自动（react / workflow / plan-workflow）',
+    detail: 'Chat 底栏执行模式 ≠ 自动（fast / pro / workflow）',
   },
   {
     item: '效果',
@@ -25,7 +27,7 @@ const FORCE_ROWS = [
   },
   {
     item: '仍走',
-    detail: '仍走 L0 / 同 mode 规则 / L3，解析 Skill、react 提示词、workflowId',
+    detail: '仍走 L0 / 同 mode 规则 / L3，解析 Skill、工作流模板、workflowId',
   },
   {
     item: '工作流模板',
@@ -38,7 +40,7 @@ const MESSAGE_STACK = [
   {
     role: 'system',
     title: 'Catalog 行为层',
-    detail: 'system-prompt → mode-overlay →（ReAct）react-prompt / restart / HITL → skill → scope / 节点 prompt',
+    detail: 'system-prompt → mode-overlay →（ReAct）restart / HITL → skill → scope / 节点 prompt',
   },
   {
     role: 'system',
@@ -93,7 +95,7 @@ const AGENT_ROWS = [
     key: 'MAIN',
     title: '主 Agent',
     when: 'react / 底栏强制',
-    stack: 'L1 / L2 / L3 全量；叠 mode-overlay.react 与可选 react-prompt / skill / HITL；本轮 TOOL 另有压缩',
+    stack: 'L1 / L2 / L3 全量；叠 mode-overlay.react 与可选 skill / HITL；本轮 TOOL 另有压缩',
   },
   {
     key: 'spawn',
@@ -244,7 +246,7 @@ const AGENT_ROWS = [
         </div>
         <p class="callout muted">
           <span class="callout-k">本页怎么改</span>
-          系统配置 = system / mode-overlay；路由规则 = 路径 + 可选 reactPromptId；React 提示词 = 仅 MAIN；上下文分层 =
+          系统配置 = system / mode-overlay；路由规则 = 路径；上下文分层 =
           context.*。
         </p>
       </section>

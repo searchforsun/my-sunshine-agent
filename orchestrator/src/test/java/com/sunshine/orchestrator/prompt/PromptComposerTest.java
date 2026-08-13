@@ -113,13 +113,12 @@ class PromptComposerTest {
 
     @Test
     void composeReactInputs_neverEmitsSystemRole_messagesPreserveTextAndNonSystemRoles() {
-        // 覆盖完整 react 链路：mode overlay + scenario overlay + restart overlay + hitl overlay
+        // 覆盖完整 react 链路：mode overlay + restart overlay + hitl overlay
         // + skill overlay + 上下文 L2/Far/Mid/Near/L3 + scope + nodePrompt + injected + 当前提问
         when(skillCatalogService.overlayOrEmpty("finance-analysis")).thenReturn("skill-overlay-text");
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 textEntry("system-prompt", "system", "base-system"),
                 textEntry("mode-overlay.react", "mode-overlay", "react-mode-overlay"),
-                textEntry("react-prompt.demo", "react-prompt", "react-scenario-overlay"),
                 textEntry("mode-overlay.react-restart", "mode-overlay", "react-restart-overlay"),
                 textEntry("hitl.agent-prompt", "hitl", "hitl-overlay"),
                 textEntry("context.layer-prompt", "context", LAYER_PROMPT),
@@ -136,7 +135,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, "react-prompt.demo", null, null, null));
+                List.of("injected-ctx"), null, true, null, null, null, null));
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
@@ -146,7 +145,6 @@ class PromptComposerTest {
         // 指令/上下文文本不丢（角色已收敛为 USER，但正文一字未改）
         List<String> texts = inputs.stream().map(Msg::getTextContent).toList();
         assertThat(texts).anyMatch(t -> t.contains("react-mode-overlay"));
-        assertThat(texts).anyMatch(t -> t.contains("react-scenario-overlay"));
         assertThat(texts).anyMatch(t -> t.contains("react-restart-overlay"));
         assertThat(texts).anyMatch(t -> t.contains("hitl-overlay"));
         assertThat(texts).anyMatch(t -> t.contains("skill-overlay-text"));
@@ -224,24 +222,6 @@ class PromptComposerTest {
     }
 
     @Test
-    void composeReactInputs_appliesReactScenarioOverlayAfterModeOverlay() {
-        catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                textEntry("mode-overlay.react", "mode-overlay", "BASE"),
-                textEntry("react-prompt.demo-scenario", "react-prompt", "SCENARIO"),
-                textEntry("context.layer-prompt", "context", ""),
-                textEntry("context.usage-rules", "context", ""),
-                textEntry("context.current-user-marker", "context", USER_MARKER),
-                textEntry("scope-prompt", "scope", ""),
-                textEntry("hitl.agent-prompt", "hitl", ""))));
-
-        List<Msg> inputs = composer.composeReactInputs(
-                PromptComposeRequest.forReact(
-                        AssembledContext.empty(), "问", null, List.of(), false, "react-prompt.demo-scenario"));
-        assertThat(inputs.get(0).getTextContent()).isEqualTo("BASE");
-        assertThat(inputs.get(1).getTextContent()).isEqualTo("SCENARIO");
-    }
-
-    @Test
     void composeReactInputs_loadsPlannerHarnessKindPlanner() {
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 textEntry("mode-overlay.react", "mode-overlay", "BASE"),
@@ -253,8 +233,8 @@ class PromptComposerTest {
                 textEntry("hitl.agent-prompt", "hitl", ""))));
 
         List<Msg> inputs = composer.composeReactInputs(
-                PromptComposeRequest.forReact(
-                        AssembledContext.empty(), "问", null, List.of(), false, "planner.harness"));
+                PromptComposeRequest.forPlannerHarness(
+                        AssembledContext.empty(), "问", List.of(), false, "planner.harness", null, null));
         assertThat(inputs.stream().map(Msg::getTextContent)).contains("PLANNER-HARNESS");
     }
 
@@ -349,7 +329,7 @@ class PromptComposerTest {
     @Test
     void composeReactInputs_injectsPersonalRulesAfterModeOverlay() {
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "问", null, List.of(), false, null, "用文言文回答"));
+                AssembledContext.empty(), "问", null, List.of(), false, "用文言文回答"));
 
         assertThat(inputs.get(0).getTextContent()).isEqualTo("react-mode-minimal");
         assertThat(inputs.get(1).getTextContent()).isEqualTo("## 用户个人规则\n用文言文回答");
@@ -367,7 +347,7 @@ class PromptComposerTest {
         hitlProperties.setEnabled(false);
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "改代码", null, List.of(), false, null, null, "task",
+                AssembledContext.empty(), "改代码", null, List.of(), false, null, "task",
                 "/workspace/branches/wt-abc123"));
 
         List<String> texts = inputs.stream().map(Msg::getTextContent).filter(t -> t != null).toList();
@@ -455,7 +435,7 @@ class PromptComposerTest {
         if (id.startsWith("mode-overlay")) return "mode-overlay";
         if (id.startsWith("context.")) return "context";
         if (id.startsWith("hitl.")) return "hitl";
-        if (id.startsWith("react-prompt")) return "react-prompt";
+        if (id.startsWith("planner.")) return "planner";
         if (id.startsWith("workspace.")) return "scene-overlay";
         if ("scope-prompt".equals(id)) return "scope";
         return "system";

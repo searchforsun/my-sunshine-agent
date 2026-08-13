@@ -230,19 +230,19 @@ def main() -> int:
     print(f"=== executionPreference Live §J ===\nGateway={GATEWAY_URL}")
     token, _ = setup_auth()
     cases = [
-        ("J1", "react", "待审批是否合规", {"expect_reason": "user:forced-react", "expect_intent": "react"}),
+        ("J1", "fast", "待审批是否合规", {"expect_reason": "user:forced-fast", "expect_intent": "fast"}),
         # J2：规则可命中的待审批列表，避免仅依赖 L3 选 knowledge-qa（定义拉取失败时会卡死）
         ("J2", "workflow", "有哪些待审批报销", {"expect_reason": "user:forced-workflow", "expect_intent": "workflow:finance-list"}),
-        ("J3", "plan-workflow", "先查制度再查待审批",
-         {"expect_reason": "user:forced-plan-workflow", "expect_intent": "plan-workflow"}),
+        ("J3", "pro", "先查制度再查待审批",
+         {"expect_reason": "user:forced-pro", "expect_intent": "pro"}),
         ("J4", "workflow", "@policy-review 有哪些待审批报销",
          {"expect_reason": "user:forced-workflow", "expect_intent": "workflow:finance-list"}),
-        ("J5", "plan-workflow", "@finance-analysis 是否合规",
-         {"expect_reason": "user:forced-plan-workflow", "expect_intent": "plan-workflow"}),
+        ("J5", "pro", "@finance-analysis 是否合规",
+         {"expect_reason": "user:forced-pro", "expect_intent": "pro"}),
         # skill 合并见 ForcedExecutionRouterTest；Live plan 确认 interrupted 时 skill 元数据可能未落全
-        # 强制 react + 制度句式：锁 mode 仍命中 react-prompt.policy-qa 规则（intent 仍为 react）
-        ("J6", "react", "差旅办法制度怎么说",
-         {"expect_reason": "user:forced-react", "expect_intent": "react"}),
+        # 强制 fast + 制度句式：锁 mode 仍命中 policy-qa 规则（intent 仍为 fast）
+        ("J6", "fast", "差旅办法制度怎么说",
+         {"expect_reason": "user:forced-fast", "expect_intent": "fast"}),
     ]
     report = {"steps": {}}
     for case_id, pref, query, kwargs in cases:
