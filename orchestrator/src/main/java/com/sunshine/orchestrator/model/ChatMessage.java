@@ -12,11 +12,28 @@ public class ChatMessage {
     /** 续传目标 assistant 消息 id，与 content 互斥 */
     private String resumeMessageId;
 
-    /** auto | react | workflow | plan-workflow */
+    /**
+     * 执行模式（v6 SSOT）：fast | pro | workflow。
+     * 缺省时回落 {@link #executionPreference}（兼容旧客户端）。
+     */
+    private String executionMode;
+
+    /** @deprecated 兼容旧 wire；优先读 {@link #executionMode} */
     private String executionPreference;
 
-    /** 强制 workflow 模式时可选指定 catalog id */
+    /** workflow 模式时可选指定 catalog id */
     private String workflowId;
+
+    /** 解析用户钉死模式：executionMode 优先，否则 executionPreference，缺省 fast */
+    public String resolveExecutionModeWire() {
+        if (executionMode != null && !executionMode.isBlank()) {
+            return executionMode.strip();
+        }
+        if (executionPreference != null && !executionPreference.isBlank()) {
+            return executionPreference.strip();
+        }
+        return "fast";
+    }
 
     /** 前端解析到的 catalog skillId，L0 优先绑定 */
     private String skillId;

@@ -65,7 +65,7 @@ public class ChatStreamContextFactory {
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
-        ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
+        ExecutionPreference preference = ExecutionPreference.from(msg.resolveExecutionModeWire());
         String userContent = desensitizeClient.scrub(msg.getContent());
         boolean firstMessage = ConversationService.DEFAULT_TITLE.equals(conv.getTitle());
         conversationService.appendMessage(conv.getId(), "user",

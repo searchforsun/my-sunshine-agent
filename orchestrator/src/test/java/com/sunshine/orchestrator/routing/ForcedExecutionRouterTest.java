@@ -4,12 +4,16 @@ import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
+import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -22,12 +26,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class ForcedExecutionRouterTest {
 
     @Mock
     private SkillBindingRoutingPolicy skillBindingRoutingPolicy;
     @Mock
     private IntentRouter intentRouter;
+    @Mock
+    private WorkflowCatalog workflowCatalog;
 
     private PromptCatalogHolder catalogHolder;
     private ForcedExecutionRouter router;
@@ -35,7 +42,10 @@ class ForcedExecutionRouterTest {
     @BeforeEach
     void setUp() {
         catalogHolder = RoutingCatalogFixtures.seedHolder();
-        router = new ForcedExecutionRouter(skillBindingRoutingPolicy, catalogHolder, intentRouter);
+        WorkflowBindingRoutingPolicy workflowPolicy =
+                new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
+        router = new ForcedExecutionRouter(skillBindingRoutingPolicy, catalogHolder, intentRouter, workflowPolicy);
+        when(workflowCatalog.isKnownWorkflow(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
     }
 
     @Test
@@ -161,6 +171,8 @@ class ForcedExecutionRouterTest {
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
+        assertThat(plan.reason()).isEqualTo("workflow:client");
+        assertThat(plan.params()).containsEntry("effectiveQuery", "年假");
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 

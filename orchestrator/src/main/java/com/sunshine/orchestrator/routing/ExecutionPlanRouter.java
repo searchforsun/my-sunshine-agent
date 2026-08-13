@@ -1,19 +1,19 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
-import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.skill.SkillDiscoveryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-/** 路由入口 — 委托 RoutingPolicyChain（L0 绑定 → UnifiedRule → LLM）+ Skill 校验 */
+/**
+ * 路由入口（v6）：用户 executionMode 钉死；经 {@link ForcedExecutionRouter} 收集绑定，永不自判改 mode。
+ */
 @Component
 @RequiredArgsConstructor
 public class ExecutionPlanRouter {
 
-    private final RoutingPolicyChain policyChain;
     private final SkillDiscoveryService skillDiscoveryService;
     private final ForcedExecutionRouter forcedExecutionRouter;
     private final SkillBindingParser skillBindingParser;
@@ -28,20 +28,16 @@ public class ExecutionPlanRouter {
 
     public Mono<ExecutionPlan> route(RoutingContext ctx) {
         ExecutionPreference preference = ctx.preference() != null ? ctx.preference() : ExecutionPreference.FAST;
-        RoutingContext routedCtx = routingContextForForcedPreference(ctx, preference);
-        if (preference.isForced()) {
-            return forcedExecutionRouter.resolve(routedCtx, preference, ctx.forcedWorkflowId())
-                    .map(plan -> preference == ExecutionPreference.FAST
-                            ? skillDiscoveryService.enrich(plan, routedCtx.userMessage())
-                            : plan);
-        }
-        return policyChain.route(ctx)
-                .map(plan -> skillDiscoveryService.enrich(plan, ctx.userMessage()));
+        RoutingContext routedCtx = routingContextForPinnedPreference(ctx, preference);
+        return forcedExecutionRouter.resolve(routedCtx, preference, ctx.forcedWorkflowId())
+                .map(plan -> preference == ExecutionPreference.FAST
+                        ? skillDiscoveryService.enrich(plan, routedCtx.userMessage())
+                        : plan);
     }
 
-    /** 禁用 Skill 的强制模式：路由与执行均忽略 @skill，仅保留正文 */
-    private RoutingContext routingContextForForcedPreference(RoutingContext ctx, ExecutionPreference preference) {
-        if (!preference.isForced() || preference.allowsSkillBinding()) {
+    /** WORKFLOW 钉死：路由与执行均忽略 @skill，仅保留正文 */
+    private RoutingContext routingContextForPinnedPreference(RoutingContext ctx, ExecutionPreference preference) {
+        if (preference.allowsSkillBinding()) {
             return ctx;
         }
         String plain = skillBindingParser.stripAtMention(ctx.userMessage());

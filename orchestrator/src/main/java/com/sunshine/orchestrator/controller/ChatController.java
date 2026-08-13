@@ -84,8 +84,8 @@ public class ChatController {
 
         validateRequest(msg);
         if (!StringUtils.hasText(msg.getResumeMessageId())) {
-            log.info("[Orchestrator] chat pref={} workflowId={} skillId={} conv={}",
-                    msg.getExecutionPreference(), msg.getWorkflowId(), msg.getSkillId(), msg.getConversationId());
+            log.info("[Orchestrator] chat mode={} workflowId={} skillId={} conv={}",
+                    msg.resolveExecutionModeWire(), msg.getWorkflowId(), msg.getSkillId(), msg.getConversationId());
         }
 
         if (StringUtils.hasText(msg.getResumeMessageId())) {

@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.UnifiedRuleRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -18,8 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 用户强制 executionPreference：锁死 {@link ExecutionMode}，仍经 L0→同 mode 规则→L3 解析绑定
- * （skillId / reactPromptId / workflowId），不得改 mode。
+ * 钉死 executionMode 的资源收集：L0（#workflow / @skill）→ 同 mode 规则 → L3 绑定；永不改 mode。
  */
 @Component
 @RequiredArgsConstructor
@@ -33,6 +33,7 @@ public class ForcedExecutionRouter {
     private final SkillBindingRoutingPolicy skillBindingRoutingPolicy;
     private final PromptCatalogHolder promptCatalogHolder;
     private final IntentRouter intentRouter;
+    private final WorkflowBindingRoutingPolicy workflowBindingRoutingPolicy;
 
     public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionPreference preference, String workflowId) {
         if (preference == null) {
@@ -41,8 +42,24 @@ public class ForcedExecutionRouter {
         return switch (preference) {
             case FAST -> resolveForced(ctx, ExecutionMode.FAST, REASON_REACT, null);
             case PRO -> resolveForced(ctx, ExecutionMode.PRO, REASON_PLAN, null);
-            case WORKFLOW -> resolveForced(ctx, ExecutionMode.WORKFLOW, REASON_WORKFLOW, workflowId);
+            case WORKFLOW -> resolveWorkflowPinned(ctx, workflowId);
         };
+    }
+
+    /** WORKFLOW：先 #mention / 请求体 workflowId，再同 mode 规则与 L3；无候选显式失败 */
+    private Mono<ExecutionPlan> resolveWorkflowPinned(RoutingContext ctx, String workflowId) {
+        RoutingContext bindCtx = ctx;
+        if (StringUtils.hasText(workflowId) && !StringUtils.hasText(ctx.forcedWorkflowId())) {
+            bindCtx = new RoutingContext(
+                    ctx.userMessage(), ctx.traceMessageId(), ctx.preference(),
+                    workflowId.strip(), ctx.clientSkillId(), ctx.memory(), ctx.lockedMode());
+        }
+        return workflowBindingRoutingPolicy.tryRoute(bindCtx).flatMap(opt -> {
+            if (opt.isPresent()) {
+                return Mono.just(opt.get());
+            }
+            return resolveForced(ctx, ExecutionMode.WORKFLOW, REASON_WORKFLOW, null);
+        });
     }
 
     private Mono<ExecutionPlan> resolveForced(
@@ -93,7 +110,7 @@ public class ForcedExecutionRouter {
         }
     }
 
-    /** 强制路径绑定累积：高优先级已有键不覆盖 */
+    /** 钉死路径绑定累积：高优先级已有键不覆盖 */
     private static final class BindingAcc {
         private final ExecutionMode locked;
         private final String reason;

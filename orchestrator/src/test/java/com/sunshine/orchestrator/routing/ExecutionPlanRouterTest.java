@@ -3,12 +3,8 @@ package com.sunshine.orchestrator.routing;
 import com.sunshine.orchestrator.agent.IntentRouter;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import com.sunshine.orchestrator.rewrite.QueryRewriteService;
-import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
-import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
 import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
-import com.sunshine.orchestrator.routing.policy.UnifiedRuleRoutingPolicy;
 import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
@@ -34,7 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Task 1：三模式均钉死（无 auto 自判）；默认 preference=FAST 走 ForcedExecutionRouter。
+ * Task 4：三模式均钉死；默认 preference=FAST 走 ForcedExecutionRouter。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -44,8 +40,6 @@ class ExecutionPlanRouterTest {
     private SkillBindingParser skillBindingParser;
     @Mock
     private IntentRouter intentRouter;
-    @Mock
-    private QueryRewriteService queryRewriteService;
     @Mock
     private SkillCatalogService skillCatalogService;
     @Mock
@@ -57,17 +51,14 @@ class ExecutionPlanRouterTest {
     void setUp() {
         PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
         SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser, catalogHolder);
-        WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
-        var chain = new RoutingPolicyChain(List.of(
-                new WorkflowBindingRoutingPolicy(workflowBindingParser),
-                skillPolicy,
-                new UnifiedRuleRoutingPolicy(catalogHolder),
-                new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));
-        router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
-                new ForcedExecutionRouter(skillPolicy, catalogHolder, intentRouter),
+        WorkflowBindingRoutingPolicy workflowPolicy =
+                new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
+        router = new ExecutionPlanRouter(
+                new SkillDiscoveryService(skillCatalogService),
+                new ForcedExecutionRouter(skillPolicy, catalogHolder, intentRouter, workflowPolicy),
                 skillBindingParser);
-        when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString())
+                ).thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
         when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -128,7 +119,6 @@ class ExecutionPlanRouterTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-list");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
-        verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
@@ -144,7 +134,6 @@ class ExecutionPlanRouterTest {
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-react");
         assertThat(plan.params()).containsEntry("reactPromptId", "react-prompt.x");
-        verify(queryRewriteService, never()).rewriteForIntent(org.mockito.ArgumentMatchers.anyString());
     }
 
     private static RoutingContext ctx(String message, ExecutionPreference preference) {
