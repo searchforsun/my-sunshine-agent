@@ -22,6 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,7 +59,7 @@ class DynamicToolkitFactoryTest {
         // P3 原生 TaskList：todo_write 由 ReActAgent.enableTaskList 在 build 时注册，
         // 工厂不再注册自研 manage_tasks（避免两个任务板工具并存）。
         List<AgentTool> sandboxTools = stubSandboxTools();
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
@@ -72,8 +74,23 @@ class DynamicToolkitFactoryTest {
     }
 
     @Test
+    void build_withTaskKind_resolvesTaskToolsNotChat() {
+        when(toolSetResolver.resolveDefaultTools("default", "task")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+
+        factory.build("default", null, "u1", "task");
+
+        verify(toolSetResolver).resolveDefaultTools("default", "task");
+        verify(toolSetResolver, never()).resolveChatTools("default");
+    }
+
+    @Test
     void build_withSubagentEnabled_registersSpawnSubagent() {
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
@@ -89,7 +106,7 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void build_withSubagentDisabled_doesNotRegisterSpawnSubagent() {
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent() {{
@@ -104,7 +121,7 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void build_withDecisionEnabled_registersRequestDecision() {
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(requestDecisionTool.getName()).thenReturn(RequestDecisionTool.NAME);
@@ -133,7 +150,7 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void buildForPlanner_doesNotRegisterRequestDecisionOrSpawn() {
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
@@ -151,7 +168,7 @@ class DynamicToolkitFactoryTest {
     @Test
     void build_alwaysRegistersSearchKnowledgeAndSandbox_evenWithEmptyWhitelist() {
         List<AgentTool> sandboxTools = stubSandboxTools();
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
@@ -166,7 +183,7 @@ class DynamicToolkitFactoryTest {
 
     @Test
     void build_succeedsWhenMissingCatalogTool() {
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of("ghost_tool"));
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of("ghost_tool"));
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
@@ -214,7 +231,7 @@ class DynamicToolkitFactoryTest {
     @Test
     void build_withoutSkill_stillRegistersSixSandboxTools() {
         List<AgentTool> sandboxTools = stubSandboxTools();
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);

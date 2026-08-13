@@ -45,7 +45,7 @@ public class PlanCatalogRenderer {
     }
 
     private String renderTools(String tenantId) {
-        List<String> toolIds = toolSetResolver.resolvePlanWorkflowTools(tenantId);
+        List<String> toolIds = toolSetResolver.resolveTaskTools(tenantId);
         if (toolIds.isEmpty()) {
             return "(无 tool 目录)";
         }

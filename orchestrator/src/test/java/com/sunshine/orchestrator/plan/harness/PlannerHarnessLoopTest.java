@@ -53,7 +53,7 @@ class PlannerHarnessLoopTest {
         executionProperties.getHarness().setEnabled(true);
         executionProperties.getHarness().getTask().setMaxRetries(2);
         executionProperties.getHarness().getPlanner().setMaxReplans(6);
-        org.mockito.Mockito.lenient().when(toolSetResolver.resolveReactTools(any()))
+        org.mockito.Mockito.lenient().when(toolSetResolver.resolveDefaultTools(any(), any()))
                 .thenReturn(List.of("sandbox__exec"));
         loop = new PlannerHarnessLoop(
                 planner, workerDispatchTool, store, executionProperties, toolSetResolver,

@@ -5,6 +5,8 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
+import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
@@ -48,6 +50,7 @@ public class ReActAgentFactory {
     private final ModelSceneResolver modelSceneResolver;
     /** 惰性注入，避免 Factory → DispatchTool → AgentRuntime → Factory 环 */
     private final ObjectProvider<WorkerDispatchTool> workerDispatchTool;
+    private final ChatConversationRepository conversationRepository;
 
     private LoadBalancedWebClientTransport transport;
 
@@ -193,18 +196,32 @@ public class ReActAgentFactory {
     }
 
     Toolkit resolveToolkit(AgentRunRequest request) {
+        String conversationKind = resolveConversationKind(request);
         if (request.role() == AgentRole.SUB || request.role() == AgentRole.WORKER) {
             return dynamicToolkitFactory.buildForSubAgent(
                     request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
         }
         if (request.role() == AgentRole.PLANNER) {
             Toolkit tk = dynamicToolkitFactory.buildForPlanner(
-                    request.tenantId(), request.skillId(), request.userId());
+                    request.tenantId(), request.skillId(), request.userId(), conversationKind);
             // fail-fast：缺 bean 时 getObject 抛 NoSuchBeanDefinitionException，禁止静默跳过
             workerDispatchTool.getObject().registerIntoPlannerToolkit(tk);
             return tk;
         }
-        return dynamicToolkitFactory.build(request.tenantId(), request.skillId(), request.userId());
+        return dynamicToolkitFactory.build(
+                request.tenantId(), request.skillId(), request.userId(), conversationKind);
+    }
+
+    /** 从会话实体读 kind；缺省 chat（不按 executionMode） */
+    private String resolveConversationKind(AgentRunRequest request) {
+        if (request == null || !StringUtils.hasText(request.conversationId())) {
+            return "chat";
+        }
+        return conversationRepository.findById(request.conversationId().strip())
+                .map(ChatConversationEntity::getKind)
+                .filter(StringUtils::hasText)
+                .map(String::strip)
+                .orElse("chat");
     }
 
     public int resolveMaxIters(AgentRunRequest request) {

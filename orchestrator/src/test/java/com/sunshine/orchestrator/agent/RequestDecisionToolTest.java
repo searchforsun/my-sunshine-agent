@@ -309,7 +309,7 @@ class RequestDecisionToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
     }
 
     private static Map<String, Object> questionMap(

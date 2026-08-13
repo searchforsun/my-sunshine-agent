@@ -58,7 +58,7 @@ public class NodeRetryPolicyResolver {
         }
         String tool = readParamString(spec, "tool");
         if (StringUtils.hasText(tool)) {
-            Set<String> criticalTools = new HashSet<>(toolSetResolver.resolvePlanWorkflowCriticalTools(tenantId));
+            Set<String> criticalTools = new HashSet<>(toolSetResolver.resolveTaskCriticalTools(tenantId));
             if (criticalTools.contains(tool.strip())) {
                 return OnFailureAction.fromConfig(policy.criticalOnFailure());
             }

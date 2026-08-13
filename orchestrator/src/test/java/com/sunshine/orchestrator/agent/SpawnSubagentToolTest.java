@@ -89,7 +89,7 @@ class SpawnSubagentToolTest {
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);
         lenient().when(reactProps.getSubagent()).thenReturn(sub);
         lenient().when(reactProps.getAsyncTool()).thenReturn(realExecutionProperties.getReact().getAsyncTool());
-        lenient().when(toolSetResolver.resolveReactTools(any())).thenReturn(List.of("search_knowledge"));
+        lenient().when(toolSetResolver.resolveDefaultTools(any(), any())).thenReturn(List.of("search_knowledge"));
         SpawnSubagentLabels.bind(new SpawnSubagentLabelService(timelinePromptCatalog));
     }
 
@@ -118,7 +118,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
 
         when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
                 .thenReturn(Flux.just(StreamToken.content("hello")));
@@ -164,7 +164,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
 
         when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenReturn(Flux.just(
                 StreamToken.stepDelta("think-1", "reasoning", "用户"),
@@ -186,7 +186,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
 
         when(agentExecutorRouter.dispatch(any(), any(), any(), any())).thenAnswer(inv -> {
             com.sunshine.orchestrator.agent.runtime.AgentRunRequest req = inv.getArgument(1);
@@ -213,7 +213,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
 
         CountDownLatch dispatchEntered = new CountDownLatch(1);
         CountDownLatch releaseFlux = new CountDownLatch(1);
@@ -339,7 +339,7 @@ class SpawnSubagentToolTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-1", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
     }
 
     private static String extractRunId(String json) {

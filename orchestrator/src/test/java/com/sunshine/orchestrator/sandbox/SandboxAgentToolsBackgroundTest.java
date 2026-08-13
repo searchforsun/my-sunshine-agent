@@ -89,7 +89,7 @@ class SandboxAgentToolsBackgroundTest {
         StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
         StepEventBridge.registerMainRun(MSG, BRIDGE);
         StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
-                "conv-bg", MSG, "user-1", "default", null, null, null, null, null));
+                "conv-bg", MSG, "user-1", "default", null, null, null, null, null, null));
         SandboxSessionHolder.bind(BRIDGE, SESSION_ID, null);
 
         lenient().when(hitlConfirmationService.shouldConfirmForBridge(anyString(), anyString()))

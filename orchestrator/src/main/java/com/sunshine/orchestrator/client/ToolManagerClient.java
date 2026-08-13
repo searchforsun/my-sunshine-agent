@@ -54,16 +54,16 @@ public class ToolManagerClient {
         }
     }
 
-    public List<String> fetchReactDefault(String tenantId) {
-        return fetchToolSetToolIds("react-default", tenantId).toolIds();
+    public List<String> fetchChatDefault(String tenantId) {
+        return fetchToolSetToolIds("chat", tenantId).toolIds();
     }
 
-    public List<String> fetchPlanWorkflow(String tenantId) {
-        return fetchToolSetToolIds("plan-workflow", tenantId).toolIds();
+    public List<String> fetchTaskDefault(String tenantId) {
+        return fetchToolSetToolIds("task", tenantId).toolIds();
     }
 
-    public List<String> fetchPlanWorkflowCritical(String tenantId) {
-        return fetchToolSetToolIds("plan-workflow", tenantId).criticalToolIds();
+    public List<String> fetchTaskCritical(String tenantId) {
+        return fetchToolSetToolIds("task", tenantId).criticalToolIds();
     }
 
     public ToolSetToolIdsResponse fetchToolSetToolIds(String kind, String tenantId) {

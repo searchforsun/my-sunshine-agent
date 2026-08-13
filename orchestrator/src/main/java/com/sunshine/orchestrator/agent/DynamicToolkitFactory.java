@@ -40,20 +40,30 @@ public class DynamicToolkitFactory {
     private final AgentExecutionProperties executionProperties;
     private final SandboxAgentTools sandboxAgentTools;
 
-    /** 主 Agent：租户 ReAct 默认工具集 */
+    /** 主 Agent：按会话 kind 装默认工具集（缺省 chat） */
     public Toolkit build(String userId) {
-        return build(DEFAULT_TENANT, null, userId);
+        return build(DEFAULT_TENANT, null, userId, null);
     }
 
     public Toolkit build(String tenantId, String skillId, String userId) {
+        return build(tenantId, skillId, userId, null);
+    }
+
+    public Toolkit build(String tenantId, String skillId, String userId, String conversationKind) {
         return buildFromWhitelist(
-                toolSetResolver.resolveReactTools(tenantId), ToolkitScope.MAIN, skillId, userId, tenantId);
+                toolSetResolver.resolveDefaultTools(tenantId, conversationKind),
+                ToolkitScope.MAIN, skillId, userId, tenantId);
     }
 
     /** 子 Agent / 白名单：显式白名单与启用池求交 */
     public Toolkit build(List<String> toolWhitelist, String tenantId, String skillId, String userId) {
+        return build(toolWhitelist, tenantId, skillId, userId, null);
+    }
+
+    public Toolkit build(
+            List<String> toolWhitelist, String tenantId, String skillId, String userId, String conversationKind) {
         if (toolWhitelist == null || toolWhitelist.isEmpty()) {
-            return build(tenantId, skillId, userId);
+            return build(tenantId, skillId, userId, conversationKind);
         }
         return buildFromWhitelist(
                 toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId),
@@ -71,10 +81,16 @@ public class DynamicToolkitFactory {
     /**
      * Planner-Executor：业务工具 + RAG/沙箱/await；<b>不</b>注册 spawn_subagent（Worker 内 spawn）
      * 与 request_decision（D12 延后）。{@code dispatch_worker} 由 {@link ReActAgentFactory} 注册。
+     * 按会话 kind 装集（缺省 chat）。
      */
     public Toolkit buildForPlanner(String tenantId, String skillId, String userId) {
+        return buildForPlanner(tenantId, skillId, userId, null);
+    }
+
+    public Toolkit buildForPlanner(String tenantId, String skillId, String userId, String conversationKind) {
         return buildFromWhitelist(
-                toolSetResolver.resolveReactTools(tenantId), ToolkitScope.PLANNER, skillId, userId, tenantId);
+                toolSetResolver.resolveDefaultTools(tenantId, conversationKind),
+                ToolkitScope.PLANNER, skillId, userId, tenantId);
     }
 
     private enum ToolkitScope {

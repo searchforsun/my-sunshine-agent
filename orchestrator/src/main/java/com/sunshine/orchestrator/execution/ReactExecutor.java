@@ -75,7 +75,8 @@ public class ReactExecutor {
                     ctx.tenantId(),
                     ctx.persistedPlanId(),
                     ctx.kbId(),
-                    null, null, null));
+                    null, null, null,
+                    ctx.conversationKind()));
         }
         int checkpointThinkIteration = resolveCheckpointThinkIteration(ctx);
         List<ProcessingStep> resumeSteps = resolveResumeSteps(ctx);

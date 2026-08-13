@@ -3,11 +3,12 @@ package com.sunshine.orchestrator.catalog;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Set;
 
-/** 解析租户 ReAct 工具集并与 Catalog 启用池求交 */
+/** 按会话 kind（chat|task）解析默认工具集，并与 Catalog 启用池求交 */
 @Component
 @RequiredArgsConstructor
 public class ToolSetResolver {
@@ -15,27 +16,39 @@ public class ToolSetResolver {
     private final ToolManagerClient toolManagerClient;
     private final ToolCatalogService toolCatalogService;
 
-    public List<String> resolveReactTools(String tenantId) {
+    /** chat 会话默认工具集 */
+    public List<String> resolveChatTools(String tenantId) {
         String effectiveTenant = normalizeTenant(tenantId);
-        List<String> setIds = toolManagerClient.fetchReactDefault(effectiveTenant);
+        List<String> setIds = toolManagerClient.fetchChatDefault(effectiveTenant);
         Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
         return setIds.stream().filter(pool::contains).toList();
     }
 
-    /** Plan-Workflow 可用工具（与启用池求交） */
-    public List<String> resolvePlanWorkflowTools(String tenantId) {
+    /** task 会话默认工具集 */
+    public List<String> resolveTaskTools(String tenantId) {
         String effectiveTenant = normalizeTenant(tenantId);
-        List<String> setIds = toolManagerClient.fetchPlanWorkflow(effectiveTenant);
+        List<String> setIds = toolManagerClient.fetchTaskDefault(effectiveTenant);
         Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
         return setIds.stream().filter(pool::contains).toList();
     }
 
-    /** Plan/Workflow 关键工具（失败时 fail_fast），与启用池求交 */
-    public List<String> resolvePlanWorkflowCriticalTools(String tenantId) {
+    /** task 关键工具（失败时 fail_fast），与启用池求交 */
+    public List<String> resolveTaskCriticalTools(String tenantId) {
         String effectiveTenant = normalizeTenant(tenantId);
-        List<String> setIds = toolManagerClient.fetchPlanWorkflowCritical(effectiveTenant);
+        List<String> setIds = toolManagerClient.fetchTaskCritical(effectiveTenant);
         Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
         return setIds.stream().filter(pool::contains).toList();
+    }
+
+    /**
+     * 按会话 kind 装默认工具集：task→task 集，其余（含 null/blank）→chat 集。
+     * 不按 executionMode 分支。
+     */
+    public List<String> resolveDefaultTools(String tenantId, String conversationKind) {
+        if ("task".equals(normalizeKind(conversationKind))) {
+            return resolveTaskTools(tenantId);
+        }
+        return resolveChatTools(tenantId);
     }
 
     /** 租户启用 Catalog 全量（专家 tools_json=["*"] 过渡语义） */
@@ -57,5 +70,10 @@ public class ToolSetResolver {
 
     private static String normalizeTenant(String tenantId) {
         return tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
+    }
+
+    /** 缺省 chat */
+    static String normalizeKind(String conversationKind) {
+        return StringUtils.hasText(conversationKind) ? conversationKind.strip() : "chat";
     }
 }

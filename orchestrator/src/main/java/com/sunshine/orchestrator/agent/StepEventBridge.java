@@ -28,7 +28,9 @@ public final class StepEventBridge {
             String kbId,
             List<String> kbScope,
             String dataScopeJson,
-            String permissionsJson) {
+            String permissionsJson,
+            /** 会话 kind（chat|task）；装默认工具集用，缺省按 chat */
+            String conversationKind) {
     }
 
     private StepEventBridge() {

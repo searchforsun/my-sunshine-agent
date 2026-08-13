@@ -53,7 +53,7 @@ class HarnessPlannerTest {
         planner = new HarnessPlanner(agentRuntime, contextAssembler, executionProperties, toolSetResolver);
         org.mockito.Mockito.lenient().when(contextAssembler.assemble(any()))
                 .thenReturn(AssembledContext.empty());
-        org.mockito.Mockito.lenient().when(toolSetResolver.resolveReactTools(eq("default")))
+        org.mockito.Mockito.lenient().when(toolSetResolver.resolveDefaultTools(eq("default"), eq("task")))
                 .thenReturn(List.of("sandbox__exec", "search_knowledge"));
     }
 
@@ -129,7 +129,8 @@ class HarnessPlannerTest {
         assertThat(req.injectedBlocks()).isNotEmpty();
         assertThat(req.injectedBlocks().get(0)).contains("## Goal").contains("完成调研");
         assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();
-        verify(toolSetResolver).resolveReactTools("default");
+        verify(toolSetResolver).resolveDefaultTools("default", "task");
+        verify(toolSetResolver, org.mockito.Mockito.never()).resolveChatTools("default");
     }
 
     @Test

@@ -43,7 +43,7 @@ class AgentInfraTest {
         ToolSetResolver toolSetResolver = Mockito.mock(ToolSetResolver.class);
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
 
-        when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of(
+        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of(
                 "search_knowledge", "sdk__sunshine-finance__list_my_expenses", "sdk__sunshine-oa__list_oa_tasks"));
 
         ToolCatalogEntry financeEntry = new ToolCatalogEntry(

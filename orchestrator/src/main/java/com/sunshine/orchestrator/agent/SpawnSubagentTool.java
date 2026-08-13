@@ -153,7 +153,8 @@ public class SpawnSubagentTool implements AgentTool {
         String displayLabel = StringUtils.hasText(label) ? label.strip() : SpawnSubagentLabels.label();
         int maxIters = subCfg.getMaxIters() > 0 ? subCfg.getMaxIters() : 8;
         long timeoutMs = subCfg.getTimeoutMs() > 0 ? subCfg.getTimeoutMs() : 180_000L;
-        List<String> sameToolsAsMain = toolSetResolver.resolveReactTools(audit.tenantId());
+        List<String> sameToolsAsMain = toolSetResolver.resolveDefaultTools(
+                audit.tenantId(), audit.conversationKind());
         String systemOverlay = resolveSubagentOverlay();
 
         AgentCatalogEntry agentEntry = null;

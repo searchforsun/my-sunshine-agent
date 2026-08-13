@@ -247,7 +247,7 @@ public class PlannerHarnessLoop {
     private WorkerDispatchTool.DispatchSession bindDispatchSession(
             PlanNotebook notebook, ExecutionStreamContext ctx, String loopRunId) {
         String tenantId = ctx != null ? ctx.tenantId() : null;
-        List<String> whitelist = toolSetResolver.resolveReactTools(tenantId);
+        List<String> whitelist = toolSetResolver.resolveDefaultTools(tenantId, resolveConversationKind(notebook, ctx));
         WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
                 notebook,
                 whitelist != null ? whitelist : List.of(),
@@ -303,6 +303,17 @@ public class PlannerHarnessLoop {
                 planId,
                 taskId,
                 error);
+    }
+
+    /** notebook.kind 优先，否则 stream ctx，缺省 chat */
+    private static String resolveConversationKind(PlanNotebook notebook, ExecutionStreamContext ctx) {
+        if (notebook != null && StringUtils.hasText(notebook.getKind())) {
+            return notebook.getKind().strip();
+        }
+        if (ctx != null && StringUtils.hasText(ctx.conversationKind())) {
+            return ctx.conversationKind().strip();
+        }
+        return "chat";
     }
 
     static List<TaskItem> selectReadyPendingTasks(PlanNotebook notebook) {
