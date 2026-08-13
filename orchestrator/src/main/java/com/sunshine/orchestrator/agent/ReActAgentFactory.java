@@ -200,10 +200,8 @@ public class ReActAgentFactory {
         if (request.role() == AgentRole.PLANNER) {
             Toolkit tk = dynamicToolkitFactory.buildForPlanner(
                     request.tenantId(), request.skillId(), request.userId());
-            var dispatch = workerDispatchTool.getIfAvailable();
-            if (dispatch != null) {
-                dispatch.registerIntoPlannerToolkit(tk);
-            }
+            // fail-fast：缺 bean 时 getObject 抛 NoSuchBeanDefinitionException，禁止静默跳过
+            workerDispatchTool.getObject().registerIntoPlannerToolkit(tk);
             return tk;
         }
         return dynamicToolkitFactory.build(request.tenantId(), request.skillId(), request.userId());

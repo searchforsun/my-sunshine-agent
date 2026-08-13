@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
@@ -40,6 +41,7 @@ public class HarnessPlanner {
     private final AgentRuntime agentRuntime;
     private final ContextAssembler contextAssembler;
     private final AgentExecutionProperties executionProperties;
+    private final ToolSetResolver toolSetResolver;
 
     public void planNext(PlanNotebook notebook, ExecutionStreamContext ctx) {
         int maxAttempts = plannerMaxAttempts();
@@ -143,11 +145,13 @@ public class HarnessPlanner {
 
     private WorkerDispatchTool.DispatchSession bindDispatchSession(
             PlanNotebook notebook, ExecutionStreamContext ctx, String parentRunId) {
+        String tenantId = ctx != null ? ctx.tenantId() : null;
+        List<String> whitelist = toolSetResolver.resolveReactTools(tenantId);
         WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
                 notebook,
-                List.of(),
+                whitelist != null ? whitelist : List.of(),
                 ctx != null ? ctx.userId() : null,
-                ctx != null ? ctx.tenantId() : null,
+                tenantId,
                 ctx != null ? ctx.assistantMsgId() : null,
                 ctx != null ? ctx.conversationId() : null,
                 parentRunId,

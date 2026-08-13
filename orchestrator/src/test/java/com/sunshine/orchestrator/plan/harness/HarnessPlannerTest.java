@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.plan.harness;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
@@ -22,10 +23,12 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,6 +40,8 @@ class HarnessPlannerTest {
     private AgentRuntime agentRuntime;
     @Mock
     private ContextAssembler contextAssembler;
+    @Mock
+    private ToolSetResolver toolSetResolver;
 
     private AgentExecutionProperties executionProperties;
     private HarnessPlanner planner;
@@ -45,9 +50,11 @@ class HarnessPlannerTest {
     void setUp() {
         executionProperties = new AgentExecutionProperties();
         executionProperties.getHarness().getPlanner().setMaxAttempts(3);
-        planner = new HarnessPlanner(agentRuntime, contextAssembler, executionProperties);
+        planner = new HarnessPlanner(agentRuntime, contextAssembler, executionProperties, toolSetResolver);
         org.mockito.Mockito.lenient().when(contextAssembler.assemble(any()))
                 .thenReturn(AssembledContext.empty());
+        org.mockito.Mockito.lenient().when(toolSetResolver.resolveReactTools(eq("default")))
+                .thenReturn(List.of("sandbox__exec", "search_knowledge"));
     }
 
     @AfterEach
@@ -121,6 +128,23 @@ class HarnessPlannerTest {
         assertThat(req.reactPromptId()).isEqualTo(HarnessPlanner.CATALOG_ID);
         assertThat(req.injectedBlocks()).isNotEmpty();
         assertThat(req.injectedBlocks().get(0)).contains("## Goal").contains("完成调研");
+        assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();
+        verify(toolSetResolver).resolveReactTools("default");
+    }
+
+    @Test
+    void planNext_bindsWorkerWhitelistFromToolSetResolver() {
+        PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
+        AtomicReference<WorkerDispatchTool.DispatchSession> duringRun = new AtomicReference<>();
+        when(agentRuntime.run(any())).thenAnswer(inv -> {
+            duringRun.set(WorkerDispatchTool.currentSession("msg-1"));
+            return Flux.just(StreamToken.content(planJson("t1", "步", "", "", "")));
+        });
+
+        planner.planNext(nb, streamCtx());
+
+        assertThat(duringRun.get()).isNotNull();
+        assertThat(duringRun.get().toolWhitelist()).containsExactly("sandbox__exec", "search_knowledge");
         assertThat(WorkerDispatchTool.currentSession("msg-1")).isNull();
     }
 

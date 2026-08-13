@@ -162,10 +162,11 @@ class ReActAgentFactoryTest {
     void resolveToolkit_plannerRegistersDispatchWorkerAndSkipsMainBuild() {
         AgentRunRequest req = AgentRunRequest.planner("plan next", "u1", "default", "msg-p");
         when(dynamicToolkitFactory.buildForPlanner("default", null, "u1")).thenReturn(subToolkit);
-        when(workerDispatchToolProvider.getIfAvailable()).thenReturn(workerDispatchTool);
+        when(workerDispatchToolProvider.getObject()).thenReturn(workerDispatchTool);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
         verify(dynamicToolkitFactory).buildForPlanner("default", null, "u1");
+        verify(workerDispatchToolProvider).getObject();
         verify(workerDispatchTool).registerIntoPlannerToolkit(subToolkit);
         verify(dynamicToolkitFactory, org.mockito.Mockito.never()).build("default", null, "u1");
     }

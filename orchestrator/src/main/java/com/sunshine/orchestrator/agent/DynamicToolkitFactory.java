@@ -68,7 +68,10 @@ public class DynamicToolkitFactory {
         return buildFromWhitelist(whitelist, ToolkitScope.SUB, skillId, userId, tenantId);
     }
 
-    /** Planner-Executor：MAIN 工具集减去 request_decision（D12 延后）；dispatch_worker 由 Factory 注册 */
+    /**
+     * Planner-Executor：业务工具 + RAG/沙箱/await；<b>不</b>注册 spawn_subagent（Worker 内 spawn）
+     * 与 request_decision（D12 延后）。{@code dispatch_worker} 由 {@link ReActAgentFactory} 注册。
+     */
     public Toolkit buildForPlanner(String tenantId, String skillId, String userId) {
         return buildFromWhitelist(
                 toolSetResolver.resolveReactTools(tenantId), ToolkitScope.PLANNER, skillId, userId, tenantId);
@@ -129,8 +132,9 @@ public class DynamicToolkitFactory {
         }
         if (scope == ToolkitScope.MAIN || scope == ToolkitScope.PLANNER) {
             AgentExecutionProperties.React react = executionProperties.getReact();
-            // 原生 todo_write 由 ReActAgent.enableTaskList 在 build 时注册；timeline tasks 步投影由 TodoTasksBridge 完成。
-            if (react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
+            // spawn_subagent 仅 MAIN：Planner 经 dispatch_worker → Worker，Worker/MAIN 内再 spawn
+            if (scope == ToolkitScope.MAIN
+                    && react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
                 tk.registerAgentTool(spawnSubagentTool);
                 registered.add(SpawnSubagentTool.NAME);
             }

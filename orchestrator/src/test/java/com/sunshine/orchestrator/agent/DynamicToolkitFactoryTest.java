@@ -132,12 +132,10 @@ class DynamicToolkitFactoryTest {
     }
 
     @Test
-    void buildForPlanner_doesNotRegisterRequestDecision() {
+    void buildForPlanner_doesNotRegisterRequestDecisionOrSpawn() {
         when(toolSetResolver.resolveReactTools("default")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
-        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
         when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
             setEnabled(true);
         }});
@@ -146,8 +144,8 @@ class DynamicToolkitFactoryTest {
         var toolkit = factory.buildForPlanner("default", null, "u1");
 
         assertThat(toolkit.getToolNames()).doesNotContain(RequestDecisionTool.NAME);
+        assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
         assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
-        assertThat(toolkit.getToolNames()).contains(SpawnSubagentTool.NAME);
     }
 
     @Test
