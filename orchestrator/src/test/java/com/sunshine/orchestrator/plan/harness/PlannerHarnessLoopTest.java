@@ -234,6 +234,42 @@ class PlannerHarnessLoopTest {
     }
 
     @Test
+    void stopsWhenMaxReplansExhaustedAndSynthesizes() {
+        executionProperties.getHarness().getPlanner().setMaxReplans(2);
+        executionProperties.getHarness().setMaxRounds(12);
+        PlanNotebook notebook = PlanNotebook.create("goal", "用户问", "task", 12, 24);
+        notebook.setSessionId("sess-replans");
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.getTaskQueue().clear();
+            nb.getTaskQueue().add(new TaskItem(
+                    "t-replan", "总要重规划", "pending", List.of(), "", "", ""));
+            return null;
+        }).when(planner).planNext(any(), any());
+        doAnswer(inv -> {
+            String taskId = inv.getArgument(0);
+            WorkerDispatchTool.DispatchSession session = inv.getArgument(1);
+            WorkerDispatchTool.replaceTaskStatus(session.notebook(), taskId, "done");
+            session.notebook().setTotalTasksCompleted(session.notebook().getTotalTasksCompleted() + 1);
+            return "ok";
+        }).when(workerDispatchTool).dispatchWorker(anyString(), any(WorkerDispatchTool.DispatchSession.class));
+        doAnswer(inv -> {
+            PlanNotebook nb = inv.getArgument(0);
+            nb.setGoalCompletion(0.2);
+            nb.setNextDirection("replan");
+            return null;
+        }).when(planner).selfAssess(any(), any());
+        when(planner.synthesizeAnswer(any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("综合：maxReplans 熔断")));
+
+        List<StreamToken> tokens = loop.run(streamCtx(), notebook).collectList().block();
+
+        assertThat(tokens.stream().anyMatch(t -> t.text() != null && t.text().contains("maxReplans"))).isTrue();
+        assertThat(notebook.getReplanCount()).isGreaterThanOrEqualTo(2);
+        verify(planner, times(1)).synthesizeAnswer(any(), any());
+    }
+
+    @Test
     void resolveAssessDecision_mapsCatalogDirections() {
         PlanNotebook nb = PlanNotebook.create("g", "q", "task", 12, 24);
         nb.setGoalCompletion(0.5);
