@@ -36,4 +36,17 @@ describe('useTimelineStyle', () => {
     expect(timelineStyle.value).toBe('standard')
     expect(localStorage.getItem('sunshine.timeline.style')).toBe('standard')
   })
+
+  it('连续 set 同一值保持幂等', async () => {
+    const { useTimelineStyle } = await import('./useTimelineStyle')
+    const { timelineStyle, setTimelineStyle } = useTimelineStyle()
+    setTimelineStyle('minimal')
+    setTimelineStyle('minimal')
+    expect(timelineStyle.value).toBe('minimal')
+    expect(localStorage.getItem('sunshine.timeline.style')).toBe('minimal')
+    setTimelineStyle('standard')
+    setTimelineStyle('standard')
+    expect(timelineStyle.value).toBe('standard')
+    expect(localStorage.getItem('sunshine.timeline.style')).toBe('standard')
+  })
 })

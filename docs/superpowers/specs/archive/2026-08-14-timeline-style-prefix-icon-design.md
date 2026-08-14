@@ -36,13 +36,21 @@ export type TimelineStyle = 'minimal' | 'standard'
 
 const TIMELINE_STYLE_STORAGE_KEY = 'sunshine.timeline.style'
 
-function loadGlobal(): TimelineStyle { /* localStorage 读取；非法值回落 'minimal' */ }
-const timelineStyle = ref<TimelineStyle>(loadGlobal())
+function loadTimelineStyle(): TimelineStyle {
+  try {
+    const raw = localStorage.getItem(TIMELINE_STYLE_STORAGE_KEY)
+    if (raw === 'standard' || raw === 'minimal') return raw
+  } catch { /* ignore */ }
+  return 'minimal'
+}
+const timelineStyle = ref<TimelineStyle>(loadTimelineStyle())
 
 export function useTimelineStyle() {
   function setTimelineStyle(next: TimelineStyle) {
     timelineStyle.value = next
-    localStorage.setItem(TIMELINE_STYLE_STORAGE_KEY, next)
+    try {
+      localStorage.setItem(TIMELINE_STYLE_STORAGE_KEY, next)
+    } catch { /* ignore */ }
   }
   return { timelineStyle, setTimelineStyle }
 }

@@ -1,7 +1,7 @@
 # 时间线前缀图标（极简/标准）Implementation Plan
 
-> **状态**：📋 待执行
-> **Spec**：[2026-08-14-timeline-style-prefix-icon-design](../specs/2026-08-14-timeline-style-prefix-icon-design.md)
+> **状态**：✅ 已实现
+> **Spec**：[2026-08-14-timeline-style-prefix-icon-design](../specs/archive/2026-08-14-timeline-style-prefix-icon-design.md)
 > **前置**：`OperationStack` / `OperationCard` / `ToolGroupCard` 现有行模型；`PlanNodeIcon` 图标风格
 > **本 plan 不做**：SubagentCard / DecisionCard / TaskBoardPanel / PlanDagPanel 前缀图标；服务端偏好同步；图标库依赖
 >
@@ -72,7 +72,7 @@
   - `useTimelineStyle(): { timelineStyle: Ref<TimelineStyle>; setTimelineStyle(next: TimelineStyle): void }`
   - `TimelineStyleSelector` props `{ modelValue: TimelineStyle; disabled?: boolean }`，emit `update:modelValue`
 
-- [ ] **Step 1: 写 composable**
+- [x] **Step 1: 写 composable**
 
 ```ts
 import { ref, type Ref } from 'vue'
@@ -103,7 +103,7 @@ export function useTimelineStyle() {
 }
 ```
 
-- [ ] **Step 2: 写单测并验证失败**
+- [x] **Step 2: 写单测并验证失败**
 
 `useTimelineStyle.spec.ts`（vitest 环境无 localStorage，用 stub）：
 
@@ -152,12 +152,12 @@ describe('useTimelineStyle', () => {
 Run: `cd sunshine-ui && npx vitest run src/composables/useTimelineStyle.spec.ts`
 Expected: FAIL（模块不存在）
 
-- [ ] **Step 3: 跑测试验证通过**
+- [x] **Step 3: 跑测试验证通过**
 
 Run: `cd sunshine-ui && npx vitest run src/composables/useTimelineStyle.spec.ts`
 Expected: 3 个用例全 PASS
 
-- [ ] **Step 4: 写 TimelineStyleSelector**
+- [x] **Step 4: 写 TimelineStyleSelector**
 
 仿 `SidebarSectionsLayoutSelector.vue`（NTabs type="segment"）：
 
@@ -213,7 +213,7 @@ function onUpdate(value: string) {
 </style>
 ```
 
-- [ ] **Step 5: UserSettingsModal 接入**
+- [x] **Step 5: UserSettingsModal 接入**
 
 1. import：`TimelineStyleSelector` + `useTimelineStyle` + `type TimelineStyle`。
 2. script 中新增：
@@ -237,7 +237,7 @@ const timelineStyleLocal = ref<TimelineStyle>('minimal')
 </NFormItem>
 ```
 
-- [ ] **Step 6: 跑测试 + 手动验收 + Commit**
+- [x] **Step 6: 跑测试 + 手动验收 + Commit**
 
 Run: `cd sunshine-ui && npx vitest run src/composables/useTimelineStyle.spec.ts`
 Expected: PASS
@@ -268,7 +268,7 @@ git commit -m "feat(ui): 时间线风格偏好（极简/标准）+ 设置入口"
   - `resolveTimelineStepKind(step: ProcessingStep): TimelineStepKind`
   - `TimelineStepIcon` props `{ step: ProcessingStep; size?: number }`（默认 14）
 
-- [ ] **Step 1: 写判别函数**
+- [x] **Step 1: 写判别函数**
 
 `timelineStepIcon.ts`：
 
@@ -311,7 +311,7 @@ export function resolveTimelineStepKind(step: ProcessingStep): TimelineStepKind 
 }
 ```
 
-- [ ] **Step 2: 写单测并验证失败**
+- [x] **Step 2: 写单测并验证失败**
 
 `timelineStepIcon.spec.ts`（构造最小 step fixture）：
 
@@ -363,12 +363,12 @@ describe('resolveTimelineStepKind', () => {
 Run: `cd sunshine-ui && npx vitest run src/api/timelineStepIcon.spec.ts`
 Expected: FAIL（模块不存在）
 
-- [ ] **Step 3: 跑测试验证通过**
+- [x] **Step 3: 跑测试验证通过**
 
 Run: `cd sunshine-ui && npx vitest run src/api/timelineStepIcon.spec.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 4: 写 TimelineStepIcon.vue（kind → SVG）**
+- [x] **Step 4: 写 TimelineStepIcon.vue（kind → SVG）**
 
 `TimelineStepIcon.vue`（16×16 线性 stroke，灰色，无彩色）：
 
@@ -499,7 +499,7 @@ const kind = computed(() => resolveTimelineStepKind(props.step))
 </style>
 ```
 
-- [ ] **Step 5: 跑测试 + Commit**
+- [x] **Step 5: 跑测试 + Commit**
 
 Run: `cd sunshine-ui && npx vitest run src/api/timelineStepIcon.spec.ts`
 Expected: PASS
@@ -520,7 +520,7 @@ git commit -m "feat(ui): 时间线步骤类型图标判别 + TimelineStepIcon �
 - Consumes: `useTimelineStyle`（`timelineStyle` ref）、`TimelineStepIcon`、已有 `canExpand` computed
 - Produces: `.op-line.is-expandable` class（仅 `canExpand` 时挂，驱动 hover 换箭头）
 
-- [ ] **Step 1: script 接入偏好**
+- [x] **Step 1: script 接入偏好**
 
 ```ts
 import TimelineStepIcon from './TimelineStepIcon.vue'
@@ -529,7 +529,7 @@ import { useTimelineStyle } from '../../composables/useTimelineStyle'
 const { timelineStyle } = useTimelineStyle()
 ```
 
-- [ ] **Step 2: 模板改造**
+- [x] **Step 2: 模板改造**
 
 1. `.op-line` class 增加 `'is-expandable': canExpand`（复用已有 computed）。
 2. `.op-main` **首部**（`<span class="op-label">` 之前）插入槽位：
@@ -556,7 +556,7 @@ const { timelineStyle } = useTimelineStyle()
 
 3. **原行尾 chevron**（`.op-main` 末尾的 `<svg class="op-chevron">`）渲染条件改为 `v-if="canExpand && timelineStyle !== 'standard'"`。
 
-- [ ] **Step 3: 样式**
+- [x] **Step 3: 样式**
 
 scoped CSS 新增（替换/补充现有 `.op-main .op-chevron` 规则）：
 
@@ -611,7 +611,7 @@ scoped CSS 新增（替换/补充现有 `.op-main .op-chevron` 规则）：
 
 保留原 `.op-main .op-chevron`（极简模式行尾箭头）不动。
 
-- [ ] **Step 4: 手动验收步骤**
+- [x] **Step 4: 手动验收步骤**
 
 1. 设置 → 时间线风格 → 标准 → 保存。
 2. Chat 发消息（fast/pro/workflow 均可），时间线各行（think/工具/检索）行首出现对应灰色图标，且左对齐。
@@ -620,7 +620,7 @@ scoped CSS 新增（替换/补充现有 `.op-main .op-chevron` 规则）：
 5. 切回极简 → 时间线完全恢复现状（无行首图标、chevron 在行尾）。
 6. 展开 loop/worker 抽屉内嵌套时间线，行首图标同样生效。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add sunshine-ui/src/components/operation/OperationCard.vue
@@ -637,7 +637,7 @@ git commit -m "feat(ui): OperationCard 行首图标槽位 + chevron 迁移（标
 **Interfaces:**
 - Consumes: `useTimelineStyle`、`TimelineStepIcon`、`props.steps[0]`（组内首步类型）
 
-- [ ] **Step 1: script 接入偏好**
+- [x] **Step 1: script 接入偏好**
 
 ```ts
 import TimelineStepIcon from './TimelineStepIcon.vue'
@@ -646,7 +646,7 @@ import { useTimelineStyle } from '../../composables/useTimelineStyle'
 const { timelineStyle } = useTimelineStyle()
 ```
 
-- [ ] **Step 2: 模板改造**
+- [x] **Step 2: 模板改造**
 
 1. `.tool-group-row` 的 `.op-main` **首部**插入槽位：
 
@@ -671,7 +671,7 @@ const { timelineStyle } = useTimelineStyle()
 
 2. **原行尾 chevron** 渲染条件改为 `v-if="timelineStyle !== 'standard'"`。
 
-- [ ] **Step 3: 样式**
+- [x] **Step 3: 样式**
 
 同 Task 3 的 `.op-step-icon` / `.op-type-icon` / `.op-chevron` 规则（本组件是 `.tool-group-row`，hover 选择器为 `.tool-group-row:hover`；展开态沿用 `.tool-group.is-expanded`）。
 
@@ -723,14 +723,14 @@ const { timelineStyle } = useTimelineStyle()
 
 （删除/保留原 `.op-chevron` 规则均可——极简模式仍由行尾箭头走原规则。）
 
-- [ ] **Step 4: 手动验收步骤**
+- [x] **Step 4: 手动验收步骤**
 
 1. 标准模式：连续多个工具步折叠为「调用N个工具」行，行首显示组内首工具图标；hover → `>`，展开 → `^`。
 2. 检索组（`检索N次知识库`）行首显示放大镜。
 3. sandbox 组（`查看N次文件` / `执行N次命令`）行首显示文件/终端图标。
 4. 极简模式：恢复现状（行尾箭头）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add sunshine-ui/src/components/operation/ToolGroupCard.vue
@@ -748,7 +748,7 @@ git commit -m "feat(ui): ToolGroupCard 行首图标槽位 + chevron 迁移"
 - Consumes: `useTimelineStyle`、`TimelineStepIcon`、`resolveTimelineStepKind`
 - Produces: 内部 helper `firstTimelineStepKind(steps)` / `roundGroupLeadStep(row)`
 
-- [ ] **Step 1: script 接入**
+- [x] **Step 1: script 接入**
 
 ```ts
 import TimelineStepIcon from './TimelineStepIcon.vue'
@@ -776,7 +776,7 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 }
 ```
 
-- [ ] **Step 2: 根 class**
+- [x] **Step 2: 根 class**
 
 模板根：
 
@@ -787,7 +787,7 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 >
 ```
 
-- [ ] **Step 3: summary 行槽位**
+- [x] **Step 3: summary 行槽位**
 
 `.timeline-summary` 的 `.op-main` 首部插入：
 
@@ -816,7 +816,7 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 
 原 `.timeline-summary .op-chevron`（行尾）渲染条件改为 `v-if="timelineStyle !== 'standard'"`。
 
-- [ ] **Step 4: roundGroup 行槽位**
+- [x] **Step 4: roundGroup 行槽位**
 
 `.round-group-row` 的 `.op-main` 首部插入：
 
@@ -845,7 +845,7 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 
 原 `.round-group .op-main .op-chevron`（行尾）渲染条件改为 `v-if="timelineStyle !== 'standard'"`。
 
-- [ ] **Step 5: 样式**
+- [x] **Step 5: 样式**
 
 新增：
 
@@ -901,7 +901,7 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 
 保留原 `.timeline-summary .op-chevron` / `.round-group .op-main .op-chevron`（极简模式行尾箭头）不动。
 
-- [ ] **Step 6: 手动验收步骤**
+- [x] **Step 6: 手动验收步骤**
 
 1. 标准模式：
    - 折叠态：消息总览行（`正在处理 12s`）行首出现首步类型图标；hover → `>`，展开 → `^`。
@@ -910,7 +910,7 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 2. 极简模式：全部恢复现状。
 3. 老消息（无 steps 或纯 content）：无图标也无 chevron 变化。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add sunshine-ui/src/components/operation/OperationStack.vue
@@ -921,21 +921,21 @@ git commit -m "feat(ui): OperationStack summary/roundGroup 行首图标槽位 + 
 
 ### Task 6: 全量回归验证 + 收尾
 
-- [ ] **Step 1: 跑前端全部相关测试**
+- [x] **Step 1: 跑前端全部相关测试**
 
 Run: `cd sunshine-ui && npx vitest run src/api/timelineStepIcon.spec.ts src/composables/useTimelineStyle.spec.ts src/api/processingStepsDisplay.timelineSummary.test.ts src/api/harnessHierarchy.spec.ts`
 Expected: 全 PASS（后两个为存量测试，确认未受影响）
 
-- [ ] **Step 2: Lint 检查**
+- [x] **Step 2: Lint 检查**
 
 用 ReadLints 检查本次改动文件：`sunshine-ui/src/composables/useTimelineStyle.ts`、`sunshine-ui/src/api/timelineStepIcon.ts`、`sunshine-ui/src/components/operation/TimelineStepIcon.vue`、`TimelineStyleSelector.vue`、`OperationCard.vue`、`ToolGroupCard.vue`、`OperationStack.vue`、`UserSettingsModal.vue`
 Expected: 无新增错误（Vue 模板 + TS）
 
-- [ ] **Step 3: 全量手动验收**
+- [x] **Step 3: 全量手动验收**
 
 按 Task 3–5 的验收步骤走一遍完整流程：极简 ↔ 标准切换、各类步骤图标、hover/展开、折叠/展开态、嵌套时间线。
 
-- [ ] **Step 4: 更新 spec 状态**
+- [x] **Step 4: 更新 spec 状态**
 
 spec `2026-08-14-timeline-style-prefix-icon-design.md` 头部状态 `📋 评审中` → `✅ 已实现`；同步 CLAUDE.md 顶部进度行。
 

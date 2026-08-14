@@ -1530,23 +1530,23 @@ watch(
   margin: 0;
 }
 
-.timeline-summary.is-clickable:hover .op-step-icon .op-type-icon,
-.round-group:not(.is-expanded):hover .op-step-icon .op-type-icon {
+.is-timeline-standard .timeline-summary.is-clickable:hover .op-step-icon .op-type-icon,
+.is-timeline-standard .round-group:not(.is-expanded):hover .op-step-icon .op-type-icon {
   opacity: 0;
 }
 
-.timeline-summary.is-clickable:hover .op-step-icon .op-chevron,
-.round-group:not(.is-expanded):hover .op-step-icon .op-chevron {
+.is-timeline-standard .timeline-summary.is-clickable:hover .op-step-icon .op-chevron,
+.is-timeline-standard .round-group:not(.is-expanded):hover .op-step-icon .op-chevron {
   opacity: 0.85;
 }
 
-.timeline-summary.is-expanded .op-step-icon .op-type-icon,
-.round-group.is-expanded .op-step-icon .op-type-icon {
+.is-timeline-standard .timeline-summary.is-expanded .op-step-icon .op-type-icon,
+.is-timeline-standard .round-group.is-expanded .op-step-icon .op-type-icon {
   opacity: 0;
 }
 
-.timeline-summary.is-expanded .op-step-icon .op-chevron,
-.round-group.is-expanded .op-step-icon .op-chevron {
+.is-timeline-standard .timeline-summary.is-expanded .op-step-icon .op-chevron,
+.is-timeline-standard .round-group.is-expanded .op-step-icon .op-chevron {
   transform: rotate(90deg);
   opacity: 0.85;
 }

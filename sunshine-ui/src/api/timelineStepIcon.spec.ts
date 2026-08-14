@@ -12,6 +12,15 @@ describe('resolveTimelineStepKind', () => {
     expect(resolveTimelineStepKind(step({ id: 'subagent-1', phase: 'subagent' }))).toBe('subagent')
   })
 
+  it('decision / subagent 仅 phase 命中（id 无前缀）', () => {
+    expect(resolveTimelineStepKind(step({ id: 'p1', phase: 'decision' }))).toBe('decision')
+    expect(resolveTimelineStepKind(step({ id: 'p2', phase: 'subagent' }))).toBe('subagent')
+  })
+
+  it('优先级冲突：id 含 decision- 前缀但 phase=tool 仍判 decision', () => {
+    expect(resolveTimelineStepKind(step({ id: 'decision-1', phase: 'tool' }))).toBe('decision')
+  })
+
   it('worker / harness plan', () => {
     expect(resolveTimelineStepKind(step({ id: 'worker-1', phase: 'worker' }))).toBe('worker')
     expect(resolveTimelineStepKind(step({ id: 'plan', phase: 'plan' }))).toBe('plan')
@@ -38,5 +47,8 @@ describe('resolveTimelineStepKind', () => {
   it('其余兜底 generic', () => {
     expect(resolveTimelineStepKind(step({ id: 'i9', phase: 'loop' }))).toBe('generic')
     expect(resolveTimelineStepKind(step({ id: 'node-answer', phase: 'node' }))).toBe('generic')
+    // 负向：id 含 rag 前缀但非精确 rag 步，不误判为检索
+    expect(resolveTimelineStepKind(step({ id: 'rag-1', phase: 'think' }))).toBe('generic')
+    expect(resolveTimelineStepKind(step({ id: 'rag-1', phase: 'tool' }))).toBe('generic')
   })
 })

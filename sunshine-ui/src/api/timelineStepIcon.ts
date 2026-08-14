@@ -29,7 +29,7 @@ export function resolveTimelineStepKind(step: ProcessingStep): TimelineStepKind 
   if (isToolStepId(step.id)) {
     const toolId = catalogToolIdFromStepId(step.id)
     const sandboxKind = sandboxToolKind(toolId)
-    if (sandboxKind) return `tool-${sandboxKind}` as TimelineStepKind
+    if (sandboxKind) return `tool-${sandboxKind}`
     return 'tool'
   }
   return 'generic'
