@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.DecisionResumeSteps;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
@@ -45,7 +46,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -110,7 +110,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                 request.skillId(),
                 query != null && query.length() > 60 ? query.substring(0, 60) + "..." : query);
         return Flux.defer(() -> startReActStream(request))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private Flux<StreamToken> startReActStream(AgentRunRequest request) {

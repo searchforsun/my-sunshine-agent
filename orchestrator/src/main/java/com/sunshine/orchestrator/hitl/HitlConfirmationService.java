@@ -413,7 +413,11 @@ public class HitlConfirmationService {
             Runnable onTimeout,
             Runnable onError) {
         try {
-            boolean approved = reg.future().get(tokenRegistry.timeoutSec(), TimeUnit.SECONDS);
+            int timeoutSec = tokenRegistry.timeoutSec();
+            // timeoutSec<=0 = 无限等待，仅用户确认/取消/停止结束（对齐 request_decision / recovery 语义）
+            boolean approved = timeoutSec <= 0
+                    ? reg.future().get()
+                    : reg.future().get(timeoutSec, TimeUnit.SECONDS);
             beforeSuccess.run();
             log.info("[{}] token={} tool={} approved={}", logTag, reg.token(), toolId, approved);
             onSuccess.accept(approved);

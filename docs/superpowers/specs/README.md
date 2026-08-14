@@ -86,14 +86,15 @@ flowchart TB
   end
 
   subgraph hub [中枢]
-    R[routing v6 R-0～R-3 ✅<br/>R-4 ⬜]
-    PE[4.14 rebuild<br/>H-0～H-6 ✅]
+    R[routing v6 R-0～R-4 ✅]
+    PE[4.14 rebuild<br/>H-0～H-6 ✅<br/>阶段 D ✅]
   end
 
   subgraph ctx [上下文增强]
     CP[五层 §5.5 压缩点]
     TS[task-scene]
     BIZ[business-context]
+    TL[task-list-memory]
   end
 
   subgraph infra [基础设施]
@@ -118,6 +119,9 @@ flowchart TB
   CP --> SK
   R --> BIZ
   CTX_BASE --> BIZ
+  TS --> TL
+  PE -.-> TL
+  SK -.->|换题沉淀| TL
   GA -.->|S6 Validator| PE
   PE --> D12
   PE --> ST
@@ -129,13 +133,14 @@ flowchart TB
 
 | Spec | 角色 | 硬依赖 | 被谁依赖 |
 |------|------|--------|----------|
-| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 执行模式中枢 | multi-agent（主体 ✅）；**R-0～R-3 ✅** / **R-4 ⬜** | 4.14 H-5（✅）、task-scene、skill-sticky、biz、stateless 分发 |
-| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-7 代码 ✅**；Live 待部署 [plan](../plans/2026-08-13-planner-h7-live.md)；阶段 D ⬜；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | D12、stateless B2/B3、phase5 长任务 |
-| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ | — | task-scene、skill-sticky、biz 挂载纪律 |
-| [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 | routing + 压缩点；pro 边界要 H1 | — |
+| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 执行模式中枢 | multi-agent（主体 ✅）；**R-0～R-4 ✅** | 4.14 H-5（✅）、task-scene、skill-sticky、biz、stateless 分发 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-7 代码 ✅**；Live 待部署 [plan](../plans/2026-08-13-planner-h7-live.md)；**阶段 D ✅**；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | D12、stateless B2/B3、phase5 长任务 |
+| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ · **v25 收敛**（L2+W0→KV Memory；CrossTurnCompact 不做；T0→fast 恢复） | — | task-scene、skill-sticky、biz 挂载纪律 |
+| [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 · **v14 收敛**（T0 作废；W0/L2→KV Memory；session_search 收缩） | routing + 压缩点；pro 边界要 H1 | task-list-memory |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat）；码表/工具集见下行 |
 | [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md) | 资源 `kind` 过滤 · 业务场景 Lab · 工具集 chat/task · 退役 react-prompt | routing + business-context + toolset | ✅ K0～K4（`verify_kind_biz_scene_live.py`） |
 | [skill-sticky](./2026-08-12-skill-sticky-process-chain-design.md) | 可发现≠触发；触发保真 + 轻 sticky（v3.1） | routing 轨 A | — |
+| [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 任务清单跨轮/跨会话记忆一体化（**v2 清爽收敛**：两级作用域 = 会话级执行态 + KV Memory 沉淀；fast 跨轮恢复；`kind=todo`；H1 终态导出；**T0 作废**） | task-scene 读写闸门（P1/P2 前置）、planner H1、skill-sticky（换题沉淀同步） | — |
 | [goal-alignment](./2026-07-27-react-goal-alignment-design.md) | 机械门禁 | TaskBoard/AS2（已有） | rebuild S6（可同批） |
 | [orchestrator-stateless](./2026-08-03-orchestrator-stateless-design.md) | 物理无状态 | 波次 A 独立；B2/B3 要 harness | 多实例生产 |
 | [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md) | Planner decision | 4.14 Planner MAIN | — |
@@ -144,15 +149,17 @@ flowchart TB
 **推荐落地顺序**
 
 1. **已完成**：4.14 **H-0～H-4 + 过渡入口** — [kernel plan](../plans/2026-08-13-planner-executor-kernel.md) ✅；**routing v6 R-0～R-3 + H-5** — [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) ✅；**H-6 前端** — [planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md) ✅（分层时间线 + Composer UX；TaskBoard H1 待 `tasks` SSE）；旁路仍可并行：stateless **波次 A** ∥ 观测 6.2/6.4、phase5 **5.2**
-2. **下一波**：部署后跑 [H-7 Live](../plans/2026-08-13-planner-h7-live.md) → **阶段 D / routing R-4**（删 PlanWorkflow 源码）→ skill-sticky → D12
-3. **第三波**：五层 §5.5 压缩点（优先 task）→ task-scene → business-context（可与 task-scene 并行）→ [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（工具集/Lab/退役 react-prompt，可与 biz 同波）
+2. **下一波**：部署后跑 [H-7 Live](../plans/2026-08-13-planner-h7-live.md)（阶段 D / R-4 源码删除 ✅ 已完成，Live 回归随 H-7 一并）→ skill-sticky → D12
+3. **第三波**：五层 §5.5 压缩点（优先 task，v25 收敛后仅此一套跨轮压缩）→ **task-list-memory M0（fast 跨轮恢复，成本最低）** → task-scene（v14：KV Memory 统一 + 读写闸门）→ business-context（可与 task-scene 并行）→ [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（工具集/Lab/退役 react-prompt，可与 biz 同波）
 4. **刻意后置**：stateless B2/B3/拆进程、phase5 5.1/5.4/5.7、压缩点全面铺 chat
 
-**routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；R-4 / 阶段 D；H-7；harness `tasks` SSE（TaskBoard H1）。
+**routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；H-7 Live；harness `tasks` SSE（TaskBoard H1）。R-4 / 阶段 D **✅**（源码删除完成，Live 回归随 H-7）。
 
-**现状提醒（2026-08-13）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码仍在**（主路径已断）。CLAUDE「4.14 🟡」= H-0～H-6 ✅ / H-7+阶段 D ⬜；架构表勿写「PlanWorkflow 已删」直至阶段 D。
+**现状提醒（2026-08-14）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码已删**（`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*` 零残留；`PlanMaterializer`/`PlanNormalizer`/`PlanTimeline`/`PendingInteraction` 为静态 Workflow/HITL 复用保留）。CLAUDE「4.14 🟡」= H-0～H-6 ✅ / H-7 代码 ✅ / Live 待部署；阶段 D ✅。
 
 **命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`；Catalog 资源同轴另含 `all`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**（码表 = 业务场景 Lab）；执行模式 **`executionMode`**；默认工具集按会话 `kind`（废 ReAct/Plan-Workflow 集）。详见 [routing v6](./2026-07-29-unified-routing-design.md) · [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md)。
+
+**上下文记忆收敛（2026-08-14）**：五层 **v25** / task-scene **v14** / task-list-memory **v2** 三稿对齐——① **L2+W0 统一为 KV Memory**（`user_context_state` + `scope=user|workspace`，同表同模型）；② **T0 全套作废**，会话级任务状态由 fast `react_task_board` 跨轮恢复 / pro H1 承接，失败路径挂任务 item `fail_reason`；③ **`CrossTurnCompactMiddleware` 不做**（run 内 SSOT = AS `CompactionConfig` + tail 裁剪）；④ **L2 语义 merge 二期可选、L3 语义提取延后**；⑤ session_search 一期仅 body+scope=session。任务清单承载见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)。
 
 ---
 

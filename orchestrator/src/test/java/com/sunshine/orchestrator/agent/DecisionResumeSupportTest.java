@@ -113,8 +113,8 @@ class DecisionResumeSupportTest {
         assertThat(block).contains("【用户决策】");
         assertThat(block).contains("outcome=answered");
         assertThat(block).contains("title=" + title);
-        assertThat(block).contains("q.q1=" + DecisionOption.CUSTOM_ID);
-        assertThat(block).contains("q.q1.custom=补充");
+        assertThat(block).contains("choice=补充");
+        assertThat(block).doesNotContain("q.q1");
         assertThat(block).contains(title);
     }
 

@@ -125,7 +125,9 @@ public class SandboxSessionLifecycle {
         return result.sessionId();
     }
 
-    /** 当前对话已加载的 skillId 列表（供 SSE） */
+    /**
+     * 当前对话已加载的 skillId 列表（供 SSE）
+     */
     public List<String> loadedSkillIds(String tenantId, String conversationId) {
         if (!StringUtils.hasText(conversationId)) {
             return List.of();

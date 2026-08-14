@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,7 +69,7 @@ public class AwaitToolRunTool implements AgentTool {
                             toolUseId);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */

@@ -78,6 +78,14 @@ public class SkillsController {
         return skillManagerClient.updateVersionSandbox(id, version, body).flatMap(maintainerEnricher::enrich);
     }
 
+    @PutMapping("/api/skills/{id}/versions/{version}/tools")
+    public Mono<Map<String, Object>> updateVersionTools(
+            @PathVariable String id,
+            @PathVariable int version,
+            @RequestBody Map<String, Object> body) {
+        return skillManagerClient.updateVersionTools(id, version, body).flatMap(maintainerEnricher::enrich);
+    }
+
     @GetMapping("/api/skills/{id}/versions/diff")
     public Mono<Map<String, Object>> diffVersions(
             @PathVariable String id,

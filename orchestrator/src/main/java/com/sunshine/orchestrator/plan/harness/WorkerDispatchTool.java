@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * 运行前须 {@link #bindSession(DispatchSession)}（由 HarnessPlanner / Loop 设置）。
  * <p>
  * 会话按 assistantMessageId / parentRunId / planner-{runId} 存入 {@link ConcurrentHashMap}，
- * <b>禁止 ThreadLocal</b>（工具在 {@code boundedElastic} 上执行，与 bind 线程不同）。
+ * <b>禁止 ThreadLocal</b>（工具在虚拟线程上执行，与 bind 线程不同）。
  */
 @Slf4j
 @Component
@@ -196,7 +196,7 @@ public class WorkerDispatchTool implements AgentTool {
                     String text = dispatchWorker(taskId, session);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     /** 单测 / 同步入口：用 assistantMessageId 或 parentRunId / planner-{runId} 查找会话。 */

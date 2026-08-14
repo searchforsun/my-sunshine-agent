@@ -72,12 +72,11 @@ function pickConversationTitle(apiTitle: string, localTitle?: string): string {
   return apiTitle || localTitle || DEFAULT_CONV_TITLE
 }
 
-/** 任务会话：显式 kind=task，或带 workspaceId（防 kind 丢失时串到对话侧栏） */
+/** 任务会话：仅 kind=task。工作区能力挂在 workspaceId 上（chat 会话绑定工作区后仍是 chat，不归任务形态） */
 export function isTaskConversation(c: {
   kind?: string | null
-  workspaceId?: string | null
 }): boolean {
-  return c.kind === 'task' || !!c.workspaceId
+  return c.kind === 'task'
 }
 
 function summaryToConversation(
@@ -555,7 +554,8 @@ export const useChatStore = defineStore('chat', () => {
 
   async function create(params?: { kind?: string; workspaceId?: string; checkoutPath?: string }): Promise<string> {
     const kind = params?.kind ?? 'chat'
-    // 点「新对话」：已有空白会话则直接定位，避免侧栏堆多个空会话
+    // 点「新对话」：已有空白会话则直接定位，避免侧栏堆多个空会话。
+    // chat 会话工作区由后端在首次执行脚本时懒绑定，空白复用不判断工作区
     if (kind === 'chat' && !params?.workspaceId) {
       const blank = findBlankChat()
       if (blank) {
@@ -683,6 +683,21 @@ export const useChatStore = defineStore('chat', () => {
     const conv = conversations.value.find(c => c.id === id)
     if (!conv || !title) return
     conv.title = title
+    upsertCachedIndex({
+      id: conv.id,
+      title: conv.title,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+      kind: conv.kind,
+      workspaceId: conv.workspaceId ?? null,
+    })
+  }
+
+  /** 发送消息后本地同步会话最新活动时间：后端在消息落库时更新 updatedAt（SSE 未下行该值），侧栏按此排序/展示时间 */
+  function touchConversation(id: string): void {
+    const conv = conversations.value.find(c => c.id === id)
+    if (!conv) return
+    conv.updatedAt = Date.now()
     upsertCachedIndex({
       id: conv.id,
       title: conv.title,
@@ -866,6 +881,7 @@ export const useChatStore = defineStore('chat', () => {
     loadMoreChats, collapseChats, ensureWorkspaceTasks, loadMoreWorkspaceTasks, collapseWorkspaceTasks,
     updateTitle: updateTitleLocal,
     updateTitleFromStream,
+    touchConversation,
     syncMessages, ensureCurrent, loadDetail, setConversationIdFromStream,
     updateExecutionPreferenceLocal,
     updateKbIdLocal,

@@ -1,7 +1,7 @@
 # 上下文压缩统一设计（五层渐进管道）
 
 > 日期：2026-07-31
-> 状态：**基线管道 ✅**（Layer 1–5 骨架已落地）· **§5.5 / v2–v15 增强 ⬜ 设计稿未落地**（压缩点模式、Tier 0/1/2、scene 隔离、4+4+Far / 2+2+Far、T0 轨迹、Budget「退役并入」、`CrossTurnCompactMiddleware` 等，见 §13.3）
+> 状态：**基线管道 ✅**（Layer 1–5 骨架已落地）· **§5.5 / v2–v15 增强 ⬜ 设计稿未落地**（压缩点模式、Tier 0/1/2、scene 隔离、4+4+Far / 2+2+Far、Budget「退役并入」等，见 §13.3）· **v25 收敛**：CrossTurnCompact/T0 已删项、L2+W0→KV Memory、语义 merge 二期、L3 语义提取延后
 > **基线对照（2026-08-10 代码核实）**：Layer 1 = `HarnessAgentFactory` → AgentScope `CompactionConfig`（token 动态触发 + Catalog 摘要保留思考，§4.5）；Layer 2 = `L1Compressor` **滑动窗** Near/Mid/Far + `far_folded_msg_ids` 仅作 Far 增量折叠去重（**非**压缩点边界）；Layer 3/4 = `L2ExtractService` / `L3IngestService`+`L3RecallService`；Layer 5 = `applyBudget` **静默丢弃** L3→Far→Mid。读路径 `ContextAssembler`，写路径 `ContextWritePath`。
 > **v2/v3 优化（2026-08-01 · 设计稿）**：§5.5 压缩点模式（L1 压缩点前移、L3 尾部动态段、Budget「丢」改「退役并入」）；§5.5.3 起 v3 分层修正——**按变化频率 Tier 0/1/2 分层**、幂等 upsert、T0 降频、意图尾部注入（业界调研见 §5.5.5）· 关联 [task-scene-context-design](./2026-08-01-task-scene-context-design.md)
 > **v8（2026-08-02 · 历史）**：曾设想 HIERARCHICAL 下 H1 拆 Tier——**已由 v10/S3 + rebuild S5 v4 作废**；原详设见 [archive/planner-harness](./archive/2026-07-31-planner-harness-loop-design.md)
@@ -23,6 +23,12 @@
 > **v21（2026-08-10 · 状态保真原则）**：压缩主目标 = **下一轮可续跑的执行状态保真**（§2.1）；省 token / KV 为硬约束非唯一目的。三标签 L-narr / L-state / L-seal **映射现有载体**，不新建平行存储。细则与 task 侧启用面见 [task-scene §2.0](./2026-08-01-task-scene-context-design.md)。
 > **v22（2026-08-10 · L2 值形态自解释）**：结构化结果须 **key + value + background** 三件套均可指认；禁止裸 key / 布尔孤值 / 会话级计划进用户 L2（线上反例见 §6.3.5）。叠加 v20。
 > **v23（2026-08-10 · chat 工具轮 schema）**：chat Near **正文为主**；多工具业务轮次可追加 **确定性 schema 行**（非 LLM 中间摘要、非 task 完整过程窗）；Mid 同口径保留 schema + 结论语义压缩；跨会话关键态仍走 L2（宁缺毋滥）。见 §5.5.8。
+> **v24（2026-08-14 · skill 动态工具 sticky 化）**：主 agent 绑 skill 时工具并集**不得**按每轮最新 skillId 自由变化——须基于路由 **triggered 集**（[skill-sticky S-0/S-1](./2026-08-12-skill-sticky-process-chain-design.md)）**单调并集**：triggered 不变 → Tier 0 `tools` 字节不变；仅 triggered 变化（L0 整表替换 / 退出清空）时重建一次（C3 允许）。SUB/Worker 无前缀包袱不受限（即时并集）。装配契约见 [skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md)。
+> **v25（2026-08-14 · 清爽收敛，对齐 [task-scene v14](./2026-08-01-task-scene-context-design.md) / [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）**：
+> 1. **L2 与 W0 统一为 KV Memory**（`scope=user|workspace` 列）：本文 L2（§6）与 task-scene W0 同表同模型同抽取服务（`context.memory.extract` 参数化）；Tier 1 由「L2 + W0」收敛为「KV Memory + Far/Mid」。
+> 2. **会话级任务状态由 fast `react_task_board` 跨轮恢复 / pro H1 承接**：§5.5.3 Tier 1 的「T0 状态块」与 §5.5.7/§13.3 的 T0 相关条目**作废**（task-scene §6.1 T0 全套已废）；失败路径由任务 item `fail_reason` 承接。
+> 3. **`CrossTurnCompactMiddleware`（§4.4/§4.6/§13.1）明确不做**：run 内压缩 SSOT = §4.5 AS `CompactionMiddleware` + tail 裁剪；跨轮走压缩点（§5.5）与 Budget 退役并入（§8.2），不再叠第三套。
+> 4. **§6.4 L2 语义 merge / §7.4 L3 语义提取层标注二期可选/延后**：一期字面 + key 规范化门禁与现有分块召回已覆盖主路径。
 > 整合：`2026-07-17-autocontext-memory-design.md` + `2026-07-22-context-optimization-design.md` + `2026-07-24-dynamic-context-compression-design.md`（三者均已归档）
 > 行业参考：Claude Code 五层渐进压缩 · Cursor 单层摘要 · Oracle 双层模式 · Mem0 LLM 记忆管理
 
@@ -75,20 +81,20 @@ cross-turn（跨用户问答轮次）:
 | 标签 | 含义 | 允许 | 禁止 |
 |------|------|------|------|
 | **L-narr** | 解释性背景 / 闲聊叙事 | 语义摘要（chat Mid/Far；Far 粗折叠） | 把唯一目标/禁止/失败原因只留在散文里 |
-| **L-state** | 影响下一步的执行态 | 结构化载体（T0 / H1 / Mid schema / P0） | 默认 LLM 整轮散文替代结构块 |
+| **L-state** | 影响下一步的执行态 | 结构化载体（fast 任务清单恢复块 / H1 / Mid schema / P0） | 默认 LLM 整轮散文替代结构块 |
 | **L-seal** | 安全边界与外部 ID | 原样保留在 schema 行 / HITL·审计引用 | 改写确认原文；把订单号等写入**用户 L2** |
 
 **不可丢信息 → 现有载体（映射，勿平行新建）**：
 
 | 信息 | 落点 | 备注 |
 |------|------|------|
-| 用户目标 / 验收 / 禁止项 | T0 状态块（fast）· H1（pro）· P0 项目规范 | 建议字段 `goalEpoch`（目标变更世代）；禁止项可进 P0 或 T0.constraints |
+| 用户目标 / 验收 / 禁止项 | **fast 任务清单恢复块**（`react_task_board`，[task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）· H1（pro）· P0 项目规范 | 建议字段 `goalEpoch`（目标变更世代）；禁止项可进 P0 或任务 item 的 constraints |
 | 工具关键字段（path、*Id、exitCode、trace…） | Mid/Near **schema 行**白名单原样（**chat 见 §5.5.8**；task 见 task-scene §6.5） | 渲染规则保真，禁止「先摘要再捞回」 |
-| 失败路径（试过/为何失败/测不过/权限拒） | T0 `processTrail`（kind=attempt\|fail\|denied…） | 硬保留；重要性 ≥ 成功叙事 |
+| 失败路径（试过/为何失败/测不过/权限拒） | **任务 item `status/fail_reason`**（fast 任务清单）· processTrail 已被替代（v25）；详见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 硬保留；重要性 ≥ 成功叙事 |
 | 证据与时效 | RAG/外网：source + queriedAt 可短解释不可抹锚；**代码**：只留 refs，实时重读（§v12） | 代码路径**不**引入 asOf 水位 |
 | Skill **触发**态（轻 sticky） | 消息完整 `RoutingResult.skillIds`（=triggered SSOT）；上轮触发集种子；全文 overlay 仅 triggered | **不进** L1 Near/Mid/Far；可发现目录（名+描述）另层、非绑定 SSOT。见 [skill-sticky v3.1](./2026-08-12-skill-sticky-process-chain-design.md) |
 
-**明确不做**：对话窗 alone 作为唯一续跑判据（正确形态可以是瘦对话 + 胖 T0/H1）；chat 与 task 同一套「四类全留」（chat 仍 **正文为主 + 工具轮 schema**，见 §5.5.8，非 task 完整过程窗）。
+**明确不做**：对话窗 alone 作为唯一续跑判据（正确形态可以是瘦对话 + 胖任务清单块/H1）；chat 与 task 同一套「四类全留」（chat 仍 **正文为主 + 工具轮 schema**，见 §5.5.8，非 task 完整过程窗）。
 
 **补充验收（§12）**：压缩/结构态快照后发起续跑——能否遵守禁止项、选对下一步、引用关键 path/Id/失败记录；**通过不要求**对话窗含全部历史原文。
 
@@ -99,7 +105,7 @@ cross-turn（跨用户问答轮次）:
 ```
 每轮 LLM 调用前 / 每轮 assistant 完成后 / 每次读时组装：
 
- ┌── Layer 1  CompactionConfig            ✅ 基线（AS 官方；三阶段一次 / CrossTurnCompact ⬜）
+ ┌── Layer 1  CompactionConfig            ✅ 基线（AS 官方；CrossTurnCompact v25 不做）
  │    触发: CompactionMiddleware（每轮自动，阈值见 Nacos auto-context）
  │    开销: 触发后含 LLM 摘要（非零）
  │    压缩: intra-turn ReAct 工具 / 消息流
@@ -109,12 +115,12 @@ cross-turn（跨用户问答轮次）:
  │    开销: 1-2 次 LLM 调用（Mid 摘要 + Far 折叠）
  │    压缩: cross-turn 对话历史 → 三层窗口
  │
- ├── Layer 3  L2 结构化状态               ✅ 基线抽取 · **宁缺毋滥 / key·value 自解释 / background / 语义 merge ⬜ §6（v20/v22）**
+ ├── Layer 3  KV Memory 结构化状态        ✅ 基线抽取 · **宁缺毋滥 / key·value 自解释 / background / 语义 merge ⬜ §6（v20/v22/v25）**
  │    触发: assistant completed（异步）
  │    开销: 1 次 LLM 调用
- │    压缩: 对话 → 11 类结构化键值对
+ │    压缩: 对话 → 结构化键值对（scope=user|workspace）
  │
- ├── Layer 4  L3 向量检索                 ✅ 基线（scene=chat|task 通道 / session_search ⬜）
+ ├── Layer 4  L3 向量检索                 ✅ 基线（scene=chat|task 通道 / session_search ⬜ body+session 一期）
  │    触发: 每次读时 query → Milvus
  │    开销: 1 次 embedding + search
  │    压缩: 对话 → 语义 chunk → 按需召回
@@ -188,6 +194,8 @@ cross-turn（跨用户问答轮次）:
 **结论**：跨轮压缩（改 prefix）应该**整个 run 只做一次**，把多次分散的小跨轮压缩合并为一次集中大跨轮压缩。Tail 操作可以频繁做，零代价。
 
 ### 4.4 优化方案：三阶段一次原则
+
+> **v25（2026-08-14 · 明确不做）**：`CrossTurnCompactMiddleware`（Phase 1 三阶段批处理，5 次 LLM + 双压缩点衔接）**不再实现**。run 内压缩 SSOT = §4.5 的 AS `CompactionMiddleware`（token 动态触发 + tail 裁剪）；跨轮压缩走压缩点模式（§5.5）+ Budget 退役并入（§8.2）。正文 4.4.1–4.4.6 保留作历史设计参考，**禁止按本节新建中间件**。
 
 ```
 ┌─ 整个 ReAct Run 的生命周期（128k 模型） ──────────────────────┐
@@ -454,8 +462,8 @@ agent:
 | `MemoryProperties.AutoContext` | 修改 | ✅ | 新增方案 A 字段（见 §4.5） |
 | `ReActAgentFactory.buildModel()` | 修改 | ✅ | 显式设置 `contextWindowSize`（Nacos `agent.model.context-window`，默认 200k），修正 AgentScope `ModelContextWindows` 缺表导致的 fallback |
 | `mode-overlay.react`（Catalog v5） | 修改 | ✅ | 新增 【reasoning·限长】150 字软约束，控制思考量、缓解上下文膨胀 |
-| **新增** `CrossTurnCompactMiddleware.java` | 新建 | ⏳ 后续增强 | Phase 1 跨轮激进压缩（L3 清 + Near↓ + Mid↓ + Far 合成），`compacted` 标记 |
-| **修改** `ProcessingStepMiddlewareFactory.java` | 扩展 | ⏳ 后续增强 | 注入 `CrossTurnCompactMiddleware`，**放在 CompactionMiddleware 之前** |
+| **新增** `CrossTurnCompactMiddleware.java` | 新建 | ~~⏳ 后续增强~~ **v25 不做** | 已取消：run 内 SSOT=§4.5 AS compaction；跨轮=压缩点 §5.5 + Budget §8.2 |
+| **修改** `ProcessingStepMiddlewareFactory.java` | 扩展 | ~~⏳ 后续增强~~ **v25 不做** | 同上；不再注入 CrossTurnCompactMiddleware |
 
 #### 4.6.1 CrossTurnCompactMiddleware 核心算法
 
@@ -599,20 +607,21 @@ Tier 0 · 绝对静态核（字节恒定，永不失效）
   + P0 项目规范（用户手动编辑时才变，单次失效可接受；仅 task）
 
 Tier 1 · 低频记忆（content-hash 幂等 upsert，真变才失效一次）
-  + L2 用户状态（11 类结构化键值，幂等；仅 chat）
-  + W0 工作区记忆（索引/约束/事实，幂等；仅 task）
-  + T0 任务状态块（goal/codeRefs/verifiedRefs/todo，降频随压缩点刷新；**仅 task×fast**；pro→H1；**引用化**；**processTrail 进 Tier 2**，见 [task-scene §6.1](./2026-08-01-task-scene-context-design.md#61-t0-任务进度摘要--过程轨迹v3-细化)）
+  + KV Memory（scope=user：用户状态 + `todo`，幂等；仅 chat）
+    （scope=workspace：工作区事实/约束/决策 + `todo`，幂等；仅 task——原 W0，v25 统一）
   + L1 Far/Mid 摘要（压缩时才变）
 
 Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
   Near 原文（压缩点之后逐轮增长）
   + L3 召回（U 形排序：高相关放首尾，Lost-in-Middle 缓解；仅 chat，scene=chat 过滤）
+  +【会话级任务清单恢复块】（fast：`react_task_board` 最近快照；仅 task×fast，见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)；原 T0 状态块作废 v25）
   +（可选）用户显式 executionMode 尾部 · **禁止** L3 自判 planMode（routing v6）
   + pro：H1 注入块（query 前）
   + user query（tail 末尾）
 ```
 
 > **v9 注记（2026-08-05 场景隔离）**：上图为**最大并集**示意；实际按场景过滤——chat 注入 L2 + L3，不注入 W0/T0/P0；task 注入 W0 + P0（+ fast 的 T0 / pro 的 H1），不注入用户 L2、不召回 L3（[task-scene §2.1](./2026-08-01-task-scene-context-design.md)）。
+> **v25 修正**：上句 L2/W0/T0 读作 KV Memory scope=user/workspace + fast 任务清单恢复块（`react_task_board`）；T0 不再存在。
 >
 > **v17 注记（2026-08-10）**：再按 `executionMode` 裁剪——workflow 不注入 W0/T0/session_search；详见 [task-scene §2.2](./2026-08-01-task-scene-context-design.md)。
 >
@@ -624,6 +633,8 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 - 溢出处理：tail 超 `modelWindow × 0.8` → 触发一次压缩（C3），不再从 Near 头部丢轮次
 
 > **v6 注记（tools 分层注入，对齐 [phase5 §5.5](./phase5-operation-openness-design.md)）**：工具规模膨胀（>50）时 naive 全量 schema 进 Tier 0 会推高 token；若改为每轮按 query 检索 Top-K 注入，则 `tools` 块每轮变化 → **Tier 0 失效 → 全量 miss**。折中：**Tier 0 只放「全量工具名列表」**（确定性序列化、字节稳定）+ **Tier 2 尾部放 Top-K 工具完整 schema**（随 query 动态）。工具规模 ≤ 阈值（默认 20）时仍用全量 schema 进 Tier 0（`full` 模式），二选一由 Nacos `agent.tool.inject` 切换。
+>
+> **v24 注记（skill 动态工具 sticky）**：主 agent 绑 skill 时并入 skill 声明工具，必须按路由 **triggered 集**单调并集（[skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md)）——**禁止**每轮按最新 skillId 自由并集，否则 Tier 0 `tools` 逐轮变化全量 miss（正是本注记警告的场景）。SUB/Worker 即时并集不受限（子会话无前缀包袱，task-scene §7.4）。
 
 #### 5.5.4 五条优化建议
 
@@ -633,7 +644,7 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 
 **③ Budget「丢」改「退役并入」（C3 + 保质量）**：见 §8.2。Mid 头部不再直接丢，先触发 Far 折叠（并入 far_summary、压缩点前移），折叠后仍超预算才丢 Far。让 Budget 成为压缩点推进的触发源之一，保住「原文可查」原则。
 
-**④ 机制同构、落地分期（v17 覆盖原「全域统一启用」）**：压缩点仍是 **L1 通用机制**（chat/task 同构），但 **一期启用面** = `kind=task` × (`fast`|`pro`)（[routing v6](./2026-07-29-unified-routing-design.md) + [task-scene §2.2](./2026-08-01-task-scene-context-design.md)）。chat 可二期跟随；**workflow 退出**本套增强。场景差异：静态层（P0/W0；T0 仅 fast；pro→H1）+ L3（chat=`scene=chat`；task 写 `scene=task` 不自动注入）+ 写/读双侧 kind 闸门（§2.1）。
+**④ 机制同构、落地分期（v17 覆盖原「全域统一启用」）**：压缩点仍是 **L1 通用机制**（chat/task 同构），但 **一期启用面** = `kind=task` × (`fast`|`pro`)（[routing v6](./2026-07-29-unified-routing-design.md) + [task-scene §2.2](./2026-08-01-task-scene-context-design.md)）。chat 可二期跟随；**workflow 退出**本套增强。场景差异：静态层（P0 / KV Memory workspace；fast 任务清单恢复块；pro→H1）+ L3（chat=`scene=chat`；task 写 `scene=task` 不自动注入）+ 写/读双侧 kind 闸门（§2.1）。
 
 **⑤ 双压缩点衔接**：run 内压缩点（§4.4 Phase 1 后新 prefix 起点）与跨轮压缩点（far_folded_msg_ids）是两条独立线——run 内压缩**不落库、不移动 far_folded_msg_ids**；跨轮压缩在 assistant 完成后异步推进。二者互不干扰，实现时不得混淆（run 内压缩产物经 `ContextWritePath` 只取 user/assistant 角色入 history）。
 
@@ -675,10 +686,10 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 | 执行路径（v17） | 用户显式 `fast`/`pro`/`workflow`（[routing v6](./2026-07-29-unified-routing-design.md)）；chat 侧以 fast/pro 为主 | 同轴；**一期压缩点**优先 task×(fast\|pro)；workflow 退出本套 | ❌ 机制同构 / ✅ 启用分期 |
 | L1 窗口 | 压缩点前移（二期可选） | 压缩点前移（一期优先） | ❌ 机制同构 |
 | Tier 0 | base + overlay + tools | base + overlay.task + mode overlay（fast→react / pro→harness）+ **P0** + tools | ✅ 差异（内容） |
-| Tier 1 | L2（用户）+ Far/Mid | **W0** + Far/Mid（不读用户 L2）；**T0 仅 fast**；pro 计划态→H1（Tier 2） | ✅ 差异（内容 + 模式） |
-| L3 | 保留（scene=chat 隔离通道） | **写 `scene=task`（body 消息对 + process 工具摘要 ≤200 chars，v11/v12）+ 不自动注入**（读路由闸门，[task-scene §6.4](./2026-08-01-task-scene-context-design.md)）；`session_search` 按 scope 取会话级/项目级 | ✅ 差异（开关 + 通道隔离） |
+| Tier 1 | KV Memory（scope=user）+ Far/Mid | KV Memory（scope=workspace）+ Far/Mid（不读 scope=user）；**fast 任务清单恢复块在 Tier 2**；pro 计划态→H1（Tier 2） | ✅ 差异（内容 + 模式） |
+| L3 | 保留（scene=chat 隔离通道） | **写 `scene=task`（body 消息对；process 层与 scope=workspace 延后 v14）+ 不自动注入**（读路由闸门，[task-scene §6.4](./2026-08-01-task-scene-context-design.md)）；`session_search` 一期 scope=session | ✅ 差异（开关 + 通道隔离） |
 | Mid 摘要 / 骨架 | **结论语义为主**（`context.l1.mid-compress`）+ **有工具则保留 schema 行**（§5.5.8 v23；非整轮过程骨架） | **schema 过程骨架优先**（tool 行确定性渲染；可选 `context.l1.mid-compress.task` 仅补决策句，[task-scene §6.5 v9](./2026-08-01-task-scene-context-design.md)） | ✅ 差异（装配路径） |
-| 记忆存内容 | 对话/偏好原文、语义向量；业务关键态优先 **L2**（§6）或轮内 **schema**（§5.5.8） | **代码引用化（v12）**：T0/process 层只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；**永不存代码内容**；无 blob 锚点/asOfCommit 水位。**仅约束跨轮记忆块**——Near 原文与 `chat_message` 原始记录完整保留（[task-scene §6.1](./2026-08-01-task-scene-context-design.md)） | ✅ 差异（内容边界） |
+| 记忆存内容 | 对话/偏好原文、语义向量；业务关键态优先 **KV Memory scope=user**（§6）或轮内 **schema**（§5.5.8） | **代码引用化（v12）**：KV workspace 记忆/任务清单 item 只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；**永不存代码内容**；无 blob 锚点/asOfCommit 水位。**仅约束跨轮记忆块**——Near 原文与 `chat_message` 原始记录完整保留（[task-scene §6.1](./2026-08-01-task-scene-context-design.md)） | ✅ 差异（内容边界） |
 | Near 内容（v13/v14/v15/v19/**v23**） | **正文为主**（user/assistant）；无 think / 无完整 tool dump；**工具轮可追加 schema 行**（确定性，§5.5.8）；**压缩后重组 4+4+Far**（近 4 原文 ±schema + 次 4 语义结论 ±schema + 其余折叠）；可选「短轮不占名额」。**中断感知（v16）**见下 | **压缩后重组 2+2+Far ≤ 10k**（近 2 轮完整过程 + 次 2 轮 **schema 骨架** + 其余折叠）；总量硬限；**读/执行摘要+refs、写/改 Near 原文 / Mid 变更摘要+refs**；Mid **禁止**默认工具散文摘要（[task-scene §6.6 v9](./2026-08-01-task-scene-context-design.md)）；**中断感知（v16）**同 chat | ✅ 差异（内容 + 装载路径） |
 | run 内 Layer 1 | 三阶段一次（§4.4） | 同 | ❌ 统一 |
 
@@ -745,10 +756,11 @@ assistant: context.l1.mid-compress → 结论优先 1–3 句（只压叙事，�
 
 ---
 
-## 6. Layer 3 — L2 结构化状态（cross-session · 用户状态）
+## 6. Layer 3 — KV Memory 结构化状态（cross-session · 原 L2 用户状态）
 
 > **基线 ✅**：`L2ExtractService` + `L2StateStore`（字面同 key 合并 + 置信门禁）。  
 > **增强 ⬜（v20/v22）**：§6.0 宁缺毋滥 · §6.3.4 key/`background` · **§6.3.5 value 自解释** · §6.4 语义 merge · task 写隔离见 [task-scene §2.1](./2026-08-01-task-scene-context-design.md)。
+> **v25（2026-08-14 · L2 与 W0 统一）**：本层扩展为 **KV Memory**——`user_context_state` 加 `scope=user|workspace` 列，workspace 行（原 W0）同表同模型、抽取服务 `context.memory.extract` 按 scope 参数化；`kind` 新增 `todo`（未完成任务清单，见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）。下方正文以 scope=user 为例，workspace 侧规则一致。
 
 ### 6.0 硬原则：宁缺毋滥（v20）+ 结构自解释（v22）
 
@@ -856,7 +868,7 @@ Catalog `context.l2.extract` 同步：
 kind 只能是：profile, preference, goal, agreement, constraint, fact, decision,
           process_note, topic
 - process_note：须有明确依据；默认倾向不抽（易幻觉），确需则短 TTL。
-- 会话/工作区过程态 → 不进用户 L2（应落 Near/W0/T0/H1，见 §6.3.5）。
+- 会话/工作区过程态 → 不进 KV Memory scope=user（应落 Near/任务清单恢复块/H1，见 §6.3.5）。
 ```
 
 **6.3.4 key 场景化 + background（v20 定稿）**
@@ -910,7 +922,7 @@ kind 只能是：profile, preference, goal, agreement, constraint, fact, decisio
 | 信息类型 | 应落点 | 禁止 |
 |----------|--------|------|
 | 用户长期偏好/约束/画像 | **用户 L2** | 写成裸 key |
-| 本会话/本迭代计划、审批勾选、优化 sprint | Near / W0 / T0 / H1 | **用户 L2** |
+| 本会话/本迭代计划、审批勾选、优化 sprint | Near / 任务清单恢复块 / H1 | **KV Memory scope=user** |
 | 工具调用关键字段 | Mid schema / processTrail | 用户 L2 的 `true` 开关 |
 
 **线上反例 → 处置**（存量由 `auditL2` + 人工/脚本清洗；增量靠门禁拒写）：
@@ -921,8 +933,8 @@ kind 只能是：profile, preference, goal, agreement, constraint, fact, decisio
 | `agreement` / `p11_plan_agreement` | 单次同意 | **不入库**；过程在对话正文 |
 | `decision` / `approve_P11_1` = `true` | 布尔孤值 + 任务代号 | **丢弃** |
 | `goal` / `continue_project_optimization` 与 `continuous_optimization` | 口号目标、互相矛盾 | **丢弃**或收敛为一条可指认长期目标（极少） |
-| `agreement` / `mermaid_prerender_svg` = `true` | 项目技术开关 | 属 **W0/P0**，非用户 L2 |
-| `decision` / `optimization_choice` =「Implement Mermaid…」 | 会话方案选择 | **W0** 或对话正文，不进用户画像 |
+| `agreement` / `mermaid_prerender_svg` = `true` | 项目技术开关 | 属 **KV Memory scope=workspace / P0**，非 scope=user |
+| `decision` / `optimization_choice` =「Implement Mermaid…」 | 会话方案选择 | **KV Memory scope=workspace** 或对话正文，不进用户画像 |
 
 **合格样例（对比）**：
 
@@ -933,6 +945,8 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 ```
 
 ### 6.4 语义冲突识别（写路径 · v7）
+
+> **v25（2026-08-14 · 二期可选）**：一期写路径用**字面 + key 规范化门禁**（§6.0/§6.3.4 正则）即可覆盖主路径；本节的语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT）标注**二期可选**，与 KV Memory workspace 侧（task-scene §5.2）同节奏，不阻塞一期落地。
 
 > **问题根因（2026-08-01 线上 bug）**：`L2StateStore.upsert` 的唯一冲突判定入口是 **kind + key 字面精确匹配**（`findBy…KindAndStateKeyAndStatus`）。两个语义相似或相反的条目只要 key 字面不同（如 `fact/项目数据库=MySQL` vs `fact/项目存储用MySQL`、`constraint/用户不吃辣` vs `constraint/用户偏好重辣`），彼此完全不可见——`L2ConflictMerger` 仅在字面同 key 时触发，value 相反也无法判矛盾，两条同时 `active` 并存注入。事后腐败审计（§9 `auditL2`）虽可用 LLM 标 `conflict`，但它是**异步批量 + 防抖**：矛盾在写入时已被当作新条目接受，且在下一次审计前一直注入。
 >
@@ -1044,6 +1058,8 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 | `ContextProperties.java` | orchestrator | topK/minScore/decayHalfLifeDays |
 
 ### 7.4 优化方向
+
+> **v25（2026-08-14 · 延后）**：本节 L3 语义提取层 / 攒批触发 / 相似度去重**整体延后**（一期沿用「原文分块 + 引用化」既有召回；task 侧 session_search 仅 body+scope=session，见 [task-scene v14](./2026-08-01-task-scene-context-design.md)）。
 
 **7.4.1 嵌入前增加语义提取层**
 
@@ -1266,7 +1282,7 @@ agent:
 | L2 11 类写入 + 分级置信 | `verify_context_layers_live.py` + `verify_dynamic_context_live.py` T6-T7 | 3 |
 | L3 召回 + Far 降权 + 时间衰减 | `verify_context_layers_live.py` + `verify_dynamic_context_live.py` T8-T10 | 4 |
 | Budget 裁剪顺序 | 单测 `ContextAssemblerBudgetTest` | 5 |
-| AutoContext 长工具链可完成 | `phase2_agent_demo.py`（待 `CrossTurnCompactMiddleware` + CompactionConfig 上线后） | 1 |
+| AutoContext 长工具链可完成 | `phase2_agent_demo.py`（AS `CompactionConfig` + tail 裁剪；v25 不再依赖 `CrossTurnCompactMiddleware`） | 1 |
 | SUB 无记忆、企业 KB 不受影响 | 各脚本回归 | All |
 | **状态保真续跑（v21）** | 压缩/结构态就绪后续跑：能守禁止项、选对下一步、引用 path/失败记录；**不要求**对话窗含全历史 | `verify_context_layers_live.py` / task 脚本扩展 |
 
@@ -1275,6 +1291,8 @@ agent:
 ## 13. 已知局限与后续
 
 ### 13.1 P0：Layer 1 三阶段一次原则 — 跨轮压缩仅 1 次 KV Cache 重建
+
+> **v25（2026-08-14）**：本小节计划**不再实施**（见 §4.4 注记）。run 内压缩 SSOT = §4.5 AS `CompactionMiddleware` + tail 裁剪；跨轮走压缩点 §5.5 + Budget 退役并入 §8.2。正文保留作历史对照。
 
 **原判断**（已纠正）：Layer 1 "完全缺失" → **实际 CompactionMiddleware 已运行**，仅配置阈值过高。
 
@@ -1303,31 +1321,32 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 
 ### 13.3 压缩点模式落地清单（v2 优化 · ⬜ 设计稿未落地）
 
-> 对应 §5.5 及后续 v3–v15 增强。**2026-08-10 核实：下列 ①–⑮ 均未进代码**（基线仍为滑动窗 + Budget 丢弃）；落地时以此表为验收清单：
+> 对应 §5.5 及后续 v3–v15 增强。**2026-08-10 核实：下列 ①–⑮ 均未进代码**（基线仍为滑动窗 + Budget 丢弃）；落地时以此表为验收清单。**v25：⑧ 作废（T0→fast 跨轮恢复）、⑪ 二期可选（语义 merge）；Tier 1 的 L2/W0 统一为 KV Memory**。
 
 | # | 建议 | 落点 | 改动 |
 |---|------|------|------|
 | ① | L1 压缩点前移 | §5.1 / §5.3 | `L1Compressor.partition` 以 `far_folded_msg_ids` 为界；`trimByTokens` 不丢 Near 头部，溢出走压缩。**v11（同步推进 P）**：assemble 超预算 → **同步**前移压缩点（纯写库零 LLM）+ Mid/Far LLM 折叠异步执行，见 [task-scene §4.2.1](./2026-08-01-task-scene-context-design.md#421-同步异步衔接同步推进-p--异步折叠v4-细化) |
 | ② | L3 尾部动态段 | §7.5 | `ContextMessageBuilder` 渲染顺序固定：L3 在 query 前绝对尾部（task 的 session_search 检索结果经 tool_result 进 tail，不注入 prefix） |
 | ③ | Budget 退役并入 | §8.2 | `applyBudget` 超限 → 触发 Far 折叠（压缩点前移），非静默丢弃 |
-| ④ | 机制同构 / 分期启用（v17） | §5.5.4 ④ · task-scene §2.2 | 压缩点机制场景无关；**一期** task×(fast\|pro)；chat 二期；workflow 不做；T0 仅 fast、pro→H1 |
+| ④ | 机制同构 / 分期启用（v17） | §5.5.4 ④ · task-scene §2.2 | 压缩点机制场景无关；**一期** task×(fast\|pro)；chat 二期；workflow 不做；fast 任务清单恢复块、pro→H1（v25） |
 | ⑤ | 双压缩点衔接 | §5.5.4 | run 内压缩不落库不移动 far_folded_msg_ids；跨轮压缩异步推进 |
 | ⑥ | **按频率分层（v3）** | §5.5.3 | Tier 0/1/2 定序；高频块（T0 原稿）移出 Tier 0/1 前部，意图注入走尾部 system 消息 |
 | ⑦ | **幂等 upsert + 定宽隔离** | §5.5.6 | L2/W0 抽取加 content-hash 比对；appendix 定宽分隔、阈值重编译；确定性序列化（键排序、无时间戳/session id） |
-| ⑧ | **T0 状态块降频 + 轨迹块 Tier 2** | §5.5.6 / task-scene §6.1 | T0 状态块有界块随压缩点推进刷新（非每轮）；**过程轨迹块 processTrail 高频进 Tier 2 尾部**（每轮增量 append、content-hash 幂等、有界裁剪 `context.t0.condense`）；与 T0 写路径解耦。**v12（引用化）**：状态块字段为 codeRefs/verifiedRefs，轨迹条目为「结果摘要 ≤200 chars + refs」，`context.t0.extract` 禁产代码内容 |
+| ⑧ | **T0 状态块降频 + 轨迹块 Tier 2** | §5.5.6 / task-scene §6.1 | **v25 作废**：会话级任务状态由 fast `react_task_board` 跨轮恢复 / pro H1 承接（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）；失败路径挂任务 item `fail_reason`。原 T0 双块/processTrail/`context.t0.extract/condense` 不再实现 |
 | ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md) | Planner + H1 query 前注入；Worker 稳定前缀 + upstream 从 H1；**v10（S3）**：H1 不拆 Tier、不建压缩点 |
 | ⑩ | **tools 分层注入** | §5.5.3 v6 注记 / [phase5 §5.5](./phase5-operation-openness-design.md) | 工具规模 > 阈值时：全量名列表进 Tier 0 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 由 Nacos `agent.tool.inject` 切换 |
-| ⑪ | **L2/W0 语义冲突识别** | §6.4 / task-scene §5.2 | 写路径加语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT，`context.l2.merge` / `context.ws.merge`）；Nacos `agent.context.l2.semantic-merge` 开关 |
+| ⑪ | **KV Memory 语义冲突识别** | §6.4 / task-scene §5.2 | 写路径语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT，`context.memory.merge`）；**v25 二期可选**，一期字面 + key 规范化门禁；Nacos `agent.context.l2.semantic-merge` 开关 |
 | ⑫ | **Mid schema 骨架（v19/v23）** | §5.5.7 / §5.5.8 / task-scene §6.5 v9 | task Mid：确定性 tool schema 行 + 可选决策句；**chat Mid**：结论语义为主，**有工具则保留同形 schema 行**（不整轮过程骨架） |
 | ⑯ | **L2 宁缺毋滥 + key/background（v20）** | §6.0 / §6.3.4 | extract abstain；`{domain}.{facet}` key；`background` 列与注入；代码门禁拒裸 key；语义 merge 输入含 background |
 | ⑰ | **状态保真原则（v21）** | §2.1 | L-narr/L-state/L-seal 映射现有载体；续跑补充验收；不新建四类平行库 |
 | ⑱ | **L2 value 自解释（v22）** | §6.0 P6 / §6.3.5 | value 命题句；拒布尔孤值；会话计划/审批代号不进用户 L2；Catalog + 代码门禁 + 存量 audit |
 | ⑲ | **chat 工具轮 schema（v23）** | §5.5.8 / §5.5.7 | chat Near/Mid：正文为主 + 工具轮确定性 schema 行；与 L2 分工；非 task 完整过程窗 |
-| ⑬ | **代码引用化（v12）** | §5.5.7 / task-scene §6.1/§6.4 | task 记忆内容边界统一：T0 状态/轨迹块只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；session_search process 层 ingest `ProcessingStep.result` 截断 200 chars；**永不存代码内容**；无 blob 锚点/asOfCommit 水位/git 状态轮询 |
+| ⑬ | **代码引用化（v12）** | §5.5.7 / task-scene §6.1/§6.4 | task 记忆内容边界统一：KV workspace 记忆/任务清单 item 只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；session_search（一期 body+session）不 ingest process 层；**永不存代码内容**；无 blob 锚点/asOfCommit 水位/git 状态轮询 |
 | ⑭ | **chat Near 正文为主 + 工具 schema + 4+4+Far（v13/v14/v23）** | §5.5.2 / §5.5.3 / §5.5.7 / **§5.5.8** | chat Near：**终态正文**为主；工具轮追加确定性 schema 行（非完整过程窗）；Mid：语义结论 + 同形 schema；压缩重组 4+4+Far；可选短轮不占名额 |
 | ⑮ | **task 压缩后重组 2+2+Far ≤10k（v15）** | task-scene §6.6 / §5.5.3 / §5.5.7 | task 场景压缩触发后重组：近 2 轮**完整过程** + 次 2 轮**过程骨架** + 其余折叠；**硬性总量 Near+Mid+Far ≤ 10k**（Nacos `context.l1.task-post-compact-budget`）；**不设单轮上限**（总量超限先降级第 2 轮完整过程为骨架、再激进折叠 Far）；工具结果分级：**读/执行类** `ProcessingStep.result` 截断 ≤200 chars + refs，**写/改类**（write/apply_patch/edit）保留输出原文；装载路径需把 `chat_message.steps` 按 kind 折叠进 `SessionTurn`（chat 不折叠、task 折叠） |
+| ⑳ | **skill 动态工具 sticky 化（v24）** | §5.5.3 v6/v24 注记 · [skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md) | 主 agent 工具并集基于路由 **triggered 集**单调合并（默认 ∪ 各 triggered skill 工具）；triggered 不变 → `tools` 字节不变（Tier 0 稳定）；L0 整表替换 / 退出清空仅当轮重建一次；SUB/Worker 即时并集不受限 |
 
-**验收**：`verify_context_compression_live.py` — 非压缩期连续 3 轮 prefix 一致（对比 Gateway 请求体）；压缩后 prefix 重建仅 1 次；Near 尾部随轮次只增不减；L2/W0 未变化时请求体字节级一致（幂等验证）。
+**验收**：`verify_context_compression_live.py` — 非压缩期连续 3 轮 prefix 一致（对比 Gateway 请求体）；压缩后 prefix 重建仅 1 次；Near 尾部随轮次只增不减；KV Memory（scope=user|workspace）未变化时请求体字节级一致（幂等验证）。
 
 ---
 

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.rewrite.QueryRewriteService;
@@ -8,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.Optional;
 
@@ -41,7 +41,7 @@ public class LlmClassifierRoutingPolicy implements RoutingPolicy {
         }
         return Mono.fromCallable(() -> queryRewriteService.rewriteForIntent(
                         userMessage, ctx.traceMessageId(), ctx.memory()))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMap(outcome -> {
                     String query = StringUtils.hasText(outcome.effectiveQuery())
                             ? outcome.effectiveQuery()

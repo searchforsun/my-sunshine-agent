@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.loop.LoopBodyFlushFold;
 import com.sunshine.orchestrator.execution.loop.LoopBodyTimelineBridge;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
@@ -68,7 +68,7 @@ public class WorkflowExecutor {
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
         return executeSchedule(def, session, def.executionSteps(), wfCtx, streamCtx, runSession, planRun)
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
                     if (planRun) {
@@ -103,7 +103,7 @@ public class WorkflowExecutor {
         }
         List<PlanExecutionSchedule.Step> steps = resolveResumeSteps(def, checkpoint.resumeNodeId(), wfCtx);
         return executeSchedule(def, session, steps, wfCtx, streamCtx, runSession, planRun)
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
                     if (planRun) {
@@ -559,7 +559,7 @@ public class WorkflowExecutor {
         String ctxJson = workflowPauseService.getCommittedContextJson(streamCtx.assistantMsgId());
         WorkflowCheckpoint checkpoint = new WorkflowCheckpoint(resumeNodeId, ctxJson, PausePhase.EXECUTING, null);
         Mono.fromRunnable(() -> executionPlanStore.markPaused(planId, checkpoint))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe();
         NodeSpec spec = def.node(resumeNodeId);
         String displayName = spec != null ? spec.displayName() : null;

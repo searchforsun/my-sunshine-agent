@@ -1,6 +1,6 @@
 # Planner-Executor 架构重建 — 取代动态 Plan-Workflow
 
-> **状态**：**内核 H-0～H-4 + 过渡入口 ✅** · **H-5 ✅**（[routing v6+H-5 plan](../plans/2026-08-13-unified-routing-v6-h5.md)）· **H-6 ✅**（[planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md)）· **H-7 代码 ✅ / Live 待部署跑**（[planner-h7-live](../plans/2026-08-13-planner-h7-live.md)）· **阶段 D ⬜** · **4.14 唯一 SSOT**（原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
+> **状态**：**内核 H-0～H-4 + 过渡入口 ✅** · **H-5 ✅**（[routing v6+H-5 plan](../plans/2026-08-13-unified-routing-v6-h5.md)）· **H-6 ✅**（[planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md)）· **H-7 代码 ✅ / Live 待部署跑**（[planner-h7-live](../plans/2026-08-13-planner-h7-live.md)）· **阶段 D 源码删除 ✅**（Live 回归随 H-7 部署后跑）· **4.14 唯一 SSOT**（原 [planner-harness-loop v8](./archive/2026-07-31-planner-harness-loop-design.md) 已归档，废案勿再改）
 > **v2（2026-08-05）**：简化决议 S1–S7（§0.1）。**v3（2026-08-07）**：§3.1.1 上下文契约。**v4（2026-08-10）**：S5 单一循环（无 full/hier）。**v5（2026-08-10）**：§4 分层普通时间线 + TaskBoard。**v6（2026-08-10）**：归档 harness；§5.0 PlanNotebook 定稿模型 + §5.4 S6 重规划表迁入本文。
 > **v7（2026-08-13）**：勘误 D6/`PlanValidator`/Redis key/TTL/GoalAlignment/`CollapsibleConfirmPanel`；**长负载预算**上调（§5.0 / §8.1，对齐现网 `react.task-max-iters` / spawn·exec-wall）。
 > **v8（2026-08-13）**：命名对齐 routing **四轴**——会话形态 `kind`（废 `scene`）；执行模式 `executionMode`；业务域 `biz_scene`（暂不动）；LLM 调用点 `callSite` / DB·MQ `call_site`（废 `call_scene`）。正文若仍写 `scene=chat|task` 均读作 `kind`。
@@ -9,14 +9,15 @@
 > **v11（2026-08-13）**：H-6 ✅（分层时间线 + Composer UX；TaskBoard H1 待 harness `tasks` SSE）；H-7 全量 Live / 阶段 D（R-4）**未做**。
 > **v12（2026-08-13）**：对照代码冻结 H-7 缺口；实施计划 [planner-h7-live](../plans/2026-08-13-planner-h7-live.md)。
 > **v13（2026-08-13）**：H-7 **代码**落地（`tasks` SSE / handoff / `planner-answer` / follow-up obsolete / `plan.worker_*` / `verify_planner_executor_live.py`）；单测绿；**全量 Live 需部署 orchestrator 后跑脚本**；阶段 D 仍后置。
+> **v14（2026-08-14）**：阶段 D 核对完成——`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*`/`PLAN_WORKFLOW` 路由入口源码**零残留**；`PlanMaterializer`/`PlanNormalizer`/`PlanTimeline`/`PendingInteraction`/`ResumeInteractionHint` 经代码核对为**静态 Workflow / HITL / Recovery 复用**，从舍弃表改列保留（§2.1）；routing spec R-4 同步 ✅。
 > **日期**：2026-08-05
 > **编号**：阶段四增量（重建 Planner-Executor，删除动态 Plan-Workflow）
 > **前置**：
->   - [统一资源路由 v6](./2026-07-29-unified-routing-design.md) — 用户三模式 `fast`/`pro`/`workflow` + 双轨意图收集 + `ResourceDispatcher`（**H-5 ✅**；R-4 再删 PlanWorkflow 源码残留）；**命名四轴 SSOT**
+>   - [统一资源路由 v6](./2026-07-29-unified-routing-design.md) — 用户三模式 `fast`/`pro`/`workflow` + 双轨意图收集 + `ResourceDispatcher`（**H-5 ✅**；R-4 = 阶段 D **✅**）；**命名四轴 SSOT**
 >   - [ReAct 目标对齐 4.7.7](./2026-07-27-react-goal-alignment-design.md) — Middleware/完整 4.7.7 **仍设计态**；harness 内已有**机械薄实现** `plan.harness.GoalAlignmentValidator`（DEVIATED/STUCK，H-3）
 >   - [多 Agent 统一设计](./2026-07-29-multi-agent-unified-design.md) — spawn_subagent 中心化编排 + `AgentRunRequest`
-> **依赖与落地顺序（跨 spec）**：[specs/README.md §活跃增量方案](./README.md#活跃增量方案依赖与落地顺序2026-08-13) — 主链 `H-0～H-6 ✅ → H-7 → 阶段 D`。
-> **现状基线（2026-08-13）**：主路径已是 `fast|pro|workflow`；`pro`→`PlannerHarnessExecutor`（`harness.enabled=false` 时 pro **显式失败**）。旧 `PlanWorkflowExecutor`/Approval **源码仍存活**（主路径已断；阶段 D / R-4 再删）。**阶段 D 完成前勿写「已删」**。
+> **依赖与落地顺序（跨 spec）**：[specs/README.md §活跃增量方案](./README.md#活跃增量方案依赖与落地顺序2026-08-13) — 主链 `H-0～H-6 ✅ → H-7（代码 ✅ / Live 待部署）→ 阶段 D ✅`。
+> **现状基线（2026-08-14）**：主路径已是 `fast|pro|workflow`；`pro`→`PlannerHarnessExecutor`（`harness.enabled=false` 时 pro **显式失败**）。阶段 D 源码删除**已完成**：`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*`/`PLAN_WORKFLOW` 零残留；`PlanMaterializer`/`PlanNormalizer`/`PlanTimeline`/`PendingInteraction`/`ResumeInteractionHint` 因**静态 Workflow / HITL / Recovery 复用**改列保留（§2.1）。
 > **命名**：① 本文 `PlannerHarness*` / `harness.*` 与 AgentScope 官方 `HarnessAgent`（Compaction 载体）**无关**；② 四轴见上表，**禁止**用 `scene`/`call_scene` 承载会话形态或调用点。
 > **一句话**：**完全舍弃动态 Plan-Workflow**（Planner 一次性 DAG 规划 + PlanApproval 用户确认 + Plan DAG 时间线），重建为真正的 Planner-Executor——Planner 是 ReAct 主 Agent（全量上下文 + PlanNotebook 叠加），Worker 是 Planner 的**工具调用**（`forWorker()` 丰富上下文），**单一循环**边规划边执行（信息不足先调研再重规划；细则在 Worker ReAct，见 §0.1 S5）。**静态 Workflow（4.13 Studio 编排）保留**；新 Planner-Executor 正文用**分层普通时间线** + TaskBoard 一/二级待办（见 §4），**不**渲染 Plan DAG、**不**用步骤卡片形态。
 
@@ -134,18 +135,18 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 | 前端 `PlanExecutionCanvas` / `PlanDagExpandLayer` / `usePlanDagExpand` | **仅服务静态 Workflow**（D3） |
 | `OperationStack` / `TaskBoardPanel` / `SubStepsFold` | 普通时间线 + 看板；harness 复用并做层级扩展 |
 | `CollapsibleConfirmPanel` | **保留** HITL/Recovery 共用壳；仅断开 PlanApproval 绑定（D5） |
+| `PlanMaterializer` / `PlanNormalizer` | **静态 Workflow** 快照解析/规范化（`WorkflowDefinitionLoader` / `WorkflowResumeService` / `ExecutionPlanStore` / `PlanAnswerPromptAssembler`）；阶段 D 核对后保留 |
+| `PlanTimeline` | **静态 Workflow / harness** 的 plan 步骤与 fallback 工具（`WorkflowStaticPlanRunner` / `PlannerHarnessExecutor`）；阶段 D 核对后保留 |
+| `PendingInteraction` / `ResumeInteractionHint` | **HITL / Recovery** 等待态复用（`HitlConfirmationService` / `WorkflowNodeRecoveryService` / `WorkflowNodeRunner`）；仅断开 plan 确认绑定，阶段 D 核对后保留 |
 
 ### 2.2 舍弃（随动态 Plan-Workflow 一并删除）
 
 | 资产 | 说明 |
 |------|------|
-| `ExecutionMode.PLAN_WORKFLOW` 路由入口 | 语义路由不再产生 PLAN_WORKFLOW |
-| `WorkflowPlanner` | 一次性 DAG 生成 LLM 调用 |
-| `PlanWorkflowExecutor` / `PlanWorkflowPlanningRunner` / `PlanWorkflowResumeRunner` | 动态 DAG 编排 |
-| `PlanMaterializer` / `PlanNormalizer` | DAG 物化（仅动态 DAG 需要） |
-| `PlanApprovalService` / `PlanApprovalUserAction` / `PlanApprovalDecision` / `PlanApprovalRound` / `PlanApprovalWaitResult` / `PlanApprovalRejectedException` | 确认机制（D5） |
-| `PendingInteraction` / `ResumeInteractionHint`（plan 确认部分） | 确认交互状态 |
-| `PlanTimeline`（plan DAG 步） | 动态规划 DAG 时间线 |
+| `ExecutionMode.PLAN_WORKFLOW` 路由入口 | 语义路由不再产生 PLAN_WORKFLOW（**已删**：`ExecutionMode` 收敛为 `FAST/PRO/WORKFLOW`） |
+| `WorkflowPlanner` | 一次性 DAG 生成 LLM 调用（**已删**） |
+| `PlanWorkflowExecutor` / `PlanWorkflowPlanningRunner` / `PlanWorkflowResumeRunner` | 动态 DAG 编排（**已删**） |
+| `PlanApprovalService` / `PlanApprovalUserAction` / `PlanApprovalDecision` / `PlanApprovalRound` / `PlanApprovalWaitResult` / `PlanApprovalRejectedException` | 确认机制（D5；**已删**） |
 | `WorkflowPlanner` 的 `planner.prompt` Catalog | 一次性规划 prompt |
 | golden set §A（PLAN_WORKFLOW 用例） | 迁移到 harness/ReAct 语义 |
 | 前端 `PlanApprovalActions` + PlanApproval→`CollapsibleConfirmPanel` 绑定 | 确认 UI（D5；**不**删共享 Confirm 壳） |
@@ -156,7 +157,7 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 | `GoalEvaluator` / `TaskEvaluator` / `harness_eval_result` | **S1：统一 Planner 自判** |
 | `PlanSharedMemoryStore` (P2) | **S4：从 H1 rounds 读上游 handoff** |
 
-### 2.3 新增（H-0～H-6 ✅；H-7 / 阶段 D ⬜）
+### 2.3 新增（H-0～H-6 ✅；H-7 代码 ✅ / Live 待部署；阶段 D 源码删除 ✅）
 
 | 组件 | 用途 |
 |------|------|
@@ -447,7 +448,7 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 | **H-5** routing v6 三模式 | ✅ | [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)：`fast`/`pro`/`workflow` + ResourceDispatcher；`pro`→harness；冒烟 `verify_routing_v6_smoke.py` |
 | **H-6** 前端时间线+TaskBoard | ✅ | [planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md)：分层时间线 + Composer（task 三模式、分支下移、去 AI 提示）；**follow-up**：TaskBoard 一级 H1 需 harness `tasks` SSE |
 | **H-7** Live 全量 | 🟡 | [planner-h7-live](../plans/2026-08-13-planner-h7-live.md)：G1–G6 代码 ✅ + `verify_planner_executor_live.py`；**部署后**跑 P1–P8；现网 Gateway 未起时 Live 未绿 |
-| **阶段 D** 删旧 plan-workflow | ⬜ | = routing **R-4**；禁止在 H-7 Live 绿前删源码；主路径已不进 PlanWorkflow |
+| **阶段 D** 删旧 plan-workflow | ✅ | = routing **R-4**；`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*`/`PLAN_WORKFLOW` 源码零残留；`PlanMaterializer`/`PlanNormalizer`/`PlanTimeline`/`PendingInteraction`/`ResumeInteractionHint` 经核对为**静态 Workflow/HITL/Recovery 复用**改列保留（§2.1）；全量 Live 回归随 H-7 部署后跑 |
 
 **代码落点**：`orchestrator/.../plan/harness/*` · 灰度 `docs/nacos/sunshine-orchestrator.yaml` → `agent.execution.harness.enabled` · 冒烟 `scripts/verify_planner_harness_kernel_smoke.py`。
 
@@ -496,7 +497,7 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 - [x] `PlannerHarnessExecutor` + `ResourceDispatcher`：`executionMode=pro` → harness（[routing v6](./2026-07-29-unified-routing-design.md)；plan [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)）
 - [x] 三模式显式选择替代 `auto`/`planMode`；主路径不再调用 `PlanWorkflowExecutor`
 - [x] 冒烟：`scripts/verify_routing_v6_smoke.py`（V1/V3/V4/V5）
-- **源码删除**（`PlanWorkflow*` / `ForcedExecutionRouter` 类文件等）→ **R-4 / 阶段 D**，本阶段不断流即可
+- **源码删除**（`PlanWorkflow*` 等）→ **R-4 / 阶段 D**（已完成）；`ForcedExecutionRouter` **重写语义保留**，本阶段不断流即可
 - **出口**：`pro` 进 harness、`fast`/`workflow` 不进；编译绿 ✅
 
 ### 阶段 H-6：前端（分层时间线 + TaskBoard）✅
@@ -505,7 +506,7 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 
 - [x] OperationStack harness 层级：plan → worker 行 → subSteps + **handoff 行**（普通时间线，非卡片）
 - [x] TaskBoard Panel API / 二级 todolist；**一级 H1 完整投影**仍依赖 harness `tasks` SSE（follow-up，不阻塞时间线）
-- [x] 断开 `PlanApprovalActions` / PlanApproval→Confirm 绑定（**保留** `CollapsibleConfirmPanel` 供 HITL/Recovery，D5；组件文件阶段 D 再删）
+- [x] 断开 `PlanApprovalActions` / PlanApproval→Confirm 绑定（**保留** `CollapsibleConfirmPanel` 供 HITL/Recovery，D5；组件文件阶段 D 已删）
 - [x] 静态 Workflow 保留 DAG 展示（D3）；无 `planGraph` 的 harness 走普通时间线
 - [x] **Composer UX**：`kind=task` 亦可选 `fast|pro|workflow`；`GitBranchSelector` 在输入框下方；去掉「AI 生成内容仅供参考」提示
 - **出口**：视觉验收 ✅
@@ -520,14 +521,15 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 - 回归：静态 Workflow、ReAct、spawn
 - **已有**：`verify_planner_harness_kernel_smoke.py`（不替代本阶段）
 
-### 阶段 D（删除）：旧 plan-workflow 代码清理 ⬜
+### 阶段 D（删除）：旧 plan-workflow 代码清理 ✅
 
-- 删除 `WorkflowPlanner` / `PlanWorkflowExecutor` / `PlanMaterializer` / `PlanNormalizer` / `PlanApprovalService` 全套
-- 清理 Catalog `planner.prompt` / `plan-workflow.*`、Nacos `agent.execution.plan-workflow`
-- 前端删 `/plans/:planId` 动态 plan 专属部分
-- **出口**：grep 零残留 + 全量回归
+- [x] 删除 `WorkflowPlanner` / `PlanWorkflowExecutor` / `PlanApprovalService` 全套（`PlanApprovalUserAction` / `PlanApprovalDecision` / `PlanApprovalRound` / `PlanApprovalWaitResult` / `PlanApprovalRejectedException`）、`ExecutionMode.PLAN_WORKFLOW` 与路由入口
+- [x] **核对改列保留**：`PlanMaterializer` / `PlanNormalizer` / `PlanTimeline` / `PendingInteraction` / `ResumeInteractionHint` 经代码核对为**静态 Workflow / HITL / Recovery 复用**，移入 §2.1 保留表，**不删**
+- [x] 清理 Catalog `planner.prompt` / `plan-workflow.*`、Nacos `agent.execution.plan-workflow`（grep 零残留）
+- [x] 前端删 `/plans/:planId` 动态 plan 专属部分、`PlanApprovalActions` / `PlanWorkflowPanel`（源码零残留；仅测试文件历史文案残留）
+- **出口**：grep 零残留 ✅；全量 Live 回归随 H-7 部署后跑
 
-> **实施顺序**：H-0→H-6 ✅ → **下一波** H-7 → **阶段 D（R-4）**。阶段 D 是纯减法，不阻塞 harness 灰度；**禁止** H-7 前删动态 Plan-Workflow 源码。
+> **实施顺序**：H-0→H-6 ✅ → H-7（代码 ✅，Live 待部署）→ 阶段 D（R-4）✅。阶段 D 是纯减法，不阻塞 harness 灰度；H-7 Live 部署后一并跑全量回归。
 
 ---
 

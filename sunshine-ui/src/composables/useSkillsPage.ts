@@ -25,6 +25,7 @@ import {
   publishSkillVersion,
   setSkillEnabled,
   updateSkill,
+  updateSkillVersionTools,
   uploadSkillPackage,
   zipFolderFiles,
   type SkillEntry,
@@ -33,6 +34,7 @@ import {
 } from '../api/skills'
 import { friendlyErrorMessage } from '../api/apiError'
 import { listBizScenes, type BizSceneEntry } from '../api/bizScenes'
+import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
 import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFileTree'
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import {
@@ -74,6 +76,27 @@ export function useSkillsPage() {
   const showEdit = ref(false)
   /** 业务场景 Lab active 条目（biz_scene 下拉选项；value=code、label=中文名） */
   const activeBizScenes = ref<BizSceneEntry[]>([])
+
+  /** 业务工具目录（enabled 过滤做下拉选项） */
+  const toolCatalog = ref<ToolCatalogEntry[]>([])
+  const toolsLoading = ref(false)
+  /** 当前选中版本绑定工具的草稿（加载版本时同步） */
+  const versionTools = ref<string[]>([])
+  const toolsDirty = ref(false)
+  const savingTools = ref(false)
+
+  /** 业务工具仅草稿状态可变更（与文件在线编辑同语义） */
+  const canEditTools = computed(() => {
+    const ver = selectedVersionEntry.value
+    return !!ver?.storagePath && ver.status === 'draft'
+  })
+
+  const toolSelectOptions = computed(() =>
+    toolCatalog.value.filter(t => t.enabled).map(t => ({
+      label: `${t.displayName || t.id} (${t.id})`,
+      value: t.id,
+    })),
+  )
 
   const bizSceneOptions = computed(() =>
     activeBizScenes.value.map(s => ({ label: s.displayName || s.bizScene, value: s.bizScene })),
@@ -348,6 +371,64 @@ export function useSkillsPage() {
   }
 
   /** 刷新整页：左侧列表 + 右侧当前 Skill/版本/文件预览 */
+  async function loadToolCatalog() {
+    if (toolsLoading.value || toolCatalog.value.length > 0) return
+    toolsLoading.value = true
+    try {
+      toolCatalog.value = await listToolCatalog()
+    } catch {
+      toolCatalog.value = []
+    } finally {
+      toolsLoading.value = false
+    }
+  }
+
+  /** 解析版本 toolsJson 为工具 ID 列表（`["*"]` 展开为已启用工具） */
+  function parseVersionTools(toolsJson: string | undefined | null): string[] {
+    if (!toolsJson?.trim()) return []
+    try {
+      const parsed = JSON.parse(toolsJson) as unknown
+      if (!Array.isArray(parsed)) return []
+      const ids = parsed.map(x => String(x).trim()).filter(Boolean)
+      if (ids.length === 1 && ids[0] === '*') {
+        return toolCatalog.value.filter(t => t.enabled).map(t => t.id)
+      }
+      return ids.filter(id => id !== '*')
+    } catch {
+      return []
+    }
+  }
+
+  /** 版本切换时同步工具草稿（未保存变更丢弃） */
+  watch(selectedVersionEntry, (entry) => {
+    versionTools.value = entry ? parseVersionTools(entry.toolsJson) : []
+    toolsDirty.value = false
+  })
+
+  function onVersionToolsChange() {
+    toolsDirty.value = true
+  }
+
+  async function handleSaveVersionTools() {
+    if (!selectedId.value || selectedVersion.value == null) return
+    savingTools.value = true
+    try {
+      const updated = await updateSkillVersionTools(
+        selectedId.value,
+        selectedVersion.value,
+        versionTools.value,
+      )
+      skills.value = skills.value.map(s => (s.id === updated.id ? updated : s))
+      toolsDirty.value = false
+      message.success('工具绑定已保存')
+      await loadVersions(selectedId.value, { preserveVersion: selectedVersion.value ?? undefined })
+    } catch (e: unknown) {
+      message.error(friendlyErrorMessage(e, '保存失败'))
+    } finally {
+      savingTools.value = false
+    }
+  }
+
   async function refreshPage() {
     if (!(await flushFileEditBeforeLeave())) return
     const keepSkillId = selectedId.value
@@ -921,6 +1002,7 @@ export function useSkillsPage() {
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
     void refreshPage()
+    void loadToolCatalog()
     void listBizScenes()
       .then(scenes => { activeBizScenes.value = scenes.filter(s => s.status === 'active') })
       .catch(() => { activeBizScenes.value = [] })
@@ -951,6 +1033,13 @@ export function useSkillsPage() {
     editForm,
     activeBizScenes,
     bizSceneOptions,
+    toolCatalog,
+    toolsLoading,
+    versionTools,
+    toolsDirty,
+    savingTools,
+    toolSelectOptions,
+    canEditTools,
     creating,
     savingEdit,
     uploading,
@@ -1017,6 +1106,8 @@ export function useSkillsPage() {
     handleDeleteVersionConfirm,
     onVersionSelected,
     handleMoreMenuSelect,
+    onVersionToolsChange,
+    handleSaveVersionTools,
     triggerFolderPick,
     onPickLabelClick,
     onFolderPicked,

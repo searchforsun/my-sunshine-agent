@@ -56,13 +56,17 @@ public class ConversationService {
 
     public ChatConversationEntity create(String userId, String tenantId,
                                           String kind, String workspaceId, String checkoutPath) {
+        String resolvedKind = kind != null && !kind.isBlank() ? kind : "chat";
+        String tid = tenantId != null ? tenantId : "default";
+        // chat 会话创建时不绑定工作区；仅当模型首次调用沙箱工具（执行脚本）时由
+        // SandboxSessionLifecycle 懒绑定该租户第一个 active 工作区。task 会话工作区由前端显式传参
         Instant now = Instant.now();
         ChatConversationEntity entity = new ChatConversationEntity();
         entity.setId(newId());
         entity.setUserId(userId);
-        entity.setTenantId(tenantId != null ? tenantId : "default");
+        entity.setTenantId(tid);
         entity.setTitle("新对话");
-        entity.setKind(kind != null && !kind.isBlank() ? kind : "chat");
+        entity.setKind(resolvedKind);
         entity.setWorkspaceId(workspaceId);
         entity.setCheckoutPath(checkoutPath);
         entity.setCreatedAt(now);

@@ -25,6 +25,8 @@ const props = defineProps<{
   checkoutId?: string | null
   /** 工作区模式根节点显示名（项目名） */
   workspaceName?: string | null
+  /** 会话类型：chat 即使绑定工作区也显示简化工作区（无 git/改动），缺省按 workspaceId 判定为 task */
+  sessionKind?: 'chat' | 'task' | null
 }>()
 
 const {
@@ -44,6 +46,8 @@ const diffPanelRef = ref<{ refresh: () => void } | null>(null)
 
 const { mode: writeHitlMode } = useWriteHitlMode(() => state.conversationId)
 
+/** 是否任务工作区：仅 task 会话带 workspaceId 才显示 git/改动等复杂能力；chat 会话绑定工作区后仍为简化工作区 */
+const isTaskWorkspace = computed(() => props.sessionKind !== 'chat' && !!props.workspaceId)
 
 let openFile: (path: string, focusLine?: number) => void | Promise<void> = () => {}
 const {
@@ -66,6 +70,7 @@ const {
   getWorkspaceId: () => props.workspaceId ?? null,
   getCheckoutId: () => props.checkoutId || null,
   getWorkspaceName: () => props.workspaceName || null,
+  getTaskMode: () => isTaskWorkspace.value,
   onOpenFile: (path, focusLine) => openFile(path, focusLine),
 })
 
@@ -165,9 +170,6 @@ watch(() => props.checkoutId, () => {
   clearCache()
   void loadRoots()
 })
-
-/** 是否任务工作区（带 workspaceId）；chat 沙箱不显示 git 相关提示 */
-const isTaskWorkspace = computed(() => !!props.workspaceId)
 
 /** 当前处于「改动」diff 视图（消息卡片点击 / 头部 tab 进入） */
 const diffMode = computed(() => state.tab === 'diff')

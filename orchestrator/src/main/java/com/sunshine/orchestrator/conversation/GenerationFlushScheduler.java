@@ -5,13 +5,13 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -43,7 +43,7 @@ public class GenerationFlushScheduler {
     public void flushPartial(String messageId, String content) {
         Mono.fromRunnable(() -> conversationService.updateMessageContentIfStreaming(
                         messageId, content))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         null,
                         e -> {
@@ -61,7 +61,7 @@ public class GenerationFlushScheduler {
     /** HITL/Recovery 待确认步 upsert 后增量落库 steps */
     public void flushStepsPartial(String messageId, String stepsJson) {
         Mono.fromRunnable(() -> conversationService.updateMessageStepsIfStreaming(messageId, stepsJson))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         null,
                         e -> {

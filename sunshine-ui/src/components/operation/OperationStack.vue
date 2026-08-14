@@ -59,7 +59,6 @@ import StaticMarkdown from '../StaticMarkdown.vue'
 import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrate'
 import TimelineStepIcon from './TimelineStepIcon.vue'
 import { useTimelineStyle } from '../../composables/useTimelineStyle'
-import { resolveTimelineStepKind, type TimelineStepKind } from '../../api/timelineStepIcon'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -664,22 +663,6 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
   return result
 }
 
-/** 首步步骤类型图标（时间线总览 / roundGroup 行首）；空 steps 返回 undefined */
-function firstTimelineStepKind(steps: ProcessingStep[]): TimelineStepKind | undefined {
-  return steps.length ? resolveTimelineStepKind(steps[0]) : undefined
-}
-
-/** roundGroup 行首图标：递归取组内首个可见步骤 */
-function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
-  if (row.kind === 'step') return row.step
-  if (row.kind === 'toolGroup') return row.steps[0]
-  for (const inner of row.rows) {
-    const lead = roundGroupLeadStep(inner)
-    if (lead) return lead
-  }
-  return undefined
-}
-
 /** 显示行（带正文间多轮折叠）；harness 分层时间线不做 roundGroup，避免吞掉 plan/worker */
 const roundDisplayRows = computed(() => {
   if (isHarnessTimeline.value) return displayRows.value
@@ -887,9 +870,9 @@ watch(
         <span class="op-main">
           <span v-if="timelineStyle === 'standard'" class="op-step-icon">
             <TimelineStepIcon
-              v-if="firstTimelineStepKind(effectiveSteps)"
+              v-if="effectiveSteps.length"
               class="op-type-icon"
-              :step="effectiveSteps[0]"
+              symbol="summary"
             />
             <svg
               class="op-chevron"
@@ -947,9 +930,8 @@ watch(
                 <span class="op-main">
                   <span v-if="timelineStyle === 'standard'" class="op-step-icon">
                     <TimelineStepIcon
-                      v-if="roundGroupLeadStep(row)"
                       class="op-type-icon"
-                      :step="roundGroupLeadStep(row)"
+                      symbol="round"
                     />
                     <svg
                       class="op-chevron"

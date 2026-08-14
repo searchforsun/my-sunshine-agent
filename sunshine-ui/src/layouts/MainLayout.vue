@@ -2,6 +2,7 @@
 import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, NTabs, NTabPane, type MenuOption, type DropdownOption } from 'naive-ui'
 import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, AppsOutline, HardwareChipOutline, ConstructOutline, CubeOutline, CodeSlashOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline, LayersOutline } from '@vicons/ionicons5'
+import WorkspaceAddIcon from '../components/icons/WorkspaceAddIcon.vue'
 import { h, type Component, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../composables/useSidebar'
@@ -639,7 +640,7 @@ watch(
       }
       return
     }
-    if (isTaskConversation({ kind, workspaceId: wsId })) {
+    if (isTaskConversation({ kind })) {
       selectSection('workspace')
       if (wsId) {
         wsGroupOpen[wsId] = true
@@ -823,7 +824,7 @@ onMounted(() => {
               title="添加工作区"
               @click.stop="showCreateWorkspace = true"
             >
-              <NIcon :size="16" :component="AddOutline" />
+              <WorkspaceAddIcon />
             </button>
           </div>
           <div v-show="expanded.workspace" class="section-body ws-body">
@@ -834,7 +835,7 @@ onMounted(() => {
                 title="添加工作区"
                 @click="showCreateWorkspace = true"
               >
-                <NIcon :size="16" :component="AddOutline" />
+                <WorkspaceAddIcon />
               </button>
             </div>
             <div v-if="loadingWorkspaces" class="ws-loading">加载中...</div>

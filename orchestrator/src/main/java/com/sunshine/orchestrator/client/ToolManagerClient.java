@@ -93,14 +93,14 @@ public class ToolManagerClient {
 
     /**
      * Reactor 非阻塞线程（如 reactor-http-epoll-*）禁止 {@code block()}：失败会被吞成空工具集，
-     * MAIN ReAct 只剩 RAG/沙箱。调用方须在 {@code Schedulers.boundedElastic()} 上执行。
+     * MAIN ReAct 只剩 RAG/沙箱。调用方须在 {@link com.sunshine.orchestrator.config.VirtualThreadExecutors#scheduler()} 上执行。
      */
     static void assertMayBlock(String op) {
         if (Schedulers.isInNonBlockingThread()) {
             throw new IllegalStateException(
                     "ToolManagerClient." + op + " must not block on non-blocking thread "
                             + Thread.currentThread().getName()
-                            + "; use Schedulers.boundedElastic()");
+                            + "; use VirtualThreadExecutors.scheduler()");
         }
     }
 

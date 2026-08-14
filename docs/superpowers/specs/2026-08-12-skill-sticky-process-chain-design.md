@@ -1,7 +1,9 @@
 # Skill 可发现 / 触发分离 + 绑定保真（行业对齐）
 
-> **状态**：📋 设计评审中 · **v3.1（2026-08-13）**  
-> **日期**：2026-08-12（v3 收缩 → **v3.1 加载≠触发**）  
+> **状态**：📋 设计评审中 · **v3.2（2026-08-14）** · **v3.3（2026-08-14 · 对齐记忆收敛）**  
+> **日期**：2026-08-12（v3 收缩 → **v3.1 加载≠触发** → **v3.2 工具装配维度**）  
+> **v3.2（2026-08-14 · 工具装配维度）**：**triggered 集同时驱动 overlay 与主 agent 工具并集**——`DynamicToolkitFactory` 主 agent 按 triggered `skillIds` **单调并集**工具（默认工具集 ∪ 各 triggered skill 声明的工具），triggered 集不变 → `tools` 字节不变 → Tier 0 稳定（联动 [五层 §5.5.3 v6/v24](./2026-07-31-unified-context-compression-design.md)）。SUB/Worker 无前缀包袱，仍**即时并集**。装配依赖 S-0（消息存 triggered）+ S-1（轻 sticky）先落地。**修正 task-scene §7.4 约束 3**「只作用于子 Agent」——主 agent 允许绑 skill 工具，但必须 sticky 化，禁止按每轮最新 skillId 自由并集。
+> **v3.3（2026-08-14 · 记忆收敛对齐）**：命名与五层 **v25** / task-scene **v14** 同步——「L2 用户状态」读作 **KV Memory（scope=user）**（§3.1/§3.2/§5）；**换题（清空 sticky seed）协同 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) 沉淀未完成任务到 KV Memory**（§4.3），随后 seed 清空、目录仍可发现。
 > **编号**：阶段四增量（路由 / Skill 会话态）  
 > **前置**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) · [task-scene §7 插件/Skill 分层](./2026-08-01-task-scene-context-design.md)（名+描述静态 / 正文按需）  
 > **一句话**：**可发现**（Catalog 名+description）与 **触发**（本轮注入 overlay 的 `skillIds`）分离；**物料加载**（sandbox）与触发正交。消息存完整 `RoutingResult` + 上轮**已触发** id 轻 sticky。对齐 Cursor：context discovered, not dumped。
@@ -20,8 +22,8 @@
 
 | 层 | 含义 | 进 Prompt？ | 典型来源 |
 |----|------|-------------|----------|
-| **可发现 Discover** | Agent 知道有哪些 skill、何时该用 | **仅** `id + displayName + description`（「Use when…」） | 租户/场景启用 Catalog；可选 L2 提权排序 |
-| **触发 Trigger** | 本轮按该 skill **正文**行动 | **全文** `systemOverlay` / SKILL 正文（稳定前缀或 Tier 2） | L0 `/`；上轮已触发 sticky；极少数合规强制；高置信单点（可选） |
+| **可发现 Discover** | Agent 知道有哪些 skill、何时该用 | **仅** `id + displayName + description`（「Use when…」） | 租户/场景启用 Catalog；可选 KV Memory（scope=user）提权排序 |
+| **触发 Trigger** | 本轮按该 skill **正文**行动 | **全文** `systemOverlay` / SKILL 正文（稳定前缀或 Tier 2）**＋ 工具并集**（主 agent 按 triggered 集合并，v3.2） | L0 `/`；上轮已触发 sticky；极少数合规强制；高置信单点（可选） |
 | **物料 Load** | 文件在沙箱可读 | 不进 prompt；`mountSkill` → `/skills/{id}/` | 随**触发**懒挂；或工具读路径时挂；**≠** 触发 |
 
 ```
@@ -32,7 +34,7 @@ Discover ──（用户 / 、高置信、sticky 续）──► Trigger ──�
                                             Sandbox mount（正交）
 ```
 
-**禁止**：把「L1/L2 召回命中」直接等价为「开场强制触发 overlay」（现状+ v3 初稿的主要偏差）。
+**禁止**：把「规则 / embedding 召回命中」直接等价为「开场强制触发 overlay」（现状+ v3 初稿的主要偏差）。
 
 ---
 
@@ -63,7 +65,7 @@ Discover ──（用户 / 、高置信、sticky 续）──► Trigger ──�
 ```
 discoverable =
   租户启用 Catalog ∩ 场景可见
-  （可选）L2 Top-K 提到摘要前列，仍只暴露名+描述
+  （可选）KV Memory（scope=user）Top-K 提到摘要前列，仍只暴露名+描述
 ```
 
 - **租户/场景「固定」= 固定可发现**，不是固定触发。  
@@ -78,7 +80,7 @@ triggered skillIds =
   ∪ （可选）L3 高置信「本轮唯一应执行」的 ≤1 个 skill
   ∪ force-trigger（租户合规例外）
 
-L1/L2 召回 → 默认只影响 discoverable 排序 / 给 L3 候选
+规则 / embedding 召回 → 默认只影响 discoverable 排序 / 给 L3 候选
            → 禁止无门槛写入 triggered
 ```
 
@@ -86,7 +88,7 @@ L1/L2 召回 → 默认只影响 discoverable 排序 / 给 L3 候选
 |------|:-----------:|:----------------------:|
 | 租户/场景启用 Catalog | ✅ | ❌（除非 force-trigger） |
 | L0 `/` / 客户端点名 | ✅ | ✅ |
-| L1 规则 / L2 embedding | 排序/候选 | ❌ 默认；经 L3 高置信才可 ✅ |
+| 规则 / embedding 召回（L3 候选） | 排序/候选 | ❌ 默认；经 L3 高置信才可 ✅ |
 | 轻 sticky（上轮 triggered） | — | ✅ 继承 |
 | 沙箱已 mount 的历史文件 | 物料层 | ❌ 不单独构成触发 |
 
@@ -98,6 +100,7 @@ L1/L2 召回 → 默认只影响 discoverable 排序 / 给 L3 候选
 |------|--------------|--------------|
 | 路由 | 召回 id ≈ 绑定 | 产出 discover 上下文 + **triggered** `skillIds` |
 | Prompt | `resolveSkillOverlay(skillId)` 开场灌全文 | 目录摘要（名+描述）+ **仅 triggered** overlay |
+| 工具集（v3.2） | `DynamicToolkitFactory.mergeSkillTools(whitelist, skillId)` 按**单 skillId** 即时并集 | 主 agent 按 **triggered 集**单调并集（默认 ∪ 各 triggered skill 工具），triggered 变才变；SUB/Worker 即时并集（无前缀包袱） |
 | 沙箱 | 绑定时 mount | 触发时懒 mount；与 loadedSkillIds 累积解耦 |
 
 对齐 [task-scene §7](./2026-08-01-task-scene-context-design.md)：目录摘要稳定前缀；命中正文进动态段 / skill-overlay。
@@ -126,7 +129,7 @@ List<String> skillIds;   // triggered only；轨 A；可空
 seed ← 上条 assistant.RoutingResult.skillIds   // 已触发
 
 L0 → 替换 triggered
-退出技能 / 明确换题 → 清空 seed
+退出技能 / 明确换题 → 清空 seed（同时把未完成任务沉淀到 KV Memory，见 [task-list-memory §6](./2026-08-14-task-list-memory-unification-design.md)）
 否则 → triggered 至少含 seed；L3 可追加高置信，禁止低置信清空 seed
 discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 ```
@@ -134,6 +137,7 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 - SSOT = 消息 RoutingResult；无 Redis。  
 - triggered **不进** L1 Near/Mid/Far；Mid 最多路标。  
 - Overlay 仅 triggered，落 Prompt 稳定前缀 / Tier 2（与压缩点一致）。
+- **工具装配联动（v3.2）**：`AgentRunRequest` 透传 triggered `skillIds`；`DynamicToolkitFactory` 主 agent 按该集合并工具（默认 ∪ 各 triggered skill 工具），triggered 不变 → 工具并集字节不变（Tier 0 稳定）；仅 L0 整表替换 / 退出清空时重建一次（C3 允许）。SUB/Worker 即时并集，不受 sticky 约束。
 
 ### 4.4 沙箱
 
@@ -145,6 +149,7 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 
 - SUB 不继承父 triggered sticky。  
 - Spawn 可显式带一个 `skillId`（视为该 SUB 的 triggered）。
+- **工具装配（v3.2）**：SUB 工具 = agent 自身 `toolsJson` ∪ 各绑定 skill 声明的工具（即时并集，`mergeAgentSkillTools`）；子会话无前缀包袱，无需 sticky。Workflow 子 Agent / Worker 同口径（`buildForSubAgent` 白名单并入）。
 
 ---
 
@@ -156,6 +161,7 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 | §10「skillIds → overlays + 沙箱」 | 改为：discover 摘要 + triggered overlays + 触发时 mount |
 | Pre-Routing 复用 | S-0 保真 |
 | — | S-1 轻 sticky（触发集） |
+| — | 主 agent 工具集按 **triggered 集合并**（v3.2），非每轮最新 skillId |
 | — | 不做 ledger / 软链 / processGraph |
 
 ---
@@ -166,11 +172,11 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 |------|------|------|
 | **S-0** | 消息存完整 `RoutingResult`；续跑复用 triggered | live：不丢 skill |
 | **S-D** | 可发现层：Prompt 注入租户可见 **名+描述**目录；**召回默认不灌 overlay** | 无 L0 时不应出现无关 skill 全文 |
-| **S-T** | 触发：仅 L0 / sticky / force-trigger /（可选）L3 高置信 → `resolveSkillOverlay` | `/` 与续聊行为正确；L2 命中 alone 不触发 |
-| **S-1** | 上轮 triggered 轻 sticky（依赖 S-0） | 「继续」无 `/` 仍有 overlay |
+| **S-T** | 触发：仅 L0 / sticky / force-trigger /（可选）L3 高置信 → `resolveSkillOverlay` + 主 agent **工具并集**（v3.2：`AgentRunRequest` 透传 triggered `skillIds`，`DynamicToolkitFactory` 按集合并） | `/` 与续聊行为正确；embedding 召回 alone 不触发；工具并集跨轮稳定 |
+| **S-1** | 上轮 triggered 轻 sticky（依赖 S-0） | 「继续」无 `/` 仍有 overlay + 工具并集稳定 |
 | **延期** | Redis、SOFT_CHAIN、processGraph、模型强制读 SKILL.md 才触发 | YAGNI |
 
-**顺序建议**：S-0 → S-D + S-T（可同 PR 纪律）→ S-1。S-D/S-T 是相对 v3 的**根因修正**，优先于加厚 sticky 算法。
+**顺序建议**：S-0 → S-D + S-T（可同 PR 纪律）→ S-1。S-D/S-T 是相对 v3 的**根因修正**，优先于加厚 sticky 算法。**工具装配（v3.2）随 S-T 一并落地，依赖 S-1 产出稳定 triggered 集**。
 
 ---
 
@@ -181,11 +187,13 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 | V0 | 仅租户启用、无 `/`、无高置信 | Prompt 有目录名+描述；**无**任意 skill 全文 overlay |
 | V1 | `/skill-A` | triggered=A，全文 overlay；可 mount |
 | V2 | 上轮已触发 A，本轮「继续」无 `/` | 仍 triggered=A（sticky） |
-| V3 | L2 召回 B 但未 L0/未高置信 | B 可出现在目录/排序；**不**自动全文 overlay |
+| V3 | embedding 召回 B 但未 L0/未高置信 | B 可出现在目录/排序；**不**自动全文 overlay |
 | V4 | 「退出技能」/ 换题 | 清空 triggered；目录仍可发现 |
 | V5 | HITL / 续跑 | 复用 triggered，不丢 |
 | V6 | workflow / SUB | 无父 sticky；SUB 不继承 |
 | V7 | 软链自动切下一 skill | **不验收** |
+| V8 | 主 agent 连续轮次无 L0 / 换题（v3.2） | 工具并集跨轮**字节不变**（Tier 0 不失效）；L0 换 skill 仅当轮重建一次 |
+| V9 | SUB/Worker 绑 skill（v3.2） | 工具即时并集，不受 sticky 约束 |
 
 ---
 
@@ -198,6 +206,7 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 | 误以 mount=触发 | 文档+单测：仅 mount 无 overlay |
 | 压缩后丢触发态 | S-0 消息 SSOT；∉ L1 折叠 |
 | 与旧「召回即绑定」习惯冲突 | 验收 V0/V3；改 routing §10 文案 |
+| **工具并集随 triggered 集膨胀（v3.2）** | triggered 集本身有界（L0 可整表替换，sticky 不无限累积）；并集 > 工具阈值时走 [五层 §5.5.3 v6](./2026-07-31-unified-context-compression-design.md)「全量名列表静态 + Top-K schema 尾部」分层注入 |
 
 ---
 
@@ -207,7 +216,8 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 |------|------|
 | [unified-routing v6](./2026-07-29-unified-routing-design.md) | 轨 A；`skillIds`=triggered；装配改 discover/trigger |
 | [task-scene](./2026-08-01-task-scene-context-design.md) §7 | 名+描述 / 正文按需的直接依据 |
-| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 触发态不进 L1 |
+| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 触发态不进 L1；Tier 0 `tools` 稳定（v24/v25） |
+| [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 换题清空 seed 时沉淀未完成任务到 KV Memory（v3.3 协同） |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | 触发稳定有助于 biz_scene；可发现≠ scene 乱跳 |
 | [sandbox multi-skill](./archive/2026-07-16-conversation-sandbox-multi-skill-design.md) | 物料层 |
 

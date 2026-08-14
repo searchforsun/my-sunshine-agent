@@ -20,6 +20,7 @@ import com.sunshine.orchestrator.workspace.repo.AgentWorkspaceRepository;
 import com.sunshine.orchestrator.workspace.repo.WorkspaceProjectGuideRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -197,14 +198,14 @@ public class AgentWorkspaceController {
         return R.ok();
     }
 
-    // ===== Git 操作（均异步执行在 boundedElastic，避免 reactor 线程 block） =====
+    // ===== Git 操作（均异步执行在虚拟线程，避免 reactor 线程 block） =====
 
     @GetMapping("/{id}/branches")
     public Mono<R<List<Map<String, Object>>>> listBranches(@PathVariable String id,
                                                      @RequestHeader("x-user-id") String userId,
                                                      @RequestHeader("x-tenant-id") String tenantId) {
         return Mono.fromCallable(() -> R.ok(workspaceGitService.listBranches(id, userId, tenantId)))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     @PostMapping("/{id}/branches")
@@ -219,7 +220,7 @@ public class AgentWorkspaceController {
         }
         String branch = name.strip();
         return Mono.fromRunnable(() -> workspaceGitService.createBranch(id, userId, tenantId, branch, from))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenReturn(R.ok());
     }
 
@@ -229,7 +230,7 @@ public class AgentWorkspaceController {
                                             @RequestHeader("x-user-id") String userId,
                                             @RequestHeader("x-tenant-id") String tenantId) {
         return Mono.fromCallable(() -> R.ok(workspaceGitService.gitStatus(id, checkoutId, userId, tenantId)))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     /** git diff：无 path → 改动文件摘要（path/add/del/status）；有 path → 单文件结构化 diff 详情 */
@@ -244,7 +245,7 @@ public class AgentWorkspaceController {
                 return R.ok((Object) workspaceGitService.gitDiffDetail(id, checkoutId, userId, tenantId, path.strip()));
             }
             return R.ok((Object) workspaceGitService.gitDiffSummary(id, checkoutId, userId, tenantId));
-        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+        }).subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     @PostMapping("/{id}/git/stage")
@@ -257,7 +258,7 @@ public class AgentWorkspaceController {
         List<String> files = body != null ? (List<String>) body.get("files") : null;
         boolean all = body != null && Boolean.TRUE.equals(body.get("all"));
         return Mono.fromRunnable(() -> workspaceGitService.gitStage(id, checkoutId, userId, tenantId, files, all))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenReturn(R.ok());
     }
 
@@ -274,7 +275,7 @@ public class AgentWorkspaceController {
             throw new BizException(new FixedErrorCode(400, "revert_files_required", "回退文件不能为空"));
         }
         return Mono.fromRunnable(() -> workspaceGitService.gitRevert(id, checkoutId, userId, tenantId, files))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenReturn(R.ok());
     }
 
@@ -291,7 +292,7 @@ public class AgentWorkspaceController {
             throw new BizException(new FixedErrorCode(400, "unstage_files_required", "撤回文件不能为空"));
         }
         return Mono.fromRunnable(() -> workspaceGitService.gitUnstage(id, checkoutId, userId, tenantId, files))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenReturn(R.ok());
     }
 
@@ -307,7 +308,7 @@ public class AgentWorkspaceController {
         }
         String msg = message.strip();
         return Mono.fromRunnable(() -> workspaceGitService.gitCommit(id, checkoutId, userId, tenantId, msg))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenReturn(R.ok());
     }
 
@@ -317,7 +318,7 @@ public class AgentWorkspaceController {
                            @RequestHeader("x-user-id") String userId,
                            @RequestHeader("x-tenant-id") String tenantId) {
         return Mono.<Void>fromRunnable(() -> workspaceGitService.gitPush(id, checkoutId, userId, tenantId))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenReturn(R.<Void>ok())
                 .onErrorMap(e -> e instanceof BizException ? e : new BizException(new FixedErrorCode(400,
                         "git_push_failed", "推送失败: " + e.getMessage())));
@@ -330,7 +331,7 @@ public class AgentWorkspaceController {
                                           @RequestHeader("x-user-id") String userId,
                                           @RequestHeader("x-tenant-id") String tenantId) {
         return Mono.fromCallable(() -> R.ok(workspaceGitService.gitPull(id, checkoutId, userId, tenantId)))
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .onErrorMap(e -> e instanceof BizException ? e : new BizException(new FixedErrorCode(500,
                         "git_pull_failed", "拉取失败: " + e.getMessage())));
     }
@@ -358,7 +359,7 @@ public class AgentWorkspaceController {
 
     // ===== Checkout 管理（会话工作目录：/workspace/{checkoutId}，分支与目录一一对应） =====
     // 注意：内部会触发 ensureWorkspaceSession（含 sandboxClient.createSession 阻塞调用），
-    // 必须在 boundedElastic 线程执行，避免 reactor 线程 block() 报错。
+    // 必须在虚拟线程执行，避免 reactor 线程 block() 报错。
 
     @GetMapping("/{id}/checkouts")
     public Mono<R<List<WorkspaceCheckoutService.CheckoutInfo>>> listCheckouts(

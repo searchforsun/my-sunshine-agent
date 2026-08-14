@@ -117,9 +117,10 @@ def build_upsert_sql(wf: dict, version: int) -> str:
     meta = dumps_meta(wf["catalogMeta"])
     lines = [
         f"INSERT INTO workflow_definition "
-        f"(tenant_id, id, display_name, description, mode, enabled, active_version, source) "
+        f"(tenant_id, id, display_name, description, mode, enabled, active_version, source, kind) "
         f"VALUES ('{sql_escape(TENANT)}', '{sql_escape(wid)}', '{sql_escape(display)}', "
-        f"'{sql_escape(desc)}', '{sql_escape(mode)}', 1, {version}, 'seed') "
+        f"'{sql_escape(desc)}', '{sql_escape(mode)}', 1, {version}, 'seed', "
+        f"'{wf.get('kind', 'chat')}') "
         f"ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), "
         f"description=VALUES(description), enabled=1, source='seed';",
         f"INSERT INTO workflow_version "
@@ -206,9 +207,10 @@ def build_seed_inserts() -> str:
         chunks.append(f"-- {wid}")
         chunks.append(
             f"INSERT INTO workflow_definition "
-            f"(tenant_id, id, display_name, description, mode, enabled, active_version, source) "
+            f"(tenant_id, id, display_name, description, mode, enabled, active_version, source, kind) "
             f"VALUES ('{sql_escape(TENANT)}', '{sql_escape(wid)}', '{sql_escape(display)}', "
-            f"'{sql_escape(desc)}', '{sql_escape(mode)}', 1, 1, 'seed');"
+            f"'{sql_escape(desc)}', '{sql_escape(mode)}', 1, 1, 'seed', "
+            f"'{wf.get('kind', 'chat')}');"
         )
         chunks.append(
             f"INSERT INTO workflow_version "

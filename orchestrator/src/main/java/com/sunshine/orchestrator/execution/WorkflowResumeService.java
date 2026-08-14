@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.plan.ExecutionPlanEntity;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
@@ -19,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 /** 静态 Workflow 暂停续跑（EXECUTING 检查点；旧动态规划已下线） */
 @Slf4j
@@ -67,7 +67,7 @@ public class WorkflowResumeService {
         WorkflowCheckpoint resumeCheckpoint = effectiveCheckpoint;
         log.info("[WorkflowResume] 续跑 Workflow planId={} fromNode={}", planId, resumeCheckpoint.resumeNodeId());
         return Mono.fromRunnable(() -> executionPlanStore.markResumed(planId))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .thenMany(Flux.concat(
                         workflowExecutor.resumeDynamicDefinition(def, resumeCtx, runSession, resumeCheckpoint)
                                 .concatWith(Flux.defer(() -> planRunFinalizer.postWorkflow(ctx, planId, runSession)))

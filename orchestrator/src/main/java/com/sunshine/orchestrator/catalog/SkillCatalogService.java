@@ -77,6 +77,11 @@ public class SkillCatalogService {
         return find(skillId).map(SkillCatalogEntry::systemOverlay).orElse("");
     }
 
+    /** skill 绑定的工具 Catalog ID 列表（经详情缓存） */
+    public List<String> toolIds(String skillId) {
+        return find(skillId).map(SkillCatalogEntry::toolIds).orElse(List.of());
+    }
+
     /** L3 意图分类器 — Skill 目录（含 sandbox 能力），按会话 kind 过滤（保留 all + 同 kind） */
     public String renderForClassifier(String sessionKind) {
         return renderForClassifier(sessionKind, false);

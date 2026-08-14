@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.util.StreamErrorMessages;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
@@ -25,7 +26,6 @@ import org.springframework.util.StringUtils;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -135,7 +135,7 @@ public class GenerationJob {
         Consumer<String> guardedFlush = guardFlush(flushPartial);
         AtomicLong lastFlush = new AtomicLong(0);
         llmSubscription = llmFlux
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         chunk -> chunkEmitter.onChunk(chunk, mysqlBuffer, guardedFlush, lastFlush),
                         error -> finishOnce(() -> handleError(error, onError)),
@@ -152,7 +152,7 @@ public class GenerationJob {
     public void onSubscriberGone() {
         cancelOrphanTimer();
         orphanTimer = Mono.delay(Duration.ofSeconds(properties.orphanTimeoutSec()))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(v -> {
                     if (!finished.get()) {
                         log.info("[GenerationJob] orphan-timeout fired genId={}", generationId);
@@ -327,7 +327,7 @@ public class GenerationJob {
         persistFinal(MessageStatus.FAILED, () -> onError.accept(error));
     }
 
-    /** commitFinal 含脱敏 block 调用，须在 boundedElastic 执行，避免 reactor 线程 IllegalStateException */
+    /** commitFinal 含脱敏 block 调用，须在虚拟线程执行，避免 reactor 线程 IllegalStateException */
     private void persistFinal(String status, Runnable afterPersist) {
         String buffered = bufferContent();
         String reasoning = bufferReasoning();
@@ -358,7 +358,7 @@ public class GenerationJob {
                         }
                     }
                 })
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         null,
                         e -> log.error("[GenerationJob] 落库失败 msg={} status={}: {}",

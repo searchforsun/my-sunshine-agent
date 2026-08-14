@@ -52,7 +52,8 @@ public class AgentExecutionProperties {
         public static class Decision {
             /** D21：默认关，Live/灰度再开 */
             private boolean enabled = false;
-            private int timeoutSec = 300;
+            /** 等待用户作答超时（秒）；<=0 表示无限等待，仅用户作答/跳过/停止会话结束 */
+            private int timeoutSec = 0;
         }
 
         @Data

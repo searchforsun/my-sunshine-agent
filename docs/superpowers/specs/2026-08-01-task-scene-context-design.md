@@ -5,8 +5,13 @@
 > **v10（2026-08-10）**：**状态保真**（§2.0）——对齐五层 §2.1；失败路径硬进 processTrail；工具关键字段 schema 白名单；`goalEpoch` 建议字段；续跑补充验收。
 > **v11（2026-08-10）**：chat 侧 Near/Mid schema **SSOT 在五层 §5.5.8**（正文为主 + 工具轮一行；非本节完整过程窗）；本节 §6.5/§6.6 仅约束 task。
 > **v12（2026-08-13）**：命名对齐 routing **四轴**——会话形态 SSOT=`kind`（废 `scene`）；LLM 调用点=`callSite`（废 `call_scene`）；L3 元数据列 `scene`→`kind` 迁移。正文若仍写 `scene=chat|task` 均读作 `kind`。
+> **v13（2026-08-14 · skill 工具装配边界修正）**：§7.4 约束 3 修正——主 agent 绑 skill 时**允许**并入 skill 工具，但须按路由 **triggered 集**单调并集（sticky，见 [skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md)），保证 Tier 0 `tools` 跨轮稳定（五层 §5.5.3 v24）；SUB/Worker 即时并集不变（子会话无前缀包袱）。Planner 恒不绑 skill（`AgentRunRequest.planner()` 不传 skillId）。
+> **v14（2026-08-14 · 清爽收敛，对齐五层 v25 / [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）**：
+> 1. **T0 全套作废**（§6.1 双块 + processTrail + `context.t0.extract/condense`）——会话级任务状态真相源 = `AgentState.tasksContext` + `react_task_board` 终态快照（fast 跨轮恢复，见 task-list-memory M0）；失败路径由任务 item `fail_reason` 承接。正文 §6.1 保留仅作历史参考。
+> 2. **W0 与 L2 统一为一张 `KV Memory`**（`scope=user|workspace` 列；同一模型/抽取服务/注入渲染）——本 spec §5 独立 `workspace_context_state` DDL 作废，改为 `user_context_state` 扩展 scope 列。
+> 3. **session_search 一期收缩**：仅 `body 层 + scope=session`；`scope=workspace` 延后；process 层（工具摘要向量化）延后（工具结果在 `chat_message.steps` 直接可查）。
 > **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 kind 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
-> **v3–v7**：T0 双块 / 压缩点 / 引用化 / Near 场景差异 / `sunshine_session_search` 撞名区分等（正文仍有效，启用面以 v8 §2.2 为准）
+> **v3–v7**：T0 双块 / 压缩点 / 引用化 / Near 场景差异 / `sunshine_session_search` 撞名区分等（正文除 **T0 作废（v14）** 外仍有效，启用面以 v8 §2.2 为准）
 > **定位**：为 `kind=task` 编码会话建立区别于 chat 的上下文治理体系——对齐 Cursor Dynamic Context Discovery 与 KV Cache 经济学；压缩主目标为**续跑状态保真**（§2.0）；「项目规范」已先行落地 ✅；**执行模式轴**见 routing v6（与 `kind` 正交）
 > **关联**：[unified-context-compression-design](./2026-07-31-unified-context-compression-design.md)（五层基线 ✅ / §4.5 方案 A = run 内 SSOT；§2.1 状态保真；§5.5 压缩点仍为设计稿）· [unified-routing v6](./2026-07-29-unified-routing-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板/Policy；一期主挂 chat，与本文 task 编码闸门正交）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（管理页 chat/task 分栏 §6；默认工具集按 kind）· [task-workspace-codex](./archive/2026-07-28-task-workspace-codex-design.md) · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内正交能力见五层 §4.5）
 
@@ -70,8 +75,8 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 | 标签 | task 落点 |
 |------|-----------|
 | **L-narr** | Far 粗折叠；Mid optional decision 句；assistant 短结论 |
-| **L-state** | fast→T0（goal / constraints / processTrail / refs）；pro→**H1**（禁止再养重型 T0）；Mid **schema 工具行**；chat 工具关键态见五层 §5.5.8 / L2 |
-| **L-seal** | schema 白名单字段原样（path、*Id、exitCode、trace…）；HITL 确认走审计/桥接引用；**禁止**写入用户 L2 |
+| **L-state** | **fast→会话级任务状态（`tasksContext` + `react_task_board` 跨轮恢复，见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §4；T0 已作废 v14）**；pro→**H1**；Mid **schema 工具行**；chat 工具关键态见五层 §5.5.8 / KV Memory |
+| **L-seal** | schema 白名单字段原样（path、*Id、exitCode、trace…）；HITL 确认走审计/桥接引用；**禁止**写入用户 KV（scope=user） |
 
 **强化契约（相对 v9）**：
 1. `processTrail` 必须能表达失败：`kind ∈ {attempt, fail, denied, verified, …}`；测不过 / 权限拒绝不得只留成功叙事。  
@@ -90,11 +95,13 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 | 记忆层 | 作用域 | chat 读 | chat 写 | task 读 | task 写 |
 |--------|--------|:---:|:---:|:---:|:---:|
 | L1 Near/Mid/Far | conversation | ✅ | ✅ | ✅ | ✅ |
-| L2 用户状态 | (user, tenant) | ✅ | ✅ | ❌ | ❌ |
-| W0 工作区记忆 | (tenant, workspace) | ❌ | ❌ | ✅ | ✅ |
-| T0 任务进度 | conversation | — | — | ✅ 仅 fast | ✅ 仅 fast（pro→H1） |
+| **KV Memory**（scope=user，原 L2） | (user, tenant) | ✅ | ✅ | ❌ | ❌ |
+| **KV Memory**（scope=workspace，原 W0） | (tenant, workspace) | ❌ | ❌ | ✅ | ✅ |
+| 会话级任务状态（fast `react_task_board` / pro H1） | conversation | — | — | ✅ 仅 fast\|pro | ✅ 仅 fast\|pro |
 | L3 chat 历史 | (user, tenant) | ✅ | ✅（scene=chat） | ❌ | ❌ |
 | P0 项目规范 | workspace | ❌ | — | ✅ | — |
+
+> v14：L2/W0 统一为 KV Memory（`scope` 列区分）；「T0 任务进度」行由**会话级任务状态**承接（`tasksContext` + `react_task_board` 跨轮恢复，见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）。
 
 > L1 按 `convId` 天然会话内隔离，本方案只补跨会话层（L2/W0/L3/T0）的场景闸门。
 
@@ -102,25 +109,26 @@ Cursor 的核心哲学是 **Dynamic Context Discovery**（[官方博客](https:/
 
 ```
 task 会话（kind=task）× executionMode:
-  L2 抽取   → 跳过（不写用户 L2）
-  L1 压缩   → fast|pro：执行（读 W0；fast 可读 T0；不读用户 L2）；workflow：不做本套增强
-  W0 抽取   → 仅 fast|pro（§5.2）；workflow 跳过
-  T0 刷新   → 仅 fast（§6.1）；pro/workflow 跳过（pro 计划态→H1）
-  L3 ingest → 仅 fast|pro（**scene=task · body+process**，§6.3/§6.4）；workflow 跳过
+  KV Memory 抽取（scope=user）→ 跳过（不写用户级）
+  L1 压缩   → fast|pro：执行（读 KV scope=workspace；不读 scope=user）；workflow：不做本套增强
+  KV Memory 抽取（scope=workspace）→ 仅 fast|pro（§5.2）；workflow 跳过
+  会话级任务状态沉淀 → 仅 fast|pro（fast 终态导出 tasksContext / pro 终态导出 H1，见 [task-list-memory §6](./2026-08-14-task-list-memory-unification-design.md)）
+  L3 ingest → 仅 fast|pro（**scene=task · body 层一期**，§6.3/§6.4）；workflow 跳过
 
 chat 会话（kind=chat）:
-  L2 抽取   → 执行（现状）
+  KV Memory 抽取（scope=user）→ 执行（现状 L2）
   L1 压缩   → 基线滑动窗（压缩点二期可选）
   L3 ingest → 执行（scene=chat，§6.3）
 ```
+> v14：L2/W0/T0 命名统一为 KV Memory（scope）+ 会话级任务状态；T0 刷新删除。
 
 **读路由（防串闸门）**——`ContextAssembler.assemble` 按 `AssembleRequest.kind` + `executionMode` 选源：
 
 ```
-task × fast:  W0 + T0 + P0；不注入用户 L2；不自动召回 L3
-task × pro:   W0 + P0 + H1；无重型 T0；不注入用户 L2；不自动召回 L3
-task × workflow / 纯 workflow 模式: 不注入 W0/T0/P0/H1（退出本套）
-chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
+task × fast:  KV Memory scope=workspace + P0 + 会话级任务状态恢复块；不注入 scope=user；不自动召回 L3
+task × pro:   KV Memory scope=workspace + P0 + H1；不注入 scope=user；不自动召回 L3
+task × workflow / 纯 workflow 模式: 不注入 KV workspace/P0/H1（退出本套）
+chat:         KV Memory scope=user；不注入 workspace/P0；L3 召回 scene=chat
 ```
 
 **现状污染证据（改造前）**：
@@ -146,10 +154,10 @@ chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
 |------|:-------------:|:------------:|:----------------------:|:----------------------:|
 | §2.1 隔离闸门 | ✅ | ✅ | 仅当 kind=task 时要 | chat 侧闸门 |
 | P0 项目规范 | ✅ | ✅ | 不做（可选读） | ❌ |
-| W0 | ✅ | ✅ | **舍弃** | ❌ |
-| T0 + processTrail | ✅（主用） | **砍重型**（计划态→H1） | **舍弃** | ❌ |
+| KV Memory scope=workspace | ✅ | ✅ | **舍弃** | ❌ |
+| 会话级任务状态（fast 恢复 / pro H1） | ✅（`react_task_board` 跨轮恢复） | ✅（H1 SSOT） | **舍弃** | ❌ |
 | 压缩点模式 §4 | ✅ 优先 | ✅ 优先 | **延后/不做** | 可跟五层基线，非本 spec 主路径 |
-| `session_search` | ✅ | ✅ | **舍弃** | ❌ |
+| `session_search`（一期 body+session） | ✅ | ✅ | **舍弃** | ❌ |
 | H1 PlanNotebook | ❌ | ✅ SSOT | ❌ | ❌（非 harness） |
 
 **舍弃 / 更改（相对 v7 正文）**：
@@ -174,8 +182,8 @@ chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
 │  + mode overlay：fast→mode-overlay.react / pro→planner.harness │
 │  + [P0] 项目规范（用户维护 CLAUDE.md 式）→ system  ✅ 已实现       │
 ├─ Tier 1 · 低频记忆（content-hash 幂等，真变才失效一次）─────────│
-│  + [W0] 工作区记忆 → system（仅 task；chat 不注入用户 L2）        │
-│  + [T0] 任务进度（仅 fast；pro 默认关闭，计划态走 H1）           │
+│  + [KV Memory] scope=workspace → system（仅 task；chat 用 scope=user）│
+│  + [会话级任务状态恢复块]（fast：`react_task_board` 最近快照；pro→H1）│
 │  + L1 Far 折叠 + L1 Mid 压缩 → system                            │
 ├─ Tier 2 · 动态段（每轮 append，只 miss 尾部）───────────────────│
 │  + L1 Near 原文（从「压缩点」开始，逐轮增长）                    │
@@ -189,13 +197,13 @@ chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
   + session_search（仅 task×fast|pro；workflow 不注册）
 ```
 
-> **分层依据**：路由/执行模式为控制流，**不**把自动识别结果写入 prefix；W0/L2 靠幂等 upsert；fast 的 T0 降频刷新；pro 的计划态在 H1。业界证据见五层 spec §5.5.5。
+> **分层依据**：路由/执行模式为控制流，**不**把自动识别结果写入 prefix；KV Memory 靠幂等 upsert（v14：L2/W0 统一）；fast 会话级任务状态靠 `react_task_board` 跨轮恢复、pro 靠 H1。业界证据见五层 spec §5.5.5。
 
 与五层管道的映射：
-- `W0` = 工作区跨会话层，Tier 1；**仅 task×(fast|pro)**
-- `T0` = 会话级任务摘要；**仅 task×fast**（pro→H1）
+- `KV Memory` = 跨会话层（scope=workspace 供 task / scope=user 供 chat），Tier 1；**仅 task×(fast|pro) 读 workspace**
+- `会话级任务状态` = fast `react_task_board` 跨轮恢复块 / pro H1（Tier 2 尾部，见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）
 - `L1/Budget` = 压缩点改造优先落在 task×(fast|pro)
-- `L3` = task 写 `scene=task` 供 session_search、不自动注入；chat 保留 `scene=chat`
+- `L3` = task 写 `scene=task` 供 session_search（一期 body+session）、不自动注入；chat 保留 `scene=chat`
 - Layer 1 AS compaction = 正交（run 内）；workflow 执行器不走本图
 
 ---
@@ -222,8 +230,8 @@ chat:         用户 L2；不注入 W0/T0/P0；L3 召回 scene=chat
 ```
 每轮 prepareNewMessage 组装：
   Tier 0 = tools(确定性序列化；规模大时名列表静态 + schema 尾部，见下) + System base + overlay.task + P0 项目规范
-  Tier 1 = L2 + W0 + T0(降频) + Far + Mid      ← content-hash 幂等，真变才失效一次
-  Tier 2 = Near 原文 + L3(仅 chat) +（可选）显式 executionMode 尾部 + 当前 user
+  Tier 1 = KV Memory(scope=user|workspace) + Far + Mid      ← content-hash 幂等，真变才失效一次
+  Tier 2 = Near 原文 + L3(仅 chat) +【任务清单恢复块】+（可选）显式 executionMode 尾部 + 当前 user
            + pro 时 H1 注入块（query 前）
   KV cache：DeepSeek prefix caching 命中 ✅（Tier 0 内层稳定核）
 
@@ -264,8 +272,8 @@ assemble 检测 tail token > modelWindow × 0.8 且 P 未推进：
 | `L1Compressor.partition` | 以压缩点为界划分，而非固定 near/mid 轮数；暴露**同步推进 P** 方法（只移动 `far_folded_msg_ids` 边界，零 LLM） |
 | `ContextWritePath` | 异步执行 Mid/Far 的 LLM 折叠（P 已由 assemble 同步推进时，仅补摘要/折叠） |
 | `conversation_context_l1` | 已具备载体（`far_folded_msg_ids`），无需新表 |
-| `ContextMessageBuilder` | 顺序确认：Tier 0（tools+base+overlay(by executionMode)+P0）→ Tier 1（W0±T0+Far+Mid）→ Tier 2（Near→L3(chat)→可选显式 mode→H1(pro)→当前 user） |
-| **`WorkspaceContextExtractService`** | **content-hash 幂等 upsert**（保证 Tier 1 字节稳定）；**仅** task×(fast\|pro) 写路径触发 |
+| `ContextMessageBuilder` | 顺序确认：Tier 0（tools+base+overlay(by executionMode)+P0）→ Tier 1（KV Memory + Far+Mid）→ Tier 2（Near→L3(chat)→【任务清单恢复块】/H1(pro)→当前 user） |
+| **`KV Memory` 抽取（scope 参数化）** | 原 L2/W0 抽取统一为 `context.memory.extract`（prompt 带 `scope=user\|workspace`）；**content-hash 幂等 upsert**（保证 Tier 1 字节稳定）；**scope=workspace 仅** task×(fast\|pro) 写路径触发 |
 | **注入序列化** | 确定性序列化；**禁止** L3 自判 planMode 注入；用户 `executionMode` 若提示则仅尾部 |
 
 ### 4.4 实施范围（v8 收窄）
@@ -273,24 +281,31 @@ assemble 检测 tail token > modelWindow × 0.8 且 P 未推进：
 **压缩点模式优先启用面**：`kind=task` × (`executionMode=fast`|`pro`)。  
 **不做 / 延后**：`executionMode=workflow`；纯 chat 可继续五层**滑动窗基线**，不强制本 spec 压缩点一期上线。  
 
-差异仍按 kind：Tier 0/1 内容（P0/W0；T0 仅 fast）与 L3 通道（chat=`scene=chat`；task 写 `scene=task` 供 session_search，§6.3/§6.4）。  
+差异仍按 kind：Tier 0/1 内容（P0/KV Memory scope=workspace）与 L3 通道（chat=`scene=chat`；task 写 `scene=task` 供 session_search，§6.3/§6.4）。
 
-实施顺序：**§2.1 隔离闸门（P1/P2）** → AssembleRequest 透传 `scene`/`workspaceId`/`executionMode` → task×fast 压缩点 →（可选）T0 → pro 接 H1 且禁用重型 T0 → W0/`session_search` 增强。chat 跟随压缩点为可选二期。
+实施顺序：**§2.1 隔离闸门（P1/P2）** → AssembleRequest 透传 `kind`/`workspaceId`/`executionMode` → task×fast 压缩点 → **fast 跨轮恢复（task-list-memory M0）** → pro 接 H1 → KV Memory（v14）→ `session_search`（body+session）增强。chat 跟随压缩点为可选二期。
 
 ---
 
-## 5. 核心设计 B：W0 工作区记忆（`workspace_context_state`）
+## 5. 核心设计 B：KV Memory 工作区作用域（原 W0 工作区记忆）
+
+> **v14 修订（2026-08-14）**：**W0 与 L2 统一为一张 `KV Memory`**——`user_context_state` 增加 `scope` 列（`user`/`workspace`），同一模型（kind/key/value/confidence/status/TTL/source/content_hash）、同一抽取服务（Catalog `context.memory.extract` 按 scope 参数化）、同一注入渲染。下方原 `workspace_context_state` 独立 DDL **作废**（保留作历史参考），落地改为扩展 `user_context_state`；`kind` 收敛为 `fact/constraint/decision/todo` + 画像类（`project_index` 走按需发现工具，不进上下文）。
 
 ### 5.1 数据模型
 
-复用 L2 成熟模型（kind/key/value/confidence/status/TTL/source），作用域从 `(user_id, tenant_id)` 提升为 `(tenant_id, workspace_id)`，**工作区内所有 `kind=task` 会话公有**：
+复用 L2 成熟模型（kind/key/value/confidence/status/TTL/source），**v14 改为扩展 `user_context_state` 加 `scope` 列**，不再建独立表（下方原 DDL 作废，仅作历史参考）：
 
 ```sql
+-- 【作废 · v14】改用 user_context_state + scope 列：
+--   ALTER TABLE user_context_state ADD COLUMN scope VARCHAR(16) NOT NULL DEFAULT 'user' AFTER tenant_id;
+--   ALTER TABLE user_context_state ADD COLUMN workspace_id VARCHAR(64) NULL AFTER user_id;
+--   ALTER TABLE user_context_state ADD UNIQUE KEY uk_kv_scope (scope, tenant_id, workspace_id, user_id, kind, state_key, status);
+-- 索引：idx_kv_scope_ws (scope, tenant_id, workspace_id, status) / idx_kv_scope_user (scope, tenant_id, user_id, status)
 CREATE TABLE workspace_context_state (
     id           VARCHAR(64)  NOT NULL PRIMARY KEY,
     tenant_id    VARCHAR(64)  NOT NULL DEFAULT 'default',
     workspace_id VARCHAR(64)  NOT NULL,
-    kind         VARCHAR(32)  NOT NULL,   -- project_index / scheme / agreement / fact / constraint / summary
+    kind         VARCHAR(32)  NOT NULL,   -- fact / constraint / decision / todo（v14 收敛）
     state_key    VARCHAR(128) NOT NULL,
     state_value  TEXT         NOT NULL,
     content_hash VARCHAR(64)  NOT NULL,   -- sha256(state_value)，幂等 upsert 载体（v3）
@@ -308,25 +323,30 @@ CREATE TABLE workspace_context_state (
 
 ### 5.2 读写链路
 
-- **注入**：`ContextAssembler.assemble` 依据 `conv.workspaceId` 组装成 system 块，放 **Tier 1**（L2 之后、T0 之前）
-- **写入**：`ContextWritePath` 按 kind 分流（§2.1 写路由）——task 会话**跳过用户 L2 抽取**、独立执行 workspace 抽取（LLM 按 Catalog `context.ws.extract` 抽项目级信息）；chat 会话不执行 W0 抽取；**content-hash 幂等 upsert**：产出块 sha256 与库中 `content_hash` 比对，未变化跳过写库（对齐五层 spec §5.5.6，保证 Tier 1 字节稳定）
+- **注入**：`ContextAssembler.assemble` 依据 `conv.workspaceId`（task）读 `scope=workspace` 块、或按 `userId`（chat）读 `scope=user` 块，组装成 system 块放 **Tier 1**
+- **写入**：`ContextWritePath` 按 kind 分流（§2.1 写路由）——task 会话**跳过 scope=user 抽取**、执行 **scope=workspace 抽取**（LLM 按 Catalog `context.memory.extract`（带 `scope=workspace`）抽项目级信息）；chat 会话执行 scope=user 抽取；**content-hash 幂等 upsert**：产出块 sha256 与库中 `content_hash` 比对，未变化跳过写库（对齐五层 spec §5.5.6，保证 Tier 1 字节稳定）
 - **冲突合并**：复用 `L2ConflictMerger` 逻辑（时间优先覆盖，旧条 superseded 审计保留）
-- **语义冲突识别（v7 预置）**：W0 写路径**直接内置语义候选判定**（对齐五层 spec §6.4）——新 candidate 入库前对同 kind active 条目做语义判定（LLM · Catalog `context.ws.merge`），动作 NOOP/MERGE/UPDATE/CONFLICT 与 L2 一致。**这是 2026-08-01 L2 线上 bug 的前置防护**：工作区摘要/约束/事实更易出现语义相似 key（"项目用 Java17" vs "项目 JDK=17"），若不在 W0 落地时内置，将复现「相似的 key、value 相反也无法判矛盾」
+- **语义冲突识别（v7 预置 · 二期可选）**：写路径**直接内置语义候选判定**（对齐五层 spec §6.4）——新 candidate 入库前对同 scope+kind active 条目做语义判定（LLM · Catalog `context.memory.merge`），动作 NOOP/MERGE/UPDATE/CONFLICT 与 L2 一致。**v14**：一期先用字面 + key 规范化门禁，语义判定与五层 §6.4 同节奏（二期可选）
 - **清理**：`ContextMaintenanceJob` 扩展扫 workspace 维度（过期/矛盾）
 
-### 5.3 与 L2/L3 的关系
+### 5.3 与 L2/L3 的关系（v14 统一）
 
 | 层 | 作用域 | 内容 | 关系 |
 |----|--------|------|------|
-| L2 | 用户 | 画像/偏好/约定 | **仅 chat 读写**（写路由闸门，§2.1）；task 不读不写，task 发现的用户偏好由 P0 项目规范显式补位。**质量 SSOT**：[五层 §6 v20/v22](./2026-07-31-unified-context-compression-design.md)（宁缺毋滥 · `{domain}.{facet}` · **value 自解释** · `background`；禁布尔孤值/会话计划） |
-| **W0** | 工作区 | 项目索引/方案/确认项/事实/约束/摘要 | 新增；**仅 task 读写**，chat 不读不写 |
-| L3 | 用户/会话 | chat 语义历史段落；task **body+process 原文**（scene=task） | **chat 读写**（kind 门禁 + `scene=chat` 通道，§6.3）；**task 只写不自动注入**——写 `scene=task`（body 消息对 + process 工具摘要）供 `session_search` 按需召回（v4/v5，§6.4） |
+| **KV Memory scope=user**（原 L2） | 用户 | 画像/偏好/约定 + `todo`（未完成任务） | **仅 chat 读写**（写路由闸门，§2.1）；task 不读不写，task 发现的用户偏好由 P0 项目规范显式补位。**质量 SSOT**：[五层 §6 v20/v22](./2026-07-31-unified-context-compression-design.md)（宁缺毋滥 · `{domain}.{facet}` · **value 自解释** · `background`；禁布尔孤值/会话计划） |
+| **KV Memory scope=workspace**（原 W0） | 工作区 | 项目事实/约束/决策 + `todo`（工作区未完成任务） | **仅 task 读写**，chat 不读不写；与 scope=user **同表同模型**（v14） |
+| L3 | 用户/会话 | chat 语义历史段落；task **body 原文**（scene=task） | **chat 读写**（kind 门禁 + `scene=chat` 通道，§6.3）；**task 只写不自动注入**——写 `scene=task`（body 消息对，一期；process 工具摘要延后，v14）供 `session_search` 按需召回（§6.4） |
 
 ---
 
-## 6. 核心设计 C：T0 任务进度摘要 + 项目索引
+## 6. 核心设计 C：任务进度摘要 + 项目索引
 
 ### 6.1 T0 任务进度摘要 + 过程轨迹（v3 细化）
+
+> **v14 作废（2026-08-14）**：本节 T0 双块 + processTrail + `context.t0.extract/condense` **全套作废**（对齐五层 v25 / [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）。
+> - 会话级任务状态真相源 = `AgentState.tasksContext`（实时）+ `react_task_board`（终态快照，fast 跨轮恢复）。
+> - 失败路径保真由任务 item 自带 `status/fail_reason` 承接；「为什么放弃/试过什么」恢复走 Near/Mid schema 行 + `session_search`（body 层）。
+> - 正文保留仅作历史参考，**禁止按本节落地**。
 
 `conversation_context_l1` 增加 `task_progress` 字段（或独立表），assistant completed 后由 LLM **增量刷新**「任务目标 / 代码引用 / 验证结果摘要 / 待办」。
 
@@ -409,31 +429,33 @@ task_progress（JSON · v5 引用化 · v10 状态保真）：
 
 **防御性隔离**：`scene` 字段是双保险。即使未来写路径遗漏 kind 门禁误 ingest 了 task 消息，search 的 `scene == "chat"` 过滤仍保证其不被 chat 召回；task 侧如需向量能力，再以独立 `scene=task`（或独立 collection）扩展，不复用 chat 通道。
 
-### 6.4 task 过程原文恢复：`session_search`（v4 新增 · v5 扩展双范围 · v7 与 AS 原生撞名区分）
+### 6.4 task 过程原文恢复：`session_search`（v4 新增 · v5 扩展双范围 · v7 与 AS 原生撞名区分 · **v14 收缩**）
+
+> **v14 收缩（2026-08-14）**：一期仅实现 **`body 层 + scope=session`**（本会话正文原文恢复）；**process 层（工具摘要向量化）延后**——工具结果在 `chat_message.steps` 直接可查，向量化性价比低；**`scope=workspace`（项目级）延后**——跨会话原文检索噪音大，且 KV Memory `todo` 已承接跨会话任务续接。下方 v5 双范围/process 层正文保留作历史参考。
 
 > **决策（2026-08-07）**：task 会话的压缩后原文恢复通道，**复用 L3 基建 + `scene=task` 独立过滤**——落实 §6.3 预留的「task 侧向量能力以 `scene=task` 扩展」方向，与 chat 共用同一套 ingest/检索代码，不新建独立通道。
 >
 > **v7 撞名区分（2026-08-07 · SSOT 在本段；原 4.7.8 已归档）**：本工具的 `session_search` 与 **AgentScope 2.0 原生 `session_search`** **同名不同物**：
-> - **本设计（Sunshine 自研元工具）**：检索 L3 Milvus `scene=task` 向量（body 对话 + process 工具摘要），作用域**跨轮/项目级**（`scope=session`/`workspace`），供 task 会话压缩后原文恢复
+> - **本设计（Sunshine 自研元工具）**：检索 L3 Milvus `scene=task` 向量（body 对话），作用域一期 `scope=session`，供 task 会话压缩后原文恢复
 > - **AS 原生**：检索本轮 run 内 offload 到 `*.log.jsonl` 的压缩前原始消息，作用域**单次 run 内**；当前工程 `disableMemoryTools()` 一并关闭——若放开，仅保留 AS `session_search`，继续禁 `memory_get`/`memory_search`（见五层 §4.5 / v18）
 > - **落地约定**：自研工具以 `sunshine_session_search` 暴露；两者作用域互补，不替代
 
-**定位（v5 收敛）**：`session_search` 只恢复**对话正文 + 工具调用结果摘要**，**永不返回代码内容**——对齐「代码引用化」原则：检索命中后如需代码细节，agent 按返回的引用（`refs`/`path:line`）读实时代码。**「轮次内过程记忆」按两级承接**：
+**定位（v5 收敛 · v14 一期仅会话级）**：`session_search` 只恢复**对话正文**（body 层），**永不返回代码内容**——对齐「代码引用化」原则：检索命中后如需代码细节，agent 按返回的引用（`refs`/`path:line`）读实时代码。**「轮次内过程记忆」承接**：
 
 | 级别 | 载体 | 范围 | 作用 |
 |------|------|------|------|
-| **会话级** | `session_search`（`scope=session`） | 本会话全部轮次 | 恢复本会话被 Near/Far 滑出的过程原文（工具摘要 + 对话） |
-| **项目级** | `session_search`（`scope=workspace`） | 工作区所有 task 会话 | 跨会话发现项目级过程经验（Cursor history-as-files / `@` 检索对齐） |
+| **会话级**（一期 ✅） | `session_search`（`scope=session`） | 本会话全部轮次 | 恢复本会话被 Near/Far 滑出的过程原文（对话正文） |
+| **项目级**（v14 延后） | `session_search`（`scope=workspace`） | 工作区所有 task 会话 | 跨会话发现项目级过程经验（延期：跨会话续接已由 KV Memory `todo` 承接） |
 
 | 维度 | 设计 |
 |------|------|
 | 数据源（body 层） | task 会话 user+assistant 消息对 → L3 ingest 带 `scene=task`（与 chat 对称，每轮 ingest，检索最全） |
 | 数据源（process 层） | `ProcessingStep`（`chat_message.steps`，每步含 reasoning/output/result）→ 抽取 tool 调用结果摘要（截断 200 chars）→ ingest `scene=task`（v5 新增） |
 | 检索 | 复用 `L3RecallService`，scene 恒为 `task`；scope 参数映射 Milvus expr：`scope=session` → `conversation_id == X`，`scope=workspace` → `workspace_id == Y && kind == task` |
-| 工具暴露 | 元工具 `session_search(query, scope=session\|workspace)`（task 场景 tools 注入）；agent 在 Near/Far/T0 信息不足时主动按需检索 |
+| 工具暴露 | 元工具 `session_search(query, scope=session)`（一期；task 场景 tools 注入）；agent 在 Near/Far/任务清单块信息不足时主动按需检索 |
 | 已折叠消息 | Far 已折叠的 msgId 仍可检索（向量与折叠摘要并存，与 chat L3 一致） |
-| 与 T0 关系 | T0 过程轨迹是**常驻上下文**（始终注入）；session_search 是**按需深挖**（原文级），两者互补 |
-| 与 W0 关系 | W0 是**结构化**项目记忆（Tier 1，摘要/索引/约束）；session_search 项目级是**原文**深挖（按需）——摘要不够再搜原文，层次递进 |
+| 与任务清单块关系 | 会话级任务清单（fast 恢复块）是**常驻上下文**（始终注入）；session_search 是**按需深挖**（原文级），两者互补 |
+| 与 KV Memory 关系 | KV Memory 是**结构化**跨会话记忆（Tier 1，事实/约束/todo）；session_search 会话级是**原文**深挖（按需）——摘要不够再搜原文，层次递进 |
 
 **process 层（v5）**：
 - **内容**：只存**工具调用结果摘要**（`ProcessingStep.result` 截断 200 chars，属「工具调用结果」可存），**不存** `reasoning`、完整 `output`、文件内容。
@@ -536,7 +558,7 @@ assistant: 短结论
 | 总量约束 | 无显式硬限（8 轮自然受限） | **Near+Mid+Far ≤ 10k 硬约束** |
 | 单轮上限 | 无 | 无（压缩兜底） |
 | 工具输出 | schema 白名单 + result≤200；关键态亦可进 L2 | Near：读/执行摘要+refs、写/改原文；Mid：一律 schema 行 |
-| 跨会话业务态 | **L2**（宁缺毋滥） | W0 / T0 / H1 / P0（不写用户 L2） |
+| 跨会话业务态 | **KV Memory scope=user**（宁缺毋滥） | KV Memory scope=workspace / 任务清单恢复块 / H1 / P0（不写 scope=user） |
 
 **中断感知（v8 注记 · 方案 A，对齐五层 spec §5.5.7 v16）**：task 装载层对 `INTERRUPTED` 的 assistant 条同样折叠显式中断注记（Catalog `context.l1.interrupted-marker`）——与 chat 统一由 `ChatStreamContextFactory` 装载时生效；正文空时仅注记（不被 `hasText` 过滤），非空时注记 + 已生成部分。task 场景因 Near 保留轮次内过程（steps），中断时已执行的 tool/think 过程本身仍经 v6 折叠进 Near，中断注记补充「执行被中断」状态语义，二者叠加不冲突。
 
@@ -588,7 +610,7 @@ assistant: 短结论
 
 1. **目录摘要只静态注入「名字+描述」**（对齐 §1.2 调研：静态注入名+描述、正文按需读，一 A/B 测试降 46.9% token）；正文经 `SkillCatalogService` 详情缓存按需取，命中才进 Tier 2。
 2. **system 级 = 后台统一、字节稳定 → 才有资格进 Tier 0 前缀**；user 级 = 个人低频变更（content-hash 幂等 upsert）→ Tier 1。**禁止**把个人配置混入 Tier 0。
-3. 业务工具 / MCP 经 `DynamicToolkitFactory` 注入，只作用于 Worker 工具集 / spawn 子 Agent（子会话无前缀包袱），不占 Planner 前缀预算。
+3. 业务工具 / MCP 经 `DynamicToolkitFactory` 注入：**SUB/Worker 即时并集**（子会话无前缀包袱）；**主 agent 绑 skill 时按路由 triggered 集单调并集**（sticky，[skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md)），triggered 不变 → Tier 0 `tools` 字节不变；**Planner 恒不绑 skill**（`planner()` 不传 skillId），不占 Planner 前缀预算。
 4. 前端「插件」菜单的 system/user 标识即对应 **Tier 0 / Tier 1** 划分；Skill 详情抽屉复用阶段四已有卡片样式。
 5. **工具规模膨胀联动 tool RAG**：插件菜单启用工具数量超过阈值（默认 20）时，Tier 0 `tools` 自动降级为「全量名列表 + Tier 2 Top-K schema」（对齐 [phase5 §5.5](./phase5-operation-openness-design.md) 分层注入，见 §4.2 v6 注记）；MCP 工具描述同样只静态进名列表，schema 按需读——插件菜单是工具/技能数量的入口，也是触发 `full`→`retrieval` 模式切换的信号源。
 
@@ -601,22 +623,22 @@ assistant: 短结论
 | # | 任务 | 文件 | 依赖 |
 |---|------|------|------|
 | P0 | 项目规范（CLAUDE.md 式） | 已落地 ✅ | — |
-| **P1** | **写路由闸门（§2.1）**：按 `kind` 分流；task 跳过用户 L2；L3 ingest `scene=task`；**workflow 模式跳过 W0/T0 抽取** | `ContextWritePath`、`L1Compressor` | — |
-| **P2** | **读路由闸门（§2.1）**：`AssembleRequest`+`scene`/`workspaceId`/`kind`/`executionMode`；task 注入 W0+guide；**T0 仅 fast**；**pro 注入 H1、不注入重型 T0**；chat 注入 L2；workflow 不走 task 专用块 | `ContextAssembler`、`AssembleRequest` | P1 |
+| **P1** | **写路由闸门（§2.1）**：按 `kind` 分流；task 跳过 KV scope=user 抽取；L3 ingest `scene=task`（body 层）；**workflow 模式跳过 KV workspace 抽取与任务沉淀** | `ContextWritePath`、`L1Compressor` | — |
+| **P2** | **读路由闸门（§2.1）**：`AssembleRequest`+`kind`/`workspaceId`/`executionMode`；task 注入 KV workspace + guide + 任务清单恢复块；**pro 注入 H1**；chat 注入 KV user；workflow 不走 task 专用块 | `ContextAssembler`、`AssembleRequest` | P1 |
 | **P2b** | Tier0 overlay 按 `executionMode`：`fast`→`mode-overlay.react`，`pro`→`planner.harness`；禁止 L3 自判模式注入 | `ContextMessageBuilder` / PromptComposer | P2 |
 | 2 | **压缩点**（§4）：优先 **task×(fast\|pro)**；同步推进 P + 异步折叠 | `ContextAssembler`、`L1Compressor` | P2 |
 | 3 | Tier 0/1/2 定序 + 确定性序列化（无自动 planMode） | `ContextMessageBuilder` | 2 |
-| 4 | **T0（仅 task×fast）**：状态块+processTrail+引用化；**pro/workflow 不实现或开关默认关** | `T0ExtractService`… | 2、3 |
-| 1 | W0 表 + 抽取（仅 task×fast\|pro；workflow 不写） | orchestrator context/ | P2 |
-| 4a/4b | W0 幂等 upsert / 语义 merge（二期） | … | 1 |
+| **4（作废·v14）** | ~~T0（仅 task×fast）~~ → 改由 fast 跨轮恢复（`react_task_board`）+ 任务 item 状态承接（[task-list-memory M0](./2026-08-14-task-list-memory-unification-design.md)）；**pro 计划态→H1** | — | 2、3 |
+| 1 | KV Memory 统一（`user_context_state`+`scope` 列）+ 抽取（`context.memory.extract` 参数化；仅 task×fast\|pro 写 workspace） | orchestrator context/ | P2 |
+| 4a/4b | KV 幂等 upsert / 语义 merge（二期可选） | … | 1 |
 | 4c | Mid **schema 骨架**（§6.5 v9）：确定性渲染 tool 行；可选 `context.l1.mid-compress.task` 仅补决策 | `L1Compressor` / Mid 装载器、Catalog | P2 |
-| 5a/5b | L3 scene 隔离 + `session_search`（**仅 task×fast\|pro 注册工具**） | rag + orchestrator | P1 |
+| 5a/5b | L3 scene 隔离 + `session_search`（**一期 body+scope=session**；仅 task×fast\|pro 注册工具） | rag + orchestrator | P1 |
 | 5 | 项目索引 + `ws_index`（增强） | workspace/ | 1 |
-| 6 | Nacos/Catalog 开关：按 kind×executionMode 门控 T0/W0/session_search | Nacos + Catalog | — |
-| 7 | `verify_task_context_live.py`：隔离 + **三模式门控**（workflow 无 T0/W0；pro 无重型 T0；fast 可有 T0）+ 压缩点（task） | scripts/ | 关键路径 |
+| 6 | Nacos/Catalog 开关：按 kind×executionMode 门控 KV workspace/任务沉淀/session_search | Nacos + Catalog | — |
+| 7 | `verify_task_context_live.py`：隔离 + **三模式门控**（workflow 无 KV workspace/任务沉淀；pro 计划态→H1）+ 压缩点（task） | scripts/ | 关键路径 |
 | 8 | 插件菜单 Tier 分层（§7.4，增强，可后置） | skill-manager、UI | 2、3 |
 
-**建议顺序**：P0 ✅ → **P1 → P2 → P2b**（接 routing v6 / 4.14）→ **2 → 3**（task 压缩点）→ **4（仅 fast）** → 1 / 5a/5b → 4c/6/7 → 4a/4b/5/8（增强）。
+**建议顺序**：P0 ✅ → **P1 → P2 → P2b**（接 routing v6 / 4.14）→ **2 → 3**（task 压缩点）→ **fast 跨轮恢复（task-list-memory M0）** → 1（KV Memory）/ 5a/5b → 4c/6/7 → 4a/4b/5/8（增强）。
 
 ---
 
@@ -648,6 +670,8 @@ assistant: 短结论
 ---
 
 ## 10. 验收
+
+> **v14**：T0 相关验收行（`T0 过程轨迹跨轮保留` / `T0 幂等+有界` / `T0 引用化`）**作废**，改为「fast 跨轮恢复 + 任务 item 状态」验收（见 [task-list-memory §10](./2026-08-14-task-list-memory-unification-design.md)）；`W0` 验收行读作「KV Memory scope=workspace」。
 
 | 项 | 预期 | 脚本 |
 |----|------|------|

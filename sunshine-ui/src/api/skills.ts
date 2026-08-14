@@ -33,6 +33,8 @@ export interface SkillEntry {
   activeVersionMaintainerName?: string | null
   /** 当前 active 版本是否已发布 — 未发布草稿不可开启 Skill */
   activeVersionPublished?: boolean
+  /** 当前 active 版本绑定的业务工具 Catalog ID（JSON 数组串） */
+  toolsJson?: string
   /** none | docker */
   sandbox?: string
   sandboxPolicy?: SandboxPolicy | null
@@ -164,6 +166,23 @@ export async function updateSkillVersionSandbox(
       method: 'PUT',
       headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ sandbox, sandboxPolicy: sandboxPolicy ?? null }),
+    },
+  )
+  return parseApiResponse<SkillEntry>(res)
+}
+
+/** 覆写版本绑定的业务工具 Catalog ID 列表（独立于 SKILL.md frontmatter） */
+export async function updateSkillVersionTools(
+  id: string,
+  version: number,
+  tools: string[],
+): Promise<SkillEntry> {
+  const res = await fetch(
+    apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/tools`),
+    {
+      method: 'PUT',
+      headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tools }),
     },
   )
   return parseApiResponse<SkillEntry>(res)

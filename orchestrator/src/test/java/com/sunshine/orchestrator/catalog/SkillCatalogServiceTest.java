@@ -45,10 +45,13 @@ class SkillCatalogServiceTest {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of(
                 new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "d", 1, true, "none", "all", null)));
         when(catalogClient.fetchSkillDetail("finance-analysis")).thenReturn(Optional.of(
-                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay text", 1, true, "none", null, "all", null)));
+                new SkillCatalogEntry("finance-analysis", "财务合规分析", "d", "overlay text",
+                        "[\"sdk__sunshine-biz__list_my_expenses\"]", 1, true, "none", null, "all", null)));
         service.refresh();
         assertThat(service.find("finance-analysis")).isPresent();
         assertThat(service.overlayOrEmpty("finance-analysis")).isEqualTo("overlay text");
+        assertThat(service.toolIds("finance-analysis"))
+                .containsExactly("sdk__sunshine-biz__list_my_expenses");
         verify(catalogClient).fetchSkillDetail("finance-analysis");
     }
 

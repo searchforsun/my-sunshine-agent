@@ -16,6 +16,8 @@ export interface UseSandboxFileTreeOptions {
   getCheckoutId?: () => string | null
   /** 工作区模式根节点显示名（项目名） */
   getWorkspaceName?: () => string | null
+  /** 是否任务工作区：task 会话绑定了工作区但未选 checkout 时显示空态；chat 简化工作区不在此列 */
+  getTaskMode?: () => boolean
   onOpenFile: (path: string, focusLine?: number) => void | Promise<void>
 }
 
@@ -134,8 +136,9 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
         expandedKeys.value = [rootPath, '/skills']
         return
       }
-      // 任务工作区但尚未选择 checkout（新任务未发送）：无代码，空态由抽屉提示
-      if (wsId) {
+      // 任务工作区但尚未选择 checkout（新任务未发送）：无代码，空态由抽屉提示；
+      // chat 简化工作区（绑定了 workspaceId 但非 task）不受此限制，走下方会话沙箱文件树
+      if (wsId && options.getTaskMode?.()) {
         workspaceRootKey.value = ''
         treeData.value = []
         expandedKeys.value = []
@@ -188,17 +191,19 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     return null
   }
 
-  /** 项目名（getWorkspaceName）异步就绪后，把根节点 label 从 checkoutId 刷新为项目名 */
+  /** 项目名（getWorkspaceName）异步就绪后，把根节点 label 从 checkoutId 刷新为项目名。
+   *  重建根节点对象（而非原地改 label）以变更节点引用，确保 NTree 渲染链识别变化。 */
   watch(
     () => options.getWorkspaceName?.(),
     (name) => {
       if (!name || !workspaceRootKey.value) return
-      const root = findNode(treeData.value, workspaceRootKey.value)
-      if (root && root.label !== name) {
-        root.label = name
-        treeData.value = [...treeData.value]
-      }
+      treeData.value = treeData.value.map(n =>
+        String(n.key) === workspaceRootKey.value && n.label !== name
+          ? { ...n, label: name }
+          : n,
+      )
     },
+    { immediate: true },
   )
 
   /** 仅刷新指定根目录子树（保留另一根目录已加载内容） */

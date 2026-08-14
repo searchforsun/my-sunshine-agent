@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
+import com.sunshine.orchestrator.catalog.AgentToolsJson;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -11,6 +13,7 @@ import io.agentscope.core.tool.ToolkitConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -37,6 +40,7 @@ public class DynamicToolkitFactory {
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
     private final ToolSetResolver toolSetResolver;
+    private final SkillCatalogService skillCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final SandboxAgentTools sandboxAgentTools;
 
@@ -97,8 +101,33 @@ public class DynamicToolkitFactory {
         MAIN, SUB, PLANNER
     }
 
+    /**
+     * 绑 skill 时并入 skill 声明的业务工具（去重）；`["*"]` 为全量哨兵，展开为租户启用池。
+     * skillId 为空或 skill 未声明工具 → 原样返回。
+     */
+    private List<String> mergeSkillTools(List<String> whitelist, String skillId, String tenantId) {
+        if (!StringUtils.hasText(skillId)) {
+            return whitelist;
+        }
+        List<String> skillTools = skillCatalogService.toolIds(skillId);
+        if (skillTools == null || skillTools.isEmpty()) {
+            return whitelist;
+        }
+        if (AgentToolsJson.isStarAll(skillTools)) {
+            skillTools = toolSetResolver.resolveAllEnabledTools(tenantId);
+        }
+        Set<String> merged = new HashSet<>();
+        if (whitelist != null) {
+            merged.addAll(whitelist);
+        }
+        merged.addAll(skillTools);
+        return List.copyOf(merged);
+    }
+
     private Toolkit buildFromWhitelist(
             List<String> whitelist, ToolkitScope scope, String skillId, String userId, String tenantId) {
+        // 绑 skill 时并入 skill 声明的业务工具（`["*"]` 展开为租户启用池全量）；skill 为空则原样
+        whitelist = mergeSkillTools(whitelist, skillId, tenantId);
         // skillId 保留签名兼容；方案 B 不再门控沙箱工具
         // 同轮无依赖 tool_call 并行（须 AgentScope ≥1.0.8：mergeSequential 保序，避免结果错配）
         Toolkit tk = new Toolkit(ToolkitConfig.builder().parallel(true).build());

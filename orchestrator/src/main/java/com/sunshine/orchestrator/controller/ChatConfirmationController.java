@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.controller;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.WorkflowNodeRecoveryService;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.Map;
 
@@ -40,7 +40,7 @@ public class ChatConfirmationController {
                     boolean ok = hitlConfirmationService.confirm(request.token(), request.approved(), userId);
                     return Map.<String, Object>of("accepted", ok);
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     @PostMapping("/chat/workflow-node-recovery")
@@ -56,6 +56,6 @@ public class ChatConfirmationController {
                     boolean ok = workflowNodeRecoveryService.confirm(request.token(), request.action());
                     return Map.<String, Object>of("accepted", ok);
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 }

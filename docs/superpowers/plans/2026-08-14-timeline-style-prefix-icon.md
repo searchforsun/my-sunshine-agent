@@ -1,6 +1,7 @@
 # 时间线前缀图标（极简/标准）Implementation Plan
 
 > **状态**：✅ 已实现
+> **修订**：2026-08-14 多轮迭代后，经用户明确指令，**最终完全参考 DeepSeek Harness（deepseek-ai/deepseek-harness）官方 `ic_ds_*` 图标库重绘**：全部改用其 `fill="currentColor"` 饱满填充路径风格（环形 = 外圆+内圆 fill 粗环、符号实心 fill、Q 曲线圆角、撑满 16 网格）；官方图标直接移植（MIT License, Copyright (c) 2026 DeepSeek），`node`/`tool-view`/`generic` 为同风格自绘；14 网格图标 `scale(1.14286)` 铺满 16 网格；默认 size 16。第 7 轮修订：intent 分支 → dsh `goal` 目标靶；`sandbox__glob`（查找文件）拆出为 `tool-search` 打开文件夹（非实心）；tool-view 眼睛重绘为环形镂空（非实心）；总览折叠行新增专属 `summary` 队列环图标。第 8 轮修订：`tool-exec` 执行命令改为流行的「圆角矩形终端框 + `>_` 提示符」样式。第 9 轮修订：HITL 相关卡片前缀图标统一 dsh 风格（DecisionCard=问号环、CollapsibleConfirmPanel tool=sparkle / recovery=refresh / approval=checklist）。第 10 轮修订：`fillRule` → `fill-rule`（Chrome 兼容，修复 tool-exec 实心块）。第 11 轮修订：最外层轮次折叠层新增专属 `round` 堆叠图层图标（区别于 toolGroup）。第 12 轮修订：round 图标改为双线框镂空版（无实心）。
 > **Spec**：[2026-08-14-timeline-style-prefix-icon-design](../specs/archive/2026-08-14-timeline-style-prefix-icon-design.md)
 > **前置**：`OperationStack` / `OperationCard` / `ToolGroupCard` 现有行模型；`PlanNodeIcon` 图标风格
 > **本 plan 不做**：SubagentCard / DecisionCard / TaskBoardPanel / PlanDagPanel 前缀图标；服务端偏好同步；图标库依赖

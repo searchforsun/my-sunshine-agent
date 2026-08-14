@@ -10,6 +10,7 @@ import com.sunshine.skill.dto.SkillCatalogIndexEntry;
 import com.sunshine.skill.dto.SkillCreateRequest;
 import com.sunshine.skill.dto.SkillUpdateRequest;
 import com.sunshine.skill.dto.SkillVersionSandboxRequest;
+import com.sunshine.skill.dto.SkillVersionToolsRequest;
 import com.sunshine.skill.exception.SkillErrorCode;
 import com.sunshine.skill.entity.SkillDefinitionEntity;
 import com.sunshine.skill.entity.SkillVersionEntity;
@@ -115,6 +116,25 @@ public class SkillAdminService {
         return toCatalogEntry(requireDefinition(skillId)).orElseThrow();
     }
 
+    /** UI 覆写版本工具绑定（独立于 SKILL.md frontmatter）；tools 为 Catalog ID 列表；仅草稿版本可变更 */
+    @Transactional
+    public SkillCatalogEntry updateVersionTools(String skillId, int version, SkillVersionToolsRequest request) {
+        requireDefinition(skillId);
+        SkillVersionEntity ver = versionRepository.findBySkillIdAndVersion(skillId, version)
+                .orElseThrow(() -> new BizException(SkillErrorCode.VERSION_NOT_FOUND));
+        if (!"draft".equals(ver.getStatus())) {
+            throw new BizException(SkillErrorCode.DRAFT_TOOLS_EDIT_ONLY);
+        }
+        List<String> tools = request != null && request.tools() != null
+                ? request.tools().stream().map(String::strip).filter(StringUtils::hasText).distinct().toList()
+                : List.of();
+        ver.setToolsJson(writeStringList(tools));
+        versionRepository.save(ver);
+        catalogRegistry.refresh();
+        log.info("[SkillManager] updated tools skill={} version={} tools={}", skillId, version, tools);
+        return toCatalogEntry(requireDefinition(skillId)).orElseThrow();
+    }
+
     @Transactional
     public SkillCatalogEntry updateMeta(String skillId, SkillUpdateRequest request) {
         if (!StringUtils.hasText(request.displayName())) {
@@ -160,6 +180,7 @@ public class SkillAdminService {
         }
         String storagePath = skillStorageService.persistPackage(skillId, targetVersion, pkg);
         version.setSystemOverlay(doc.body());
+        version.setToolsJson(writeStringList(doc.tools()));
         version.setReferencesJson(writePathList(listPrefixedPaths(pkg.files(), "references/")));
         version.setScriptsJson(writePathList(listPrefixedPaths(pkg.files(), "scripts/")));
         version.setStoragePath(storagePath);
@@ -398,6 +419,7 @@ public class SkillAdminService {
                         def.getDisplayName(),
                         def.getDescription(),
                         ver.getSystemOverlay(),
+                        ver.getToolsJson(),
                         ver.getVersion(),
                         def.isEnabled(),
                         ver.getCreatedAt(),
@@ -444,6 +466,10 @@ public class SkillAdminService {
         } catch (IOException e) {
             return "[]";
         }
+    }
+
+    static String writeStringList(List<String> values) {
+        return writePathList(values);
     }
 
     /** 会话形态 kind 收敛：chat|task|all；空/非法回落 all（Lab/校验见 K2） */

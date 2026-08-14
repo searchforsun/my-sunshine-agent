@@ -71,6 +71,21 @@ ENTERPRISE_SKILLS: list[dict] = [
             "execReadonlyAllow": ["ls *", "pwd", "python -m pytest *", "python /skills/*/scripts/*"],
         },
     },
+    {
+        "id": "compliance-review",
+        "displayName": "费用合规审查",
+        "description": "报销合规对照场景：命中时装载费用制度 Policy",
+    },
+    {
+        "id": "expense-assist",
+        "displayName": "报销助手",
+        "description": "报销查询/提交辅助场景",
+    },
+    {
+        "id": "travel-budget",
+        "displayName": "差旅预算",
+        "description": "差旅额度与预算管控场景",
+    },
 ]
 
 

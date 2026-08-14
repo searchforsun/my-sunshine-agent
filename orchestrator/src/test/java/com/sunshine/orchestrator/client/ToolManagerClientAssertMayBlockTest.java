@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.client;
 
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -12,9 +13,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ToolManagerClientAssertMayBlockTest {
 
     @Test
-    void assertMayBlock_allowsBoundedElastic() {
+    void assertMayBlock_allowsVirtualThreads() {
         assertThatCode(() -> Mono.fromRunnable(() -> ToolManagerClient.assertMayBlock("test"))
-                        .subscribeOn(Schedulers.boundedElastic())
+                        .subscribeOn(VirtualThreadExecutors.scheduler())
                         .block(Duration.ofSeconds(5)))
                 .doesNotThrowAnyException();
     }
@@ -26,6 +27,6 @@ class ToolManagerClientAssertMayBlockTest {
                         .block(Duration.ofSeconds(5)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("non-blocking thread")
-                .hasMessageContaining("boundedElastic");
+                .hasMessageContaining("VirtualThreadExecutors");
     }
 }

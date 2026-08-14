@@ -6,16 +6,16 @@ from typing import Any
 
 TENANT = "default"
 
-# Catalog IDs
-T_LIST_EXP = "sdk__sunshine-finance__list_my_expenses"
-T_GET_EXP = "sdk__sunshine-finance__get_expense_detail"
-T_SUBMIT_EXP = "sdk__sunshine-finance__submit_expense"
-T_SUM_EXP = "sdk__sunshine-finance__summarize_my_expenses"
-T_LEAVE_BAL = "sdk__sunshine-hr__get_leave_balance"
-T_LEAVE_LIST = "sdk__sunshine-hr__list_leave_requests"
-T_LEAVE_SUB = "sdk__sunshine-hr__submit_leave_request"
-T_OA_LIST = "sdk__sunshine-oa__list_oa_tasks"
-T_OA_APPROVE = "sdk__sunshine-oa__approve_oa_task"
+# Catalog IDs（服务合并后统一为 sdk__sunshine-biz__*）
+T_LIST_EXP = "sdk__sunshine-biz__list_my_expenses"
+T_GET_EXP = "sdk__sunshine-biz__get_expense_detail"
+T_SUBMIT_EXP = "sdk__sunshine-biz__submit_expense"
+T_SUM_EXP = "sdk__sunshine-biz__summarize_my_expenses"
+T_LEAVE_BAL = "sdk__sunshine-biz__get_leave_balance"
+T_LEAVE_LIST = "sdk__sunshine-biz__list_leave_requests"
+T_LEAVE_SUB = "sdk__sunshine-biz__submit_leave_request"
+T_OA_LIST = "sdk__sunshine-biz__list_oa_tasks"
+T_OA_APPROVE = "sdk__sunshine-biz__approve_oa_task"
 
 RETRY = {
     "retry.maxAttempts": "2",
@@ -551,11 +551,11 @@ WORKFLOWS: list[dict[str, Any]] = [
     {
         "id": "knowledge-branch",
         "displayName": "条件分支知识检索",
-        "description": "含「报销」走财务 RAG，否则走人事 RAG（4.13.7 exclusive-gateway 边条件标杆）",
+        "description": "含「报销」或「发票」走财务 RAG，否则走人事 RAG（4.13.7 exclusive-gateway OR 多条件标杆）",
         "mode": "workflow",
         "plan": {
             "planId": None,
-            "reason": "4.13.7 exclusive-gateway 边条件标杆",
+            "reason": "4.13.7 exclusive-gateway OR 多条件边条件标杆（报销 OR 发票）",
             "nodes": [
                 {
                     "id": "start",
@@ -618,9 +618,19 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "from": "xg-b1c2d3e4",
                     "to": "rag-f1a2b3c4",
                     "condition": {
-                        "left": "{{start.userQuery}}",
-                        "op": "contains",
-                        "right": "报销",
+                        "logic": "or",
+                        "items": [
+                            {
+                                "left": "{{start.userQuery}}",
+                                "op": "contains",
+                                "right": "报销",
+                            },
+                            {
+                                "left": "{{start.userQuery}}",
+                                "op": "contains",
+                                "right": "发票",
+                            },
+                        ],
                     },
                 },
                 {
@@ -677,11 +687,11 @@ WORKFLOWS: list[dict[str, Any]] = [
     {
         "id": "knowledge-loop",
         "displayName": "条件循环知识检索",
-        "description": "do-while：首轮必进框内 rag→报销列表→假期余额→agent；含「继续」则再轮（最多 2，超限 exit）（4.13.7）",
+        "description": "do-while：首轮必进框内 rag→报销列表→假期余额→agent；检索含「继续」且待报销未「已完成」则再轮（AND 多条件，最多 2，超限 exit）（4.13.7）",
         "mode": "workflow",
         "plan": {
             "planId": None,
-            "reason": "4.13.7 loop 容器标杆（do-while 继续条件 contains「继续」；框内 rag→list→leave→agent）",
+            "reason": "4.13.7 loop 容器标杆（do-while 多条件 AND：检索含「继续」且待报销未「已完成」则再轮；框内 rag→list→leave→agent）",
             "nodes": [
                 {
                     "id": "start",
@@ -696,10 +706,15 @@ WORKFLOWS: list[dict[str, Any]] = [
                     "params": {
                         "conditions": [
                             {
-                                "left": "{{start.userQuery}}",
+                                "left": "{{rag-l1o2o3p4.output}}",
                                 "op": "contains",
                                 "right": "继续",
-                            }
+                            },
+                            {
+                                "left": "{{tool-t1o2o3p4.output}}",
+                                "op": "not_contains",
+                                "right": "已完成",
+                            },
                         ],
                         "conditionLogic": "and",
                         "maxIterations": "2",

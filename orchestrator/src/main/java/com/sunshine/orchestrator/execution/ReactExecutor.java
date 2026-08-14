@@ -120,7 +120,9 @@ public class ReactExecutor {
                     if (firstId == null) {
                         firstId = aid;
                     }
-                    var entry = agentCatalogService.find(aid);
+                    // findIndex：内存索引即可（displayName/description 均含），禁止远程 find——
+                    // executeWithInjected 可能在 reactor-http 线程执行，AgentCatalogClient.block() 必抛异常致注入静默丢失
+                    var entry = agentCatalogService.findIndex(aid);
                     if (entry.isPresent()) {
                         agentLines.append("- ").append(aid)
                                 .append(" (").append(entry.get().displayName()).append(")");
@@ -233,7 +235,7 @@ public class ReactExecutor {
                     if (aid.isEmpty()) {
                         continue;
                     }
-                    agentCatalogService.find(aid)
+                    agentCatalogService.findIndex(aid)
                             .ifPresent(entry -> agents.add(new BizSceneResolver.SceneTagged(
                                     entry.id(), entry.bizScene())));
                 }

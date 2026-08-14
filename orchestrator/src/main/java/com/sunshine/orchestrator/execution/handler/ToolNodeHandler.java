@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolManagerClient;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.InputBinding;
 import com.sunshine.orchestrator.execution.NodeHandler;
@@ -22,7 +23,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -56,7 +56,7 @@ public class ToolNodeHandler implements NodeHandler {
         Map<String, String> displayParams = toStringParams(invokeParams);
 
         return Mono.fromCallable(() -> invokeWithHitl(spec, streamCtx, tool, invokeParams, displayParams))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .map(result -> buildResult(tool, result))
                 .doOnSuccess(result -> auditToolCall(spec, streamCtx, tool, displayParams, result))
                 .onErrorResume(e -> {

@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.ConversationTitleService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -39,7 +40,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.UUID;
@@ -184,14 +184,14 @@ public class ChatController {
                     }
                     registry.remove(generationId);
                 })
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe();
         Consumer<Throwable> onError = error -> {
             StepEventBridge.unbindGenerationFlush(ctx.assistantMsgId());
             StepEventBridge.clearResumeContentBlocks(ctx.assistantMsgId());
             QueryRewriteTrace.clear(ctx.assistantMsgId());
             Mono.fromRunnable(() -> registry.remove(generationId))
-                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribeOn(VirtualThreadExecutors.scheduler())
                     .subscribe();
             log.error("[Orchestrator] generation 异常 genId={} resume={}", generationId, resume, error);
         };

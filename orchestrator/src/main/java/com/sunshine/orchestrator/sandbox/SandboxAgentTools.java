@@ -8,6 +8,7 @@ import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -22,7 +23,6 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -111,7 +111,7 @@ public class SandboxAgentTools {
         @Override
         public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
             return Mono.fromCallable(() -> execute(param))
-                    .subscribeOn(Schedulers.boundedElastic());
+                    .subscribeOn(VirtualThreadExecutors.scheduler());
         }
 
         private ToolResultBlock execute(ToolCallParam param) {
@@ -227,7 +227,7 @@ public class SandboxAgentTools {
             }
             log.info("[SandboxAgentTool] {} session={} bridge={} params={}",
                     name, sessionId, bridgeId, body.keySet());
-            // background=true 仅 EXEC：立即返回 runId，invoke 在 boundedElastic 后台完成
+            // background=true 仅 EXEC：立即返回 runId，invoke 在虚拟线程后台完成
             if (isBackgroundExec(body)) {
                 return executeBackgroundExec(
                         toolUseId, body, messageId, sessionId, invocationId, trackCancel);
@@ -316,7 +316,7 @@ public class SandboxAgentTools {
                     wallMs,
                     onCancel);
             long startMs = System.currentTimeMillis();
-            Schedulers.boundedElastic().schedule(() -> {
+            VirtualThreadExecutors.scheduler().schedule(() -> {
                 try {
                     if (trackCancel && cancellableToolRunRegistry.isCancelled(invocationId)) {
                         asyncToolRunRegistry.complete(

@@ -109,17 +109,39 @@ const sandboxDrawerOpen = computed(() => sandboxState.open)
 const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
 const sessionTitle = computed(() => {
   if (chatStore.newTaskMode) return '新任务'
-  if (chatStore.pendingWorkspace) return '新任务'
   if (isCurrentTask.value && chatStore.current?.kind === 'task') return chatStore.current?.title || '新任务'
   return chatStore.current?.title || '新对话'
 })
 const currentConversationId = computed(() => chatStore.currentId)
 
-/** 当前会话形态（chat|task）：新任务/挂起工作区视为 task；否则按会话 kind 或工作区判定，缺省 chat */
+/** 当前会话形态（chat|task）：新任务视为 task；否则按会话 kind 判定，缺省 chat。
+ * chat 会话绑定工作区后仍是 chat（工作区能力挂在 workspaceId 上）。 */
 const sessionKind = computed<'chat' | 'task'>(() => {
-  if (chatStore.newTaskMode || chatStore.pendingWorkspace) return 'task'
+  if (chatStore.newTaskMode) return 'task'
   const current = chatStore.current
   return current && isTaskConversation(current) ? 'task' : 'chat'
+})
+
+/** 工作区项目列表（工作区抽屉展示项目名用；chat 会话据此判断 @ 工作区可用性） */
+const wsProjectList = ref<WorkspaceVO[]>([])
+const wsProjectLoading = ref(false)
+
+async function loadWsProjects() {
+  wsProjectLoading.value = true
+  try { wsProjectList.value = await listWorkspaces() }
+  catch { /* silently fail */ }
+  finally { wsProjectLoading.value = false }
+}
+
+/** @ 工作区可用条件与生效工作区：
+ * task 会话须已绑定工作区（或新任务待选工作区）→ 用 workspaceId；
+ * chat 会话 @ 引用对话级轻量沙箱（执行脚本的沙箱，懒创建），有会话即可 → 用会话 id 作标记 */
+const mentionWorkspaceId = computed(() => {
+  const current = chatStore.current
+  if (sessionKind.value === 'task') {
+    return current?.workspaceId ?? chatStore.pendingWorkspace?.wsId ?? null
+  }
+  return current?.id ?? null
 })
 
 const {
@@ -538,7 +560,7 @@ const {
   filteredPaths,
   applyPathSuggest,
   handlePathKeydown,
-} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef, sessionKind)
+} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef, mentionWorkspaceId, sessionKind)
 
 /** 下拉面板列表（四个互斥 ul 共用 ref）：键盘移动高亮时保持选中项在可视区 */
 const composerSuggestList = ref<HTMLUListElement | null>(null)
@@ -562,7 +584,7 @@ watch(
 
 const composerPlaceholder = computed(() => {
   const hints: string[] = []
-  if (sessionKind.value === 'task') hints.push('@ 工作区')
+  if (mentionWorkspaceId.value) hints.push('@ 工作区')
   if (allowsSkillMention(preference.value)) hints.push('/ Skill')
   if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
   if (allowsAgentMention(preference.value)) hints.push('$ 智能体')
@@ -589,8 +611,8 @@ const TASK_EMPTY_HINTS = [
   { label: '讲解项目', prompt: '讲解当前工作区的项目架构和关键文件' },
 ] as const
 
-/** 空态场景：新任务（工作区代码任务）还是新对话（知识库/Skill） */
-const emptyTaskState = computed(() => chatStore.newTaskMode || !!chatStore.pendingWorkspace)
+/** 空态场景：新任务（工作区代码任务）还是新对话（知识库/Skill）；新对话选工作区仍属对话空态 */
+const emptyTaskState = computed(() => chatStore.newTaskMode)
 const emptyHints = computed(() => (emptyTaskState.value ? TASK_EMPTY_HINTS : CHAT_EMPTY_HINTS))
 const emptyTitle = computed(() => (emptyTaskState.value ? '有什么代码任务可以帮你？' : '有什么可以帮你的？'))
 const emptyDesc = computed(() =>
@@ -739,7 +761,7 @@ async function lastTaskBranch(workspaceId: string): Promise<string> {
   return ''
 }
 
-/** 会话切换时从 checkoutPath 恢复：解析 checkoutId + 反查分支名 */
+/** 会话切换时从 checkoutPath 恢复：解析 checkoutId + 反查分支名（仅 task 会话绑定 checkout） */
 async function applyConversationCheckout() {
   // 切换会话：丢弃发送前分支切换的挂起状态（避免残留到新会话）
   resetBranchSwitchState()
@@ -807,6 +829,16 @@ const currentWorkspaceName = computed(() => {
   const ws = wsProjectList.value.find(w => w.id === chatStore.current?.workspaceId)
   return ws?.name ?? ''
 })
+/** 当前会话变化时确保工作区列表已加载：task 取项目名，chat 判断 @ 工作区可用性（首个 active 工作区）；
+ * 覆盖首次进入时 onMounted 请求未返回/失败的情况 */
+watch(
+  () => chatStore.current?.id,
+  () => {
+    if (wsProjectList.value.length === 0 && !wsProjectLoading.value) {
+      void loadWsProjects()
+    }
+  },
+)
 const currentWorkspaceRepo = computed(() => '')
 
 // 会话级文件路径索引：进入会话即加载（不依赖工作区抽屉打开），
@@ -820,28 +852,6 @@ useSandboxPathIndex({
   getCheckoutId: () => taskCheckoutId.value || null,
   treeVersion: sandboxPathIndexRefresh,
 })
-
-/** 工作区项目选择器 */
-const wsProjectOpen = ref(false)
-const wsProjectList = ref<WorkspaceVO[]>([])
-const wsProjectLoading = ref(false)
-
-async function loadWsProjects() {
-  wsProjectLoading.value = true
-  try { wsProjectList.value = await listWorkspaces() }
-  catch { /* silently fail */ }
-  finally { wsProjectLoading.value = false }
-}
-
-function onWsProjectShow(next: boolean) {
-  wsProjectOpen.value = next
-  if (next) loadWsProjects()
-}
-
-function selectWsProject(ws: WorkspaceVO) {
-  chatStore.pendingWorkspace = { wsId: ws.id, wsName: ws.name }
-  wsProjectOpen.value = false
-}
 
 /** 分支下拉 git 操作按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle） */
 type GitOpKind = 'stage' | 'push' | 'pull'
@@ -1057,32 +1067,36 @@ async function handleSend() {
   const text = inputText.value.trim()
   if (!text || wsPreparing.value || branchSwitchBusy.value || branchSwitchOpen.value) return
   try {
-    const pending = chatStore.pendingWorkspace
+    const creatingTask = chatStore.newTaskMode
     let convId: string
-    if (chatStore.newTaskMode || pending) {
-      const wsId = pending?.wsId
+    if (creatingTask) {
+      // 新任务：选分支 → 拉 checkout → 创建 task 会话（工作区/分支由前端显式绑定）
+      const wsId = chatStore.pendingWorkspace?.wsId
+      if (!wsId) {
+        wsPrepareError.value = '请先选择工作区'
+        return
+      }
       // 所选分支尚无 checkout → 显示「正在拉取分支代码到工作区...」同步等待，成功才发消息
-      let checkoutId = taskCheckoutId.value
-      if (wsId && taskBranch.value) {
-        if (!checkoutId) {
-          wsPreparing.value = true
-          wsPrepareError.value = ''
-          try {
-            checkoutId = await withTimeout(ensureCheckout(wsId, taskBranch.value), 60000, '拉取分支代码超时')
-          } catch (e) {
-            wsPreparing.value = false
-            wsPrepareError.value = (e instanceof Error ? e.message : String(e)) || '拉取分支代码失败'
-            return
-          } finally {
-            wsPreparing.value = false
-          }
-          taskCheckoutId.value = checkoutId
-        }
-        taskActiveBranch.value = taskBranch.value
-      } else if (!taskBranch.value) {
+      if (!taskBranch.value) {
         wsPrepareError.value = '请先选择分支'
         return
       }
+      let checkoutId = taskCheckoutId.value
+      if (!checkoutId) {
+        wsPreparing.value = true
+        wsPrepareError.value = ''
+        try {
+          checkoutId = await withTimeout(ensureCheckout(wsId, taskBranch.value), 60000, '拉取分支代码超时')
+        } catch (e) {
+          wsPreparing.value = false
+          wsPrepareError.value = (e instanceof Error ? e.message : String(e)) || '拉取分支代码失败'
+          return
+        } finally {
+          wsPreparing.value = false
+        }
+        taskCheckoutId.value = checkoutId
+      }
+      taskActiveBranch.value = taskBranch.value
       convId = await chatStore.create({
         kind: 'task',
         workspaceId: wsId,
@@ -1091,6 +1105,7 @@ async function handleSend() {
       chatStore.pendingWorkspace = null
       chatStore.newTaskMode = false
     } else {
+      // 新对话/已有对话：chat 会话创建时不绑定工作区，由后端在首次调用沙箱工具（执行脚本）时懒绑定，前端不传 workspaceId
       convId = await chatStore.ensureCurrent()
       // 已有任务会话：发送前若切换了分支，先统一走「改动检测 → 提交 → 切换 checkout」流程；
       // 当前 checkout 有未提交改动时挂起发送，等待用户在提交框内决定（取消则放弃本次发送）
@@ -1109,6 +1124,8 @@ async function handleSend() {
 /** 发送主流程：清空输入、落基线、发起 SSE 并等待完成（新任务创建 / 分支切换成功后统一调用） */
 async function performSend(text: string, convId: string) {
   ensureActive(convId)
+  // 发送即视为会话最新活动：本地同步 updatedAt（后端落库已更新），让侧栏时间/排序即时生效
+  chatStore.touchConversation(convId)
   // 新一轮发送即「继续执行」：清空上一次发送失败的提示（气泡），避免残留
   sendFailedError.value = ''
   if (messages.value.length === 0) chatStore.updateTitle(convId, text)
@@ -1801,54 +1818,10 @@ watch(
             </svg>
           </button>
         </transition>
-        <!-- 工作区项目选择器（任务模式下显示在输入框上方，胶囊样式） -->
-        <div v-if="chatStore.newTaskMode || chatStore.pendingWorkspace" class="ws-project-pill">
-          <NPopover
-            trigger="click"
-            placement="top-start"
-            :width="280"
-            raw
-            :show-arrow="false"
-            content-class="ws-project-popover"
-            :show="wsProjectOpen"
-            @update:show="onWsProjectShow"
-          >
-            <template #trigger>
-              <button type="button" class="ws-project-trigger">
-                <NIcon :size="14" :component="FolderOutline" />
-                <span class="ws-project-label">{{ currentWorkspaceName || chatStore.pendingWorkspace?.wsName || '选择工作区…' }}</span>
-                <NIcon :size="12" :component="ChevronDownOutline" class="ws-project-chevron" />
-              </button>
-            </template>
-            <div class="ws-project-menu">
-              <div v-if="wsProjectList.length === 0 && !wsProjectLoading" class="ws-project-menu-empty">暂无工作区</div>
-              <button
-                v-for="ws in wsProjectList"
-                :key="ws.id"
-                type="button"
-                class="ws-project-menu-item"
-                :class="{ 'is-selected': ws.id === (currentWorkspaceId ?? chatStore.pendingWorkspace?.wsId) }"
-                @click="selectWsProject(ws)"
-              >
-                <NIcon :size="18" :component="FolderOutline" class="ws-project-menu-icon" />
-                <span class="ws-project-menu-text">
-                  <span class="ws-project-menu-title">{{ ws.name }}</span>
-                </span>
-                <span class="ws-project-menu-check-slot">
-                  <NIcon
-                    v-if="ws.id === (currentWorkspaceId ?? chatStore.pendingWorkspace?.wsId)"
-                    class="ws-project-menu-check"
-                    :component="CheckmarkOutline"
-                    :size="18"
-                  />
-                </span>
-              </button>
-            </div>
-          </NPopover>
-          <div v-if="wsPreparing" class="pre-action-bubble pre-action-bubble--inline">
-            <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
-            <span class="pre-action-text">正在拉取代码</span>
-          </div>
+        <!-- 新任务拉取分支代码中提示 -->
+        <div v-if="wsPreparing" class="pre-action-bubble pre-action-bubble--inline">
+          <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
+          <span class="pre-action-text">正在拉取代码</span>
         </div>
         <div
           v-if="floatingTaskboardVisible && liveTaskboardStep"
@@ -2079,6 +2052,7 @@ watch(
         :workspace-id="currentWorkspaceId ?? chatStore.pendingWorkspace?.wsId ?? null"
         :checkout-id="taskCheckoutId"
         :workspace-name="currentWorkspaceName"
+        :session-kind="sessionKind"
       >
         <template v-if="isCurrentTask && currentWorkspaceId" #head-actions-pre>
           <div class="git-dropdown-wrap">
@@ -2429,15 +2403,6 @@ watch(
   background: var(--sun-row-hover);
 }
 
-/* ---- 工作区项目选择器（输入框上方，胶囊样式，动态宽度不截断） ---- */
-.ws-project-pill {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 0 0 6px;
-}
-
 /* 对话前动作进行中气泡（新任务拉取分支 / 分支切换暂存-提交-切换）：三点动画 + 纯文案（无省略号） */
 .pre-action-bubble {
   display: inline-flex;
@@ -2452,7 +2417,7 @@ watch(
   flex-shrink: 0;
 }
 
-/* 与工作区选择同一行，靠右 */
+/* 输入框上方行内右对齐（新任务拉取分支提示） */
 .pre-action-bubble--inline {
   margin-left: auto;
 }
@@ -2466,117 +2431,6 @@ watch(
 
 .pre-action-text {
   white-space: nowrap;
-}
-
-.ws-project-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border: none;
-  border-radius: var(--radius-lg, 12px);
-  background: transparent;
-  color: var(--sun-text-secondary);
-  font-size: var(--sun-font-sm, 12px);
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-}
-
-.ws-project-trigger:hover {
-  background: var(--sun-row-hover);
-  color: var(--sun-text);
-}
-
-.ws-project-label {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.ws-project-chevron {
-  opacity: 0.55;
-  flex-shrink: 0;
-}
-
-.ws-project-menu {
-  padding: 3px;
-  border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, var(--sun-black));
-  box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
-  border: 1px solid var(--sun-border, #e8e8e8);
-  overflow: hidden;
-}
-
-.ws-project-menu-empty {
-  padding: 12px 10px;
-  font-size: var(--sun-font-sm, 12px);
-  color: var(--sun-text-muted);
-  text-align: center;
-}
-
-.ws-project-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  border: none;
-  border-radius: calc(var(--radius-md, 10px) - 2px);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
-}
-
-.ws-project-menu-item:hover {
-  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
-}
-
-.ws-project-menu-icon {
-  flex-shrink: 0;
-  color: var(--sun-text-secondary);
-}
-
-.ws-project-menu-item.is-selected .ws-project-menu-icon {
-  color: var(--sun-text);
-}
-
-.ws-project-menu-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.ws-project-menu-title {
-  font-size: var(--sun-font-base, 14px);
-  font-weight: 500;
-  color: var(--sun-text);
-  white-space: nowrap;
-}
-
-.ws-project-menu-desc {
-  font-size: var(--sun-font-sm, 12px);
-  color: var(--sun-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ws-project-menu-check-slot {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-}
-
-.ws-project-menu-check {
-  color: var(--sun-text);
 }
 
 /* ---- 抽屉头部 Git 操作下拉 ---- */
@@ -3501,31 +3355,6 @@ watch(
 </style>
 
 <style>
-/* 工作区项目选择器 Popover 全局样式（修复直角） */
-.n-popover.n-popover--raw:has(.ws-project-menu),
-.n-popover-shared:has(.ws-project-menu) {
-  box-shadow: none !important;
-  background: transparent !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-}
-
-.ws-project-popover {
-  padding: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
-  border-radius: 0 !important;
-}
-.ws-project-popover .n-popover__content,
-.ws-project-popover .v-binder-follower-content {
-  padding: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border: none !important;
-  border-radius: 0 !important;
-}
-
 /* 分支操作 Git 下拉 Popover 全局样式（修复直角阴影残余）：内层 .git-dropdown-menu
    自带圆角 + 阴影，外层 Naive UI 容器直角 box-shadow 会从四角露出，去掉它 */
 .n-popover.n-popover--raw:has(.git-dropdown-menu),

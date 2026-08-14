@@ -87,13 +87,15 @@ final class TimelineSessionThinkFlow {
     }
 
     void endReasoningRound() {
-        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.NONE;
         long endedAt = System.currentTimeMillis();
         String thinkId = resolveRunningThinkId();
         if (thinkId == null || !emitter.isStepRunning(thinkId)) {
-            log.debug("[ThinkFlow] end: noRunningThink");
+            // 本轮未 materialize think（无 ThinkingBlock）：保留 pending 意图，
+            // 供 onActing think_summary / 正文补开本轮 think，避免落到上一轮已 done 的旧 think
+            log.debug("[ThinkFlow] end: noRunningThink keepPending={}", state.pendingThinkOpen);
             return;
         }
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.NONE;
         state.lastCompletedThinkId = thinkId;
         lifecycle.completeAt(thinkId, null, endedAt);
         state.lastCompletedThinkEndedAt = endedAt;
@@ -116,6 +118,11 @@ final class TimelineSessionThinkFlow {
         if (delta == null || delta.isEmpty()) {
             return;
         }
+        // 无 ThinkingBlock 直接出正文的轮（如终态作答）：先按 pending 意图补开本轮 think，
+        // 使正文锚定到本轮新建 think（位于最后一个工具之后），而非上一轮已 done 的旧 think
+        if (state.pendingThinkOpen != TimelineSessionState.PendingThinkOpen.NONE) {
+            ensureThinkOpen();
+        }
         completeThinkIfRunning();
         String anchor = contentAnchorAfterStepId();
         if (anchor == null || anchor.isBlank()) {
@@ -128,6 +135,11 @@ final class TimelineSessionThinkFlow {
     void applyThinkStepSummary(String summary, java.util.function.Consumer<com.sunshine.orchestrator.client.StreamToken> sink) {
         if (summary == null || summary.isBlank()) {
             return;
+        }
+        // 无 ThinkingBlock 的轮（含终态作答轮）：think_summary 到达时按 pending 意图补开本轮 think，
+        // 禁止把终态摘要写进上一轮已 done 的 think（否则该 think 被重新贴标、正文锚点跑到最后一个工具之前）
+        if (state.pendingThinkOpen != TimelineSessionState.PendingThinkOpen.NONE) {
+            ensureThinkOpen();
         }
         String thinkId = state.currentThinkId;
         if (thinkId == null) {

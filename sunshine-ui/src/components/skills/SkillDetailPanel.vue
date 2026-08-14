@@ -91,6 +91,34 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
         </div>
       </div>
 
+      <div v-if="page.showVersionSelect && page.selectedVersionEntry?.storagePath" class="tools-config-bar">
+        <span class="tools-config-label">业务工具</span>
+        <NSelect
+          v-model:value="page.versionTools"
+          multiple
+          filterable
+          size="small"
+          class="tools-config-select"
+          :options="page.toolSelectOptions"
+          :loading="page.toolsLoading"
+          :disabled="page.isActionBusy || page.savingTools || !page.canEditTools"
+          placeholder="可选业务工具"
+          :menu-props="{ class: 'version-select-menu' }"
+          @update:value="page.onVersionToolsChange"
+        />
+        <NButton
+          v-if="page.toolsDirty"
+          size="small"
+          type="primary"
+          class="action-btn"
+          :loading="page.savingTools"
+          :disabled="page.isActionBusy || page.savingTools || !page.canEditTools"
+          @click="page.handleSaveVersionTools"
+        >
+          保存
+        </NButton>
+      </div>
+
       <div v-show="!page.isDetailBusy" class="detail-content">
         <div v-if="page.skillPhase === 'setup' && !page.isDetailBusy" class="setup-panel">
           <NEmpty description="选择含 SKILL.md 的文件夹完成首次上传">
@@ -278,6 +306,41 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
   gap: 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+.tools-config-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tools-config-label {
+  font-size: 13px;
+  color: var(--sun-text-secondary);
+  white-space: nowrap;
+}
+
+.tools-config-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.tools-config-select :deep(.n-base-selection) {
+  --n-color: var(--sun-black) !important;
+  --n-color-active: var(--sun-black) !important;
+  --n-color-disabled: var(--sun-black) !important;
+  --n-text-color: var(--sun-text) !important;
+  --n-text-color-disabled: var(--sun-text-muted) !important;
+  --n-placeholder-color: var(--sun-text-muted) !important;
+  --n-arrow-color: var(--sun-text-secondary) !important;
+  --n-border: 1px solid var(--sun-border) !important;
+  --n-border-hover: 1px solid var(--sun-border-light) !important;
+  --n-border-active: 1px solid var(--sun-border-light) !important;
+  --n-border-focus: 1px solid var(--sun-border-light) !important;
+  --n-box-shadow-focus: none !important;
+  --n-box-shadow-hover: none !important;
+  --n-box-shadow-active: none !important;
 }
 
 .detail-title-block h3 {

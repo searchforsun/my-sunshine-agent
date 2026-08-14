@@ -16,6 +16,10 @@ import { listPlanDagNodeSteps } from '../../api/planHydrate'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
 import { usePlanDagExpand, unregisterPlanDagSelectHandler, registerPlanDagSelectHandler } from '../../composables/usePlanDagExpand'
 import PlanExecutionCanvas from './PlanExecutionCanvas.vue'
+import TimelineStepIcon from '../operation/TimelineStepIcon.vue'
+import { useTimelineStyle } from '../../composables/useTimelineStyle'
+
+const { timelineStyle } = useTimelineStyle()
 
 const props = defineProps<{
   planStep: ProcessingStep
@@ -324,6 +328,9 @@ watch(selectedId, () => syncExpandLayer())
   <div class="plan-panel op-line">
     <div class="op-line-row">
       <span class="op-main">
+        <span v-if="timelineStyle === 'standard'" class="op-step-icon">
+          <TimelineStepIcon class="op-type-icon" symbol="plan" />
+        </span>
         <span class="op-label" :class="{ 'op-shimmer': isRunning && live }">{{ label }}</span>
       </span>
       <span v-if="durationText" class="op-dur">{{ durationText }}</span>
@@ -365,6 +372,23 @@ watch(selectedId, () => syncExpandLayer())
   align-items: baseline;
   gap: 0 6px;
   min-width: 0;
+}
+
+/* 行首图标槽位：固定 16px，type-icon 常显（PlanDagPanel 行不可折叠，无 chevron） */
+.op-step-icon {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.op-step-icon .op-type-icon {
+  transition: opacity 0.12s ease;
+  opacity: 1;
 }
 
 .op-label {

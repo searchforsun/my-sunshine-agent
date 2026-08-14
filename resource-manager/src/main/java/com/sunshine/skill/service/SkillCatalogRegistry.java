@@ -72,6 +72,7 @@ public class SkillCatalogRegistry {
                 def.getDisplayName(),
                 def.getDescription(),
                 ver.getSystemOverlay(),
+                ver.getToolsJson(),
                 ver.getVersion(),
                 def.isEnabled(),
                 ver.getCreatedAt(),

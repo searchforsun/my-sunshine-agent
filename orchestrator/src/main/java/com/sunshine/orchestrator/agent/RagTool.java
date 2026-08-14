@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -57,7 +57,7 @@ public class RagTool implements AgentTool {
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         return Mono.fromCallable(() -> execute(param))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private ToolResultBlock execute(ToolCallParam param) {

@@ -103,8 +103,8 @@ class ReactResumeContextSupportTest {
         assertThat(block).contains("【用户决策】");
         assertThat(block).contains("选哪个方案？");
         assertThat(block).contains("outcome=answered");
-        assertThat(block).contains("q.q1=" + DecisionOption.CUSTOM_ID);
-        assertThat(block).contains("q.q1.custom=备注原文不截断");
+        assertThat(block).contains("custom=备注原文不截断");
+        assertThat(block).doesNotContain("q.q1");
     }
 
     private static ProcessingStep intentStep() {

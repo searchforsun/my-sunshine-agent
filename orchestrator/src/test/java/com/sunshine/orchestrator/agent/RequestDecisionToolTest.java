@@ -75,25 +75,48 @@ class RequestDecisionToolTest {
 
     @Test
     void formats_answered_result_with_multi_question() {
+        var questions = List.of(
+                new DecisionQuestion("q1", "方案？", List.of(new DecisionOption("agent", "Agent 自动")), false),
+                new DecisionQuestion(
+                        "q2",
+                        "补充？",
+                        List.of(new DecisionOption("perf", "性能"), new DecisionOption("cost", "成本")),
+                        true));
         var answers = List.of(
                 new DecisionAnswer("q1", List.of("agent"), null),
                 new DecisionAnswer("q2", List.of("perf", DecisionOption.CUSTOM_ID), "安全"));
-        String text = RequestDecisionTool.formatSuccessResult("Need", answers);
+        String text = RequestDecisionTool.formatSuccessResult("Need", questions, answers);
         assertThat(text).contains("outcome=answered");
         assertThat(text).contains("title=Need");
-        assertThat(text).contains("q.q1=agent");
-        assertThat(text).contains("q.q2=perf,__custom__");
-        assertThat(text).contains("q.q2.custom=安全");
+        assertThat(text).contains("choice=Agent 自动；性能、安全");
+        assertThat(text).doesNotContain("q.q1");
+        assertThat(text).doesNotContain("agent,__custom__");
     }
 
     @Test
     void formatSuccessResult_omitsCustomLine_whenSelectedLacksCustomId() {
+        var questions = List.of(
+                new DecisionQuestion("q1", "方案？", List.of(new DecisionOption("agent", "Agent 自动")), false));
         var answers = List.of(
                 new DecisionAnswer("q1", List.of("agent"), "不应泄漏"));
-        String text = RequestDecisionTool.formatSuccessResult("T", answers);
-        assertThat(text).contains("q.q1=agent");
+        String text = RequestDecisionTool.formatSuccessResult("T", questions, answers);
+        assertThat(text).contains("choice=Agent 自动");
+        assertThat(text).doesNotContain("q.q1");
         assertThat(text).doesNotContain(".custom=");
         assertThat(text).doesNotContain("不应泄漏");
+    }
+
+    @Test
+    void formatSuccessResult_withoutQuestions_omitsInternalIds() {
+        var answers = List.of(
+                new DecisionAnswer("q1", List.of("fin_data"), null),
+                new DecisionAnswer("q2", List.of(DecisionOption.CUSTOM_ID), "备注原文"));
+        String text = RequestDecisionTool.formatSuccessResult("T", answers);
+        assertThat(text).contains("outcome=answered");
+        assertThat(text).doesNotContain("q.q1");
+        assertThat(text).doesNotContain("fin_data");
+        assertThat(text).doesNotContain("q.q2.custom");
+        assertThat(text).contains("custom=备注原文");
     }
 
     @Test
@@ -198,7 +221,7 @@ class RequestDecisionToolTest {
         String out = tool.requestDecision("确认", QUESTIONS_OK, toolUseId);
 
         assertThat(out).contains("outcome=answered");
-        assertThat(out).contains("q.q1=agent");
+        assertThat(out).contains("choice=Agent");
         verify(timelineSupport).begin(eq(BRIDGE), eq("tok-multi"), eq("确认"), anyList(), anyLong());
     }
 
@@ -225,7 +248,7 @@ class RequestDecisionToolTest {
         String out = tool.requestDecision("T", questionsList);
 
         assertThat(out).contains("outcome=answered");
-        assertThat(out).contains("q.q1=agent");
+        assertThat(out).contains("choice=Agent");
         ArgumentCaptor<List<DecisionQuestion>> questionsCaptor = ArgumentCaptor.forClass(List.class);
         verify(decisionRegistry).register(eq(MSG), anyString(), eq("T"), questionsCaptor.capture());
         DecisionQuestion q = questionsCaptor.getValue().get(0);
@@ -255,7 +278,7 @@ class RequestDecisionToolTest {
 
         assertThat(out).contains("outcome=answered");
         assertThat(out).contains("title=确认");
-        assertThat(out).contains("q.q1=agent");
+        assertThat(out).contains("choice=Agent");
         verify(timelineSupport).complete(eq(BRIDGE), eq("tok-1"), any(DecisionResult.class));
     }
 
@@ -297,7 +320,7 @@ class RequestDecisionToolTest {
         String out = tool.requestDecision("确认", QUESTIONS_OK);
 
         assertThat(out).contains("outcome=answered");
-        assertThat(out).contains("q.q1=agent");
+        assertThat(out).contains("choice=Agent");
         verify(decisionRegistry, never()).register(anyString(), anyString(), anyString(), anyList());
         verify(timelineSupport, never()).begin(
                 anyString(), anyString(), anyString(), anyList(), anyLong());

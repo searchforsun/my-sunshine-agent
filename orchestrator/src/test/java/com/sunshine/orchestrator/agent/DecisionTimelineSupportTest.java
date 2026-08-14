@@ -115,7 +115,7 @@ class DecisionTimelineSupportTest {
         assertThat(step).isNotNull();
         assertThat(step.lifecycle()).isEqualTo("done");
         String choiceText = DecisionLabels.formatChoiceFromAnswers(questions, result.answers());
-        assertThat(choiceText).contains("q1=plan_a");
+        assertThat(choiceText).isEqualTo("方案A");
         assertThat(step.summary().after()).isEqualTo(DecisionLabels.after(choiceText));
         assertThat(step.endedAt()).isNotNull();
         DecisionStepMeta decision = step.metadata().decision();

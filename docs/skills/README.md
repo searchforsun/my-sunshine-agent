@@ -20,6 +20,9 @@ python3 scripts/sync_enterprise_skills.py
 | `finance-analysis/` | 报销/费用与制度内部合规分析（corpus-50） |
 | `policy-review/` | 多域制度条款解读（青松假、网约车、锁钥通道等） |
 | `compliance-check/` | 制度与业务数据逐项合规对比 |
+| `compliance-review/` | 费用合规审查（报销合规对照场景） |
+| `expense-assist/` | 报销助手（报销查询/提交辅助场景） |
+| `travel-budget/` | 差旅预算（差旅额度与预算管控场景） |
 | `finance-report/` | 本人费用汇总与待办构成解读 |
 | `knowledge-brief/` | corpus-50 检索结果要点提炼 |
 | `sandbox-coding-demo/` | 工作区沙箱编程（4.5；历史 id，供沙箱 Live 验收） |

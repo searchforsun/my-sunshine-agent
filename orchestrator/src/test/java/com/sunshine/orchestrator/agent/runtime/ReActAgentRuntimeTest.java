@@ -167,7 +167,7 @@ class ReActAgentRuntimeTest {
     }
 
     @Test
-    void run_createsAgentOnBoundedElastic_evenWhenSubscribedFromParallel() {
+    void run_createsAgentOnDedicatedScheduler_evenWhenSubscribedFromParallel() {
         when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         java.util.concurrent.atomic.AtomicReference<String> createThread = new java.util.concurrent.atomic.AtomicReference<>();
@@ -182,7 +182,8 @@ class ReActAgentRuntimeTest {
                 .collectList()
                 .block();
         assertThat(createThread.get()).isNotNull();
-        assertThat(createThread.get()).containsIgnoringCase("boundedElastic");
+        // run 须在专用调度（虚拟线程）上执行阻塞组装，禁止落在 parallel/reactor-http 线程
+        assertThat(createThread.get()).doesNotContainIgnoringCase("parallel");
     }
 
     @Test

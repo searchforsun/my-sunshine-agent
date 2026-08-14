@@ -55,6 +55,8 @@ class SpawnSubagentToolTest {
     @Mock
     private com.sunshine.orchestrator.catalog.AgentCatalogService agentCatalogService;
     @Mock
+    private com.sunshine.orchestrator.catalog.SkillCatalogService skillCatalogService;
+    @Mock
     private com.sunshine.orchestrator.prompt.TimelinePromptCatalog timelinePromptCatalog;
     private PromptCatalogHolder catalogHolder;
 
@@ -83,7 +85,7 @@ class SpawnSubagentToolTest {
         tool = new SpawnSubagentTool(
                 executionProperties, timelineSupport, toolSetResolver,
                 catalogHolder, spawnRunRegistry, agentCatalogService, agentExecutorRouter,
-                asyncToolRunRegistry);
+                asyncToolRunRegistry, skillCatalogService);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
         lenient().when(executionProperties.getReact()).thenReturn(reactProps);

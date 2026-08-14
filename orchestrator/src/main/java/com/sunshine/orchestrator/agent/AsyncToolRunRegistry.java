@@ -1,10 +1,10 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -261,11 +261,8 @@ public class AsyncToolRunRegistry {
 
     private void scheduleWallTimeout(String runId, long deadlineAtMs) {
         long delayMs = deadlineAtMs - System.currentTimeMillis();
-        if (delayMs <= 0) {
-            Schedulers.boundedElastic().schedule(() -> fireWallTimeout(runId));
-            return;
-        }
-        Schedulers.boundedElastic().schedule(() -> fireWallTimeout(runId), delayMs, TimeUnit.MILLISECONDS);
+        // 虚拟线程统一延迟入口：内置定时器计时，到期后转投虚拟线程执行
+        VirtualThreadExecutors.scheduleDelayed(() -> fireWallTimeout(runId), delayMs);
     }
 
     private void fireWallTimeout(String runId) {

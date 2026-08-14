@@ -51,7 +51,7 @@ public class DecisionResumeSupport {
                         bridge, decisionStep.id(), token, title, questions, meta.expiresAt());
                 timelineSupport.complete(bridge, token, existing);
             }
-            return DecisionResumeOutcome.resolved(List.of(buildResolvedInjectBlock(existing)));
+            return DecisionResumeOutcome.resolved(List.of(buildResolvedInjectBlock(existing, questions)));
         }
 
         if (!StringUtils.hasText(bridge)) {
@@ -84,7 +84,7 @@ public class DecisionResumeSupport {
             }
             timelineSupport.complete(bridge, reg.token(), result);
             StepEventBridge.grantDecisionPreApproval(msgId, fingerprint, result);
-            return DecisionResumeOutcome.resolved(List.of(buildResolvedInjectBlock(result)));
+            return DecisionResumeOutcome.resolved(List.of(buildResolvedInjectBlock(result, questions)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             timelineSupport.pause(bridge, reg.token(), DecisionLabels.afterCancel());
@@ -97,8 +97,8 @@ public class DecisionResumeSupport {
         }
     }
 
-    /** 续跑注入块：复用 Tool 短格式（outcome/title/q.* 或 outcome=skipped）。 */
-    static String buildResolvedInjectBlock(DecisionResult result) {
+    /** 续跑注入块：复用 Tool 短格式（outcome/title/choice 或 outcome=skipped）。 */
+    static String buildResolvedInjectBlock(DecisionResult result, List<DecisionQuestion> questions) {
         StringBuilder sb = new StringBuilder();
         sb.append("【用户决策】");
         String title = result != null && result.title() != null ? result.title() : "";
@@ -112,7 +112,7 @@ public class DecisionResumeSupport {
         List<DecisionAnswer> answers = result != null && result.answers() != null
                 ? result.answers()
                 : List.of();
-        sb.append('\n').append(RequestDecisionTool.formatSuccessResult(title, answers));
+        sb.append('\n').append(RequestDecisionTool.formatSuccessResult(title, questions, answers));
         return sb.toString();
     }
 }

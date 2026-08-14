@@ -30,18 +30,32 @@ public class HitlTokenRegistry {
 
     private final ConcurrentHashMap<String, HitlPendingWaiter> waiters = new ConcurrentHashMap<>();
 
+    /** 无限等待时 Redis token 兜底 TTL（秒）：确认/取消/清理后仍会显式删除 */
+    private static final long FALLBACK_REDIS_TTL_SEC = 604_800L;
+
     /** 注册待确认 token，返回 token 与阻塞 Future */
     public HitlRegistration register(String messageId, String toolId, String userId) {
         String token = UUID.randomUUID().toString();
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         waiters.put(token, new HitlPendingWaiter(messageId, toolId, userId, future));
-        long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
+        long expiresAt = resolveExpiresAt();
         storeToken(token, messageId, toolId, userId, expiresAt);
         return new HitlRegistration(token, future, expiresAt);
     }
 
     public int timeoutSec() {
         return properties.getTimeoutSec();
+    }
+
+    /** timeoutSec<=0 表示无限等待：expiresAt 无意义（前端不展示倒计时，确认仅按 token 定位） */
+    private long resolveExpiresAt() {
+        int timeoutSec = properties.getTimeoutSec();
+        return timeoutSec <= 0 ? Long.MAX_VALUE : Instant.now().plusSeconds(timeoutSec).toEpochMilli();
+    }
+
+    private long resolveRedisTtlSec() {
+        int timeoutSec = properties.getTimeoutSec();
+        return timeoutSec <= 0 ? FALLBACK_REDIS_TTL_SEC : timeoutSec + 30L;
     }
 
     /** confirm-tool API（含发起用户身份校验） */
@@ -108,7 +122,7 @@ public class HitlTokenRegistry {
             redis.opsForValue().set(
                     redisKey(token),
                     objectMapper.writeValueAsString(payload),
-                    Duration.ofSeconds(properties.getTimeoutSec() + 30));
+                    Duration.ofSeconds(resolveRedisTtlSec()));
         } catch (JsonProcessingException e) {
             log.warn("[HITL] token 序列化失败: {}", e.getMessage());
         }

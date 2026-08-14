@@ -2,7 +2,9 @@ import { nextTick, ref, watch, type Ref } from 'vue'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import {
   fetchSandboxFileIndex,
+  fetchWorkspaceFileIndex,
   listSandboxWorkspace,
+  listWorkspaceSandboxFiles,
 } from '../api/sandboxWorkspace'
 import { sandboxPathPlainToken } from '../utils/sandboxPathChip'
 import {
@@ -20,6 +22,7 @@ export function useChatWorkspacePathMention(
   conversationId: Ref<string | null | undefined>,
   loading: Ref<boolean>,
   inputRef: Ref<InstanceType<typeof ComposerSkillInput> | undefined>,
+  workspaceId: Ref<string | null | undefined>,
   sessionKind: Ref<string>,
 ) {
   const pathResults = ref<WorkspacePathSuggestEntry[]>([])
@@ -31,17 +34,24 @@ export function useChatWorkspacePathMention(
 
   let pathIndex: WorkspacePathSuggestIndex | null = null
   let flatPaths: string[] | null = null
-  let indexConvId: string | null = null
+  let indexKey: string | null = null
   let searchSeq = 0
   let searchTimer: ReturnType<typeof setTimeout> | null = null
 
-  /** 每个会话持有一个懒加载索引（按目录缓存，供空 query 展示两层） */
-  function ensurePathIndex(convId: string): WorkspacePathSuggestIndex {
-    if (!pathIndex || indexConvId !== convId) {
+  /**
+   * 每个会话持有一个懒加载索引（按目录缓存，供空 query 展示两层）。
+   * 路径源：task 会话引用工作区（git checkout）→ 工作区级接口；
+   * chat 会话引用对话级轻量沙箱（挂载 skill 到 /skills/）→ 会话级接口。
+   */
+  function ensurePathIndex(convId: string, wsId: string, isTask: boolean): WorkspacePathSuggestIndex {
+    const key = `${wsId}|${convId}|${isTask ? 'task' : 'chat'}`
+    if (!pathIndex || indexKey !== key) {
       pathIndex = new WorkspacePathSuggestIndex(
-        (dirPath) => listSandboxWorkspace(convId, dirPath).then((d) => d.entries ?? []),
+        isTask
+          ? (dirPath) => listWorkspaceSandboxFiles(wsId, dirPath).then((d) => d.entries ?? [])
+          : (dirPath) => listSandboxWorkspace(convId, dirPath).then((d) => d.entries ?? []),
       )
-      indexConvId = convId
+      indexKey = key
     }
     return pathIndex
   }
@@ -49,32 +59,39 @@ export function useChatWorkspacePathMention(
   /**
    * 全量路径索引：优先复用 `window.__smd_sandboxIndex`（会话级索引已加载），
    * 未就绪则一次性请求后端索引接口并缓存，供关键词搜索命中任意层级。
+   * task 走工作区级索引，chat 走会话级（对话级沙箱）索引。
    */
-  async function ensureFlatPaths(convId: string): Promise<string[]> {
+  async function ensureFlatPaths(convId: string, wsId: string, isTask: boolean): Promise<string[]> {
     if (flatPaths) return flatPaths
     const winIndex = (window as any).__smd_sandboxIndex as Set<string> | undefined
     if (winIndex instanceof Set && winIndex.size > 0) {
       flatPaths = [...winIndex]
       return flatPaths
     }
-    const [ws, skills] = await Promise.all([
-      fetchSandboxFileIndex(convId, '/workspace').catch(() => [] as string[]),
-      fetchSandboxFileIndex(convId, '/skills').catch(() => [] as string[]),
-    ])
+    const [ws, skills] = isTask
+      ? await Promise.all([
+          fetchWorkspaceFileIndex(wsId, '/workspace').catch(() => [] as string[]),
+          fetchWorkspaceFileIndex(wsId, '/skills').catch(() => [] as string[]),
+        ])
+      : await Promise.all([
+          fetchSandboxFileIndex(convId, '/workspace').catch(() => [] as string[]),
+          fetchSandboxFileIndex(convId, '/skills').catch(() => [] as string[]),
+        ])
     flatPaths = [...ws, ...skills]
     ;(window as any).__smd_sandboxIndex = new Set(flatPaths)
     return flatPaths
   }
 
   /** 懒加载搜索：乱序响应以序号丢弃，避免旧结果覆盖新 query */
-  async function runSearch(convId: string, query: string) {
+  async function runSearch(convId: string, wsId: string, query: string) {
+    const isTask = sessionKind.value === 'task'
     const seq = ++searchSeq
     pathSuggestLoading.value = true
     try {
       // 空 query：目录式懒加载两层；有 query：全量索引模糊搜索
       const items = query.trim()
-        ? searchFlatPaths(await ensureFlatPaths(convId), query)
-        : await ensurePathIndex(convId).search('')
+        ? searchFlatPaths(await ensureFlatPaths(convId, wsId, isTask), query)
+        : await ensurePathIndex(convId, wsId, isTask).search('')
       if (seq !== searchSeq) return
       pathResults.value = items
     } finally {
@@ -82,18 +99,21 @@ export function useChatWorkspacePathMention(
     }
   }
 
-  function scheduleSearch(convId: string, query: string) {
+  function scheduleSearch(convId: string, wsId: string, query: string) {
     if (searchTimer) clearTimeout(searchTimer)
     searchTimer = setTimeout(() => {
       searchTimer = null
-      void runSearch(convId, query)
+      void runSearch(convId, wsId, query)
     }, PATH_SEARCH_DEBOUNCE_MS)
   }
 
   function refreshPathMention(text: string) {
+    // task 会话 @ 引用工作区（git checkout）→ 需已绑定 workspaceId；
+    // chat 会话 @ 引用对话级沙箱 → 有会话即可（懒创建，挂载 skill 后才有文件）
+    const isTask = sessionKind.value === 'task'
     const convId = conversationId.value?.trim()
-    // 工作区路径补全仅属任务会话（有工作区），对话会话不触发
-    if (sessionKind.value !== 'task' || !convId || loading.value) {
+    const wsId = workspaceId.value?.trim()
+    if (loading.value || (isTask ? !wsId : !convId)) {
       showPathSuggest.value = false
       return
     }
@@ -106,17 +126,16 @@ export function useChatWorkspacePathMention(
     pathQuery.value = hit.query
     showPathSuggest.value = true
     pathSuggestIndex.value = 0
-    scheduleSearch(convId, hit.query)
+    scheduleSearch(convId ?? '', wsId ?? '', hit.query)
   }
 
   watch(inputText, refreshPathMention)
-  watch(conversationId, (id) => {
-    if (id !== indexConvId) {
-      pathIndex = null
-      flatPaths = null
-      indexConvId = null
-      pathResults.value = []
-    }
+  // 会话或工作区绑定变化：重建路径索引，避免沿用旧会话/旧工作区的目录缓存
+  watch([conversationId, workspaceId, sessionKind], () => {
+    pathIndex = null
+    flatPaths = null
+    indexKey = null
+    pathResults.value = []
     refreshPathMention(inputText.value)
   })
   watch(loading, (busy) => {
@@ -128,7 +147,7 @@ export function useChatWorkspacePathMention(
     pathIndex?.invalidate()
     flatPaths = null
     if (showPathSuggest.value) {
-      scheduleSearch(convId, pathQuery.value)
+      scheduleSearch(convId, workspaceId.value?.trim() ?? '', pathQuery.value)
     }
   })
 

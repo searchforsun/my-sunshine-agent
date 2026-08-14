@@ -16,6 +16,7 @@ import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeTimeline;
 import com.sunshine.common.workflow.WorkflowNodeType;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.WorkflowStreamCollector;
 import com.sunshine.orchestrator.execution.retry.NodeRetryExecutor;
 import com.sunshine.orchestrator.execution.retry.NodeRetryPolicy;
@@ -34,7 +35,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -84,7 +84,7 @@ public class WorkflowNodeRunner {
         // 节点重试策略解析需 block workflow-manager HTTP：禁止在 reactor-http 上解析（否则 Plan 中途静默降级 ReAct）
         return Mono.fromCallable(() ->
                         retryPolicyResolver.resolve(rawSpec))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMapMany(retryPolicy -> {
                     List<StreamToken> startTokens = tracksNodeStep
                             ? WorkflowNodeTimeline.start(session, nodeId, rawSpec.type(), rawSpec.displayName())
@@ -113,7 +113,7 @@ public class WorkflowNodeRunner {
         long startedAt = System.currentTimeMillis();
         return Mono.fromCallable(() ->
                         retryPolicyResolver.resolve(rawSpec))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMapMany(retryPolicy -> resumeWithPolicy(
                         session, def, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
                         runSession, planRun, pending, tracksNodeStep, startedAt, retryPolicy));
@@ -140,7 +140,7 @@ public class WorkflowNodeRunner {
             return Mono.fromCallable(() -> hitlConfirmationService.resumeAwaitingFromCheckpoint(
                             hitl, streamCtx.assistantMsgId(), pending,
                             readParamString(resolved.params(), "tool")))
-                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribeOn(VirtualThreadExecutors.scheduler())
                     .flatMapMany(approved -> {
                         if (!approved) {
                             Map<String, TypedValue> outputs = new LinkedHashMap<>();
@@ -158,7 +158,7 @@ public class WorkflowNodeRunner {
         if ("recovery".equals(pending.kind())) {
             return Mono.fromCallable(() -> workflowNodeRecoveryService.resumeAwaiting(
                             session, nodeId, streamCtx.assistantMsgId(), pending, runSession))
-                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribeOn(VirtualThreadExecutors.scheduler())
                     .flatMapMany(action -> applyRecoveryAction(
                             session, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,
                             tracksNodeStep, startedAt, retryPolicy, runSession, def, action, pending.errorMessage()));
@@ -275,7 +275,7 @@ public class WorkflowNodeRunner {
         String err = renderOutput(outcome.result().safeOutputs(), "error", "节点执行失败");
         return Mono.fromCallable(() -> workflowNodeRecoveryService.awaitRecovery(
                         session, nodeId, streamCtx.assistantMsgId(), err, runSession))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMapMany(action -> {
                     if (action == WorkflowRecoveryAction.RETRY) {
                         List<StreamToken> restart = tracksNodeStep

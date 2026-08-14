@@ -170,6 +170,35 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void finalAnswerRoundWithoutThinking_opensOwnThinkForSummaryAndContentAnchor() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("写文件并运行");
+        // 轮1：思考 + 写文件工具
+        session.beginReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
+        session.recordToolCompleted("写文件");
+        // 轮2：思考 + 执行命令工具
+        session.beginReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
+        session.recordToolCompleted("执行命令");
+        // 最终轮：无 ThinkingBlock，模型直接 think_summary + 正文作答
+        session.beginReasoningRound();
+        session.ingestStreamingContentDelta("快速排序文件已创建并验证通过。");
+        session.endReasoningRound();
+        session.applyThinkStepSummary("完整回答用户问题");
+
+        // 终态轮必须补开独立 think（位于最后一个工具之后），正文锚定到该 think，
+        // 而非污染上一轮 think-2（否则 think-2 摘要被覆盖、正文跑到最后一个工具前面）
+        assertThat(session.contentAnchorAfterStepId()).isEqualTo("think-3");
+        ProcessingStep think3 = session.snapshot().stream()
+                .filter(s -> "think-3".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think3.stepSummary()).isEqualTo("完整回答用户问题");
+        ProcessingStep think2 = session.snapshot().stream()
+                .filter(s -> "think-2".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think2.stepSummary()).isNull();
+    }
+
+    @Test
     void threeToolReactTimeline_oneAnalysisPerTool() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("请自主依次调用三个工具");

@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.client.StreamTokenCoalescer;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.ConversationTitleService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -36,7 +37,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -103,9 +103,9 @@ public class ChatStreamExecutor {
                 sse(flushScheduler.metaMessage(ctx.assistantMsgId(), MessageStatus.STREAMING, resume))
         );
 
-        // 续跑直连 SSE，须在 boundedElastic 执行 DAG/Agent，避免 reactor-http 线程 block()
+        // 续跑直连 SSE，须在虚拟线程执行 DAG/Agent，避免 reactor-http 线程 block()
         Flux<ServerSentEvent<String>> chunks = chunkFlux
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .concatMap(token -> Flux.fromIterable(thinkMapper.map(token)))
                 .concatWith(Flux.defer(() -> Flux.fromIterable(thinkMapper.finish())))
                 .doOnNext(token -> {
@@ -140,7 +140,7 @@ public class ChatStreamExecutor {
                         contextLifecycle.onTurnCompleted(
                                 ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.COMPLETED);
                     })
-                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribeOn(VirtualThreadExecutors.scheduler())
                     .subscribe();
             return Flux.just(sse(flushScheduler.metaMessage(
                     ctx.assistantMsgId(), MessageStatus.COMPLETED, resume)));
@@ -163,7 +163,7 @@ public class ChatStreamExecutor {
                                             reasoningBuffer.toString(),
                                             MessageStatus.FAILED,
                                             ProcessingStepSerde.toJson(stepsBuffer)))
-                            .subscribeOn(Schedulers.boundedElastic())
+                            .subscribeOn(VirtualThreadExecutors.scheduler())
                             .subscribe();
                     return Flux.just(
                             sse(flushScheduler.metaError(errMsg)),
@@ -180,7 +180,7 @@ public class ChatStreamExecutor {
                                         MessageStatus.INTERRUPTED,
                                         ProcessingStepSerde.toJson(stepsBuffer));
                             })
-                        .subscribeOn(Schedulers.boundedElastic())
+                        .subscribeOn(VirtualThreadExecutors.scheduler())
                         .subscribe())
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={}", ctx.conversationId()))
                 .doOnError(e -> log.error("[Orchestrator] 异常", e))
@@ -230,7 +230,7 @@ public class ChatStreamExecutor {
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
                                             conversationService.updateMessageExecutionPlan(
                                                     ctx.assistantMsgId(), plan))
-                                    .subscribeOn(Schedulers.boundedElastic())
+                                    .subscribeOn(VirtualThreadExecutors.scheduler())
                                     .then();
                             session.completeIntent(plan);
                             List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
@@ -310,7 +310,7 @@ public class ChatStreamExecutor {
         }
         Mono.fromRunnable(() -> conversationService.autoTitleIfDefault(
                         ctx.conversationId(), ctx.userId(), ctx.tenantId(), ctx.userContent()))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe();
     }
 

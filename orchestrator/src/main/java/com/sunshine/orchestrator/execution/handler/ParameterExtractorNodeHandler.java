@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.workflow.WorkflowNodeType;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeHandler;
 import com.sunshine.orchestrator.execution.NodeResult;
@@ -16,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -60,7 +60,7 @@ public class ParameterExtractorNodeHandler implements NodeHandler {
                 .replace("{{schema}}", schema != null ? schema : "");
 
         return Mono.fromCallable(() -> llmGatewayClient.complete(systemPrompt, inputText))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .map(this::buildResult)
                 .onErrorResume(e -> {
                     log.warn("[ParameterExtractor] LLM 提取失败: {}", e.getMessage());

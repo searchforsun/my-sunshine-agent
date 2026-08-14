@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 public class DecisionRegistry {
 
     private static final String REDIS_KEY_PREFIX = "sunshine:decision:pending:";
+    /** 无限等待时 Redis token 兜底 TTL（秒）：resolve/skip/cancel/cleanup 后仍会显式删除 */
+    private static final long FALLBACK_REDIS_TTL_SEC = 604_800L;
 
     private final AgentExecutionProperties executionProperties;
     private final StringRedisTemplate redis;
@@ -77,7 +79,7 @@ public class DecisionRegistry {
         String normalizedMessageId = messageId.strip();
         String token = UUID.randomUUID().toString();
         CompletableFuture<DecisionResult> future = new CompletableFuture<>();
-        long expiresAt = Instant.now().plusSeconds(timeoutSec()).toEpochMilli();
+        long expiresAt = resolveExpiresAt();
         List<DecisionQuestion> frozenQuestions = questions == null ? List.of() : List.copyOf(questions);
         DecisionPendingWaiter waiter = new DecisionPendingWaiter(
                 normalizedMessageId, userId, title, frozenQuestions, expiresAt, future);
@@ -95,10 +97,22 @@ public class DecisionRegistry {
         return executionProperties.getReact().getDecision().getTimeoutSec();
     }
 
-    /** 阻塞等待用户决策；超时/取消返回约定 outcome，不二次加工。 */
+    /** timeoutSec<=0 = 无限等待：expiresAt 置 Long.MAX_VALUE，resolve/skip 的过期校验自然不触发 */
+    private long resolveExpiresAt() {
+        return timeoutSec() <= 0 ? Long.MAX_VALUE : Instant.now().plusSeconds(timeoutSec()).toEpochMilli();
+    }
+
+    private long resolveRedisTtlSec() {
+        int timeoutSec = timeoutSec();
+        return timeoutSec <= 0 ? FALLBACK_REDIS_TTL_SEC : timeoutSec + 30L;
+    }
+
+    /** 阻塞等待用户决策；超时/取消返回约定 outcome，不二次加工。timeoutSec<=0 时仅用户 resolve/skip/停止结束。 */
     public DecisionResult awaitDecision(Registration reg) throws InterruptedException {
         try {
-            return reg.future().get(timeoutSec(), TimeUnit.SECONDS);
+            return timeoutSec() <= 0
+                    ? reg.future().get()
+                    : reg.future().get(timeoutSec(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             cleanup(reg.token());
             return new DecisionResult("timeout", reg.title(), List.of(), System.currentTimeMillis());
@@ -337,7 +351,7 @@ public class DecisionRegistry {
             redis.opsForValue().set(
                     redisKey(token),
                     objectMapper.writeValueAsString(payload),
-                    Duration.ofSeconds(timeoutSec() + 30));
+                    Duration.ofSeconds(resolveRedisTtlSec()));
         } catch (JsonProcessingException e) {
             log.warn("[Decision] token 序列化失败: {}", e.getMessage());
         }

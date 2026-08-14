@@ -78,6 +78,7 @@ class AgentInfraTest {
                 remoteToolFactory,
                 toolCatalogService,
                 toolSetResolver,
+                Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class),
                 executionProperties,
                 Mockito.mock(com.sunshine.orchestrator.sandbox.SandboxAgentTools.class));
         Toolkit toolkit = factory.build(null);

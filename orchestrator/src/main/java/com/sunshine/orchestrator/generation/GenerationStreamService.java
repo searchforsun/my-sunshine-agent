@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.generation;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Range;
@@ -11,7 +12,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -95,7 +95,7 @@ public class GenerationStreamService {
 
     /**
      * 订阅 generation 事件流直到终态。
-     * 事件驱动轮询：每轮用 {@link Mono#fromCallable} 做一次阻塞读（boundedElastic），
+     * 事件驱动轮询：每轮用 {@link Mono#fromCallable} 做一次阻塞读（虚拟线程），
      * 发出事件后经 repeatWhen 延迟 pollInterval 再读下一轮；终态经 Sinks 哨兵终止。
      * 切忌退回 `Flux.interval` + 同步阻塞轮询——固定节拍不等下游消费，
      * 慢消费者上会抛 `Could not emit tick due to lack of requests` 背压异常，
@@ -129,7 +129,7 @@ public class GenerationStreamService {
                     }
                     return List.<StreamEvent>of();
                 })
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMapMany(Flux::fromIterable);
 
         return pollOnce

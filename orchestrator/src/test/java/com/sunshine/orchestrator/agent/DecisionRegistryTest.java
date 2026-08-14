@@ -244,7 +244,8 @@ class DecisionRegistryTest {
 
     @Test
     void awaitDecision_timeout_returnsTimeoutOutcome() throws Exception {
-        executionProperties.getReact().getDecision().setTimeoutSec(0);
+        // timeoutSec<=0 现为无限等待语义，验证带超时路径用小正值
+        executionProperties.getReact().getDecision().setTimeoutSec(1);
         DecisionRegistry.Registration reg =
                 registry.register("msg-6", "user-1", "选哪个？", sampleQuestions());
 

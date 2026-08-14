@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.ResourceKindFilter;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -21,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -47,6 +48,7 @@ public class SpawnSubagentTool implements AgentTool {
     private final AgentCatalogService agentCatalogService;
     private final AgentExecutorRouter agentExecutorRouter;
     private final AsyncToolRunRegistry asyncToolRunRegistry;
+    private final SkillCatalogService skillCatalogService;
 
     public SpawnSubagentTool(
             AgentExecutionProperties executionProperties,
@@ -56,7 +58,8 @@ public class SpawnSubagentTool implements AgentTool {
             SpawnRunRegistry spawnRunRegistry,
             AgentCatalogService agentCatalogService,
             AgentExecutorRouter agentExecutorRouter,
-            AsyncToolRunRegistry asyncToolRunRegistry) {
+            AsyncToolRunRegistry asyncToolRunRegistry,
+            SkillCatalogService skillCatalogService) {
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
@@ -65,6 +68,7 @@ public class SpawnSubagentTool implements AgentTool {
         this.agentCatalogService = agentCatalogService;
         this.agentExecutorRouter = agentExecutorRouter;
         this.asyncToolRunRegistry = asyncToolRunRegistry;
+        this.skillCatalogService = skillCatalogService;
     }
 
     @Override
@@ -107,7 +111,7 @@ public class SpawnSubagentTool implements AgentTool {
                     String text = spawnSubagent(prompt, agentId, label, toolUseId, background);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */
@@ -173,14 +177,15 @@ public class SpawnSubagentTool implements AgentTool {
         }
         List<String> toolIds;
         String resolvedSystemOverlay;
-        List<String> skillIds;
+        String resolvedSkillId;
         String resolvedPermissionsJson;
         String resolvedModelConfigJson;
         int resolvedMaxIters;
         if (agentEntry != null) {
-            toolIds = parseToolIds(agentEntry.toolsJson());
+            toolIds = mergeAgentSkillTools(agentEntry);
             resolvedSystemOverlay = agentEntry.systemPrompt();
-            skillIds = agentEntry.skillIds() != null ? agentEntry.skillIds() : List.of();
+            // 子 agent 的 skills 经 skillId 加载（PromptComposer.resolveSkillOverlay）；skillIds 不是注入块
+            resolvedSkillId = agentEntry.primarySkillId();
             resolvedPermissionsJson = agentEntry.permissionsJson();
             resolvedModelConfigJson = agentEntry.modelConfigJson();
             resolvedMaxIters = agentEntry.maxIters() > 0 ? agentEntry.maxIters() : maxIters;
@@ -190,7 +195,7 @@ public class SpawnSubagentTool implements AgentTool {
         } else {
             toolIds = sameToolsAsMain;
             resolvedSystemOverlay = systemOverlay;
-            skillIds = List.of();
+            resolvedSkillId = null;
             resolvedPermissionsJson = "{}";
             resolvedModelConfigJson = "{}";
             resolvedMaxIters = maxIters;
@@ -199,11 +204,11 @@ public class SpawnSubagentTool implements AgentTool {
         AgentRunRequest request = AgentRunRequest.sub(
                 AssembledContext.forSubAgent(),
                 promptText,
-                skillIds,
+                List.of(),
                 audit.userId(),
                 audit.tenantId(),
                 messageId,
-                null,
+                resolvedSkillId,
                 toolIds,
                 resolvedSystemOverlay,
                 resolvedMaxIters,
@@ -312,7 +317,7 @@ public class SpawnSubagentTool implements AgentTool {
                     asyncToolRunRegistry.updatePartial(runId, answer.toString());
                 })
                 .doOnError(failure::set)
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         token -> { },
                         err -> finishBackgroundSpawn(
@@ -544,6 +549,20 @@ public class SpawnSubagentTool implements AgentTool {
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** 子 agent 工具 = agent.tools ∪ 各绑定 skill 的工具（去重；未知 skill 静默跳过） */
+    private List<String> mergeAgentSkillTools(AgentCatalogEntry entry) {
+        List<String> merged = new java.util.ArrayList<>(parseToolIds(entry.toolsJson()));
+        if (entry.skillIds() != null) {
+            for (String skillId : entry.skillIds()) {
+                if (!StringUtils.hasText(skillId)) {
+                    continue;
+                }
+                merged.addAll(skillCatalogService.toolIds(skillId));
+            }
+        }
+        return merged.stream().distinct().toList();
+    }
 
     private static List<String> parseToolIds(String toolsJson) {
         if (toolsJson == null || toolsJson.isBlank() || "[]".equals(toolsJson)) {

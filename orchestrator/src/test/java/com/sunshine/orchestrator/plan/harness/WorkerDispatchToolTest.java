@@ -77,7 +77,8 @@ class WorkerDispatchToolTest {
                 "msg-1",
                 "conv-1",
                 "planner-run-1",
-                40);
+                40,
+                "chat");
         WorkerDispatchTool.bindSession(session);
 
         when(agentRuntime.run(any())).thenReturn(Flux.just(
@@ -106,7 +107,7 @@ class WorkerDispatchToolTest {
     void dispatchFailsWhenTaskMissing() {
         PlanNotebook nb = PlanNotebook.create("g", "q", "task", 12, 24);
         WorkerDispatchTool.bindSession(new WorkerDispatchTool.DispatchSession(
-                nb, List.of(), "u", "t", "m", "c", "p", 10));
+                nb, List.of(), "u", "t", "m", "c", "p", 10, "chat"));
         String result = tool.dispatchWorker("nope", "m");
         assertThat(result).contains("\"ok\":false");
         assertThat(result).contains("未找到任务");
@@ -124,7 +125,7 @@ class WorkerDispatchToolTest {
         PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
         nb.getTaskQueue().add(new TaskItem("t1", "单元", "pending", List.of(), "", "", ""));
         WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
-                nb, List.of("sandbox__exec"), "u", "t", "msg-x", "c", "run-xyz", 20);
+                nb, List.of("sandbox__exec"), "u", "t", "msg-x", "c", "run-xyz", 20, "chat");
         WorkerDispatchTool.bindSession(session);
 
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("done-handoff")));

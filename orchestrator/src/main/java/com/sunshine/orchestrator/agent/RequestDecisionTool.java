@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.processing.DecisionLabels;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
@@ -13,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -101,7 +101,7 @@ public class RequestDecisionTool implements AgentTool {
                             toolUseId);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */
@@ -148,7 +148,7 @@ public class RequestDecisionTool implements AgentTool {
             if ("skipped".equals(prior.outcome())) {
                 return formatSkippedResult();
             }
-            return formatSuccessResult(prior.title(), prior.answers());
+            return formatSuccessResult(prior.title(), questions, prior.answers());
         }
 
         StepEventBridge.ToolAuditContext audit = StepEventBridge.toolAuditContext(messageId);
@@ -176,7 +176,7 @@ public class RequestDecisionTool implements AgentTool {
             if ("skipped".equals(result.outcome())) {
                 return formatSkippedResult();
             }
-            return formatSuccessResult(result.title(), result.answers());
+            return formatSuccessResult(result.title(), questions, result.answers());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             timelineSupport.pause(mainBridge, reg.token(), DecisionLabels.afterCancel());
@@ -285,7 +285,28 @@ public class RequestDecisionTool implements AgentTool {
         return value.asText(null);
     }
 
-    /** 成功短格式（D18）：outcome/title/q.* — Resume 注入共用。 */
+    /**
+     * 成功短格式（D18）：outcome/title/choice — Resume 注入共用。
+     * choice 为可读 label（经 questions 映射），禁止输出 questionId/optionId 内部标识。
+     */
+    public static String formatSuccessResult(
+            String title, List<DecisionQuestion> questions, List<DecisionAnswer> answers) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("outcome=answered");
+        sb.append("\ntitle=").append(nullToEmpty(title));
+        if (answers == null || answers.isEmpty()) {
+            return sb.toString();
+        }
+        String choice = DecisionLabels.formatChoiceFromAnswers(questions, answers);
+        if (StringUtils.hasText(choice)) {
+            sb.append("\nchoice=").append(choice);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 无题元数据兜底：仅输出 outcome/title 与用户手写内容，避免暴露内部 option id。
+     */
     public static String formatSuccessResult(String title, List<DecisionAnswer> answers) {
         StringBuilder sb = new StringBuilder();
         sb.append("outcome=answered");
@@ -294,19 +315,13 @@ public class RequestDecisionTool implements AgentTool {
             return sb.toString();
         }
         for (DecisionAnswer answer : answers) {
-            if (answer == null || !StringUtils.hasText(answer.questionId())) {
+            if (answer == null || answer.selectedOptionIds() == null
+                    || !answer.selectedOptionIds().contains(DecisionOption.CUSTOM_ID)) {
                 continue;
             }
-            String ids = answer.selectedOptionIds() == null
-                    ? ""
-                    : String.join(",", answer.selectedOptionIds());
-            sb.append("\nq.").append(answer.questionId().strip()).append('=').append(ids);
             // 仅选中平台手写项时才输出 custom 行，避免脏 customInput 泄漏
-            if (answer.selectedOptionIds() != null
-                    && answer.selectedOptionIds().contains(DecisionOption.CUSTOM_ID)
-                    && StringUtils.hasText(answer.customInput())) {
-                sb.append("\nq.").append(answer.questionId().strip())
-                        .append(".custom=").append(answer.customInput());
+            if (StringUtils.hasText(answer.customInput())) {
+                sb.append("\ncustom=").append(answer.customInput().strip());
             }
         }
         return sb.toString();

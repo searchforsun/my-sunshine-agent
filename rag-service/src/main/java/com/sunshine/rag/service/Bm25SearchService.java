@@ -3,6 +3,7 @@ package com.sunshine.rag.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.rag.config.RagElasticsearchProperties;
+import com.sunshine.rag.config.VirtualThreadExecutors;
 import com.sunshine.rag.model.RetrievalCandidate;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,6 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -56,7 +56,7 @@ public class Bm25SearchService {
             return Mono.just(List.of());
         }
         return Mono.fromCallable(() -> searchBlocking(query, topK, tenantId, kbId))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private List<RetrievalCandidate> searchBlocking(

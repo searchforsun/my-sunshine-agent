@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.audit.ToolAuditService;
 import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.client.ToolManagerClient;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.hitl.HitlConfirmationService;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import io.agentscope.core.message.TextBlock;
@@ -12,7 +13,6 @@ import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -68,7 +68,7 @@ public class CatalogRemoteAgentTool implements AgentTool {
             input.forEach((k, v) -> invokeParams.put(k, v != null ? String.valueOf(v) : ""));
         }
         return Mono.fromCallable(() -> executeWithHitl(param, invokeParams))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private ToolResultBlock executeWithHitl(ToolCallParam param, Map<String, String> invokeParams) {

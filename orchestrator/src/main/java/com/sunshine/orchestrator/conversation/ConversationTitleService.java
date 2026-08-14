@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.conversation;
 import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.ConversationTitleProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.controller.stream.ChatStreamContext;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 首条消息标题摘要 — 小模型生成 ≤maxLength 字标题。
  * 触发条件由 {@link ChatStreamContext#autoTitle()} 表达（仅新会话首条消息为 true）；
- * 生成与主流并行（boundedElastic），完成后经 {@code meta:title} SSE 事件推送前端。
+ * 生成与主流并行（虚拟线程），完成后经 {@code meta:title} SSE 事件推送前端。
  * 失败 / 空结果 / 用户已手动改名时跳过落库与推送，保留 prepareNewMessage 同步落库的截断标题。
  */
 @Slf4j
@@ -40,14 +40,14 @@ public class ConversationTitleService {
 
     /**
      * 首条消息时并行启动标题生成；非首条或未启用返回空 Flux（不推事件）。
-     * future 在创建即开始执行（boundedElastic），与 SSE 主流并行，不阻塞首 token。
+     * future 在创建即开始执行（虚拟线程），与 SSE 主流并行，不阻塞首 token。
      */
     public Flux<ServerSentEvent<String>> titleEventSse(ChatStreamContext ctx) {
         if (!ctx.autoTitle() || !titleProperties.isEnabled()) {
             return Flux.empty();
         }
         CompletableFuture<String> future = new CompletableFuture<>();
-        Schedulers.boundedElastic().schedule(() -> {
+        VirtualThreadExecutors.scheduler().schedule(() -> {
             try {
                 future.complete(generateTitle(ctx));
             } catch (Throwable t) {

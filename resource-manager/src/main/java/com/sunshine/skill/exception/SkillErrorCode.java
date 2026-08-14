@@ -27,6 +27,7 @@ public enum SkillErrorCode implements ErrorCode {
     PATH_REQUIRED(400, "skill_path_required", "文件路径不能为空"),
     CONTENT_REQUIRED(400, "skill_content_required", "文件内容不能为空"),
     DRAFT_EDIT_ONLY(400, "skill_draft_edit_only", "仅草稿版本可在线编辑"),
+    DRAFT_TOOLS_EDIT_ONLY(400, "skill_tools_draft_only", "仅草稿状态可变更业务工具，请先复制为草稿再修改"),
     BINARY_EDIT_FORBIDDEN(400, "skill_binary_edit_forbidden", "不支持编辑二进制文件"),
     FILE_SAVE_FAILED(400, "skill_file_save_failed", "文件保存失败"),
     FILE_READ_AFTER_SAVE_FAILED(500, "skill_file_read_after_save_failed", "保存后读取失败"),

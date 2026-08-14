@@ -27,6 +27,23 @@ describe('resolveTimelineStepKind', () => {
     expect(resolveTimelineStepKind(step({ id: 'plan-R2', phase: 'plan' }))).toBe('plan')
   })
 
+  it('综合回答（planner-answer / phase=answer）', () => {
+    expect(resolveTimelineStepKind(step({ id: 'planner-answer', phase: 'answer' }))).toBe('answer')
+    expect(resolveTimelineStepKind(step({ id: 'p1', phase: 'answer' }))).toBe('answer')
+  })
+
+  it('外部智能体（external）', () => {
+    expect(resolveTimelineStepKind(step({ id: 'external-oa-agent', phase: 'external' }))).toBe('external')
+    expect(resolveTimelineStepKind(step({ id: 'e1', phase: 'external' }))).toBe('external')
+  })
+
+  it('业务节点（node-*，含 loop 轮次 i{n}-node-*）', () => {
+    expect(resolveTimelineStepKind(step({ id: 'node-approve', phase: 'node' }))).toBe('node')
+    expect(resolveTimelineStepKind(step({ id: 'i2-node-approve', phase: 'node' }))).toBe('node')
+    // node-answer 归综合回答
+    expect(resolveTimelineStepKind(step({ id: 'node-answer', phase: 'node' }))).toBe('answer')
+  })
+
   it('rag / intent / skill / tasks / think', () => {
     expect(resolveTimelineStepKind(step({ id: 'rag', phase: 'tool' }))).toBe('rag')
     expect(resolveTimelineStepKind(step({ id: 'rag@1699999999999', phase: 'tool' }))).toBe('rag')
@@ -37,6 +54,7 @@ describe('resolveTimelineStepKind', () => {
   })
 
   it('工具步按 sandbox 细分', () => {
+    expect(resolveTimelineStepKind(step({ id: 'tool-sandbox__glob@1', phase: 'tool' }))).toBe('tool-search')
     expect(resolveTimelineStepKind(step({ id: 'tool-sandbox__read@1', phase: 'tool' }))).toBe('tool-view')
     expect(resolveTimelineStepKind(step({ id: 'tool-sandbox__edit@2', phase: 'tool' }))).toBe('tool-edit')
     expect(resolveTimelineStepKind(step({ id: 'tool-sandbox__webfetch@3', phase: 'tool' }))).toBe('tool-fetch')
@@ -46,7 +64,7 @@ describe('resolveTimelineStepKind', () => {
 
   it('其余兜底 generic', () => {
     expect(resolveTimelineStepKind(step({ id: 'i9', phase: 'loop' }))).toBe('generic')
-    expect(resolveTimelineStepKind(step({ id: 'node-answer', phase: 'node' }))).toBe('generic')
+    expect(resolveTimelineStepKind(step({ id: 'x', phase: 'generate' }))).toBe('generic')
     // 负向：id 含 rag 前缀但非精确 rag 步，不误判为检索
     expect(resolveTimelineStepKind(step({ id: 'rag-1', phase: 'think' }))).toBe('generic')
     expect(resolveTimelineStepKind(step({ id: 'rag-1', phase: 'tool' }))).toBe('generic')
