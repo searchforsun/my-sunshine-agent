@@ -35,7 +35,7 @@ class QueryRewriteServiceTest {
     @BeforeEach
     void setUp() {
         props = new AgentRewriteProperties();
-        catalogHolder = seedHolder("rewrite-intent-stub", "rewrite-planner-stub");
+        catalogHolder = seedHolder("rewrite-intent-stub");
         modelSceneResolver = seedResolver();
         service = new QueryRewriteService(props, catalogHolder,
                 mock(com.sunshine.orchestrator.client.LlmGatewayClient.class),
@@ -66,7 +66,7 @@ class QueryRewriteServiceTest {
     @Test
     void rewriteForIntentCallsLlm() {
         props.getIntent().setEnabled(true);
-        catalogHolder = seedHolder("test intent prompt", "rewrite-planner-stub");
+        catalogHolder = seedHolder("test intent prompt");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
         when(llm.complete(anyString(), isNull(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询待审批报销消息列表\"}");
@@ -77,7 +77,7 @@ class QueryRewriteServiceTest {
     @Test
     void rewriteForIntentIncludesConversationContext() {
         props.getIntent().setEnabled(true);
-        catalogHolder = seedHolder("test intent prompt", "rewrite-planner-stub");
+        catalogHolder = seedHolder("test intent prompt");
         var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
         when(llm.complete(anyString(), isNull(), anyString(), anyString()))
                 .thenReturn("{\"query\":\"查询第一条待审批报销单详情\"}");
@@ -98,22 +98,13 @@ class QueryRewriteServiceTest {
     }
 
     @Test
-    void rewriteForPlannerCallsLlm() {
-        props.plannerOrDefault().setEnabled(true);
-        catalogHolder = seedHolder("rewrite-intent-stub", "test planner prompt");
-        var llm = mock(com.sunshine.orchestrator.client.LlmGatewayClient.class);
-        when(llm.complete(anyString(), isNull(), anyString(), anyString()))
-                .thenReturn("{\"query\":\"先检索差旅制度，再查待审批报销并做合规分析\"}");
-        service = new QueryRewriteService(props, catalogHolder, llm, modelSceneResolver, new ObjectMapper());
-        assertThat(service.rewriteForPlanner("先查制度再查报销"))
-                .isEqualTo("先检索差旅制度，再查待审批报销并做合规分析");
+    void plannerScenarioIsRemoved() {
+        assertThat(QueryRewriteScenario.of("planner")).isEmpty();
     }
-
-    private static PromptCatalogHolder seedHolder(String intent, String planner) {
+    private static PromptCatalogHolder seedHolder(String intent) {
         PromptCatalogHolder holder = new PromptCatalogHolder();
         holder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                new PromptCatalogEntry("rewrite.intent", "rewrite", "i", true, 0, 1, intent, null),
-                new PromptCatalogEntry("rewrite.planner", "rewrite", "p", true, 0, 1, planner, null))));
+                new PromptCatalogEntry("rewrite.intent", "rewrite", "i", true, 0, 1, intent, null))));
         return holder;
     }
 
@@ -126,7 +117,6 @@ class QueryRewriteServiceTest {
                         ModelCapabilities.defaults(), null, true, true, 0)),
                 List.of(
                         new ModelCatalogScene("rewrite.intent", "deepseek-v4-flash", null, Map.of(), true),
-                        new ModelCatalogScene("rewrite.planner", "deepseek-v4-flash", null, Map.of(), true),
                         new ModelCatalogScene("default", "deepseek-v4-flash", null, Map.of(), true)));
         return resolver;
     }

@@ -251,7 +251,7 @@ class ProcessingTimelineSessionTest {
         PromptCatalogHolder rewriteHolder = new PromptCatalogHolder();
         rewriteHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+                        null, "{\"intent\":\"补全问句\"}"))));
         RewriteTimelineLabels.bind(new TimelinePromptCatalog(rewriteHolder));
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("待审批");
@@ -334,7 +334,7 @@ class ProcessingTimelineSessionTest {
         PromptCatalogHolder rewriteHolder = new PromptCatalogHolder();
         rewriteHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+                        null, "{\"intent\":\"补全问句\"}"))));
         RewriteTimelineLabels.bind(new TimelinePromptCatalog(rewriteHolder));
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报差旅");
@@ -472,13 +472,13 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
-    void completePlanAt_attachesPlannerRewriteMetadata() {
+    void completePlanAt_attachesRewriteMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("帮我查报销");
         session.bindTraceMessageId("msg-plan");
         QueryRewriteTrace.bind("msg-plan");
         QueryRewriteTrace.record("msg-plan",
-                QueryRewriteOutcome.of("planner", "帮我查报销", "请规划差旅报销合规审查流程", 120L));
+                QueryRewriteOutcome.of("intent", "帮我查报销", "请规划差旅报销合规审查流程", 120L));
         session.pending("plan", "plan");
         session.start("plan", "plan");
         session.completePlanAt("检索 → 查询 → 分析", "planId=p1|chain=检索 → 查询", System.currentTimeMillis());
@@ -486,7 +486,7 @@ class ProcessingTimelineSessionTest {
                 .filter(s -> "plan".equals(s.id())).findFirst().orElseThrow();
         assertThat(plan.metadata()).isNotNull();
         assertThat(plan.metadata().rewriteApplied()).isTrue();
-        assertThat(plan.metadata().rewriteScenario()).isEqualTo("planner");
+        assertThat(plan.metadata().rewriteScenario()).isEqualTo("intent");
         assertThat(plan.metadata().rewriteFrom()).isEqualTo("帮我查报销");
         assertThat(plan.metadata().rewriteTo()).isEqualTo("请规划差旅报销合规审查流程");
         QueryRewriteTrace.clear("msg-plan");

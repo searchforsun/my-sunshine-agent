@@ -1783,15 +1783,10 @@ INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, con
 '你是企业助手意图补全助手。结合消息中的「近期对话」补全过短输入；指代须据上下文还原。\n操作类表述（提交/审批/确认/继续）保留动作语义，勿改成「请问如何…」类咨询句。\n勿编造事实。只输出 JSON：{"query":"补全后的问句"}，不要 markdown 或其他文字。\n',
 NULL, '初始种子', 'agent');
 
-INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('rewrite.planner', 'rewrite', '改写 · Planner', '规划前改写：把用户问法整理成适合 Planner 理解的清晰表述。', 1, 0, 1, 1);
-INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('rewrite.planner', 1, 'published',
-'你是 Plan-Workflow 规划前 query 优化助手。用户问题将交给 Planner 动态编排 rag/tool/agent 节点。\n补全多步意图表述（如先检索制度、再查待审批、再做合规分析），保留原意，补充制度/财务/合规等域内关键词。\n不要编造具体业务事实。\n只输出 JSON：{"query":"优化后的规划输入"}，不要 markdown 或其他文字。\n',
-NULL, '初始种子', 'agent');
-
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('rewrite.timeline', 'rewrite', '改写 · Timeline 文案', '改写步骤时间线文案：控制「查询改写」步骤在时间线上的 before/active/after 展示。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('rewrite.timeline', 1, 'published',
 NULL,
-'{"intent":"补全问句","planner":"优化规划输入"}', '初始种子', 'agent');
+'{"intent":"补全问句"}', '初始种子', 'agent');
 
 INSERT IGNORE INTO prompt_definition (id, kind, display_name, description, enabled, priority, active_version, catalog_version) VALUES ('sandbox.budget-exhausted', 'sandbox', '沙箱 · 取消预算耗尽', '沙箱取消预算耗尽：同族工具再调用次数用尽时，提示模型改方案或直接作答。', 1, 0, 1, 1);
 INSERT IGNORE INTO prompt_version (prompt_id, version, status, content_text, content_json, change_note, maintainer) VALUES ('sandbox.budget-exhausted', 1, 'published',

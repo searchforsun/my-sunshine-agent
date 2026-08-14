@@ -114,10 +114,6 @@ public final class QueryRewriteTrace {
         return latest(messageId, QueryRewriteScenario.INTENT.id());
     }
 
-    public static Optional<QueryRewriteOutcome> plannerOutcome(String messageId) {
-        return latest(messageId, QueryRewriteScenario.PLANNER.id());
-    }
-
     public static String combinedTimelineDetail(String messageId) {
         return joinTimelineDetails(all(messageId));
     }

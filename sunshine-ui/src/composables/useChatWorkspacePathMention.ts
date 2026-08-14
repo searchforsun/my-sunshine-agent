@@ -20,6 +20,7 @@ export function useChatWorkspacePathMention(
   conversationId: Ref<string | null | undefined>,
   loading: Ref<boolean>,
   inputRef: Ref<InstanceType<typeof ComposerSkillInput> | undefined>,
+  sessionKind: Ref<string>,
 ) {
   const pathResults = ref<WorkspacePathSuggestEntry[]>([])
   const pathSuggestLoading = ref(false)
@@ -91,7 +92,8 @@ export function useChatWorkspacePathMention(
 
   function refreshPathMention(text: string) {
     const convId = conversationId.value?.trim()
-    if (!convId || loading.value) {
+    // 工作区路径补全仅属任务会话（有工作区），对话会话不触发
+    if (sessionKind.value !== 'task' || !convId || loading.value) {
       showPathSuggest.value = false
       return
     }

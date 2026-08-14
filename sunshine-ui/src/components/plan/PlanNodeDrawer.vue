@@ -211,7 +211,6 @@ const showSummary = computed(() => {
 const rewriteDetail = computed(() => (step.value ? resolveRewriteDetail(step.value) : undefined))
 const rewriteSectionTitle = computed(() => {
   const scenario = step.value?.metadata?.rewriteScenario
-  if (scenario === 'planner') return '输入优化'
   if (scenario === 'intent') return '问句补全'
   return '检索优化'
 })

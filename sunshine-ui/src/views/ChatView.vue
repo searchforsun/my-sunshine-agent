@@ -18,7 +18,7 @@ import { useSandboxPathIndex } from '../composables/useSandboxPathIndex'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
 import { reEnhanceAllSandboxPathLinks } from '../utils/stream-markdown/StaticEnhancer'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
-import { useChatStore } from '../stores/chatStore'
+import { useChatStore, isTaskConversation } from '../stores/chatStore'
 import { isValidConversationId } from '../api/conversations'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
@@ -114,6 +114,13 @@ const sessionTitle = computed(() => {
   return chatStore.current?.title || '新对话'
 })
 const currentConversationId = computed(() => chatStore.currentId)
+
+/** 当前会话形态（chat|task）：新任务/挂起工作区视为 task；否则按会话 kind 或工作区判定，缺省 chat */
+const sessionKind = computed<'chat' | 'task'>(() => {
+  if (chatStore.newTaskMode || chatStore.pendingWorkspace) return 'task'
+  const current = chatStore.current
+  return current && isTaskConversation(current) ? 'task' : 'chat'
+})
 
 const {
   clearAttention,
@@ -500,7 +507,7 @@ const {
   applySkillSuggest,
   loadSkillCatalog,
   handleSkillKeydown,
-} = useChatSkillMention(inputText, preference, loading)
+} = useChatSkillMention(inputText, preference, loading, sessionKind)
 
 const {
   showAgentSuggest,
@@ -511,7 +518,7 @@ const {
   applyAgentSuggest,
   loadAgentCatalog,
   handleAgentKeydown,
-} = useChatAgentMention(inputText, preference, loading)
+} = useChatAgentMention(inputText, preference, loading, sessionKind)
 
 const {
   showWorkflowSuggest,
@@ -522,7 +529,7 @@ const {
   applyWorkflowSuggest,
   loadWorkflowCatalog,
   handleWorkflowKeydown,
-} = useChatWorkflowMention(inputText, preference, loading)
+} = useChatWorkflowMention(inputText, preference, loading, sessionKind)
 
 const {
   showPathSuggest,
@@ -531,10 +538,31 @@ const {
   filteredPaths,
   applyPathSuggest,
   handlePathKeydown,
-} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef)
+} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef, sessionKind)
+
+/** 下拉面板列表（四个互斥 ul 共用 ref）：键盘移动高亮时保持选中项在可视区 */
+const composerSuggestList = ref<HTMLUListElement | null>(null)
+function scrollHighlightedSuggestIntoView() {
+  const list = composerSuggestList.value
+  if (!list) return
+  const item = list.querySelector<HTMLElement>('.is-highlighted')
+  if (!item) return
+  const listRect = list.getBoundingClientRect()
+  const itemRect = item.getBoundingClientRect()
+  if (itemRect.top < listRect.top) {
+    list.scrollTop -= listRect.top - itemRect.top
+  } else if (itemRect.bottom > listRect.bottom) {
+    list.scrollTop += itemRect.bottom - listRect.bottom
+  }
+}
+watch(
+  [skillSuggestIndex, agentSuggestIndex, workflowSuggestIndex, pathSuggestIndex],
+  () => nextTick(scrollHighlightedSuggestIntoView),
+)
 
 const composerPlaceholder = computed(() => {
-  const hints = ['@ 工作区']
+  const hints: string[] = []
+  if (sessionKind.value === 'task') hints.push('@ 工作区')
   if (allowsSkillMention(preference.value)) hints.push('/ Skill')
   if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
   if (allowsAgentMention(preference.value)) hints.push('$ 智能体')
@@ -1882,7 +1910,7 @@ watch(
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
         >
-          <ul v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
+          <ul ref="composerSuggestList" v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
             <li v-if="pathSuggestLoading" class="skill-suggest-loading">正在加载工作区…</li>
             <template v-else>
               <li
@@ -1904,7 +1932,7 @@ watch(
               </li>
             </template>
           </ul>
-          <ul v-else-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
+          <ul ref="composerSuggestList" v-else-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
             <li
               v-for="(wf, idx) in filteredWorkflows"
               :key="wf.id"
@@ -1918,7 +1946,7 @@ watch(
               <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
             </li>
           </ul>
-          <ul v-else-if="showAgentSuggest && filteredAgents.length && !loading" class="skill-suggest">
+          <ul ref="composerSuggestList" v-else-if="showAgentSuggest && filteredAgents.length && !loading" class="skill-suggest">
             <li
               v-for="(agent, idx) in filteredAgents"
               :key="agent.id"
@@ -1932,7 +1960,7 @@ watch(
               <p v-if="agent.description" class="skill-suggest-desc">{{ agent.description }}</p>
             </li>
           </ul>
-          <ul v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
+          <ul ref="composerSuggestList" v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
             <li
               v-for="(skill, idx) in filteredSkills"
               :key="skill.id"

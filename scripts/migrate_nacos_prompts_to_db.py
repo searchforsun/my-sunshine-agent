@@ -35,7 +35,6 @@ PURPOSE_DESCRIPTIONS: dict[str, str] = {
     "answer.template": "Answer 节点终态作答模板：综合上游节点输出，面向用户生成 Markdown 结论。",
     "answer.overlay": "Answer 覆盖层：在 answer 模板之上追加的补充约束（可为空）。",
     "rewrite.intent": "意图补全改写：结合近期对话补全过短输入并还原指代，供意图路由使用。",
-    "rewrite.planner": "规划前改写：把用户问法整理成适合 Planner 理解的清晰表述。",
     "rewrite.timeline": "改写步骤时间线文案：控制「查询改写」步骤在时间线上的 before/active/after 展示。",
     "hitl.agent-prompt": "人机确认（HITL）：写操作需用户确认时，向模型说明确认流程与等待态行为。",
     "sandbox.cancel-result": "沙箱工具取消回执：用户取消 exec/grep/glob 后回给主 Agent 的说明（含剩余次数）。",
@@ -77,7 +76,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "scope-prompt": "Scope 提示词",
     "hitl.agent-prompt": "HITL Agent 提示词",
     "rewrite.intent": "改写 · Intent",
-    "rewrite.planner": "改写 · Planner",
     "rewrite.timeline": "改写 · Timeline 文案",
     "timeline.intent": "时间线 · Intent",
     "timeline.hitl": "时间线 · HITL",
@@ -240,7 +238,7 @@ def collect_seeds(agent: dict[str, Any]) -> list[PromptSeed]:
     if isinstance(rewrite, dict):
         for key, value in rewrite.items():
             pid = f"rewrite.{key}"
-            if key in ("intent", "planner") and isinstance(value, dict):
+            if key == "intent" and isinstance(value, dict):
                 text = value.get("system-prompt")
                 if not isinstance(text, str):
                     continue

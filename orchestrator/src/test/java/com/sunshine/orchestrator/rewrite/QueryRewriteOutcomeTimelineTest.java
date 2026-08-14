@@ -20,7 +20,7 @@ class QueryRewriteOutcomeTimelineTest {
         PromptCatalogHolder holder = new PromptCatalogHolder();
         holder.replace(PromptCatalogSnapshot.of(1L, List.of(
                 new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"))));
+                        null, "{\"intent\":\"补全问句\"}"))));
         RewriteTimelineLabels.bind(new TimelinePromptCatalog(holder));
     }
 

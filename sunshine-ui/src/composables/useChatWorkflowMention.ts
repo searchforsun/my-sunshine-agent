@@ -23,15 +23,13 @@ export function useChatWorkflowMention(
   const filteredWorkflows = computed(() => {
     const q = workflowQuery.value.trim().toLowerCase()
     return workflowCatalog.value
-      .filter(w => {
-        if (!q) return true
-        return (
-          w.id.toLowerCase().includes(q)
-          || w.displayName.toLowerCase().includes(q)
-          || w.description?.toLowerCase().includes(q)
-          || w.examples?.some(ex => ex.toLowerCase().includes(q))
-        )
-      })
+      .filter(w => matchesSessionKind(sessionKind.value, w.kind) && (
+        !q
+        || w.id.toLowerCase().includes(q)
+        || w.displayName.toLowerCase().includes(q)
+        || w.description?.toLowerCase().includes(q)
+        || w.examples?.some(ex => ex.toLowerCase().includes(q))
+      ))
       .slice(0, 8)
   })
 
@@ -47,7 +45,7 @@ export function useChatWorkflowMention(
     }
     workflowMentionStart.value = match.index
     workflowQuery.value = match[1]
-    showWorkflowSuggest.value = workflowCatalog.value.length > 0
+    showWorkflowSuggest.value = filteredWorkflows.value.length > 0
     workflowSuggestIndex.value = 0
   }
 

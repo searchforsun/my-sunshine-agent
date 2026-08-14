@@ -112,7 +112,6 @@ public class TimelinePromptCatalog {
         JsonNode node = root.get();
         String key = switch (scenario) {
             case String s when QueryRewriteScenario.INTENT.matches(s) -> "intent";
-            case String s when QueryRewriteScenario.PLANNER.matches(s) -> "planner";
             default -> null;
         };
         if (key == null) {
@@ -154,7 +153,7 @@ public class TimelinePromptCatalog {
         for (Map.Entry<String, StepTimeline> e : fixture.getSteps().entrySet()) {
             entries.add(jsonEntry("timeline.steps." + e.getKey(), writeJson(e.getValue())));
         }
-        entries.add(jsonEntry("rewrite.timeline", "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"));
+        entries.add(jsonEntry("rewrite.timeline", "{\"intent\":\"补全问句\"}"));
         return entries;
     }
 

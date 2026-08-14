@@ -74,9 +74,8 @@ public final class RoutingCatalogFixtures {
                         "用户问题：{{start.userQuery}}\n\n上游数据：\n{{plan.upstream}}\n\n请汇总。"),
                 text("answer.overlay", "answer", ""),
                 text("rewrite.intent", "rewrite", "rewrite-intent-stub"),
-                text("rewrite.planner", "rewrite", "rewrite-planner-stub"),
                 json("rewrite.timeline", "rewrite",
-                        "{\"intent\":\"补全问句\",\"planner\":\"优化规划输入\"}"),
+                        "{\"intent\":\"补全问句\"}"),
                 json("timeline.intent", "timeline",
                         "{\"label\":\"识别意图\",\"before\":\"识别用户意图\","
                                 + "\"active\":\"正在识别用户意图\","

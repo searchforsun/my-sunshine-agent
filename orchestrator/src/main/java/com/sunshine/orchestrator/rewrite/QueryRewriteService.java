@@ -15,8 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
- * Query 改写 — 仅 intent / planner（路由与规划域）。
- * 提示词读 Catalog {@code rewrite.intent} / {@code rewrite.planner}。
+ * Query 改写 — 仅 intent（路由域）。
+ * 提示词读 Catalog {@code rewrite.intent}。
  * RAG 检索改写已迁入 rag-service pipeline（ADR-002）。
  */
 @Slf4j
@@ -48,40 +48,6 @@ public class QueryRewriteService {
 
     public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId) {
         return rewriteForIntent(originalQuery, traceMessageId, null);
-    }
-
-    public String rewriteForPlanner(String originalQuery) {
-        return rewriteForPlanner(originalQuery, null).effectiveQuery();
-    }
-
-    public QueryRewriteOutcome rewriteForPlanner(String originalQuery, String traceMessageId) {
-        long start = System.nanoTime();
-        AgentRewriteProperties.Planner cfg = rewriteProperties.plannerOrDefault();
-        String systemPrompt = catalogText("rewrite.planner");
-        if (!cfg.isEnabled() || !StringUtils.hasText(originalQuery) || !StringUtils.hasText(systemPrompt)) {
-            QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    QueryRewriteScenario.PLANNER.id(), originalQuery, elapsedMs(start));
-            QueryRewriteTrace.record(traceMessageId, skipped);
-            return skipped;
-        }
-        String user = "用户问题：" + originalQuery.strip();
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.REWRITE_PLANNER.key(), null);
-        String raw = llmGatewayClient.complete(
-                model.effectiveModel(), model.fallbackModel(), systemPrompt, user);
-        String rewritten = parseSingleQuery(raw, originalQuery);
-        if (!StringUtils.hasText(rewritten)) {
-            QueryRewriteOutcome skipped = QueryRewriteOutcome.skipped(
-                    QueryRewriteScenario.PLANNER.id(), originalQuery, elapsedMs(start));
-            QueryRewriteTrace.record(traceMessageId, skipped);
-            return skipped;
-        }
-        QueryRewriteOutcome outcome = QueryRewriteOutcome.of(QueryRewriteScenario.PLANNER.id(), originalQuery, rewritten, elapsedMs(start));
-        if (outcome.applied()) {
-            log.info("[QueryRewrite] planner: in='{}' out='{}'",
-                    abbreviate(originalQuery), abbreviate(outcome.rewrittenQuery()));
-        }
-        QueryRewriteTrace.record(traceMessageId, outcome);
-        return outcome;
     }
 
     public QueryRewriteOutcome rewriteForIntent(String originalQuery, String traceMessageId, AssembledContext memory) {

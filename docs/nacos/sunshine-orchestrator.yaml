@@ -308,9 +308,6 @@ agent:
       enabled: true
       max-chars: 8
       # model → scene=rewrite.intent；system-prompt → Catalog id=rewrite.intent
-    planner:
-      enabled: true
-      # model → scene=rewrite.planner；system-prompt → Catalog id=rewrite.planner
     # timeline → Catalog id=rewrite.timeline
 
   title:

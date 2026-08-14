@@ -40,9 +40,9 @@ final class TimelineSessionCompletions {
     }
 
     void completePlanAt(String after, String detail, long endedAt) {
-        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome plannerRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.plannerOutcome(state.traceMessageId).orElse(null);
-        StepMetadata metadata = StepMetadata.fromRewrite(plannerRewrite);
+        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome rewrite =
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.intentOutcome(state.traceMessageId).orElse(null);
+        StepMetadata metadata = StepMetadata.fromRewrite(rewrite);
         emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.COMPLETE, after, detail, metadata, endedAt);
         if (TimelineStepId.PLAN.matches(state.activeStepId)) {
             state.activeStepId = null;
