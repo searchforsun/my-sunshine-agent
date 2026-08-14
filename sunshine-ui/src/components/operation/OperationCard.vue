@@ -571,7 +571,11 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
   opacity: 0.85;
 }
 
-/* 展开态 ^ */
+/* 展开态：类型图标隐藏、^ 常显 */
+.op-line.is-expanded .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
 .op-line.is-expanded .op-step-icon .op-chevron {
   transform: rotate(90deg);
   opacity: 0.85;
