@@ -57,6 +57,9 @@ import HitlStepActions from './HitlStepActions.vue'
 import PlanDagPanel from '../plan/PlanDagPanel.vue'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { ensurePlanTimelineSteps, isPlanDagNodeStep } from '../../api/planHydrate'
+import TimelineStepIcon from './TimelineStepIcon.vue'
+import { useTimelineStyle } from '../../composables/useTimelineStyle'
+import { resolveTimelineStepKind, type TimelineStepKind } from '../../api/timelineStepIcon'
 
 const props = withDefaults(defineProps<{
   steps: ProcessingStep[]
@@ -99,6 +102,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   hitlDecided: [token: string, approved: boolean]
 }>()
+
+const { timelineStyle } = useTimelineStyle()
 
 const cardExpanded = reactive(new Map<string, boolean>())
 const cardUserToggled = reactive(new Set<string>())
@@ -659,6 +664,22 @@ function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
   return result
 }
 
+/** 首步步骤类型图标（时间线总览 / roundGroup 行首）；空 steps 返回 undefined */
+function firstTimelineStepKind(steps: ProcessingStep[]): TimelineStepKind | undefined {
+  return steps.length ? resolveTimelineStepKind(steps[0]) : undefined
+}
+
+/** roundGroup 行首图标：递归取组内首个可见步骤 */
+function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
+  if (row.kind === 'step') return row.step
+  if (row.kind === 'toolGroup') return row.steps[0]
+  for (const inner of row.rows) {
+    const lead = roundGroupLeadStep(inner)
+    if (lead) return lead
+  }
+  return undefined
+}
+
 /** 显示行（带正文间多轮折叠）；harness 分层时间线不做 roundGroup，避免吞掉 plan/worker */
 const roundDisplayRows = computed(() => {
   if (isHarnessTimeline.value) return displayRows.value
@@ -849,7 +870,10 @@ watch(
 </script>
 
 <template>
-  <div class="operation-lines">
+  <div
+    class="operation-lines"
+    :class="{ 'is-timeline-standard': timelineStyle === 'standard' }"
+  >
     <div
       v-if="summaryEnabled"
       class="op-line timeline-summary"
@@ -861,11 +885,32 @@ watch(
     >
       <button type="button" class="op-line-row" @click="toggleTimelineBody">
         <span class="op-main">
+          <span v-if="timelineStyle === 'standard'" class="op-step-icon">
+            <TimelineStepIcon
+              v-if="firstTimelineStepKind(effectiveSteps)"
+              class="op-type-icon"
+              :step="effectiveSteps[0]"
+            />
+            <svg
+              class="op-chevron"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </span>
           <span
             class="op-label"
             :class="{ 'op-shimmer': live || messageStatus === 'streaming' }"
           >{{ summaryText }}</span>
           <svg
+            v-if="timelineStyle !== 'standard'"
             class="op-chevron"
             width="12"
             height="12"
@@ -900,6 +945,26 @@ watch(
                 @keydown.space.prevent="toggleRoundGroup(rowIdx)"
               >
                 <span class="op-main">
+                  <span v-if="timelineStyle === 'standard'" class="op-step-icon">
+                    <TimelineStepIcon
+                      v-if="roundGroupLeadStep(row)"
+                      class="op-type-icon"
+                      :step="roundGroupLeadStep(row)"
+                    />
+                    <svg
+                      class="op-chevron"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </span>
                   <span class="round-group-label" :class="{ 'op-shimmer': row.anyRunning && live }">{{ row.label }}</span>
                   <span v-if="row.allDone" class="op-check" aria-label="完成">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -908,6 +973,7 @@ watch(
                     </svg>
                   </span>
                   <svg
+                    v-if="timelineStyle !== 'standard'"
                     class="op-chevron"
                     width="12"
                     height="12"
@@ -1434,5 +1500,54 @@ watch(
 
 .op-line-hitl :deep(.collapsible-confirm) {
   margin-left: 0;
+}
+
+/* 行首图标槽位：固定 16px，type-icon 与 chevron 绝对定位重叠；仅标准模式渲染（根 class 限定） */
+.is-timeline-standard .op-step-icon {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.is-timeline-standard .op-step-icon .op-type-icon,
+.is-timeline-standard .op-step-icon .op-chevron {
+  position: absolute;
+  transition: opacity 0.12s ease, transform 0.15s ease;
+}
+
+.is-timeline-standard .op-step-icon .op-type-icon {
+  opacity: 1;
+}
+
+.is-timeline-standard .op-step-icon .op-chevron {
+  color: var(--sun-text-secondary);
+  opacity: 0;
+  margin: 0;
+}
+
+.timeline-summary.is-clickable:hover .op-step-icon .op-type-icon,
+.round-group:not(.is-expanded):hover .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
+.timeline-summary.is-clickable:hover .op-step-icon .op-chevron,
+.round-group:not(.is-expanded):hover .op-step-icon .op-chevron {
+  opacity: 0.85;
+}
+
+.timeline-summary.is-expanded .op-step-icon .op-type-icon,
+.round-group.is-expanded .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
+.timeline-summary.is-expanded .op-step-icon .op-chevron,
+.round-group.is-expanded .op-step-icon .op-chevron {
+  transform: rotate(90deg);
+  opacity: 0.85;
 }
 </style>
