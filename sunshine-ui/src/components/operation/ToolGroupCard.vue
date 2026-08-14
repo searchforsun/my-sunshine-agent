@@ -14,6 +14,8 @@ import {
 } from '../../api/hitlSteps'
 import OperationCard from './OperationCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
+import TimelineStepIcon from './TimelineStepIcon.vue'
+import { useTimelineStyle } from '../../composables/useTimelineStyle'
 
 const props = defineProps<{
   steps: ProcessingStep[]
@@ -33,6 +35,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   hitlDecided: [token: string, approved: boolean]
 }>()
+
+const { timelineStyle } = useTimelineStyle()
 
 /** 用户手动展开/折叠标记；null 表示未手动干预，跟随自动逻辑 */
 const manualExpanded = ref<boolean | null>(null)
@@ -109,6 +113,22 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
       @keydown.space.prevent="toggle"
     >
       <span class="op-main">
+        <span v-if="timelineStyle === 'standard'" class="op-step-icon">
+          <TimelineStepIcon class="op-type-icon" :step="steps[0]" />
+          <svg
+            class="op-chevron"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
         <span class="tool-group-label" :class="{ 'op-shimmer': showShimmer }">{{ label }}</span>
         <span v-if="allDone && !hideCheckmark" class="tool-group-check" aria-label="完成">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -117,6 +137,7 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
           </svg>
         </span>
         <svg
+          v-if="timelineStyle !== 'standard'"
           class="op-chevron"
           width="12"
           height="12"
@@ -189,6 +210,51 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
 }
 
 .tool-group.is-expanded .op-chevron {
+  transform: rotate(90deg);
+  opacity: 0.85;
+}
+
+/* 行首图标槽位：固定 16px，type-icon 与 chevron 绝对定位重叠；仅标准模式渲染 */
+.op-step-icon {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.op-step-icon .op-type-icon,
+.op-step-icon .op-chevron {
+  position: absolute;
+  transition: opacity 0.12s ease, transform 0.15s ease;
+}
+
+.op-step-icon .op-type-icon {
+  opacity: 1;
+}
+
+.op-step-icon .op-chevron {
+  color: var(--sun-text-secondary);
+  opacity: 0;
+  margin: 0;
+}
+
+.tool-group-row:hover .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
+.tool-group-row:hover .op-step-icon .op-chevron {
+  opacity: 0.85;
+}
+
+.tool-group.is-expanded .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
+.tool-group.is-expanded .op-step-icon .op-chevron {
   transform: rotate(90deg);
   opacity: 0.85;
 }
