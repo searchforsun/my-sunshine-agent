@@ -15,16 +15,13 @@ import java.util.Set;
 public class NodeRetryPolicyResolver {
 
     private final WorkflowNodeDefaultsRegistry nodeDefaultsRegistry;
-    private final ToolSetResolver toolSetResolver;
 
     public NodeRetryPolicyResolver(
-            WorkflowNodeDefaultsRegistry nodeDefaultsRegistry,
-            ToolSetResolver toolSetResolver) {
+            WorkflowNodeDefaultsRegistry nodeDefaultsRegistry) {
         this.nodeDefaultsRegistry = nodeDefaultsRegistry;
-        this.toolSetResolver = toolSetResolver;
     }
 
-    public NodeRetryPolicy resolve(NodeSpec spec, boolean planRun, String tenantId) {
+    public NodeRetryPolicy resolve(NodeSpec spec) {
         WorkflowNodeExecutionPolicy policy = nodeDefaultsRegistry.policy();
         WorkflowNodeExecutionPolicy.NodeDefaults defaults = policy.defaults();
         String type = spec.type() != null ? spec.type() : "";
@@ -41,7 +38,7 @@ public class NodeRetryPolicyResolver {
                 0L);
         double multiplier = defaults.backoffMultiplier() > 0
                 ? defaults.backoffMultiplier() : 2.0;
-        OnFailureAction onFailure = resolveOnFailure(spec, type, policy, defaults, tenantId);
+        OnFailureAction onFailure = resolveOnFailure(spec, type, policy, defaults);
         Set<String> retryOn = new HashSet<>(defaults.retryOnErrorClass());
         return new NodeRetryPolicy(maxAttempts, backoffMs, multiplier, onFailure, retryOn);
     }
@@ -50,18 +47,10 @@ public class NodeRetryPolicyResolver {
             NodeSpec spec,
             String type,
             WorkflowNodeExecutionPolicy policy,
-            WorkflowNodeExecutionPolicy.NodeDefaults defaults,
-            String tenantId) {
+            WorkflowNodeExecutionPolicy.NodeDefaults defaults) {
         String param = readParamString(spec, "retry.onFailure");
         if (StringUtils.hasText(param)) {
             return OnFailureAction.fromConfig(param);
-        }
-        String tool = readParamString(spec, "tool");
-        if (StringUtils.hasText(tool)) {
-            Set<String> criticalTools = new HashSet<>(toolSetResolver.resolveTaskCriticalTools(tenantId));
-            if (criticalTools.contains(tool.strip())) {
-                return OnFailureAction.fromConfig(policy.criticalOnFailure());
-            }
         }
         WorkflowNodeExecutionPolicy.NodeTypeOverride typeOverride =
                 policy.byType() != null ? policy.byType().get(type) : null;

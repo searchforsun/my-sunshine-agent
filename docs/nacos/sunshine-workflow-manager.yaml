@@ -48,7 +48,6 @@ workflow:
         - TIMEOUT
         - SERVICE_UNAVAILABLE
         - CIRCUIT_OPEN
-    critical-on-failure: fail_fast
     by-type:
       rag:
         max-attempts: 1

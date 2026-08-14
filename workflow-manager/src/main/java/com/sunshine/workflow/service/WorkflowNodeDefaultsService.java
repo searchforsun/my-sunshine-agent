@@ -33,7 +33,6 @@ public class WorkflowNodeDefaultsService {
         return new WorkflowNodeDefaultsResponse(
                 defaults,
                 Map.copyOf(byType),
-                cfg.getCriticalOnFailure() != null ? cfg.getCriticalOnFailure() : "fail_fast",
                 base.getBackoffMultiplier() > 0 ? base.getBackoffMultiplier() : 2.0,
                 base.getRetryOnErrorClass() != null ? List.copyOf(base.getRetryOnErrorClass()) : List.of(),
                 toCatalogDefaults(studioProperties.getCatalogDefaults()),

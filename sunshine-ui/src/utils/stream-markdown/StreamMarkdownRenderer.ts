@@ -435,6 +435,8 @@ export class StreamMarkdownRenderer {
 
   private buildMermaidUI(wrap: HTMLElement, source: string): void {
     wrap.dataset.mermaidSource = source
+    // 错误态已直接展示源码，不挂工具栏按钮
+    if (wrap.querySelector(`.${CP('mermaid-error')}`)) return
     const header = wrap.querySelector(`.${CP('mermaid-header')}`)
     if (header && !header.querySelector(`.${CP('toolbtn-toggle')}`)) {
       header.appendChild(createMermaidToolButtons())

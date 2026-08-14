@@ -64,7 +64,8 @@ public class WorkerDispatchTool implements AgentTool {
             String assistantMessageId,
             String conversationId,
             String parentRunId,
-            int maxIters) {
+            int maxIters,
+            String conversationKind) {
         String plannerBridgeId() {
             return StringUtils.hasText(parentRunId) ? "planner-" + parentRunId.strip() : null;
         }
@@ -233,7 +234,8 @@ public class WorkerDispatchTool implements AgentTool {
                 session.assistantMessageId(),
                 session.conversationId(),
                 maxIters,
-                session.parentRunId());
+                session.parentRunId())
+                .withConversationKind(session.conversationKind());
         long timeoutMs = harness.getWorker().getTimeoutMs() > 0
                 ? harness.getWorker().getTimeoutMs()
                 : 3_600_000L;

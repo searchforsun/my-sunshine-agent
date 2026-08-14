@@ -9,7 +9,6 @@ import com.sunshine.common.tool.admin.ToolDefinitionView;
 import com.sunshine.common.tool.admin.ToolPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
-import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
@@ -180,23 +179,6 @@ public class ToolManagerAdminClient {
         return webClient.post()
                 .uri(uri -> {
                     var builder = uri.path("/api/admin/tools/sets/" + kind + "/members:remove");
-                    if (StringUtils.hasText(tenantId)) {
-                        builder.queryParam("tenantId", tenantId);
-                    }
-                    return builder.build();
-                })
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
-    }
-
-    public Mono<R<Void>> patchTaskMemberCritical(
-            String tenantId, String toolId, ToolSetMemberCriticalPatchRequest body) {
-        return webClient.patch()
-                .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/task/members/" + toolId);
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
                     }

@@ -55,7 +55,6 @@ public class WorkflowStudioProperties {
     public static class NodeDefaults {
 
         private RetryDefaults defaults = new RetryDefaults();
-        private String criticalOnFailure = "fail_fast";
         private Map<String, TypeRetryDefaults> byType = defaultByType();
 
         private static Map<String, TypeRetryDefaults> defaultByType() {

@@ -11,8 +11,10 @@ import {
 import {
   clearMermaidSvgCache,
   getCachedMermaidSvg,
+  getMermaidError,
   loadMermaidSvg,
   setCachedMermaidSvg,
+  setMermaidError,
 } from './mermaidSvgCache'
 
 export class MermaidRenderer {
@@ -41,7 +43,7 @@ export class MermaidRenderer {
     return container
   }
 
-  /** 有缓存则同步挂载；否则 loading → render → 缓存 */
+  /** 有缓存则同步挂载；否则 loading → render → 缓存；已确认失败直接恢复错误态 */
   mount(placeholder: HTMLElement, content: string): Promise<boolean> {
     const trimmed = content.trim()
     if (!trimmed || !placeholder.isConnected) return Promise.resolve(false)
@@ -50,6 +52,13 @@ export class MermaidRenderer {
     if (cached) {
       if (!placeholder.parentNode) return Promise.resolve(false)
       placeholder.parentNode.replaceChild(this.createChartEl(cached), placeholder)
+      return Promise.resolve(true)
+    }
+
+    const cachedError = getMermaidError(trimmed)
+    if (cachedError) {
+      if (!placeholder.parentNode) return Promise.resolve(false)
+      this.showError(placeholder, trimmed, new Error(cachedError))
       return Promise.resolve(true)
     }
 
@@ -84,6 +93,7 @@ export class MermaidRenderer {
     } catch (err) {
       if (!body.isConnected) return false
       this.showError(body, trimmed, err)
+      setMermaidError(trimmed, formatMermaidError(err))
       return false
     }
   }

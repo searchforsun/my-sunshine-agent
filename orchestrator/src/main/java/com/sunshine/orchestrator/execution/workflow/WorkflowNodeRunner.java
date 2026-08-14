@@ -81,9 +81,9 @@ public class WorkflowNodeRunner {
         }
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
-        // critical 工具集需 block tool-manager：禁止在 reactor-http 上解析（否则 Plan 中途静默降级 ReAct）
+        // 节点重试策略解析需 block workflow-manager HTTP：禁止在 reactor-http 上解析（否则 Plan 中途静默降级 ReAct）
         return Mono.fromCallable(() ->
-                        retryPolicyResolver.resolve(rawSpec, planRun, streamCtx.tenantId()))
+                        retryPolicyResolver.resolve(rawSpec))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(retryPolicy -> {
                     List<StreamToken> startTokens = tracksNodeStep
@@ -112,7 +112,7 @@ public class WorkflowNodeRunner {
         boolean tracksNodeStep = WorkflowNodeLabels.tracksNodeStep(rawSpec.type());
         long startedAt = System.currentTimeMillis();
         return Mono.fromCallable(() ->
-                        retryPolicyResolver.resolve(rawSpec, planRun, streamCtx.tenantId()))
+                        retryPolicyResolver.resolve(rawSpec))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(retryPolicy -> resumeWithPolicy(
                         session, def, nodeId, rawSpec, resolved, handler, wfCtx, streamCtx,

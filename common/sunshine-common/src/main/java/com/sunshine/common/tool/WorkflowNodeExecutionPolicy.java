@@ -9,8 +9,7 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkflowNodeExecutionPolicy(
         NodeDefaults defaults,
-        Map<String, NodeTypeOverride> byType,
-        String criticalOnFailure) {
+        Map<String, NodeTypeOverride> byType) {
 
     /**
      * 冷启动 / 测试占位。运行时以 workflow-manager Nacos → HTTP `/node-defaults` 为准；
@@ -24,8 +23,7 @@ public record WorkflowNodeExecutionPolicy(
                         "rag", new NodeTypeOverride(1, null),
                         "tool", new NodeTypeOverride(2, null),
                         "agent", new NodeTypeOverride(1, null),
-                        "answer", new NodeTypeOverride(2, "fail_fast")),
-                "fail_fast");
+                        "answer", new NodeTypeOverride(2, "fail_fast")));
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

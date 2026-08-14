@@ -71,7 +71,6 @@ CREATE TABLE tool_set_member (
     set_id          VARCHAR(64) NOT NULL,
     tool_id         VARCHAR(128) NOT NULL,
     sort_order      INT NOT NULL DEFAULT 0,
-    critical        TINYINT(1) NOT NULL DEFAULT 0 COMMENT '仅 task 默认集有效；1=Planner 关键工具',
     PRIMARY KEY (set_id, tool_id)
 );
 
@@ -93,28 +92,28 @@ INSERT INTO tool_set (id, set_type, tenant_id, display_name) VALUES
 ('global-task-default', 'global_task_default', NULL, '平台 Task 工具集');
 
 -- 工具集成员（chat/task 各 12 条，与线上 active 一致）
-INSERT INTO tool_set_member (set_id, tool_id, sort_order, critical) VALUES
-('global-chat-default', 'sdk__sunshine-biz__list_my_expenses', 0, 0),
-('global-chat-default', 'sdk__sunshine-biz__approve_oa_task', 1, 0),
-('global-chat-default', 'sdk__sunshine-biz__get_attendance_month', 2, 0),
-('global-chat-default', 'sdk__sunshine-biz__get_expense_detail', 3, 0),
-('global-chat-default', 'sdk__sunshine-biz__get_finance_inbox_item', 4, 0),
-('global-chat-default', 'sdk__sunshine-biz__get_leave_balance', 5, 0),
-('global-chat-default', 'sdk__sunshine-biz__list_leave_requests', 6, 0),
-('global-chat-default', 'sdk__sunshine-biz__list_my_finance_inbox', 7, 0),
-('global-chat-default', 'sdk__sunshine-biz__list_oa_tasks', 8, 0),
-('global-chat-default', 'sdk__sunshine-biz__submit_expense', 9, 0),
-('global-chat-default', 'sdk__sunshine-biz__submit_leave_request', 10, 0),
-('global-chat-default', 'sdk__sunshine-biz__summarize_my_expenses', 11, 0),
-('global-task-default', 'sdk__sunshine-biz__approve_oa_task', 0, 0),
-('global-task-default', 'sdk__sunshine-biz__get_attendance_month', 1, 0),
-('global-task-default', 'sdk__sunshine-biz__get_expense_detail', 2, 0),
-('global-task-default', 'sdk__sunshine-biz__get_finance_inbox_item', 3, 0),
-('global-task-default', 'sdk__sunshine-biz__get_leave_balance', 4, 0),
-('global-task-default', 'sdk__sunshine-biz__list_leave_requests', 5, 0),
-('global-task-default', 'sdk__sunshine-biz__list_my_expenses', 6, 0),
-('global-task-default', 'sdk__sunshine-biz__list_my_finance_inbox', 7, 0),
-('global-task-default', 'sdk__sunshine-biz__list_oa_tasks', 8, 0),
-('global-task-default', 'sdk__sunshine-biz__submit_expense', 9, 0),
-('global-task-default', 'sdk__sunshine-biz__submit_leave_request', 10, 0),
-('global-task-default', 'sdk__sunshine-biz__summarize_my_expenses', 11, 0);
+INSERT INTO tool_set_member (set_id, tool_id, sort_order) VALUES
+('global-chat-default', 'sdk__sunshine-biz__list_my_expenses', 0),
+('global-chat-default', 'sdk__sunshine-biz__approve_oa_task', 1),
+('global-chat-default', 'sdk__sunshine-biz__get_attendance_month', 2),
+('global-chat-default', 'sdk__sunshine-biz__get_expense_detail', 3),
+('global-chat-default', 'sdk__sunshine-biz__get_finance_inbox_item', 4),
+('global-chat-default', 'sdk__sunshine-biz__get_leave_balance', 5),
+('global-chat-default', 'sdk__sunshine-biz__list_leave_requests', 6),
+('global-chat-default', 'sdk__sunshine-biz__list_my_finance_inbox', 7),
+('global-chat-default', 'sdk__sunshine-biz__list_oa_tasks', 8),
+('global-chat-default', 'sdk__sunshine-biz__submit_expense', 9),
+('global-chat-default', 'sdk__sunshine-biz__submit_leave_request', 10),
+('global-chat-default', 'sdk__sunshine-biz__summarize_my_expenses', 11),
+('global-task-default', 'sdk__sunshine-biz__approve_oa_task', 0),
+('global-task-default', 'sdk__sunshine-biz__get_attendance_month', 1),
+('global-task-default', 'sdk__sunshine-biz__get_expense_detail', 2),
+('global-task-default', 'sdk__sunshine-biz__get_finance_inbox_item', 3),
+('global-task-default', 'sdk__sunshine-biz__get_leave_balance', 4),
+('global-task-default', 'sdk__sunshine-biz__list_leave_requests', 5),
+('global-task-default', 'sdk__sunshine-biz__list_my_expenses', 6),
+('global-task-default', 'sdk__sunshine-biz__list_my_finance_inbox', 7),
+('global-task-default', 'sdk__sunshine-biz__list_oa_tasks', 8),
+('global-task-default', 'sdk__sunshine-biz__submit_expense', 9),
+('global-task-default', 'sdk__sunshine-biz__submit_leave_request', 10),
+('global-task-default', 'sdk__sunshine-biz__summarize_my_expenses', 11);

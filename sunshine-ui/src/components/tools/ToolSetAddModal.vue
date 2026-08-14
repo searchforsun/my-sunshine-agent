@@ -25,7 +25,6 @@ const props = defineProps<{
   show: boolean
   kind: ToolSetKindPath
   tenantId?: string
-  allowCritical: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +37,7 @@ const loading = ref(false)
 const saving = ref(false)
 const filterQuery = ref('')
 const groups = ref<ToolSetPickerGroup[]>([])
-const selected = ref<Map<string, { critical: boolean }>>(new Map())
+const selected = ref<Set<string>>(new Set())
 
 const modalTitle = computed(() =>
   props.kind === 'chat' ? '添加到对话默认工具集' : '添加到任务默认工具集',
@@ -76,28 +75,17 @@ function isChecked(toolId: string): boolean {
   return selected.value.has(toolId)
 }
 
-function isCritical(toolId: string): boolean {
-  return selected.value.get(toolId)?.critical ?? false
-}
-
 function toggleTool(toolId: string, checked: boolean) {
-  const next = new Map(selected.value)
-  if (checked) next.set(toolId, { critical: false })
+  const next = new Set(selected.value)
+  if (checked) next.add(toolId)
   else next.delete(toolId)
   selected.value = next
 }
 
-function toggleCritical(toolId: string, critical: boolean) {
-  const next = new Map(selected.value)
-  const cur = next.get(toolId)
-  if (cur) next.set(toolId, { ...cur, critical })
-  selected.value = next
-}
-
 function setToolsChecked(toolIds: string[], checked: boolean) {
-  const next = new Map(selected.value)
+  const next = new Set(selected.value)
   for (const toolId of toolIds) {
-    if (checked) next.set(toolId, next.get(toolId) ?? { critical: false })
+    if (checked) next.add(toolId)
     else next.delete(toolId)
   }
   selected.value = next
@@ -124,16 +112,13 @@ async function confirmAdd() {
   saving.value = true
   try {
     const tenant = props.tenantId === 'default' ? undefined : props.tenantId
-    const items: ToolSetMemberAddItem[] = [...selected.value.entries()].map(([toolId, meta]) => ({
-      toolId,
-      critical: props.allowCritical ? meta.critical : false,
-    }))
+    const items: ToolSetMemberAddItem[] = [...selected.value].map(toolId => ({ toolId }))
     const result = await addToolSetMembers(props.kind, items, tenant)
     if (result.added.length > 0) {
       message.success(`已添加 ${result.added.length} 个工具`)
       emit('added')
       emit('update:show', false)
-      selected.value = new Map()
+      selected.value = new Set()
     }
     if (result.rejected.length > 0) {
       message.warning(`${result.rejected.length} 个工具未添加（未启用或不存在）`)
@@ -148,7 +133,7 @@ async function confirmAdd() {
 
 watch(() => props.show, (open) => {
   if (open) {
-    selected.value = new Map()
+    selected.value = new Set()
     filterQuery.value = ''
     void loadPicker()
   }
@@ -239,15 +224,6 @@ watch(filterQuery, () => {
                     </NTag>
                   </div>
                   <div class="toolset-add-id">{{ tool.toolId }}</div>
-                </div>
-                <div v-if="allowCritical" class="toolset-add-critical">
-                  <NCheckbox
-                    :disabled="!isChecked(tool.toolId)"
-                    :checked="isCritical(tool.toolId)"
-                    @update:checked="(v: boolean) => toggleCritical(tool.toolId, v)"
-                  >
-                    关键
-                  </NCheckbox>
                 </div>
               </div>
             </div>
@@ -396,11 +372,6 @@ watch(filterQuery, () => {
   color: var(--sun-text-muted);
   font-family: var(--sun-font-mono, monospace);
   word-break: break-all;
-}
-
-.toolset-add-critical {
-  flex-shrink: 0;
-  padding-left: 8px;
 }
 
 .toolset-add-empty {

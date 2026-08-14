@@ -256,7 +256,8 @@ public class PlannerHarnessLoop {
                 ctx != null ? ctx.assistantMsgId() : null,
                 ctx != null ? ctx.conversationId() : null,
                 loopRunId,
-                0);
+                0,
+                resolveConversationKind(notebook, ctx));
         WorkerDispatchTool.bindSession(session);
         return session;
     }

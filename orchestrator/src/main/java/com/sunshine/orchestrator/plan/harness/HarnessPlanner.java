@@ -163,7 +163,8 @@ public class HarnessPlanner {
                 ctx != null ? ctx.assistantMsgId() : null,
                 ctx != null ? ctx.conversationId() : null,
                 parentRunId,
-                0);
+                0,
+                resolveConversationKind(notebook, ctx));
         WorkerDispatchTool.bindSession(session);
         return session;
     }

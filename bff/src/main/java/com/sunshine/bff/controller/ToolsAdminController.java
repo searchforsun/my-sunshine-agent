@@ -9,7 +9,6 @@ import com.sunshine.common.tool.admin.ToolDefinitionView;
 import com.sunshine.common.tool.admin.ToolPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
-import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
@@ -132,13 +131,5 @@ public class ToolsAdminController {
             @RequestParam(required = false) String tenantId,
             @RequestBody ToolSetMemberRemoveRequest body) {
         return toolManagerAdminClient.removeToolSetMembers(kind, tenantId, body);
-    }
-
-    @PatchMapping("/api/admin/tools/sets/task/members/{toolId}")
-    public Mono<R<Void>> patchTaskMemberCritical(
-            @PathVariable String toolId,
-            @RequestParam(required = false) String tenantId,
-            @RequestBody ToolSetMemberCriticalPatchRequest body) {
-        return toolManagerAdminClient.patchTaskMemberCritical(tenantId, toolId, body);
     }
 }

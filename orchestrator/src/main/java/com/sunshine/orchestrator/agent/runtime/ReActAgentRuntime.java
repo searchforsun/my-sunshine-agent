@@ -121,13 +121,12 @@ public class ReActAgentRuntime implements AgentRuntime {
         String assistantMessageId = request.assistantMessageId();
         sandboxSessionLifecycle.prepareRun(request);
         try {
-        // 场景覆盖层：MAIN 模式根据 conversation.kind 注入 scene-overlay；task 会话同时注入当前 checkout 目录
-        String convKind = null;
+        // 场景覆盖层：会话 kind 从 request 透传（不查库）；workspace checkout 目录仅 MAIN 需查库
+        String convKind = request.conversationKind();
         String workspaceCheckout = null;
         if (request.role() == AgentRole.MAIN && StringUtils.hasText(request.conversationId())) {
             ChatConversationEntity conv = conversationRepo.findById(request.conversationId()).orElse(null);
             if (conv != null) {
-                convKind = conv.getKind();
                 workspaceCheckout = conv.getCheckoutPath();
             }
         }

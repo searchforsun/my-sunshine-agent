@@ -201,7 +201,6 @@ export interface ToolSetMemberItem {
   sourceRef: string
   sourceLabel: string
   sideEffect: string
-  critical: boolean
   sortOrder: number
 }
 
@@ -231,7 +230,6 @@ export interface ToolSetPickerResponse {
 
 export interface ToolSetMemberAddItem {
   toolId: string
-  critical?: boolean
 }
 
 export interface ToolSetMemberAddResult {
@@ -294,23 +292,6 @@ export async function removeToolSetMembers(
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ toolIds }),
   })
-  await parseApiResponse<void>(res, { allowEmptyData: true })
-}
-
-/** critical 仅对 task 默认集有意义 */
-export async function patchTaskMemberCritical(
-  toolId: string,
-  critical: boolean,
-  tenantId?: TenantId,
-): Promise<void> {
-  const res = await fetch(
-    apiUrl(`/api/admin/tools/sets/task/members/${encodeURIComponent(toolId)}${toolSetTenantQs(tenantId)}`),
-    {
-      method: 'PATCH',
-      headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ critical }),
-    },
-  )
   await parseApiResponse<void>(res, { allowEmptyData: true })
 }
 

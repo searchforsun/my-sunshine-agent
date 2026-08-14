@@ -117,7 +117,6 @@ public class WorkflowManagerClient {
     public record WorkflowNodeDefaultsDto(
             WorkflowNodeRetryDefaultsDto defaults,
             Map<String, WorkflowNodeRetryDefaultsDto> byType,
-            String criticalOnFailure,
             double backoffMultiplier,
             List<String> retryOnErrorClass) {
     }

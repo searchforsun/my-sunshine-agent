@@ -1,4 +1,4 @@
 package com.sunshine.common.tool.admin;
 
-public record ToolSetMemberAddItem(String toolId, Boolean critical) {
+public record ToolSetMemberAddItem(String toolId) {
 }

@@ -6,7 +6,6 @@ import com.sunshine.common.tool.admin.McpServerPatchRequest;
 import com.sunshine.common.tool.admin.ToolPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
-import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
@@ -171,15 +170,6 @@ public class ToolsAdminController {
             @RequestParam(required = false) String tenantId,
             @RequestBody ToolSetMemberRemoveRequest request) {
         toolSetMemberService.removeMembers(ToolSetKind.fromPath(kind), tenantId, request);
-        return R.ok();
-    }
-
-    @PatchMapping("/tools/sets/task/members/{toolId}")
-    public R<Void> patchTaskMemberCritical(
-            @PathVariable String toolId,
-            @RequestParam(required = false) String tenantId,
-            @RequestBody ToolSetMemberCriticalPatchRequest request) {
-        toolSetMemberService.patchCritical(tenantId, toolId, request);
         return R.ok();
     }
 

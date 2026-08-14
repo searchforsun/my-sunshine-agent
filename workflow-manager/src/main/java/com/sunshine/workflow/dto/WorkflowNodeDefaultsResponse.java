@@ -6,7 +6,6 @@ import java.util.Map;
 public record WorkflowNodeDefaultsResponse(
         WorkflowNodeRetryDefaults defaults,
         Map<String, WorkflowNodeRetryDefaults> byType,
-        String criticalOnFailure,
         double backoffMultiplier,
         List<String> retryOnErrorClass,
         WorkflowCatalogDefaults catalog,

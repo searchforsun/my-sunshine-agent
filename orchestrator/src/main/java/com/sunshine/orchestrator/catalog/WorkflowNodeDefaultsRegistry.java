@@ -71,7 +71,6 @@ public class WorkflowNodeDefaultsRegistry {
                         dto.backoffMultiplier() > 0 ? dto.backoffMultiplier() : 2.0,
                         base.onFailure(),
                         retryOn),
-                byType,
-                dto.criticalOnFailure() != null ? dto.criticalOnFailure() : "fail_fast");
+                byType);
     }
 }

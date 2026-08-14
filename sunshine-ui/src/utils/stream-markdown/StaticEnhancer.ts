@@ -286,7 +286,9 @@ function renderMermaidChart(wrap: HTMLElement, head: HTMLElement, placeholder: H
   const source = wrap.dataset.mermaidSource || ''
   if (!source.trim()) return
   void sharedMermaidRenderer.mount(placeholder, source).then((ok) => {
-    if (ok && wrap.isConnected && !head.querySelector(`.${CP('toolbtn-toggle')}`)) {
+    // 错误态已直接展示源码，不挂工具栏按钮
+    if (ok && wrap.isConnected && !wrap.querySelector(`.${CP('mermaid-error')}`)
+      && !head.querySelector(`.${CP('toolbtn-toggle')}`)) {
       head.appendChild(createMermaidToolButtons())
     }
   })

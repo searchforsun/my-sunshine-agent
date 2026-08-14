@@ -76,8 +76,8 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false),
-                        new ToolSetMemberAddItem("sdk__sunshine-oa__list_oa_tasks", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"),
+                        new ToolSetMemberAddItem("sdk__sunshine-oa__list_oa_tasks"))));
         assertThat(result.added()).containsExactly("sdk__sunshine-finance__list_my_expenses");
         assertThat(result.rejected()).hasSize(1);
         assertThat(result.rejected().getFirst().reason()).isEqualTo("not_enabled");
@@ -90,12 +90,12 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
         var second = toolSetMemberService.addMembers(
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
         assertThat(second.skipped()).containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
 
@@ -105,8 +105,8 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false),
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__get_expense_detail", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"),
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__get_expense_detail"))));
         toolSetMemberService.removeMembers(
                 ToolSetKind.CHAT_DEFAULT,
                 null,
@@ -115,23 +115,12 @@ class ToolSetMemberServiceTest {
     }
 
     @Test
-    void patchCritical_marksTaskMember() {
-        toolSetMemberService.addMembers(
-                ToolSetKind.TASK_DEFAULT,
-                null,
-                new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", true))));
-        var ids = toolSetMemberService.toolIds(ToolSetKind.TASK_DEFAULT, null);
-        assertThat(ids.criticalToolIds()).containsExactly("sdk__sunshine-finance__list_my_expenses");
-    }
-
-    @Test
     void toolIds_returnsMemberIds() {
         toolSetMemberService.addMembers(
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
         assertThat(toolSetMemberService.toolIds(ToolSetKind.CHAT_DEFAULT, null).toolIds())
                 .containsExactly("sdk__sunshine-finance__list_my_expenses");
     }
@@ -142,7 +131,7 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
         assertThat(toolSetMemberRepository.findBySetIdOrderBySortOrderAsc("global-chat-default")).hasSize(1);
     }
 
@@ -152,7 +141,7 @@ class ToolSetMemberServiceTest {
                 ToolSetKind.CHAT_DEFAULT,
                 null,
                 new ToolSetMemberAddRequest(List.of(
-                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses", false))));
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
         var item = toolSetMemberService.pageMembers(ToolSetKind.CHAT_DEFAULT, null, 1, 20, null)
                 .items().getFirst();
         assertThat(item.toolId()).isEqualTo("sdk__sunshine-finance__list_my_expenses");

@@ -62,10 +62,6 @@ public class ToolManagerClient {
         return fetchToolSetToolIds("task", tenantId).toolIds();
     }
 
-    public List<String> fetchTaskCritical(String tenantId) {
-        return fetchToolSetToolIds("task", tenantId).criticalToolIds();
-    }
-
     public ToolSetToolIdsResponse fetchToolSetToolIds(String kind, String tenantId) {
         String effectiveTenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
         assertMayBlock("fetchToolSetToolIds:" + kind);
@@ -85,16 +81,13 @@ public class ToolManagerClient {
                     })
                     .block();
             if (response == null) {
-                return new ToolSetToolIdsResponse(List.of(), List.of());
+                return new ToolSetToolIdsResponse(List.of());
             }
             List<String> toolIds = response.toolIds() != null ? List.copyOf(response.toolIds()) : List.of();
-            List<String> critical = response.criticalToolIds() != null
-                    ? List.copyOf(response.criticalToolIds())
-                    : List.of();
-            return new ToolSetToolIdsResponse(toolIds, critical);
+            return new ToolSetToolIdsResponse(toolIds);
         } catch (Exception e) {
             log.warn("[ToolManagerClient] fetch {} tool-ids error tenant={}: {}", kind, effectiveTenant, e.getMessage());
-            return new ToolSetToolIdsResponse(List.of(), List.of());
+            return new ToolSetToolIdsResponse(List.of());
         }
     }
 

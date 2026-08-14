@@ -51,14 +51,6 @@ class ToolSetResolverTest {
     }
 
     @Test
-    void resolveTaskCriticalTools_intersectsEnabledPool() {
-        when(toolManagerClient.fetchTaskCritical("default")).thenReturn(List.of("A", "B", "D"));
-        when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("A", "B", "C"));
-
-        assertThat(resolver.resolveTaskCriticalTools("default")).containsExactly("A", "B");
-    }
-
-    @Test
     void resolveDefaultTools_taskKind_usesTaskSetNotChat() {
         when(toolManagerClient.fetchTaskDefault("default")).thenReturn(List.of("T1", "T2"));
         when(toolCatalogService.enabledIds("default")).thenReturn(Set.of("T1", "T2", "C1"));

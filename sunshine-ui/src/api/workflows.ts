@@ -94,7 +94,6 @@ export interface WorkflowNodeRetryDefaults {
 export interface WorkflowNodeDefaultsResponse {
   defaults: WorkflowNodeRetryDefaults
   byType: Record<string, WorkflowNodeRetryDefaults>
-  criticalOnFailure?: string
   backoffMultiplier?: number
   retryOnErrorClass?: string[]
   catalog?: { intentAfter: string }

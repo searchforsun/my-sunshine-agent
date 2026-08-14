@@ -8,6 +8,5 @@ public record ToolSetMemberItemResponse(
         String sourceRef,
         String sourceLabel,
         String sideEffect,
-        boolean critical,
         int sortOrder) {
 }

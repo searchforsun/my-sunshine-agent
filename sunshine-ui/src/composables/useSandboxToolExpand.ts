@@ -11,6 +11,8 @@ import {
   resolveSandboxFocusPath,
   resolveStepExpandInner,
 } from '../api/processingSteps'
+import { catalogToolIdFromStepId } from '../api/processingStepsDisplay'
+import { linkifyWebSearchText } from '../utils/webSearchLinkify'
 import {
   writeContentAsAddLines,
   countWriteAddLines,
@@ -68,6 +70,10 @@ function highlightCode(text: string, lang: string | null): string {
 export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep>) {
   const isSandboxTool = computed(() => isSandboxToolStep(toValue(stepSource)))
   const isSandboxExec = computed(() => isSandboxExecStep(toValue(stepSource)))
+  /** 网页搜索：结果以标题/URL/摘要文本展示，URL 需链接化（webfetch 保持原文高亮） */
+  const isWebSearch = computed(() =>
+    catalogToolIdFromStepId(toValue(stepSource).id) === 'sandbox__websearch',
+  )
   const execCommand = computed(() => extractSandboxExecCommand(toValue(stepSource)) ?? '')
   const sandboxRaw = computed(() => {
     if (!isSandboxTool.value) return ''
@@ -131,6 +137,7 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
   const sandboxContentHtml = computed(() => {
     if (!isSandboxTool.value || isSandboxExec.value || !sandboxRaw.value) return ''
     if (sandboxPathEntries.value.length || sandboxEditDiffLines.value.length) return ''
+    if (isWebSearch.value) return linkifyWebSearchText(sandboxRaw.value)
     const path = resolveSandboxFocusPath(toValue(stepSource))
     return highlightCode(sandboxRaw.value, path ? langFromPath(path) : null)
   })
@@ -163,6 +170,7 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
   return {
     isSandboxTool,
     isSandboxExec,
+    isWebSearch,
     execCommand,
     sandboxRaw,
     sandboxPathEntries,

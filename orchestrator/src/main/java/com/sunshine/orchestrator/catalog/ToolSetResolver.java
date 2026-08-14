@@ -32,14 +32,6 @@ public class ToolSetResolver {
         return setIds.stream().filter(pool::contains).toList();
     }
 
-    /** task 关键工具（失败时 fail_fast），与启用池求交 */
-    public List<String> resolveTaskCriticalTools(String tenantId) {
-        String effectiveTenant = normalizeTenant(tenantId);
-        List<String> setIds = toolManagerClient.fetchTaskCritical(effectiveTenant);
-        Set<String> pool = toolCatalogService.enabledIds(effectiveTenant);
-        return setIds.stream().filter(pool::contains).toList();
-    }
-
     /**
      * 按会话 kind 装默认工具集：task→task 集，其余（含 null/blank）→chat 集。
      * 不按 executionMode 分支。

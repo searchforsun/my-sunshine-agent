@@ -666,7 +666,8 @@ export const useChatStore = defineStore('chat', () => {
   function updateTitleLocal(id: string, title: string) {
     const conv = conversations.value.find(c => c.id === id)
     if (!conv || conv.title !== '新对话') return
-    conv.title = title.length > 15 ? title.slice(0, 15) + '…' : title || '新对话'
+    // 数据层保留完整标题，超宽显示交给 CSS ellipsis，避免硬截断丢失内容
+    conv.title = title || '新对话'
     upsertCachedIndex({
       id: conv.id,
       title: conv.title,

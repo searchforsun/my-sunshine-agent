@@ -14,6 +14,7 @@ const emit = defineEmits<{
 
 const {
   isSandboxExec,
+  isWebSearch,
   execCommand,
   sandboxRaw,
   sandboxPathEntries,
@@ -59,7 +60,12 @@ const {
       <SandboxDiffView :lines="sandboxEditDiffLines" :lang="editDiffLang" />
     </template>
     <template v-else>
-      <pre v-if="sandboxContentHtml" class="op-sandbox-code"><code class="hljs" v-html="sandboxContentHtml" /></pre>
+      <div
+        v-if="isWebSearch && sandboxContentHtml"
+        class="op-sandbox-links"
+        v-html="sandboxContentHtml"
+      />
+      <pre v-else-if="sandboxContentHtml" class="op-sandbox-code"><code class="hljs" v-html="sandboxContentHtml" /></pre>
       <pre v-else-if="sandboxRaw" class="op-sandbox-code">{{ sandboxRaw }}</pre>
       <p v-else class="op-exec-empty">无输出</p>
     </template>
@@ -162,6 +168,27 @@ const {
   font-size: var(--sun-font-sm);
   color: var(--sun-text-muted);
   opacity: 0.85;
+}
+
+/* 网页搜索结果：非等宽正文，URL 超链接展示 */
+.op-sandbox-links {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+  font-size: var(--sun-font-base, 13px);
+  line-height: 1.6;
+  color: var(--sun-text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.op-sandbox-links :deep(a) {
+  color: var(--sun-blue, #58a6ff);
+  text-decoration: none;
+}
+
+.op-sandbox-links :deep(a:hover) {
+  text-decoration: underline;
 }
 
 .op-sandbox-paths {

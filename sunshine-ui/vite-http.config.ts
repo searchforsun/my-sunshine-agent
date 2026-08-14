@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
+  // 与 vite.config.ts(5173) 共用默认 node_modules/.vite 会导致预构建缓存互相覆盖、hash 失效
+  cacheDir: 'node_modules/.vite-http',
   server: {
     host: '0.0.0.0',
     port: 5174,

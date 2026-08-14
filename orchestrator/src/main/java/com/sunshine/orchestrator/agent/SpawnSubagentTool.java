@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
+import com.sunshine.orchestrator.catalog.ResourceKindFilter;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -166,6 +167,9 @@ public class SpawnSubagentTool implements AgentTool {
             if (!canAccess(agentEntry, audit.tenantId())) {
                 return errorJson("无权访问智能体: " + agentEntry.displayName());
             }
+            if (!ResourceKindFilter.matches(agentEntry.kind(), audit.conversationKind())) {
+                return errorJson("智能体「" + agentEntry.displayName() + "」不适用于当前会话形态");
+            }
         }
         List<String> toolIds;
         String resolvedSystemOverlay;
@@ -207,7 +211,8 @@ public class SpawnSubagentTool implements AgentTool {
                 agentEntry != null ? agentEntry.kbScope() : null,
                 agentEntry != null ? agentEntry.dataScopeJson() : null,
                 resolvedPermissionsJson,
-                resolvedModelConfigJson);
+                resolvedModelConfigJson)
+                .withConversationKind(audit.conversationKind());
         String runId = request.runId();
         String subBridgeId = request.resolveBridgeId();
         SpawnSubagentTimelineBridge subTimeline =

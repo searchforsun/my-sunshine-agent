@@ -1,11 +1,9 @@
 package com.sunshine.tool.admin;
 
-import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.tool.ToolIds;
 import com.sunshine.common.tool.admin.ToolSetMemberAddItem;
 import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
-import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberItemResponse;
 import com.sunshine.common.tool.admin.ToolSetMemberReject;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
@@ -20,7 +18,6 @@ import com.sunshine.tool.entity.ToolDefinitionEntity;
 import com.sunshine.tool.entity.ToolSetEntity;
 import com.sunshine.tool.entity.ToolSetMemberEntity;
 import com.sunshine.tool.event.ToolCatalogChangePublisher;
-import com.sunshine.tool.exception.ToolErrorCode;
 import com.sunshine.tool.repo.McpServerRepository;
 import com.sunshine.tool.repo.SdkApplicationRepository;
 import com.sunshine.tool.repo.ToolDefinitionRepository;
@@ -150,7 +147,6 @@ public class ToolSetMemberService {
             member.setSetId(writable.set().getId());
             member.setToolId(toolId);
             member.setSortOrder(nextOrder++);
-            member.setCritical(kind == ToolSetKind.TASK_DEFAULT && Boolean.TRUE.equals(item.critical()));
             toolSetMemberRepository.save(member);
             added.add(toolId);
         }
@@ -178,33 +174,15 @@ public class ToolSetMemberService {
         publish(tenantId);
     }
 
-    @Transactional
-    public void patchCritical(String tenantId, String toolId, ToolSetMemberCriticalPatchRequest request) {
-        if (!StringUtils.hasText(toolId)) {
-            throw new BizException(ToolErrorCode.TOOL_ID_INVALID);
-        }
-        WritableSet writable = resolveWritableSet(ToolSetKind.TASK_DEFAULT, tenantId);
-        ToolSetMemberEntity member = toolSetMemberRepository
-                .findBySetIdAndToolId(writable.set().getId(), toolId.strip())
-                .orElseThrow(() -> new BizException(ToolErrorCode.TOOL_SET_MEMBER_NOT_FOUND));
-        member.setCritical(request != null && request.critical());
-        toolSetMemberRepository.save(member);
-        touchSet(writable.set());
-        publish(tenantId);
-    }
-
     /**
-     * Runtime 读：当前 kind 默认集的成员（含 critical 标记）。
+     * Runtime 读：当前 kind 默认集的成员。
      */
     public ToolSetToolIdsResponse toolIds(ToolSetKind kind, String tenantId) {
         List<ToolSetMemberEntity> members = findSet(kind, tenantId)
                 .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
                 .orElse(List.of());
         List<String> toolIds = members.stream().map(ToolSetMemberEntity::getToolId).toList();
-        List<String> criticalIds = kind == ToolSetKind.TASK_DEFAULT
-                ? members.stream().filter(ToolSetMemberEntity::isCritical).map(ToolSetMemberEntity::getToolId).toList()
-                : List.of();
-        return new ToolSetToolIdsResponse(toolIds, criticalIds);
+        return new ToolSetToolIdsResponse(toolIds);
     }
 
     private List<ToolSetMemberItemResponse> buildMemberItems(String setId, String tenantId) {
@@ -220,7 +198,6 @@ public class ToolSetMemberService {
                             tool.getSourceRef(),
                             formatSourceTitle(tool.getSource(), tool.getSourceRef(), sourceLabels),
                             tool.getSideEffect(),
-                            member.isCritical(),
                             member.getSortOrder())));
         }
         return items;
