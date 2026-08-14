@@ -1,6 +1,6 @@
 # 时间线前缀图标（极简 / 标准）设计
 
-> **状态**：📋 评审中
+> **状态**：✅ 已实现
 > **日期**：2026-08-14
 > **编号**：阶段四增量（纯前端 · Chat 时间线展示）
 > **前置**：[timeline-summary-duration](./2026-07-20-timeline-summary-duration-design.md)（总览行）· `OperationStack` / `OperationCard` / `ToolGroupCard` 现有行模型
