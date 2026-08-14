@@ -28,9 +28,11 @@ import { useRouter } from 'vue-router'
 import StaticMarkdown from '../StaticMarkdown.vue'
 import { isToolStepId, isHitlSummaryAwaiting } from '../../api/hitlSteps'
 import HitlStepActions from './HitlStepActions.vue'
+import TimelineStepIcon from './TimelineStepIcon.vue'
 import SandboxToolExpandPanel from './SandboxToolExpandPanel.vue'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
 import { useSandboxToolExpand } from '../../composables/useSandboxToolExpand'
+import { useTimelineStyle } from '../../composables/useTimelineStyle'
 import { useChatStore } from '../../stores/chatStore'
 
 const props = withDefaults(defineProps<{
@@ -66,6 +68,8 @@ const emit = defineEmits<{
   toggle: []
   hitlDecided: [token: string, approved: boolean]
 }>()
+
+const { timelineStyle } = useTimelineStyle()
 
 function onRowActivate() {
   // exec / websearch / webfetch 只展开详情，不跳转工作区；read 定位文件，其余沙箱步打开工作区
@@ -253,6 +257,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       'is-running': isRunning && live,
       'is-clickable': rowClickable,
       'is-cancellable': canPauseTool,
+      'is-expandable': canExpand,
     }"
   >
     <div
@@ -264,6 +269,23 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       @keydown.space.prevent="onRowActivate"
     >
       <span class="op-main">
+        <span v-if="timelineStyle === 'standard'" class="op-step-icon">
+          <TimelineStepIcon class="op-type-icon" :step="step" />
+          <svg
+            v-if="canExpand"
+            class="op-chevron"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
         <span
           class="op-label operation-card-title"
           :class="{ 'op-shimmer': showShimmer, 'is-terminal': isTerminal }"
@@ -296,7 +318,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
           <polyline points="4.5 8 7 10.5 11.5 5.5" />
         </svg>
         <svg
-          v-if="canExpand"
+          v-if="canExpand && timelineStyle !== 'standard'"
           class="op-chevron"
           width="12"
           height="12"
@@ -508,6 +530,49 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
 }
 
 .op-line.is-expanded .op-main .op-chevron {
+  transform: rotate(90deg);
+  opacity: 0.85;
+}
+
+/* 行首图标槽位：固定 16px，type-icon 与 chevron 绝对定位重叠 */
+.op-step-icon {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.op-step-icon .op-type-icon,
+.op-step-icon .op-chevron {
+  position: absolute;
+  transition: opacity 0.12s ease, transform 0.15s ease;
+}
+
+.op-step-icon .op-type-icon {
+  opacity: 1;
+}
+
+.op-step-icon .op-chevron {
+  color: var(--sun-text-secondary);
+  opacity: 0;
+  margin: 0;
+}
+
+/* 仅可展开行 hover：图标淡出、> 淡入 */
+.op-line.is-expandable:hover .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
+.op-line.is-expandable:hover .op-step-icon .op-chevron {
+  opacity: 0.85;
+}
+
+/* 展开态 ^ */
+.op-line.is-expanded .op-step-icon .op-chevron {
   transform: rotate(90deg);
   opacity: 0.85;
 }
