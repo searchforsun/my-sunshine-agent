@@ -598,7 +598,11 @@ scoped CSS 新增（替换/补充现有 `.op-main .op-chevron` 规则）：
   opacity: 0.85;
 }
 
-/* 展开态 ^ */
+/* 展开态 ^：图标清除、箭头旋转显示（避免非 hover 时图标与 ^ 叠加） */
+.op-line.is-expanded .op-step-icon .op-type-icon {
+  opacity: 0;
+}
+
 .op-line.is-expanded .op-step-icon .op-chevron {
   transform: rotate(90deg);
   opacity: 0.85;
@@ -705,6 +709,10 @@ const { timelineStyle } = useTimelineStyle()
 
 .tool-group-row:hover .op-step-icon .op-chevron {
   opacity: 0.85;
+}
+
+.tool-group.is-expanded .op-step-icon .op-type-icon {
+  opacity: 0;
 }
 
 .tool-group.is-expanded .op-step-icon .op-chevron {
@@ -877,6 +885,11 @@ function roundGroupLeadStep(row: DisplayRow): ProcessingStep | undefined {
 .timeline-summary.is-clickable:hover .op-step-icon .op-chevron,
 .round-group:not(.is-expanded):hover .op-step-icon .op-chevron {
   opacity: 0.85;
+}
+
+.timeline-summary.is-expanded .op-step-icon .op-type-icon,
+.round-group.is-expanded .op-step-icon .op-type-icon {
+  opacity: 0;
 }
 
 .timeline-summary.is-expanded .op-step-icon .op-chevron,
