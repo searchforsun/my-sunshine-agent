@@ -5,10 +5,12 @@ import { useAuthStore } from '../stores/authStore'
 import { useChatStore } from '../stores/chatStore'
 import ExecutionModeSelector from './chat/ExecutionModeSelector.vue'
 import SidebarSectionsLayoutSelector from './chat/SidebarSectionsLayoutSelector.vue'
+import TimelineStyleSelector from './chat/TimelineStyleSelector.vue'
 import WriteHitlModeSelector from './sandbox/WriteHitlModeSelector.vue'
 import TenantSelector from './knowledge/TenantSelector.vue'
 import KbSelector from './knowledge/KbSelector.vue'
 import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useTimelineStyle, type TimelineStyle } from '../composables/useTimelineStyle'
 import { useKbPreference } from '../composables/useKbPreference'
 import { useWriteHitlMode } from '../composables/useWriteHitlMode'
 import { isWriteHitlMode, type WriteHitlMode } from '../api/writeHitlModes'
@@ -36,6 +38,7 @@ const auth = useAuthStore()
 const chatStore = useChatStore()
 const message = useMessage()
 const { globalDefault, setGlobalDefault } = useExecutionPreference()
+const { timelineStyle, setTimelineStyle } = useTimelineStyle()
 const { setGlobalDefaultKb } = useKbPreference()
 const { globalDefault: writeHitlGlobal, setGlobalDefault: setWriteHitlGlobal } = useWriteHitlMode(
   () => chatStore.currentId,
@@ -45,6 +48,7 @@ const nickname = ref('')
 const defaultMode = ref(globalDefault.value)
 const defaultWriteHitl = ref<WriteHitlMode>(writeHitlGlobal.value)
 const sidebarLayout = ref<SidebarSectionsLayout>('vertical')
+const timelineStyleLocal = ref<TimelineStyle>('minimal')
 const tenantId = ref<TenantId>('default')
 const defaultKbId = ref<string | null>(null)
 const settingsKbs = ref<KnowledgeBase[]>([])
@@ -93,6 +97,7 @@ watch(
       const fromAuth = auth.user?.defaultWriteHitlMode
       defaultWriteHitl.value = isWriteHitlMode(fromAuth) ? fromAuth : writeHitlGlobal.value
       sidebarLayout.value = normalizeSidebarSectionsLayout(auth.user?.sidebarSectionsLayout)
+      timelineStyleLocal.value = timelineStyle.value
       tenantId.value = auth.user?.tenantId ?? 'default'
       personalRules.value = auth.user?.personalRules ?? ''
       githubUrl.value = auth.user?.githubUrl ?? ''
@@ -132,6 +137,7 @@ async function handleSave() {
       gitlabUrl.value || null, nextGitlabToken,
       sidebarLayout.value, nextKbId)
     setGlobalDefault(defaultMode.value)
+    setTimelineStyle(timelineStyleLocal.value)
     setWriteHitlGlobal(defaultWriteHitl.value)
     setGlobalDefaultKb(nextKbId || null)
     const convId = chatStore.currentId
@@ -226,6 +232,13 @@ async function handleSave() {
               :model-value="sidebarLayout"
               :disabled="saving"
               @update:model-value="sidebarLayout = $event"
+            />
+          </NFormItem>
+          <NFormItem label="时间线风格">
+            <TimelineStyleSelector
+              :model-value="timelineStyleLocal"
+              :disabled="saving"
+              @update:model-value="timelineStyleLocal = $event"
             />
           </NFormItem>
         </NForm>
