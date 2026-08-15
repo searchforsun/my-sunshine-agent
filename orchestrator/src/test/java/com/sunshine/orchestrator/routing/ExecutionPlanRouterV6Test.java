@@ -73,7 +73,7 @@ class ExecutionPlanRouterV6Test {
                 skillBindingParser,
                 agentBindingParser);
         when(skillBindingParser.parse(any(), any(), any())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
-        when(skillBindingParser.stripAtMention(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(skillBindingParser.stripSlashMention(any())).thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.sanitizeSkillPlan(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

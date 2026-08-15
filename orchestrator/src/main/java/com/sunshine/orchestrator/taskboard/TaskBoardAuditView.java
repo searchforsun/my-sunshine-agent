@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 /** GET /api/audit/taskboard/{messageId} 响应 */
-public record ReactTaskBoardAuditView(
+public record TaskBoardAuditView(
         String boardId,
         String messageId,
         String conversationId,

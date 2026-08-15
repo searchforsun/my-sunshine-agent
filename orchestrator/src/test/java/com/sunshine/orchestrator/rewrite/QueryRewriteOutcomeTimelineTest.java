@@ -1,33 +1,10 @@
 package com.sunshine.orchestrator.rewrite;
 
-import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
-import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
-import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
-import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class QueryRewriteOutcomeTimelineTest {
-
-    @BeforeEach
-    void setUp() {
-        PromptCatalogHolder holder = new PromptCatalogHolder();
-        holder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\"}"))));
-        RewriteTimelineLabels.bind(new TimelinePromptCatalog(holder));
-    }
-
-    @AfterEach
-    void tearDown() {
-        RewriteTimelineLabels.bind(null);
-    }
 
     @Test
     void timelineDetailUsesTraceScenarioLabelForRag() {
@@ -59,8 +36,10 @@ class QueryRewriteOutcomeTimelineTest {
     }
 
     @Test
-    void intentTimelineDetailUsesCatalogLabel() {
+    void intentOutcomeWithoutLabel_noPrefixInTimelineDetail() {
         QueryRewriteOutcome outcome = QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 15L);
-        assertThat(outcome.timelineDetail()).startsWith("补全问句");
+        assertThat(outcome.timelineDetail())
+                .startsWith("原问题：待审批")
+                .doesNotStartWith("补全问句");
     }
 }

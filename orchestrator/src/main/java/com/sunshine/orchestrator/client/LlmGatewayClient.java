@@ -3,8 +3,6 @@ package com.sunshine.orchestrator.client;
 import com.sunshine.common.model.ModelSceneKey;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
@@ -62,28 +60,6 @@ public class LlmGatewayClient {
 
     // ==================== 流式补全 ====================
 
-    public Flux<StreamToken> streamDirectly(String userMessage) {
-        return streamWithHistory(List.of(), userMessage);
-    }
-
-    public Flux<StreamToken> streamWithHistory(List<ChatTurn> history, String userMessage) {
-        return streamWithMemory(AssembledContext.empty(), userMessage);
-    }
-
-    public Flux<StreamToken> streamWithMemory(AssembledContext memory, String userMessage) {
-        List<Map<String, Object>> messages = buildMessages(memory, userMessage, null);
-        return doStream(messages);
-    }
-
-    public Flux<StreamToken> streamContinue(List<ChatTurn> history, String userMessage, String partialAssistant) {
-        return streamContinue(AssembledContext.empty(), userMessage, partialAssistant);
-    }
-
-    public Flux<StreamToken> streamContinue(AssembledContext memory, String userMessage, String partialAssistant) {
-        List<Map<String, Object>> messages = buildMessages(memory, userMessage, partialAssistant);
-        return doStream(messages);
-    }
-
     /** 流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
     public Flux<StreamToken> streamComposed(PromptComposeRequest request) {
         return doStream(promptComposer.composeGatewayMessages(request));
@@ -99,9 +75,7 @@ public class LlmGatewayClient {
         return complete(resolved.effectiveModel(), resolved.fallbackModel(), systemPrompt, userContent);
     }
 
-    /**
-     * 非流式补全 — 指定模型（QueryRewrite 等内部用途）。
-     */
+    /** 非流式补全 — 指定模型（内部用途）。 */
     public String complete(String model, String systemPrompt, String userContent) {
         return complete(model, null, systemPrompt, userContent);
     }
@@ -113,14 +87,6 @@ public class LlmGatewayClient {
         }
         messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
         return completeMessages(model, fallbackModel, messages).contentOrEmpty();
-    }
-
-    /** 非流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
-    public LlmCompletion completeComposed(PromptComposeRequest request) {
-        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.DEFAULT.key(), null);
-        return completeMessages(
-                resolved.effectiveModel(), resolved.fallbackModel(),
-                promptComposer.composeGatewayMessages(request));
     }
 
     // ==================== 公共底层 API（供内部调用方） ====================
@@ -201,14 +167,6 @@ public class LlmGatewayClient {
             return "";
         }
         return value.toString().strip();
-    }
-
-    private List<Map<String, Object>> buildMessages(
-            AssembledContext memory, String userMessage, String partialAssistant) {
-        PromptComposeRequest request = partialAssistant != null && !partialAssistant.isEmpty()
-                ? PromptComposeRequest.forDirectContinue(memory, userMessage, partialAssistant)
-                : PromptComposeRequest.forDirect(memory, userMessage);
-        return promptComposer.composeGatewayMessages(request);
     }
 
     private Flux<StreamToken> doStream(List<Map<String, Object>> messages) {

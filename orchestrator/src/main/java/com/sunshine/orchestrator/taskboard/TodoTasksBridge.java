@@ -41,7 +41,7 @@ public final class TodoTasksBridge {
             return;
         }
         int revision = items.size();
-        String progress = ReactTaskBoardService.progressSummary(items);
+        String progress = TaskBoardService.progressSummary(items);
         com.sunshine.orchestrator.agent.StepEventBridge.emit(bridgeId, session ->
                 timelineSupport.applyUpdate(session, items, revision, progress));
     }

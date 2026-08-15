@@ -1,12 +1,5 @@
 package com.sunshine.orchestrator.rewrite;
 
-import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
-import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
-import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
-import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
-
-import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,11 +15,6 @@ class QueryRewriteTraceTest {
 
     @Test
     void recordsAndSummarizesRewriteEvents() {
-        PromptCatalogHolder holder = new PromptCatalogHolder();
-        holder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\"}"))));
-        RewriteTimelineLabels.bind(new TimelinePromptCatalog(holder));
         QueryRewriteTrace.bind("m1");
         QueryRewriteTrace.record("m1", QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 12L));
         QueryRewriteTrace.record("m1",
@@ -34,7 +22,6 @@ class QueryRewriteTraceTest {
 
         assertThat(QueryRewriteTrace.intentOutcome("m1")).isPresent();
         assertThat(QueryRewriteTrace.combinedTimelineDetail("m1"))
-                .contains("补全问句")
                 .contains("原问题：待审批")
                 .contains("优化检索词")
                 .contains("优化后：查询待审批报销");
@@ -51,7 +38,6 @@ class QueryRewriteTraceTest {
         QueryRewriteTrace.AuditRewriteSummary summary = QueryRewriteTrace.auditSummary("m1");
         assertThat(summary.rewriteApplied()).isTrue();
         assertThat(summary.rewriteLatencyMs()).isEqualTo(20L);
-        RewriteTimelineLabels.bind(null);
     }
 
     @Test

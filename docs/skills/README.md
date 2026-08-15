@@ -18,6 +18,7 @@ python3 scripts/sync_enterprise_skills.py
 | 目录 | 说明 |
 |------|------|
 | `finance-analysis/` | 报销/费用与制度内部合规分析（corpus-50） |
+| `policy-qa/` | 制度问答（制度/政策/办法咨询，轨 A） |
 | `policy-review/` | 多域制度条款解读（青松假、网约车、锁钥通道等） |
 | `compliance-check/` | 制度与业务数据逐项合规对比 |
 | `compliance-review/` | 费用合规审查（报销合规对照场景） |
@@ -34,7 +35,7 @@ python3 scripts/sync_enterprise_skills.py
 > **SSOT 索引**：[docs/sandbox/README.md](../sandbox/README.md) · [permanent-tools](../superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md)
 
 - 主 Chat ReAct **始终**可使用 `sandbox__*`（对话级 `/workspace`）。
-- Skill 提供 **指令 overlay** + 可选 **`/skills/{skillId}/` 物料挂载**（`@skill` 或 L3 `skillId`）。
+- Skill 提供 **指令 overlay** + 可选 **`/skills/{skillId}/` 物料挂载**（`/skill` 或 L3 `skillId`）。
 - Catalog 字段 `sandbox=docker` 仅作展示/种子标识；**不再**决定 orchestrator 是否注入沙箱工具。
 - 工作区抽屉可调 **写确认跳过**（`writeHitlMode`）；时间线 glob 展开显示相对路径。
 

@@ -56,7 +56,7 @@ import java.util.function.Function;
  *
  * <p>onActing：
  * <ul>
- *   <li>入口：开 tool 步（跳过 manage_tasks / spawn_subagent / request_decision），登记可取消工具</li>
+ *   <li>入口：开 tool 步（跳过 spawn_subagent / request_decision），登记可取消工具</li>
  *   <li>返回 Flux 内 doOnNext 拦截 {@link ToolResultTextDeltaEvent} 按 toolCallId 累积结果文本，
  *       {@link ToolResultEndEvent} 触发收口（摘要/editDiff/取消判定）。
  *       streamEvents 事件流不携带 ToolResultBlock，故以 delta 累积还原结果文本（方案 A）</li>

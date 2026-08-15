@@ -75,7 +75,7 @@ final class TimelineSessionCompletions {
         emitter.applyAt(stepId, phase, EventKind.PROGRESS, activeSummary, null, metadata, ts);
     }
 
-    /** tasks 步首建锚定在刚结束的 think 之后，不随 manage_tasks 实际调用时刻漂移 */
+    /** tasks 步首建锚定在刚结束的 think 之后，不随 todo_write 实际调用时刻漂移 */
     private long taskBoardAnchorStart(long fallback) {
         if (state.lastCompletedThinkEndedAt <= 0) {
             return fallback;

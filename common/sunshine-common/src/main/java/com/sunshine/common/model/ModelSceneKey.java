@@ -11,7 +11,6 @@ public enum ModelSceneKey {
     CHAT("chat", "对话主循环", "对话主 Agent 缺省主/备模型；用户可选集另由 user_selectable 控制"),
     INTENT("intent", "意图分类", "IntentRouter 分类请求所用模型"),
     PLANNER("planner", "规划", "Planner / 规划类 LLM 调用"),
-    REWRITE_INTENT("rewrite.intent", "路由域改写", "Query 改写（intent / 路由域）"),
     TITLE("title", "会话标题", "会话标题生成"),
     SUBAGENT("subagent", "子代理缺省", "spawn 未带 modelConfig 时的缺省模型");
 

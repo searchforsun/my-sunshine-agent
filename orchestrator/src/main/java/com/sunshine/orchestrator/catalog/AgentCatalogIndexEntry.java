@@ -6,7 +6,8 @@ public record AgentCatalogIndexEntry(
         String description,
         boolean enabled,
         String kind,
-        String bizScene
+        String bizScene,
+        String toolsJson
 ) {
     public AgentCatalogIndexEntry {
         if (kind == null || kind.isBlank()) {

@@ -37,6 +37,11 @@ ENTERPRISE_SKILLS: list[dict] = [
         "description": "报销/费用单据与企业制度的内部合规分析（对齐 corpus-50）",
     },
     {
+        "id": "policy-qa",
+        "displayName": "制度问答",
+        "description": "企业制度/流程知识问答场景",
+    },
+    {
         "id": "policy-review",
         "displayName": "制度审查",
         "description": "企业多域制度条款解读（人事/财务/安全/IT 等，对齐 corpus-50）",
@@ -177,11 +182,11 @@ def upsert_skill(headers: dict, meta: dict) -> None:
         timeout=120,
     )
     up.raise_for_status()
-    uploaded = unwrap_r(up.json(), context="upload")
-    version = uploaded.get("version") if isinstance(uploaded, dict) else None
-    if version is None:
-        versions = api_json("GET", f"/api/skills/{skill_id}/versions", json_headers)
-        version = max(v["version"] for v in versions)
+    unwrap_r(up.json(), context="upload")
+    # upload 响应 version 为 active_version，非新建版本；发布最新 draft（无则最新）
+    versions = api_json("GET", f"/api/skills/{skill_id}/versions", json_headers)
+    drafts = [v for v in versions if v.get("status") == "draft"]
+    version = max((v["version"] for v in drafts), default=0) or max(v["version"] for v in versions)
     print(f"[OK] upload {skill_id} -> v{version}")
 
     api_json(

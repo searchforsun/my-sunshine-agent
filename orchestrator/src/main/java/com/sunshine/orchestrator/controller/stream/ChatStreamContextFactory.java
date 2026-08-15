@@ -85,7 +85,7 @@ public class ChatStreamContextFactory {
         }
         String executionQuery = userContent;
         if (preference.isForced() && !preference.allowsSkillBinding()) {
-            executionQuery = skillBindingParser.stripAtMention(userContent);
+            executionQuery = skillBindingParser.stripSlashMention(userContent);
         } else if (StringUtils.hasText(msg.getSkillId())) {
             executionQuery = skillBindingParser.stripSkillMentions(userContent);
         }

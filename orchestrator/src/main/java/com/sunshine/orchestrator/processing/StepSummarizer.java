@@ -22,7 +22,7 @@ public final class StepSummarizer {
         return "「" + clipped + "」";
     }
 
-    /** 按显示宽度截断：ASCII 1、CJK/全角 2，避免英文 @skill-id 被 18 字符硬切过短 */
+    /** 按显示宽度截断：ASCII 1、CJK/全角 2，避免英文 /skill-id 被 18 字符硬切过短 */
     static String clipByDisplayBudget(String text, int budget) {
         if (text == null || text.isBlank() || budget <= 0) {
             return text != null ? text : "";

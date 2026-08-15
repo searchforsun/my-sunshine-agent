@@ -12,7 +12,7 @@ import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.DecisionResumeSteps;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
-import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
+import com.sunshine.orchestrator.taskboard.TaskBoardService;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
 import com.sunshine.orchestrator.grounding.GroundingVerdict;
@@ -64,7 +64,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final PromptComposer promptComposer;
     private final AnswerGroundingChecker groundingChecker;
     private final AgentGroundingProperties groundingProperties;
-    private final ReactTaskBoardService taskBoardService;
+    private final TaskBoardService taskBoardService;
     private final AgentExecutionProperties executionProperties;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
     private final ChatConversationRepository conversationRepo;

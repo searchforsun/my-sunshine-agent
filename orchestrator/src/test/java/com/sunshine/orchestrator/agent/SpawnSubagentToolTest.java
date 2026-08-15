@@ -20,6 +20,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -93,7 +94,8 @@ class SpawnSubagentToolTest {
         lenient().when(reactProps.getAsyncTool()).thenReturn(realExecutionProperties.getReact().getAsyncTool());
         lenient().when(toolSetResolver.resolveDefaultTools(any(), any())).thenReturn(List.of("search_knowledge"));
         SpawnSubagentLabels.bind(new SpawnSubagentLabelService(timelinePromptCatalog));
-    }
+        com.sunshine.orchestrator.processing.SkillLoadLabels.bind(new com.sunshine.orchestrator.processing.SkillLoadLabelService(
+                skillCatalogService, com.sunshine.orchestrator.prompt.TimelinePromptCatalog.withDefaults()));    }
 
     @AfterEach
     void tearDown() {
@@ -157,6 +159,42 @@ class SpawnSubagentToolTest {
         // 真续写
         SpawnSubagentTool.appendAnswerContent(sb, StreamToken.content("甲乙丙"));
         assertThat(sb.toString()).isEqualTo("甲乙丙");
+    }
+
+    @Test
+    void predefinedAgentWithSkill_injectsSkillLoadStep() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        registry.bind(BRIDGE, session, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
+        StepEventBridge.registerMainRun(MSG, BRIDGE);
+        StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
+
+        when(agentCatalogService.find("compliance-agent"))
+                .thenReturn(Optional.of(new com.sunshine.orchestrator.catalog.AgentCatalogEntry(
+                        "compliance-agent", "业务合规对照智能体", "制度对照",
+                        "system", List.of("compliance-check"), List.of(),
+                        "[\"sdk__sunshine-biz__list_my_expenses\"]", true, "default",
+                        null, null, null, null, 2, 5,
+                        com.sunshine.orchestrator.catalog.AgentCatalogEntry.AgentSource.INTERNAL,
+                        null, null, null, "chat", null)));
+        when(skillCatalogService.findIndex("compliance-check"))
+                .thenReturn(Optional.of(new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
+                        "compliance-check", "业务合规检查", "desc", 1, true, "none", "all", null)));
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("合规结论")));
+
+        String out = tool.spawnSubagent("查我的报销", "compliance-agent", null);
+
+        assertThat(out).isEqualTo("合规结论");
+        ArgumentCaptor<StreamToken> tokenCaptor = ArgumentCaptor.forClass(StreamToken.class);
+        verify(timelineSupport).fold(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), tokenCaptor.capture());
+        ProcessingStep skillStep = tokenCaptor.getValue().step();
+        assertThat(skillStep).isNotNull();
+        assertThat(skillStep.id()).isEqualTo("skill");
+        assertThat(skillStep.phase()).isEqualTo("skill");
+        assertThat(skillStep.summary().after()).contains("compliance-check");
+        assertThat(skillStep.metadata().skillId()).isEqualTo("compliance-check");
     }
 
     @Test

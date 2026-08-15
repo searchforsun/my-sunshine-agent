@@ -85,7 +85,7 @@ public class TimelineStepLabelService {
                 return detail.strip();
             }
             AgentPromptProperties.StepTimeline step = stepTemplate(TimelineStepId.SKILL.id());
-            return TimelineLabelTemplates.textOrDefault(step != null ? step.getAfterFallback() : null, "Skill 已加载");
+            return TimelineLabelTemplates.textOrDefault(step != null ? step.getAfterFallback() : null, "技能已加载");
         }
         return null;
     }

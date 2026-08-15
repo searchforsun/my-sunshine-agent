@@ -130,6 +130,10 @@ public class ForcedExecutionRouter {
             }));
         }
         return pipeline.flatMap(a -> {
+            // L0 命中（任意 /skill 或任意 $agent）：跳过规则层与 L3，直接出方案
+            if (a.hasL0Trigger()) {
+                return Mono.just(a.toPlan());
+            }
             applyTrackRule(lockedCtx.userMessage(), a);
             if (!a.needsL3()) {
                 return Mono.just(a.toPlan());
@@ -339,6 +343,12 @@ public class ForcedExecutionRouter {
                 workflowId = llm.workflowId().strip();
             }
             mergeParamsFillGaps(llm.params());
+        }
+
+        /** L0 命中：任意 /skill 或任意 $agent 即视为触发，跳过规则层与 L3 */
+        private boolean hasL0Trigger() {
+            return StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_SKILL))
+                    || StringUtils.hasText(params.get(PARAM_AGENT_IDS));
         }
 
         private boolean needsL3() {

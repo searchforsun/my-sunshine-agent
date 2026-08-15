@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Nacos agent.skill — @ 绑定与强提示句式 */
+/** Nacos agent.skill — / 绑定与强提示句式 */
 @Data
 @Component
 @RefreshScope

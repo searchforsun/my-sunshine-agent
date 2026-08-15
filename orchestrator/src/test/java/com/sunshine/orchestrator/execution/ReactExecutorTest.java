@@ -61,13 +61,13 @@ class ReactExecutorTest {
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("ok")));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "msg-1", "@finance-analysis 是否合规", AssembledContext.empty(),
+                "c1", "msg-1", "/finance-analysis 是否合规", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.FAST, null,
                         Map.of(
                                 SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
                                 SkillBindingOutcome.PARAM_EFFECTIVE_QUERY, "是否合规"),
-                        "skill:@mention"));
+                        "skill:/mention"));
 
         reactExecutor.execute(ctx).collectList().block();
 

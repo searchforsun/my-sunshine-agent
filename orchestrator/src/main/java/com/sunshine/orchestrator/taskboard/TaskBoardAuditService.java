@@ -21,21 +21,21 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ReactTaskBoardAuditService {
+public class TaskBoardAuditService {
 
     private final AuditPublisher auditPublisher;
-    private final ReactTaskBoardRepository repository;
+    private final TaskBoardRepository repository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public void persistFinal(ReactTaskBoardState state) {
+    public void persistFinal(TaskBoardState state) {
         if (state == null || state.assistantMsgId() == null || state.assistantMsgId().isBlank()) {
             return;
         }
         try {
             StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(state.assistantMsgId());
             Instant now = Instant.now();
-            ReactTaskBoardEntity entity = repository.findByMessageId(state.assistantMsgId()).orElseGet(() -> {
-                ReactTaskBoardEntity created = new ReactTaskBoardEntity();
+            TaskBoardEntity entity = repository.findByMessageId(state.assistantMsgId()).orElseGet(() -> {
+                TaskBoardEntity created = new TaskBoardEntity();
                 created.setId(state.boardId());
                 created.setMessageId(state.assistantMsgId());
                 created.setCreatedAt(now);
@@ -56,18 +56,18 @@ public class ReactTaskBoardAuditService {
         }
     }
 
-    public Optional<ReactTaskBoardAuditView> findByMessageId(String messageId) {
+    public Optional<TaskBoardAuditView> findByMessageId(String messageId) {
         if (!StringUtils.hasText(messageId)) {
             return Optional.empty();
         }
         return repository.findByMessageId(messageId.strip()).map(this::toView);
     }
 
-    private ReactTaskBoardAuditView toView(ReactTaskBoardEntity entity) {
+    private TaskBoardAuditView toView(TaskBoardEntity entity) {
         try {
             List<TaskBoardItemView> items = objectMapper.readValue(
                     entity.getItemsJson(), new TypeReference<>() {});
-            return new ReactTaskBoardAuditView(
+            return new TaskBoardAuditView(
                     entity.getId(),
                     entity.getMessageId(),
                     entity.getConversationId(),
@@ -79,7 +79,7 @@ public class ReactTaskBoardAuditService {
                     entity.getUpdatedAt());
         } catch (Exception e) {
             log.warn("[TaskBoardAudit] items 解析失败 msg={}: {}", entity.getMessageId(), e.getMessage());
-            return new ReactTaskBoardAuditView(
+            return new TaskBoardAuditView(
                     entity.getId(),
                     entity.getMessageId(),
                     entity.getConversationId(),
@@ -92,14 +92,14 @@ public class ReactTaskBoardAuditService {
         }
     }
 
-    private void publishEvent(String eventType, ReactTaskBoardState state, String status) {
+    private void publishEvent(String eventType, TaskBoardState state, String status) {
         try {
             StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(state.assistantMsgId());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("boardId", state.boardId());
             payload.put("revision", state.revision());
             payload.put("items", state.items());
-            payload.put("summary", ReactTaskBoardService.progressSummary(state.items()));
+            payload.put("summary", TaskBoardService.progressSummary(state.items()));
             String payloadJson = objectMapper.writeValueAsString(payload);
             auditPublisher.publish(new AuditEvent(
                     UUID.randomUUID().toString().replace("-", ""),

@@ -9,12 +9,12 @@ import lombok.Setter;
 
 import java.time.Instant;
 
-/** ReAct TaskBoard 终态快照 */
+/** 任务板终态快照 */
 @Entity
-@Table(name = "react_task_board")
+@Table(name = "task_board")
 @Getter
 @Setter
-public class ReactTaskBoardEntity {
+public class TaskBoardEntity {
 
     @Id
     private String id;

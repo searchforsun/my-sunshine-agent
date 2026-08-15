@@ -17,7 +17,7 @@ class ModelSceneKeyTest {
                 .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
         assertThat(keys).containsExactly(
                 "default", "chat", "intent", "planner",
-                "rewrite.intent", "title", "subagent");
+                "title", "subagent");
         assertThat(ModelSceneKey.fromKey("chat")).contains(ModelSceneKey.CHAT);
         assertThat(ModelSceneKey.isKnown("unknown")).isFalse();
     }

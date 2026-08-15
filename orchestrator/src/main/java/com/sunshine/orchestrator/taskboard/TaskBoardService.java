@@ -15,10 +15,10 @@ import java.util.List;
  */
 @Service
 @RequiredArgsConstructor
-public class ReactTaskBoardService {
+public class TaskBoardService {
 
     private final TaskBoardTimelineSupport timelineSupport;
-    private final ReactTaskBoardAuditService auditService;
+    private final TaskBoardAuditService auditService;
 
     /**
      * 原生 TaskList 终态收口：从 AgentState.tasksContext 读任务列表，
@@ -43,7 +43,7 @@ public class ReactTaskBoardService {
         }
         String msgId = request.assistantMessageId();
         int revision = items.size();
-        ReactTaskBoardState state = new ReactTaskBoardState(
+        TaskBoardState state = new TaskBoardState(
                 "native-" + msgId, msgId, revision, System.currentTimeMillis(), items);
         auditService.persistFinal(state);
         if (session.hasStep(TimelineStepId.TASKS.id())) {

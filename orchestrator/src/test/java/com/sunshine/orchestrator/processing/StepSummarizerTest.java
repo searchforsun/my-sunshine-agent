@@ -90,16 +90,16 @@ class StepSummarizerTest {
 
     @Test
     void clipQuery_skillMention_keepsFullTokenAndMoreEnglish() {
-        String clipped = StepSummarizer.clipQuery("@finance-analysis 先查制度再分析");
-        assertThat(clipped).isEqualTo("「@finance-analysis 先查制度再分析」");
+        String clipped = StepSummarizer.clipQuery("/finance-analysis 先查制度再分析");
+        assertThat(clipped).isEqualTo("「/finance-analysis 先查制度再分析」");
         assertThat(clipped).doesNotContain("…");
     }
 
     @Test
     void clipQuery_longEnglish_usesDisplayBudgetNotCharCount() {
-        String query = "@finance-analysis please analyze reimbursement compliance";
+        String query = "/finance-analysis please analyze reimbursement compliance";
         String clipped = StepSummarizer.clipQuery(query);
-        assertThat(clipped).startsWith("「@finance-analysis");
+        assertThat(clipped).startsWith("「/finance-analysis");
         assertThat(clipped).doesNotContain("…").doesNotContain("...");
         assertThat(StepSummarizer.clipByDisplayBudget(query, 36).length()).isGreaterThan(18);
     }

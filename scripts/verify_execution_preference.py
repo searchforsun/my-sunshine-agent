@@ -235,9 +235,9 @@ def main() -> int:
         ("J2", "workflow", "有哪些待审批报销", {"expect_reason": "user:forced-workflow", "expect_intent": "workflow:finance-list"}),
         ("J3", "pro", "先查制度再查待审批",
          {"expect_reason": "user:forced-pro", "expect_intent": "pro"}),
-        ("J4", "workflow", "@policy-review 有哪些待审批报销",
+        ("J4", "workflow", "/policy-review 有哪些待审批报销",
          {"expect_reason": "user:forced-workflow", "expect_intent": "workflow:finance-list"}),
-        ("J5", "pro", "@finance-analysis 是否合规",
+        ("J5", "pro", "/finance-analysis 是否合规",
          {"expect_reason": "user:forced-pro", "expect_intent": "pro"}),
         # skill 合并见 ForcedExecutionRouterTest；Live plan 确认 interrupted 时 skill 元数据可能未落全
         # 强制 fast + 制度句式：锁 mode 仍命中 policy-qa 规则（intent 仍为 fast）

@@ -1248,7 +1248,6 @@ onMounted(() => {
   width: 100%;
   min-height: 38px;
   padding: 3px;
-  background: var(--sun-row-hover) !important;
 }
 
 .sections-segment-tabs :deep(.n-tabs-tab-wrapper) {

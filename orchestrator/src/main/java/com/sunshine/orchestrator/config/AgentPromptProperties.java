@@ -89,10 +89,10 @@ public class AgentPromptProperties {
             map.put("rag", rag);
             var skill = new StepTimeline();
             skill.setLabel("加载技能");
-            skill.setBefore("准备加载 Skill");
-            skill.setActive("正在加载 Skill 指令");
+            skill.setBefore("加载技能");
+            skill.setActive("正在加载技能");
             skill.setAfter("{skillId} {skillDisplayName}");
-            skill.setAfterFallback("Skill 已加载");
+            skill.setAfterFallback("技能已加载");
             map.put("skill", skill);
             var think = new StepTimeline();
             think.setLabel("深度思考");

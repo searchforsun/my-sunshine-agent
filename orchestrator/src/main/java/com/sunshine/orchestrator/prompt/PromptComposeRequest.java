@@ -30,41 +30,6 @@ public record PromptComposeRequest(
         injectedUserContexts = injectedUserContexts != null ? List.copyOf(injectedUserContexts) : List.of();
     }
 
-    /** 直连 Gateway / DIRECT */
-    public static PromptComposeRequest forDirect(AssembledContext context, String userMessage) {
-        return forDirect(context, userMessage, null, null);
-    }
-
-    public static PromptComposeRequest forDirect(AssembledContext context, String userMessage, String personalRules) {
-        return forDirect(context, userMessage, personalRules, null);
-    }
-
-    public static PromptComposeRequest forDirect(AssembledContext context, String userMessage,
-                                                  String personalRules, String kind) {
-        return new PromptComposeRequest(
-                PromptMode.DIRECT, context, userMessage, null, null, null, List.of(), null, false, null,
-                personalRules, kind, null);
-    }
-
-    /** 直连 Gateway / DIRECT 续写 */
-    public static PromptComposeRequest forDirectContinue(
-            AssembledContext context, String userMessage, String partialAssistant) {
-        return forDirectContinue(context, userMessage, partialAssistant, null);
-    }
-
-    public static PromptComposeRequest forDirectContinue(
-            AssembledContext context, String userMessage, String partialAssistant, String personalRules) {
-        return forDirectContinue(context, userMessage, partialAssistant, personalRules, null);
-    }
-
-    public static PromptComposeRequest forDirectContinue(
-            AssembledContext context, String userMessage, String partialAssistant,
-            String personalRules, String kind) {
-        return new PromptComposeRequest(
-                PromptMode.DIRECT, context, userMessage, null, null, null, List.of(), partialAssistant, false, null,
-                personalRules, kind, null);
-    }
-
     public static PromptComposeRequest forReact(
             AssembledContext context, String userMessage, List<String> injectedUserContexts) {
         return forReact(context, userMessage, null, injectedUserContexts, false);

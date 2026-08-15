@@ -1,20 +1,20 @@
 package com.sunshine.orchestrator.catalog;
 
-import com.sunshine.orchestrator.catalog.AgentCatalogIndexEntry;
-import com.sunshine.orchestrator.catalog.AgentCatalogService;
-import com.sunshine.orchestrator.catalog.ResourceKindFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 解析 Chat $agent 绑定 */
+/**
+ * 解析 Chat $agent 绑定。
+ * soft binding：$xxx 未命中注册 agent 时视为普通内容，保留原文走意图识别；
+ * 命中时正文保留完整原文（含 $agent token）。
+ */
 @Component
 @RequiredArgsConstructor
 public class AgentBindingParser {
@@ -37,24 +37,23 @@ public class AgentBindingParser {
         LinkedHashSet<String> agentIds = new LinkedHashSet<>();
         Matcher head = DOLLAR_HEAD.matcher(trimmed);
         if (head.matches()) {
-            Optional<String> first = resolveAgentId(head.group(1), sessionKind);
-            if (first.isEmpty()) {
-                return AgentBindingOutcome.unknown(head.group(1));
-            }
-            agentIds.add(first.get());
+            resolveAgentId(head.group(1), sessionKind).ifPresent(agentIds::add);
             collectInline(head.group(2), agentIds, sessionKind);
             if (agentIds.isEmpty()) {
+                // soft binding：$xxx 未命中注册 agent 时视为普通内容，保留原文走意图识别
                 return AgentBindingOutcome.none(trimmed);
             }
-            return AgentBindingOutcome.bound(new ArrayList<>(agentIds), stripAgentMentions(trimmed));
+            // keep raw：绑定 token 属用户内容，正文保留完整原文（含 $agent）
+            return AgentBindingOutcome.bound(new ArrayList<>(agentIds), trimmed);
         }
         collectInline(trimmed, agentIds, sessionKind);
         if (agentIds.isEmpty()) {
             return AgentBindingOutcome.none(trimmed);
         }
-        return AgentBindingOutcome.bound(new ArrayList<>(agentIds), stripAgentMentions(trimmed));
+        return AgentBindingOutcome.bound(new ArrayList<>(agentIds), trimmed);
     }
 
+    /** workflow 钉死等禁用绑定场景：剥离全部 $agent token 后按普通正文提问 */
     public String stripAgentMentions(String userMessage) {
         if (!StringUtils.hasText(userMessage)) {
             return userMessage != null ? userMessage : "";
@@ -69,11 +68,7 @@ public class AgentBindingParser {
         }
         Matcher inline = INLINE_DOLLAR.matcher(text);
         while (inline.find()) {
-            Optional<String> agentId = resolveAgentId(inline.group(1), sessionKind);
-            if (agentId.isEmpty()) {
-                throw new IllegalStateException("unknown agent: " + inline.group(1));
-            }
-            agentIds.add(agentId.get());
+            resolveAgentId(inline.group(1), sessionKind).ifPresent(agentIds::add);
         }
     }
 

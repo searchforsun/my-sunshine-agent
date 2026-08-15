@@ -3,7 +3,7 @@
 
 用法:
   python scripts/verify_skill_5b_live.py
-  python scripts/verify_skill_5b_live.py --query "@finance-analysis 先查制度再拉待办再分析再润色"
+  python scripts/verify_skill_5b_live.py --query "/finance-analysis 先查制度再拉待办再分析再润色"
   python scripts/verify_skill_5b_live.py --skip-wait
 
 环境变量:
@@ -36,7 +36,7 @@ except ImportError:
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
 SKILL_MANAGER_URL = os.environ.get("SKILL_MANAGER_URL", "http://ecs4c16g:8225").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("SKILL_5B_TIMEOUT_SEC", "180"))
-DEFAULT_QUERY = "@finance-analysis 先查制度再拉待办再分析再润色"
+DEFAULT_QUERY = "/finance-analysis 先查制度再拉待办再分析再润色"
 DEFAULT_SKILL = "finance-analysis"
 PLAN_ID_RE = re.compile(r"planId=([0-9a-f-]{36})", re.I)
 

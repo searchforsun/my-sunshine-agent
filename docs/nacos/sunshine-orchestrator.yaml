@@ -1,8 +1,8 @@
 # 表结构 SSOT：docker/mysql/init/11-sunshine-orchestrator.sql（禁止 Flyway）
 #
-# 【4.11 迁出】提示词正文 / 路由规则 SSOT = prompt-manager DB（:8500 Catalog）
+# 【4.11 迁出】提示词正文 / 路由规则 SSOT = resource-manager Catalog（:8240）
 #   - routing-rule.* / system-prompt / mode-overlay.* / timeline.* / …
-#   - 种子：docker/mysql/init/17-sunshine-prompt-manager.sql（含表结构 + 全量种子）
+#   - 种子：docker/mysql/init/19-sunshine-resource.sql（含表结构 + 全量种子）
 #   - 本文件 agent.* 仅留数值/开关；提示词正文勿再当运营 SSOT
 #   - 运营入口：sunshine-ui `/prompts`；验收：scripts/verify_prompt_catalog_live.py
 
@@ -26,8 +26,8 @@ spring:
       password: redis123
 
 agent:
-  # 提示词/时间线/改写正文已迁 prompt-manager Catalog
-  # （docker/mysql/init/17-sunshine-prompt-manager.sql）
+  # 提示词/时间线正文已迁 resource-manager Catalog
+  # （docker/mysql/init/19-sunshine-resource.sql）
   # 运营入口：/prompts；禁止再在本文件维护提示词正文
   # system-prompt / mode-overlay.* / answer.* / timeline.* / planner.harness → Catalog
   # 模型名 SSOT = resource-manager model_scene_binding（ModelSceneResolver）；禁止再写 *.model
@@ -35,7 +35,7 @@ agent:
   prompt:
     # skill overlay SSOT = skill-manager Catalog（无 Nacos 影子）
 
-  # intent 模型 → scene=intent；classifier-prompt → Catalog id=intent.classifier
+  # intent 模型 → scene=intent；classifier-prompt → Catalog intent.classifier.skill-agent（轨 A）/ intent.classifier.workflow（轨 B）
   # （已删除 agent.intent 配置壳，禁止再写）
 
   # timeline.* → Catalog timeline.intent / timeline.steps.* / timeline.hitl / …（T9）
@@ -106,7 +106,7 @@ agent:
       session:
         idle-timeout-ms: 14400000
   skill:
-    # P1 强提示句式 — 须含命名组 skill；P0 @ 由 SkillBindingParser 硬编码
+    # P1 强提示句式 — 须含命名组 skill；P0 / 由 SkillBindingParser 硬编码（与前端 / 补全对齐）
     hint-patterns:
       - "请使用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill"
       - "用\\s+(?<skill>[\\w\\u4e00-\\u9fff-]+)\\s+skill\\s+处理"
@@ -266,8 +266,8 @@ agent:
         required:
           - query
 
-  # routing.structural / routing.peer / routing.rules 已退役 → prompt-manager Catalog
-  # （routing-rule.*，见 docker/mysql/init/17-sunshine-prompt-manager.sql）
+  # routing.structural / routing.peer / routing.rules 已退役 → resource-manager Catalog
+  # （routing-rule.*，见 docker/mysql/init/19-sunshine-resource.sql）
   # 验收提示词仍见 docs/routing/routing-golden-set.md；引擎 UnifiedRuleRoutingPolicy
 
   model:
@@ -304,13 +304,6 @@ agent:
     timeout-sec: 0
     rejection-message: 用户未确认执行该写操作，已跳过。
     # agent-prompt → Catalog id=hitl.agent-prompt
-
-  rewrite:
-    intent:
-      enabled: true
-      max-chars: 8
-      # model → scene=rewrite.intent；system-prompt → Catalog id=rewrite.intent
-    # timeline → Catalog id=rewrite.timeline
 
   title:
     enabled: true

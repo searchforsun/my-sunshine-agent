@@ -12,7 +12,11 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
+import com.sunshine.orchestrator.processing.SkillLoadLabels;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
+import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
@@ -224,6 +228,9 @@ public class SpawnSubagentTool implements AgentTool {
                 new SpawnSubagentTimelineBridge(runId, displayLabel, promptText);
 
         timelineSupport.begin(mainBridge, runId, displayLabel, promptText);
+        if (StringUtils.hasText(resolvedSkillId)) {
+            timelineSupport.fold(mainBridge, subTimeline, skillLoadToken(resolvedSkillId));
+        }
         spawnRunRegistry.register(runId, messageId, promptText, mainBridge, subTimeline);
         // PASS_THROUGH：wrapper 只 fold；原 token 入队供 Flux（禁止 Flux 再 fold，否则 reasoning 翻倍）
         StepEventBridge.bindTokenWrapper(subBridgeId, token -> {
@@ -431,6 +438,32 @@ public class SpawnSubagentTool implements AgentTool {
     private String resolveSubagentOverlay() {
         String text = catalogHolder.snapshot().text(OVERLAY_CATALOG_ID).map(String::strip).orElse("");
         return StringUtils.hasText(text) ? text : null;
+    }
+
+    /** 子 agent 绑定 skill 时注入「加载技能」步骤（subSteps 首行，与主流程 skill 步骤文案一致） */
+    private StreamToken skillLoadToken(String skillId) {
+        String id = skillId.strip();
+        long ts = System.currentTimeMillis();
+        String after = SkillLoadLabels.after(id);
+        ProcessingStep step = new ProcessingStep(
+                TimelineStepId.SKILL.id(),
+                TimelineStepId.SKILL.phase(),
+                "done",
+                new StepSummary(SkillLoadLabels.before(), null, after),
+                null,
+                ts,
+                null,
+                after,
+                null,
+                null,
+                after,
+                ts,
+                SkillLoadLabels.before(),
+                StepMetadata.fromSkillLoad(id),
+                null,
+                null,
+                null);
+        return StreamToken.step(step);
     }
 
     private void foldStepToken(

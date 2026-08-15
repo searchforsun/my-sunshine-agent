@@ -42,7 +42,7 @@ import static org.mockito.Mockito.when;
 /** routing-golden-set §F — v6：fast 钉死 ReAct；pro 钉死结构规则；无 auto 互转 */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class ReactTaskBoardRoutingTest {
+class TaskBoardRoutingTest {
 
     @Mock
     private SkillBindingParser skillBindingParser;

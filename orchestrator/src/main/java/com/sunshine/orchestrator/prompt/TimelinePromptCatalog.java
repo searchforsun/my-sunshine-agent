@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.prompt;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
@@ -11,7 +10,6 @@ import com.sunshine.orchestrator.config.AgentPromptProperties.IntentTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.RagAfterTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.SandboxTimeline;
 import com.sunshine.orchestrator.config.AgentPromptProperties.StepTimeline;
-import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -25,7 +23,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * 时间线 / rewrite.timeline 文案 — prompt-manager Catalog JSON（kebab-case）。
+ * 时间线文案 — prompt-manager Catalog JSON（kebab-case）。
  * 缺条目 → 空 POJO + warn（与 {@link PromptComposer} catalogText 一致；禁止 Java/Nacos 影子兜底）。
  */
 @Slf4j
@@ -93,34 +91,6 @@ public class TimelinePromptCatalog {
         return parseJson("timeline.sandbox", SandboxTimeline.class, SandboxTimeline::new);
     }
 
-    /** rewrite.timeline JSON：intent / planner 场景说明 */
-    public String rewriteLabel(String scenario) {
-        if (scenario == null) {
-            return "";
-        }
-        Optional<JsonNode> root = catalogHolder.snapshot().json("rewrite.timeline").map(j -> {
-            try {
-                return MAPPER.readTree(j);
-            } catch (Exception e) {
-                return null;
-            }
-        });
-        if (root.isEmpty() || root.get() == null) {
-            log.warn("[TimelinePromptCatalog] catalog missing id=rewrite.timeline");
-            return "";
-        }
-        JsonNode node = root.get();
-        String key = switch (scenario) {
-            case String s when QueryRewriteScenario.INTENT.matches(s) -> "intent";
-            default -> null;
-        };
-        if (key == null) {
-            return "";
-        }
-        JsonNode label = node.get(key);
-        return label != null && label.isTextual() ? label.asText() : "";
-    }
-
     private <T> T parseJson(String id, Class<T> type, Supplier<T> empty) {
         Optional<T> parsed = parseJsonOpt(id, type);
         if (parsed.isPresent()) {
@@ -153,7 +123,6 @@ public class TimelinePromptCatalog {
         for (Map.Entry<String, StepTimeline> e : fixture.getSteps().entrySet()) {
             entries.add(jsonEntry("timeline.steps." + e.getKey(), writeJson(e.getValue())));
         }
-        entries.add(jsonEntry("rewrite.timeline", "{\"intent\":\"补全问句\"}"));
         return entries;
     }
 

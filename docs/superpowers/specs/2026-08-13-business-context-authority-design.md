@@ -1,9 +1,10 @@
 # 业务上下文权威层（Business Context Authority）
 
 > **日期**：2026-08-13  
+> **v2（2026-08-15）**：对齐 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) 与 [task-scene v14](./2026-08-01-task-scene-context-design.md)——会话级执行态 / KV Memory `todo` 与 `business_task` **边界隔离**；装配时序 P3′ 补位；`user_context_state` 表演进随 KV Memory 统一（§2.2 / §2.3 / §3 / §4.3 / §5.1 / §10 / §11）  
 > **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
-> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
+> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
 
 ---
 
@@ -79,16 +80,20 @@
 
 **命名勿混**：意图链 L0–L3（收资源）≠ 记忆 L1–L5（装上下文）≠ 产品 `kind` ≠ `biz_scene` ≠ `callSite`。
 
-**目标顺序**：
+**目标顺序**（含 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8 补位）：
 
 ```
 ① 轻量会话底座
 ② 意图收集 → skillIds / agentIds（L0→规则→L2 embedding→必要时 Intent LLM）
 ③ 从命中资源读 biz_scene（§2.1）
-④ 有 scene → Policy + 任务板 + 场景偏好（SQL）
-   无 scene → 跳过 ④
-⑤ L3 语义：近文 + 用户提问（无 scene 时的主长期补充；有 scene 时低优先级）
-⑥ PromptComposer + Toolkit → 主 LLM
+④ 会话级任务清单 + KV Memory `todo`（task-list-memory §8，与 ⑤ 可并行；不依赖 scene）
+   fast → `react_task_board` 最近快照 →【任务清单】块（Tier 2 尾部）
+   pro  → H1 renderForPlanner（既有）
+   KV   → `kind=todo`：task→`scope=workspace` / chat→`scope=user`（Tier 1，L2 块内）
+⑤ 有 scene → Policy + 业务任务板 + 场景偏好（SQL）
+   无 scene → 跳过 ⑤
+⑥ L3 语义：近文 + 用户提问（无 scene 时的主长期补充；有 scene 时低优先级；可与 ④⑤ 并行）
+⑦ PromptComposer + Toolkit → 主 LLM
    （知识库 RAG / 大工具结果：工具按需，不预召回）
 ```
 
@@ -97,15 +102,16 @@
 | 组 | 内容 | 约束 |
 |----|------|------|
 | **P0** | `loadHistory` ∥ 脱敏（若契约允许） | 均需先于主装配 |
-| **P1** | `L2`（全局极少项）∥ `projectGuide` ∥（L1 partition 完成后）可预热；**L3 建议延后到 ⑤** | 不依赖 biz_scene |
+| **P1** | `L2`（全局极少项）∥ `projectGuide` ∥（L1 partition 完成后）可预热；**L3 建议延后到 ⑥** | 不依赖 biz_scene |
 | **P2** | 轨 A：`agent` embedding ∥ `skill` embedding | L0/规则仍短路串行 |
-| **P3** | 有 `biz_scene` 时：`Policy` ∥ `任务板` ∥ `场景偏好` | **必须在 ②③ 之后** |
+| **P3′** | 会话级任务清单 ∥ KV Memory `todo`（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8 ③④） | **在 ② 之后即可**；不依赖 `biz_scene` |
+| **P3** | 有 `biz_scene` 时：`Policy` ∥ `业务任务板` ∥ `场景偏好` | **必须在 ②③ 之后** |
 | **P4** | `Toolkit` ∥ Prompt 静态层（skill overlay HTTP 除外） | 主 LLM 前合并 |
 
 **必须串行**：
 
 - L0 → 规则 →（需要时）Intent LLM  
-- **②③ → ④**（先资源后结构化记忆）  
+- **②③ → ⑤**（先资源后结构化记忆）  
 - Budget / 最终 messages 合并  
 - 主 LLM  
 
@@ -113,7 +119,7 @@
 
 | 方案 | 做法 | 取舍 |
 |------|------|------|
-| **A（推荐）** | 意图完成后再跑 L3 | 逻辑干净；无 scene / 有 scene 同一插入点；多一次相对路由的等待可与 P3 并行（L3∥P3） |
+| **A（推荐）** | 意图完成后再跑 L3 | 逻辑干净；无 scene / 有 scene 同一插入点；多一次相对路由的等待可与 P3/P3′ 并行（L3∥P3′∥P3） |
 | B | L3 与意图链部分重叠 | 省墙钟时间；无 scene 时白打或需取消 |
 
 **与现状对照**：把「assemble 整包」拆成「底座 P1」+「路由后 P3+L3」；禁止继续在未知 skill/agent 时预装 Policy/任务板。
@@ -122,17 +128,18 @@
 
 | 问题 | 结论 |
 |------|------|
-| 是不是 task 要的？ | **否。一期主路径 = `kind=chat`**。`kind=task` 走 [task-scene](./2026-08-01-task-scene-context-design.md)（P0/W0/T0·H1、压缩点优先 task×fast\|pro），**默认跳过本层** |
+| 是不是 task 要的？ | **否。一期主路径 = `kind=chat`**。`kind=task` 走 [task-scene](./2026-08-01-task-scene-context-design.md)（P0 / KV Memory·H1、压缩点优先 task×fast\|pro），**默认跳过本层** |
 | 是否等于压缩点模式？ | **否。正交增强**：不改 `far_folded_msg_ids`、不替代 Near/Mid/Far 重组、不抢 task 压缩点一期启用面 |
 | 是否符合压缩点前置约束？ | **原则符合**，须遵守下列挂载纪律（对齐五层 §5.5 Tier / prefix C1–C3） |
 
 **压缩点兼容纪律（chat 落地时）**：
 
 1. **Policy / 场景偏好**：视为低频结构化块（类 Tier 0/1），**不进** L1 Near/Mid/Far 折叠；渲染顺序固定，禁止每轮重排中段。  
-2. **任务板详情**：随工具回写会变 → 按 **content-hash** 仅在变更时改块（对齐 T0 降频）；或置于 query 前动态尾段，避免无意义打穿整段 KV。  
+2. **任务板详情**：随工具回写会变 → 按 **content-hash** 仅在变更时改块（对齐压缩点降频）；或置于 query 前动态尾段，避免无意义打穿整段 KV。  
 3. **L3**：保持「绝对尾部动态段」语义（五层 §7.5）；§2.2 方案 A（路由后再召回）与此一致，优于路由前灌 L3。  
 4. **Skill 触发态轻 sticky**（[v3.1](./2026-08-12-skill-sticky-process-chain-design.md)）：粘的是 **triggered** `skillIds`（非可发现全集）→ `biz_scene` 更稳；换**触发** skill 导致 **biz_scene** 变属**允许的一次 prefix 重建**（C3）。可发现目录变化不视为业务域切换。  
-5. **Budget**：超限时仍 L3→Far→Mid；**Policy 与活跃任务权威字段不因 Budget 静默丢弃**（可截任务目录，不可丢 Policy 红线）。
+5. **Budget**：超限时仍 L3→Far→Mid；**Policy 与活跃任务权威字段不因 Budget 静默丢弃**（可截任务目录，不可丢 Policy 红线）。  
+6. **KV `todo` / 会话级恢复块**（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）：归属其挂载纪律——KV `todo` Tier 1 幂等、恢复块 Tier 2 尾部；与本层任务板**不混挂、不双写**。
 
 **分期关系**：压缩点机制一期优先 task（五层 v17）；本层一期优先 **企业 chat**。chat 二期若上压缩点，直接复用上表挂载位，不必重做业务权威模型。
 
@@ -142,10 +149,11 @@
 
 | 载体 | 作用域 | 与本层关系 |
 |------|--------|------------|
-| ReAct Todo / AS TaskList | 单次 run / 会话内待办 | **非**业务任务板；不跨会话权威 |
-| Planner H1 PlanNotebook | Planner 计划态 | 执行计划 SSOT；不存工单状态 |
-| task-scene T0 / W0 / P0 | `kind=task` 编码 | 编码续跑；**一期不强制**挂业务任务板 |
-| L2 `user_context_state` | 用户级记忆 | 可演进为偏好存储，但装载必须经 `biz_scene` 白名单；task 仍遵守「不读用户 L2」闸门 |
+| fast 会话级任务清单（`AgentState.tasksContext` + `react_task_board` 快照） | 会话内执行态 · 跨轮恢复 | agent 执行态，**非**业务任务板；不跨会话（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §4/§5.1） |
+| Planner H1 PlanNotebook | pro 计划态（唯一 SSOT） | 不存工单状态；终态未完成项导出 KV Memory `kind=todo`，不回写 H1（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §5.2） |
+| KV Memory `kind=todo`（原 L2/W0 统一 `user_context_state` + `scope` 列，task-scene v14） | 跨会话记忆层 | agent 执行态**沉淀副本**；与 `business_task` 不合并、不双写 |
+| task-scene P0 项目规范 | `kind=task` 工作区 | 编码续跑；一期不强制挂业务任务板 |
+| KV Memory `scope=user`（原 L2） | 用户级记忆 | 可演进为偏好存储，但装载必须经 `biz_scene` 白名单；task 仍遵守「不读用户 L2」闸门 |
 | L1 Near/Mid/Far | 会话窗口 | 本层之后叠加 |
 | L3 向量 | 语义摘要 | 最低优先级；标注可能过期 |
 
@@ -229,6 +237,8 @@
 
 **推荐（一期）**：扩展现有 `user_context_state`，避免双份用户事实库。
 
+> **对齐 task-scene v14 / task-list-memory v2**：`user_context_state` 已统一演进为 KV Memory（`scope=user|workspace` 列 + `kind` 收敛含 `todo`）。本层偏好列与之一张表共存，DDL 以 [task-scene v14](./2026-08-01-task-scene-context-design.md) §5 为准；偏好与 `todo` 分属不同 `kind`，装载分别经 `biz_scene` 白名单与 `scope` 门禁。
+
 新增列（或等价 JSON 元数据）：
 
 | 列/字段 | 说明 |
@@ -264,14 +274,15 @@
 + ② biz_scene_policy          ← 最高业务权威
 + ③ business_task（目录或单条详情，见 §4.1 阶梯）
 + ④ scene-filtered prefs      ← 白名单偏好
-+ ⑤ L2 残余（仅 chat、且不得绕过白名单；逐步收敛到 ④）
++ ⑤ KV Memory `todo` + L2 残余（仅 chat/task 对应 scope、不得绕过白名单；todo 为 agent 执行态沉淀，低于 business_task）
 + ⑥ L1 Far / Mid / Near
-+ ⑦ L3 向量摘要（最低；文案「历史材料·可能过期」）
-+ ⑧ 当前 user 消息
++ ⑦ 会话级【任务清单】恢复块（fast `react_task_board` / pro H1；Tier 2 尾部 · query 前；agent 执行态，非 business_task）
++ ⑧ L3 向量摘要（最低；文案「历史材料·可能过期」）
++ ⑨ 当前 user 消息
 ```
 
-**硬优先级**：`policy > task board > prefs > L1 > L3`。  
-低优先级**不得覆盖**高优先级权威字段；向量摘要不可替代任务状态或 Policy 阈值。
+**硬优先级**：`policy > business_task > prefs/KV-todo > L1 > 会话级【任务清单】恢复块 > L3`。  
+低优先级**不得覆盖**高优先级权威字段；向量摘要不可替代任务状态或 Policy 阈值；`todo` / 恢复块是 agent 执行态，不可替代 `business_task` 业务权威态。
 
 ### 5.2 冲突仲裁
 
@@ -291,8 +302,9 @@ ChatStreamContextFactory / 编排入口
   → [P0/P1] 历史·脱敏·L1·（可选全局 L2）·guide
   → 意图收集 skillIds / agentIds（[P2] agent∥skill 召回）
   → §2.1 解析 biz_scene（可空）
+  → [P3′] 会话级任务清单 ∥ KV Memory `todo`（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8；不依赖 scene）
   → [P3] 有 scene：Policy ∥ 任务板 ∥ 场景偏好；无则 skip
-  → [与 P3 可并行] L3 语义（方案 A，§2.2）
+  → [与 P3/P3′ 可并行] L3 语义（方案 A，§2.2）
   → [P4] Toolkit ∥ Prompt 静态层 → 合并 → AgentRuntime
 ```
 
@@ -364,12 +376,14 @@ Policy 与任务数据在 DB；白名单在 Nacos（改完 `sync_nacos.py` + 重
 
 | 阶段 | 内容 | 验收要点 |
 |------|------|----------|
-| **M0** | 拆分装配时序（§2.2）：路由前仅底座；路由后 P3+L3；落地 P1/P3/P4 并行 | 未知 skill 时零 Policy/任务板；L3 不早于资源召回（方案 A） |
+| **M0** | 拆分装配时序（§2.2）：路由前仅底座；路由后 P3′/P3+L3；落地 P1/P3′/P3/P4 并行 | 未知 skill 时零 Policy/任务板；L3 不早于资源召回（方案 A） |
 | **M1** | Skill/Agent 增 `biz_scene` + Policy DDL + 有 scene 才注入 | 无资源 scene → 零 Policy/任务板；有则精确命中；不弹选场景 |
 | **M2** | 偏好白名单装载 | 仅随 scene 过滤；无 scene 不灌场景偏好 |
 | **M3** | `business_task` + 同 scene 最近 1 条详情 | 无用户选任务；无 scene 不灌任务板 |
 | **M4** | 有 scene 时 L3 vs Policy/任务冲突过滤 + 审计 | 无 scene 时仅 L3 语义路径 |
 | **并行** | task-scene 读写闸门、L2 语义 merge、Budget 退役并入 | 见五层 §13.3 / task-scene P1–P2；**不阻塞**本层 M0/M1 |
+
+> 与 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) M0–M3 并行落地；装配时序统一见 §2.2（P3′ 为其块，不阻塞本层 M0/M1）。
 
 Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy 注入；M3 补任务板）。
 
@@ -381,7 +395,7 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 2. 业务阈值/权限只靠向量相似度  
 3. 记忆无过期、无确认态、无白名单  
 4. 把 L3 摘要当工单真相  
-5. 将本层与 Todo/H1/T0 混为一个「任务板」概念  
+5. 将本层与 agent 执行态（fast 会话级任务清单 / H1 / KV `todo`）混为一个「任务板」概念  
 6. 仅按 `updated_at` Top-K 灌多条任务详情（无 scene 过滤）  
 7. 用向量决定「当前焦点任务」或用 AI **发明** `biz_scene`  
 8. 独立场景分类器 / 选场景·选任务 HITL（本层明确不做）  
@@ -400,6 +414,7 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 | request_decision | 仅业务工具确认等既有 HITL；**不**用于选场景/选任务板焦点 |
 | Skill / Agent Catalog | `biz_scene` **引用**入口；码表 SSOT = 业务场景 Lab；与路由召回同链路 |
 | [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) | Lab UI/DDL、资源 `kind` 过滤、工具集 chat/task、退役 react-prompt |
+| [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 会话级执行态 + KV Memory `todo` 沉淀；与 `business_task` **边界隔离**、不双写；装配时序对齐 §2.2（P3′） |
 
 ---
 
@@ -417,3 +432,4 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 | D8 | 目标时序：先意图收 Skill/Agent，再结构化记忆；L3 方案 A（路由后，可与 P3 并行）；并行组 P0–P4 见 §2.2 | 2026-08-13 |
 | D9 | 本层一期 = chat；与压缩点正交；挂载遵守 prefix/Tier/L3 尾部纪律（§2.3）；task 默认不启用 | 2026-08-13 |
 | D10 | `biz_scene` 码表 = 独立业务场景 Lab（非 Prompt 子页）；与 kind-biz-scene-catalog 对齐 | 2026-08-13 |
+| D11 | 对齐 task-list-memory v2 / task-scene v14：KV `todo`、会话级恢复块与 `business_task` 边界隔离；§2.2 P3′ 补位；§4.3 表演进随 KV Memory 统一 | 2026-08-15 |

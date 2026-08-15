@@ -83,9 +83,9 @@ class RoutingGoldenSetTest {
                 agentBindingParser);
 
         when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
-        when(skillBindingParser.stripAtMention(anyString())).thenAnswer(inv -> {
+        when(skillBindingParser.stripSlashMention(anyString())).thenAnswer(inv -> {
             String msg = inv.getArgument(0);
-            if (msg != null && msg.startsWith("@")) {
+            if (msg != null && msg.startsWith("/")) {
                 int space = msg.indexOf(' ');
                 return space > 0 ? msg.substring(space + 1).strip() : "请处理";
             }
@@ -193,10 +193,10 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void atSkill_withPro_bindsSkillKeepsMode() {
-        String query = "@finance-analysis 先查制度再拉待办再分析再润色";
+    void slashSkill_withPro_bindsSkillKeepsMode() {
+        String query = "/finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
+                "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
 
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
@@ -222,10 +222,10 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void atSkillSingleStep_withFast_overridesFinanceSmartRule() {
-        String query = "@finance-analysis 这笔报销是否合规";
+    void slashSkillSingleStep_withFast_overridesFinanceSmartRule() {
+        String query = "/finance-analysis 这笔报销是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "这笔报销是否合规", SkillBindingSource.AT_MENTION);
+                "finance-analysis", "这笔报销是否合规", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
@@ -267,8 +267,8 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void forcedJ5_workflow_ignoresAtSkill() {
-        String query = "@policy-review 青松假有多少天、怎么申请";
+    void forcedJ5_workflow_ignoresSlashSkill() {
+        String query = "/policy-review 青松假有多少天、怎么申请";
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                         ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
@@ -280,10 +280,10 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void forcedJ6_pro_mergesAtSkillParams() {
-        String query = "@finance-analysis 是否合规";
+    void forcedJ6_pro_mergesSlashSkillParams() {
+        String query = "/finance-analysis 是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
+                "finance-analysis", "是否合规", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
         ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);

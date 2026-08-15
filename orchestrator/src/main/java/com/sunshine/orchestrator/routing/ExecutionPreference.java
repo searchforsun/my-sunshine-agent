@@ -21,7 +21,7 @@ public enum ExecutionPreference {
         };
     }
 
-    /** L0 @skill / hint 绑定是否允许 */
+    /** L0 /skill / hint 绑定是否允许 */
     public boolean allowsSkillBinding() {
         return this == FAST || this == PRO;
     }

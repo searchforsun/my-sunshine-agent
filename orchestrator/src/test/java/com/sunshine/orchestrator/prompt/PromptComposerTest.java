@@ -82,7 +82,7 @@ class PromptComposerTest {
                 "content", ContextMessageBuilder.formatCurrentUser("新问题", USER_MARKER)));
 
         List<Map<String, Object>> actual = composer.composeGatewayMessages(
-                PromptComposeRequest.forDirect(ctx, "新问题"));
+                PromptComposeRequest.forWorkflowLlm("knowledge-qa", ctx, "新问题", null));
 
         assertThat(actual).isEqualTo(expected);
     }
@@ -173,29 +173,19 @@ class PromptComposerTest {
     @Test
     void composeGatewayMessages_appliesModeAndScopeOverlays() {
         replaceCatalogTexts(Map.of(
-                "mode-overlay.direct", "mode-simple",
+                "mode-overlay.workflow", "mode-simple",
                 "scope-prompt", "scope-boundary"));
 
         AssembledContext ctx = new AssembledContext(
                 "", "", List.of(), List.of(new ChatTurn("user", "历史问")), "");
 
         List<Map<String, Object>> messages = composer.composeGatewayMessages(
-                PromptComposeRequest.forDirect(ctx, "新问题"));
+                PromptComposeRequest.forWorkflowLlm("knowledge-qa", ctx, "新问题", null));
 
         assertThat(messages.get(0)).containsEntry("content", "base-system");
         assertThat(messages.get(1)).containsEntry("content", "mode-simple");
         assertThat(messages.stream().map(m -> m.get("content").toString()))
                 .anyMatch(c -> c.contains("scope-boundary"));
-    }
-
-    @Test
-    void composeGatewayMessages_continueAppendsPartialAssistant() {
-        List<Map<String, Object>> messages = composer.composeGatewayMessages(
-                PromptComposeRequest.forDirectContinue(AssembledContext.empty(), "继续", "已生成一半"));
-
-        assertThat(messages.get(messages.size() - 1))
-                .containsEntry("role", "assistant")
-                .containsEntry("content", "已生成一半");
     }
 
     @Test
@@ -318,7 +308,7 @@ class PromptComposerTest {
     @Test
     void composeGatewayMessages_injectsPersonalRulesAfterBaseSystem() {
         List<Map<String, Object>> messages = composer.composeGatewayMessages(
-                PromptComposeRequest.forDirect(AssembledContext.empty(), "新问题", "用文言文回答"));
+                PromptComposeRequest.forWorkflowLlm("knowledge-qa", AssembledContext.empty(), "新问题", null, "用文言文回答"));
 
         assertThat(messages.get(0)).containsEntry("content", "base-system");
         assertThat(messages.get(1))
@@ -376,7 +366,7 @@ class PromptComposerTest {
     @Test
     void compose_blankPersonalRulesNotInjected() {
         List<Map<String, Object>> gateway = composer.composeGatewayMessages(
-                PromptComposeRequest.forDirect(AssembledContext.empty(), "问", "   "));
+                PromptComposeRequest.forWorkflowLlm("knowledge-qa", AssembledContext.empty(), "问", null, "   "));
         assertThat(gateway.stream().map(m -> m.get("content").toString()))
                 .noneMatch(c -> c.contains("用户个人规则"));
 
@@ -390,7 +380,7 @@ class PromptComposerTest {
     void compose_oversizedPersonalRulesTruncated() {
         String oversized = "规".repeat(PersonalRulesSupport.MAX_LENGTH + 100);
         List<Map<String, Object>> messages = composer.composeGatewayMessages(
-                PromptComposeRequest.forDirect(AssembledContext.empty(), "问", oversized));
+                PromptComposeRequest.forWorkflowLlm("knowledge-qa", AssembledContext.empty(), "问", null, oversized));
 
         String injected = messages.get(1).get("content").toString();
         assertThat(injected).startsWith("## 用户个人规则\n");
@@ -401,7 +391,6 @@ class PromptComposerTest {
         Map<String, String> texts = new LinkedHashMap<>();
         texts.put("system-prompt", "base-system");
         texts.put("mode-overlay.react", "react-mode-minimal");
-        texts.put("mode-overlay.direct", "");
         texts.put("mode-overlay.workflow", "");
         texts.put("mode-overlay.react-restart", "");
         texts.put("context.layer-prompt", LAYER_PROMPT);
@@ -420,7 +409,6 @@ class PromptComposerTest {
         return List.of(
                 textEntry("system-prompt", "system", "base-system"),
                 textEntry("mode-overlay.react", "mode-overlay", "react-mode-minimal"),
-                textEntry("mode-overlay.direct", "mode-overlay", ""),
                 textEntry("mode-overlay.workflow", "mode-overlay", ""),
                 textEntry("mode-overlay.react-restart", "mode-overlay", ""),
                 textEntry("context.layer-prompt", "context", LAYER_PROMPT),

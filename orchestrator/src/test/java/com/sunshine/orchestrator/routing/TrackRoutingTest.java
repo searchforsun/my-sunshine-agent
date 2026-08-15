@@ -78,7 +78,7 @@ class TrackRoutingTest {
                 agentBindingParser);
 
         when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
-        when(skillBindingParser.stripAtMention(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        when(skillBindingParser.stripSlashMention(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(agentBindingParser.stripAgentMentions(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(agentBindingParser.parse(anyString(), anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));

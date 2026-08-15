@@ -19,25 +19,25 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ReactTaskBoardAuditServiceTest {
+class TaskBoardAuditServiceTest {
 
     @Mock
     private AuditPublisher auditPublisher;
     @Mock
-    private ReactTaskBoardRepository repository;
+    private TaskBoardRepository repository;
 
-    private ReactTaskBoardAuditService service;
+    private TaskBoardAuditService service;
 
     @BeforeEach
     void setUp() {
-        service = new ReactTaskBoardAuditService(auditPublisher, repository);
+        service = new TaskBoardAuditService(auditPublisher, repository);
     }
 
     @Test
     void persistFinal_savesEntityAndPublishesFinalEvent() {
         when(repository.findByMessageId("msg-2")).thenReturn(Optional.empty());
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        ReactTaskBoardState state = new ReactTaskBoardState(
+        TaskBoardState state = new TaskBoardState(
                 "board-2", "msg-2", 3, 2000L,
                 List.of(
                         new TaskBoardItemView("t1", "步骤1", "completed"),
@@ -45,7 +45,7 @@ class ReactTaskBoardAuditServiceTest {
 
         service.persistFinal(state);
 
-        ArgumentCaptor<ReactTaskBoardEntity> entityCaptor = ArgumentCaptor.forClass(ReactTaskBoardEntity.class);
+        ArgumentCaptor<TaskBoardEntity> entityCaptor = ArgumentCaptor.forClass(TaskBoardEntity.class);
         verify(repository).save(entityCaptor.capture());
         assertThat(entityCaptor.getValue().getMessageId()).isEqualTo("msg-2");
         assertThat(entityCaptor.getValue().getRevision()).isEqualTo(3);
@@ -58,7 +58,7 @@ class ReactTaskBoardAuditServiceTest {
 
     @Test
     void findByMessageId_mapsEntityToView() throws Exception {
-        ReactTaskBoardEntity entity = new ReactTaskBoardEntity();
+        TaskBoardEntity entity = new TaskBoardEntity();
         entity.setId("board-4");
         entity.setMessageId("msg-4");
         entity.setConversationId("conv-4");
@@ -71,7 +71,7 @@ class ReactTaskBoardAuditServiceTest {
         entity.setUpdatedAt(java.time.Instant.parse("2026-07-07T00:01:00Z"));
         when(repository.findByMessageId("msg-4")).thenReturn(Optional.of(entity));
 
-        ReactTaskBoardAuditView view = service.findByMessageId("msg-4").orElseThrow();
+        TaskBoardAuditView view = service.findByMessageId("msg-4").orElseThrow();
 
         assertThat(view.boardId()).isEqualTo("board-4");
         assertThat(view.items()).hasSize(1);

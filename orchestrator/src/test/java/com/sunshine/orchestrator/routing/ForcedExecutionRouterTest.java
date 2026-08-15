@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.routing;
 
 import com.sunshine.orchestrator.agent.IntentRouter;
+import com.sunshine.orchestrator.catalog.AgentCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
@@ -64,20 +65,51 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_react_withSkillBinding_skipsL3AndDropsLlmtParams() {
         ExecutionPlan skillPlan = new ExecutionPlan(
-                ExecutionMode.FAST, null, Map.of("skill", "finance-analysis"), "skill:@mention");
+                ExecutionMode.FAST, null, Map.of("skill", "finance-analysis"), "skill:/mention");
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "finance-smart",
                 Map.of("status", "pending"), "llm")));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("@finance-analysis 分析", null, ExecutionPreference.FAST, null, null),
+                new RoutingContext("/finance-analysis 分析", null, ExecutionPreference.FAST, null, null),
                 ExecutionPreference.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-fast");
         assertThat(plan.params()).containsEntry("skill", "finance-analysis");
         assertThat(plan.params()).doesNotContainKey("status");
+        verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
+    }
+
+    @Test
+    void resolve_react_withAgentBinding_skipsRuleLayerAndL3() {
+        ExecutionPlan agentPlan = new ExecutionPlan(
+                ExecutionMode.FAST, null,
+                Map.of("agentIds", "compliance-agent,policy-agent", "effectiveQuery", "分析一下"),
+                "agent:$mention");
+        when(agentBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(agentPlan)));
+        when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
+        when(agentCatalogService.findIndex("compliance-agent"))
+                .thenReturn(Optional.of(new AgentCatalogIndexEntry(
+                        "compliance-agent", "业务合规对照智能体", "制度对照", true, "all", null,
+                        "[\"sdk__sunshine-biz__list_my_expenses\"]")));
+        when(agentCatalogService.findIndex("policy-agent"))
+                .thenReturn(Optional.of(new AgentCatalogIndexEntry(
+                        "policy-agent", "人事制度分析智能体", "制度解读", true, "all", null, null)));
+
+        ExecutionPlan plan = router.resolve(
+                new RoutingContext("$compliance-agent $policy-agent 分析一下", null,
+                        ExecutionPreference.FAST, null, null),
+                ExecutionPreference.FAST, null).block();
+        assertThat(plan).isNotNull();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        // L0 命中即短路：多个 $agent 全部进可调度池，跳过规则层与 L3
+        assertThat(plan.params()).containsEntry("agentIds", "compliance-agent,policy-agent");
+        assertThat(plan.ruleId()).isNull();
+        assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
+                .contains("L0", "final")
+                .doesNotContain("rule", "L3");
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
@@ -97,18 +129,19 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_react_withSkillAndPolicyRule_mergesBoth() {
+    void resolve_react_withSkillBinding_skipsRuleLayerAndL3() {
         ExecutionPlan skillPlan = new ExecutionPlan(
-                ExecutionMode.FAST, null, Map.of("skill", "policy-review"), "skill:@mention");
+                ExecutionMode.FAST, null, Map.of("skill", "policy-review"), "skill:/mention");
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("@policy-review 差旅办法制度怎么说", null, ExecutionPreference.FAST, null, null),
+                new RoutingContext("/policy-review 差旅办法制度怎么说", null, ExecutionPreference.FAST, null, null),
                 ExecutionPreference.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        // L0 命中即短路：规则层不再叠加，ruleId 为空
         assertThat(plan.params()).containsEntry("skill", "policy-review");
-        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
+        assertThat(plan.ruleId()).isNull();
         verify(intentRouter, never()).classifyPlan(any(RoutingContext.class));
     }
 
@@ -143,15 +176,15 @@ class ForcedExecutionRouterTest {
     }
 
     @Test
-    void resolve_pro_withAtSkill_keepsForcedMode() {
+    void resolve_pro_withSlashSkill_keepsForcedMode() {
         ExecutionPlan skillPlan = new ExecutionPlan(
                 ExecutionMode.FAST, null,
                 Map.of("skill", "policy-review", "effectiveQuery", "老家有事请事假是否合理"),
-                "skill:@mention");
+                "skill:/mention");
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("@policy-review 老家有事请事假是否合理", null, ExecutionPreference.PRO, null, null),
+                new RoutingContext("/policy-review 老家有事请事假是否合理", null, ExecutionPreference.PRO, null, null),
                 ExecutionPreference.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
@@ -220,11 +253,11 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_pro_withSkill_recordsModeTrackL0FinalTraces() {
         ExecutionPlan skillPlan = new ExecutionPlan(
-                ExecutionMode.FAST, null, Map.of("skill", "policy-review"), "skill:@mention");
+                ExecutionMode.FAST, null, Map.of("skill", "policy-review"), "skill:/mention");
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("@policy-review 请事假合规吗", null, ExecutionPreference.PRO, null, null),
+                new RoutingContext("/policy-review 请事假合规吗", null, ExecutionPreference.PRO, null, null),
                 ExecutionPreference.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.routingTraces()).isNotNull();

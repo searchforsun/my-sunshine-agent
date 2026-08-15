@@ -103,11 +103,11 @@ export function resolveIntentRoutingTraces(step: ProcessingStep): RoutingTrace[]
   return step.metadata?.routingTraces ?? []
 }
 
-/** 已收到 manage_tasks / H1 投影后的真实清单（占位步无 revision/items） */
+/** 已收到 todo_write / H1 投影后的真实清单（占位步无 revision/items） */
 export function hasRealTaskBoardItems(step: ProcessingStep): boolean {
   const tasks = resolveTaskBoardPrimaryItems(step)
   if (tasks.length === 0) return false
-  // harness taskQueue 投影可无 revision；ReAct manage_tasks 仍要求 revision≥1
+  // harness taskQueue 投影可无 revision；ReAct todo_write 仍要求 revision≥1
   if ((step.metadata?.taskQueue?.length ?? 0) > 0) return true
   return (step.metadata?.taskRevision ?? 0) >= 1
 }

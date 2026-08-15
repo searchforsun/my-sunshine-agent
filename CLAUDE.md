@@ -71,7 +71,7 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 | **Planner-Executor（4.14）** | `PlannerHarnessExecutor`：Planner=ReAct 主 Agent（**单一循环**边规划边执行，S5 v4：无 full/hier 模式；细则在 Worker）→ Worker=工具调用（`forWorker()`）→ Planner 自判 → 综合回答；`PlanNotebook` + **Redis 单写** + 3 类显式触发重规划；**目标**：完全舍弃动态 Plan-Workflow（`PlanWorkflowExecutor`/`WorkflowPlanner`/PlanApproval，**阶段 D 删除**；当前代码仍存活）；依赖与落地顺序见 [specs/README](docs/superpowers/specs/README.md#活跃增量方案依赖与落地顺序2026-08-13)；详设 [rebuild](docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md) |
 | **意图路由** | [unified-routing v6](docs/superpowers/specs/2026-07-29-unified-routing-design.md)：**R-0～R-4 ✅**（用户显式 `fast`/`pro`/`workflow` + 双轨收集 + ResourceDispatcher；读侧兼容已去除，wire 仅 fast/pro/workflow；PlanWorkflow 源码残留已删）；延期：`intent.classifier` live 版本 bump |
 | **Chat 执行模式** | `ExecutionPreference=fast\|pro\|workflow`（旧 `auto`/`react`/`plan-workflow` 读映射）→ `ResourceDispatcher`/`ExecutionDispatcher`；`#` 补全仅工作流模式；冒烟 `verify_routing_v6_smoke.py` |
-| **ReAct TaskBoard（4.7.5）** | 元工具 `manage_tasks` + 唯一 `tasks` 步；merge 引擎去重 |
+| **TaskBoard（4.7.5 → AgentScope 原生）** | 原生 `todo_write`（AS2 `enableTaskList`）+ 唯一 `tasks` 步；TaskBoard 终态落 MySQL 审计（自研 `manage_tasks` 已下线） |
 | **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；`agentId` 指定预定义智能体，经 `AgentExecutorRouter` 按 `source` 分派 INTERNAL/EXTERNAL（A2A） |
 | **ReAct Request Decision（4.7.9）** | 元工具 `request_decision`（仅 MAIN；Nacos `react.decision.enabled` 默认 **false**；**Cursor 对齐**：`title?`+`questions[]` / resolve `answers[]` / `outcome=`）；主时间线 `decision-*`（`phase=decision` / `lifecycle=awaiting`）；`POST .../decisions/{token}/resolve`；暂停/续跑同问卷 re-await；**不做** Planner harness（D12 延后） |
 | **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；同族预算 3 |
@@ -82,7 +82,7 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 
 **Prompt 拼装**：`PromptComposer` 6 层叠加；ReAct 工具策略见 Catalog `mode-overlay.react`（`/prompts`）。
 
-**Query 改写**：检索域 → `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；路由域 → orchestrator `QueryRewriteService`。
+**Query 改写**：仅检索域 → `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；orchestrator 路由域意图改写已退役（`QueryRewriteService`/`rewrite.intent` 已删，改写仅发生在 RAG 检索）。
 
 **RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）。
 
@@ -115,6 +115,7 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
 8. ReAct / workflow agent 节点统一经 `AgentRuntime.run(AgentRunRequest)`。
+9. **提示词以线上 DB 为准**：prompt 正文 SSOT = 线上 `prompt_definition`/`prompt_version`（改完 bump `prompt_catalog_meta.catalog_version`，orchestrator 5s 热更新）；种子 SQL（`docker/mysql/init/19-sunshine-resource.sql`）与线上有偏差时**一律以线上为准**回写种子，禁止只改种子或只改线上。
 
 ## 版本与前端
 
@@ -142,3 +143,4 @@ Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
 - 项目中禁止硬编码提示词；正文 SSOT = resource-manager Catalog（`/prompts`）。
 - **禁止 Flyway**；库表 SQL SSOT 在 `docker/mysql/init/`（一项目一文件），禁止放各模块 `resources/db/migration`。
+- **种子 SQL 必须全量**：`docker/mysql/init/19-sunshine-resource.sql` 是 prompt/skill/agent 等 Catalog 数据的**全量快照**（由线上收敛导出），**不支持增量**；线上有变更（新增/改内容/删除）时必须同步为全量，禁止只补增量 INSERT。

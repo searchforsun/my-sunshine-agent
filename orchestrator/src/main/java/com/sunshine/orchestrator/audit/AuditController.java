@@ -6,8 +6,8 @@ import com.sunshine.common.core.result.R;
 import com.sunshine.orchestrator.audit.entity.ChatAuditLogEntity;
 import com.sunshine.orchestrator.audit.repo.ChatAuditLogRepository;
 import com.sunshine.orchestrator.config.ReactiveBlocking;
-import com.sunshine.orchestrator.taskboard.ReactTaskBoardAuditService;
-import com.sunshine.orchestrator.taskboard.ReactTaskBoardAuditView;
+import com.sunshine.orchestrator.taskboard.TaskBoardAuditService;
+import com.sunshine.orchestrator.taskboard.TaskBoardAuditView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,7 +25,7 @@ import java.util.List;
 public class AuditController {
 
     private final ChatAuditLogRepository auditLogRepository;
-    private final ReactTaskBoardAuditService taskBoardAuditService;
+    private final TaskBoardAuditService taskBoardAuditService;
 
     @GetMapping("/recent")
     public Mono<R<List<ChatAuditLogEntity>>> recent(
@@ -70,7 +70,7 @@ public class AuditController {
     }
 
     @GetMapping("/taskboard/{messageId}")
-    public Mono<R<ReactTaskBoardAuditView>> taskboard(@PathVariable String messageId) {
+    public Mono<R<TaskBoardAuditView>> taskboard(@PathVariable String messageId) {
         return ReactiveBlocking.call(() -> R.ok(
                 taskBoardAuditService.findByMessageId(messageId)
                         .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));

@@ -1,7 +1,5 @@
 package com.sunshine.agent.dto;
 
-import java.util.List;
-
 public record AgentCatalogIndexEntry(
         String id,
         String displayName,
@@ -9,7 +7,8 @@ public record AgentCatalogIndexEntry(
         boolean enabled,
         String tenantId,
         String kind,
-        String bizScene
+        String bizScene,
+        String toolsJson
 ) {
     public AgentCatalogIndexEntry {
         if (kind == null || kind.isBlank()) {
@@ -20,6 +19,6 @@ public record AgentCatalogIndexEntry(
     public static AgentCatalogIndexEntry from(AgentCatalogEntry full) {
         return new AgentCatalogIndexEntry(
                 full.id(), full.displayName(), full.description(), full.enabled(), full.tenantId(),
-                full.kind(), full.bizScene());
+                full.kind(), full.bizScene(), full.toolsJson());
     }
 }

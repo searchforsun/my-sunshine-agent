@@ -23,7 +23,7 @@
 |----|--------|------|------|------|
 | TD-105 | P2 | open | `KbDocPanel.vue` (~1281 行) | RAG 分块预览门禁堆入上帝组件；下一轮 RAG scope 拆分 |
 | TD-106 | P3 | open | finance/oa/hr `*BizService` | 三服务平行 CRUD 样板；暂不抽泛型 |
-| TD-140 | P1 | open | IntentRouter / RewriteConversationContext / ContextMessageBuilder | AssembledContext 三重格式化旁路；合并行为面大，下轮单独 scope |
+| TD-140 | P1 | closed | IntentRouter / ContextMessageBuilder | AssembledContext 三重格式化旁路；RewriteConversationContext 已删，此项已随意图改写退役收口 |
 | TD-141 | P3 | open | sandbox `formatEditUnifiedDiff` / `formatDiffLinesAsText` | editDiff 死代码与 detail 双写；产品路径已收口 |
 | TD-157 | P3 | open | `implementation-plan.md` 缺口段 | 三份未实施 spec（dynamic-context-compression / workflow-structured-io / expert-as-subagent-A2A）状态未统一登记 |
 | TD-162 | P0 | open | `sys_user.github_token` / `gitlab_token` | Git PAT 明文落库（`10-sunshine-auth.sql`）；2026-08-04 用户决策「先明文」，加密/外置凭据延后单独 scope |

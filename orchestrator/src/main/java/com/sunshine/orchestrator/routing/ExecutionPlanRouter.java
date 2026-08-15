@@ -40,12 +40,12 @@ public class ExecutionPlanRouter {
                         : ExecutionMode.from(preference.wireValue())));
     }
 
-    /** WORKFLOW 钉死：路由与执行均忽略 @skill / $agent，仅保留正文；保留 kind */
+    /** WORKFLOW 钉死：路由与执行均忽略 /skill、$agent，仅保留正文；保留 kind */
     private RoutingContext routingContextForPinnedPreference(RoutingContext ctx, ExecutionPreference preference) {
         if (preference.allowsSkillBinding()) {
             return ctx;
         }
-        String plain = skillBindingParser.stripAtMention(ctx.userMessage());
+        String plain = skillBindingParser.stripSlashMention(ctx.userMessage());
         plain = agentBindingParser.stripAgentMentions(plain);
         return ctx.withUserMessage(plain).withoutClientSkill();
     }

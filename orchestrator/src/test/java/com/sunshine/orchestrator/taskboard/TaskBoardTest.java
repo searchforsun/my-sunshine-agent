@@ -19,18 +19,18 @@ import static org.mockito.Mockito.never;
 
 /** 原生 TaskList 终态收口 + 进度文案 */
 @ExtendWith(MockitoExtension.class)
-class ReactTaskBoardTest {
+class TaskBoardTest {
 
     @Mock
     private TaskBoardTimelineSupport timelineSupport;
     @Mock
-    private ReactTaskBoardAuditService auditService;
+    private TaskBoardAuditService auditService;
 
-    private ReactTaskBoardService service;
+    private TaskBoardService service;
 
     @BeforeEach
     void setUp() {
-        service = new ReactTaskBoardService(timelineSupport, auditService);
+        service = new TaskBoardService(timelineSupport, auditService);
     }
 
     @Test
@@ -39,23 +39,23 @@ class ReactTaskBoardTest {
                 new TaskBoardItemView("t1", "a", "completed"),
                 new TaskBoardItemView("t2", "b", "in_progress"),
                 new TaskBoardItemView("t3", "c", "pending"));
-        assertThat(ReactTaskBoardService.progressSummary(items)).isEqualTo("1/3 已完成");
-        assertThat(ReactTaskBoardService.allTerminal(items)).isFalse();
+        assertThat(TaskBoardService.progressSummary(items)).isEqualTo("1/3 已完成");
+        assertThat(TaskBoardService.allTerminal(items)).isFalse();
     }
 
     @Test
     void allTerminal_completedOrCancelled() {
-        assertThat(ReactTaskBoardService.allTerminal(List.of(
+        assertThat(TaskBoardService.allTerminal(List.of(
                 new TaskBoardItemView("t1", "a", "completed"),
                 new TaskBoardItemView("t2", "b", "cancelled")))).isTrue();
     }
 
     @Test
     void findActiveTask_returnsInProgressContent() {
-        assertThat(ReactTaskBoardService.findActiveTask(List.of(
+        assertThat(TaskBoardService.findActiveTask(List.of(
                 new TaskBoardItemView("t1", "a", "completed"),
                 new TaskBoardItemView("t2", "检索中", "in_progress")))).isEqualTo("检索中");
-        assertThat(ReactTaskBoardService.findActiveTask(List.of(
+        assertThat(TaskBoardService.findActiveTask(List.of(
                 new TaskBoardItemView("t1", "a", "completed")))).isEmpty();
     }
 
@@ -75,7 +75,7 @@ class ReactTaskBoardTest {
         service.finalizeNativeTimeline(session, request, agentState);
 
         List<TaskBoardItemView> expected = List.of(new TaskBoardItemView("t1", "检索", "completed"));
-        ArgumentCaptor<ReactTaskBoardState> auditCap = ArgumentCaptor.forClass(ReactTaskBoardState.class);
+        ArgumentCaptor<TaskBoardState> auditCap = ArgumentCaptor.forClass(TaskBoardState.class);
         verify(auditService).persistFinal(auditCap.capture());
         assertThat(auditCap.getValue().assistantMsgId()).isEqualTo("msg-native");
         assertThat(auditCap.getValue().items()).isEqualTo(expected);

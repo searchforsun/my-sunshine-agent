@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.common.model.ModelSceneKey;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.conversation.ChatTurn;
@@ -39,6 +40,7 @@ public class IntentRouter {
     private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
     private final SkillCatalogService skillCatalogService;
+    private final AgentCatalogService agentCatalogService;
     private final ExecutionPlanParser planParser;
     private final LlmGatewayClient llmGateway;
     private final ModelSceneResolver modelSceneResolver;
@@ -55,7 +57,7 @@ public class IntentRouter {
     public Mono<ExecutionPlan> classifyPlan(RoutingContext ctx) {
         String classifierPrompt = renderClassifierPrompt(ctx);
         if (classifierPrompt.isEmpty()) {
-            log.warn("[IntentRouter] catalog intent.classifier 未配置，默认 react");
+            log.warn("[IntentRouter] catalog intent.classifier.* 未配置（轨 A/B），默认 react");
             return Mono.just(applyLockedMode(
                     ExecutionPlan.reactFallback("no classifier prompt"), ctx.effectiveLockedMode()));
         }
@@ -129,18 +131,27 @@ public class IntentRouter {
         return out.isEmpty() ? Map.of() : Map.copyOf(out);
     }
 
+    /** 轨 A（FAST/PRO）收集 skill+agent；轨 B（WORKFLOW）只收集 workflowId，目录与输出契约互不干扰 */
+    private static final String CLASSIFIER_PROMPT_TRACK_A = "intent.classifier.skill-agent";
+    private static final String CLASSIFIER_PROMPT_TRACK_B = "intent.classifier.workflow";
+
     /**
      * lockedMode 时跳过 {@link WorkflowCatalog#sanitize}：sanitize 会把未知/缺定义 workflow
      * 降级为 react，随后再锁回 WORKFLOW 会丢掉 workflowId；强制路径由 ForcedExecutionRouter 校验。
      */
     private String renderClassifierPrompt(RoutingContext ctx) {
-        String prompt = catalogHolder.snapshot().text("intent.classifier").map(String::strip).orElse("");
+        boolean workflowTrack = ctx.effectiveLockedMode() == ExecutionMode.WORKFLOW;
+        String promptId = workflowTrack ? CLASSIFIER_PROMPT_TRACK_B : CLASSIFIER_PROMPT_TRACK_A;
+        String prompt = catalogHolder.snapshot().text(promptId).map(String::strip).orElse("");
         if (!StringUtils.hasText(prompt)) {
             return "";
         }
-        // 目录按会话 kind 过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A/B】+ applyLockedMode 约束
-        prompt = workflowCatalog.renderIntoClassifier(prompt, ctx.kindOrDefault());
-        return skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
+        if (workflowTrack) {
+            return workflowCatalog.renderIntoClassifier(prompt, ctx.kindOrDefault());
+        }
+        // 目录按会话 kind 过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A】+ applyLockedMode 约束
+        prompt = skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
+        return agentCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
     }
 
     static String buildClassifierUserMessage(RoutingContext ctx) {

@@ -1,9 +1,6 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
-import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
-import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.WorkflowManagerClient;
@@ -277,11 +274,6 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeIntent_exposesRewriteDetailWhenProvided() {
-        PromptCatalogHolder rewriteHolder = new PromptCatalogHolder();
-        rewriteHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\"}"))));
-        RewriteTimelineLabels.bind(new TimelinePromptCatalog(rewriteHolder));
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("待审批");
         session.pending("intent", "intent");
@@ -294,28 +286,26 @@ class ProcessingTimelineSessionTest {
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
-        assertThat(intent.detail()).contains("补全问句");
         assertThat(intent.detail()).contains("原问题：待审批");
+        assertThat(intent.detail()).doesNotContain("补全问句");
         assertThat(intent.metadata().rewriteApplied()).isTrue();
         assertThat(intent.metadata().rewriteLatencyMs()).isEqualTo(15L);
-        assertThat(intent.metadata().rewriteScenarioLabel()).isEqualTo("补全问句");
-        RewriteTimelineLabels.bind(null);
     }
 
     @Test
     void completeIntent_skillBinding_exposesRoutingMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
-        session.bindUserQuery("@finance-analysis 先查制度再分析");
+        session.bindUserQuery("/finance-analysis 先查制度再分析");
         session.pending("intent", "intent");
         session.start("intent", "intent");
         Map<String, String> params = Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
         session.completeIntent(new ExecutionPlan(
-                ExecutionMode.PRO, null, params, "skill:@mention"));
+                ExecutionMode.PRO, null, params, "skill:/mention"));
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
         assertThat(intent.metadata().skillId()).isEqualTo("finance-analysis");
-        assertThat(intent.metadata().routingReason()).contains("skill:@mention");
+        assertThat(intent.metadata().routingReason()).contains("skill:/mention");
     }
 
     @Test
@@ -360,11 +350,6 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeAt_workflowRagNode_mergesRewriteAndHitDetail() {
-        PromptCatalogHolder rewriteHolder = new PromptCatalogHolder();
-        rewriteHolder.replace(PromptCatalogSnapshot.of(1L, List.of(
-                new PromptCatalogEntry("rewrite.timeline", "rewrite", "rewrite.timeline", true, 0, 1,
-                        null, "{\"intent\":\"补全问句\"}"))));
-        RewriteTimelineLabels.bind(new TimelinePromptCatalog(rewriteHolder));
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报差旅");
         session.bindTraceMessageId("msg-2");
@@ -391,7 +376,6 @@ class ProcessingTimelineSessionTest {
         assertThat(rag.metadata().expandSectionTitle()).isEqualTo("检索过程");
         assertThat(rag.summary().after()).contains("2 条");
         QueryRewriteTrace.clear("msg-2");
-        RewriteTimelineLabels.bind(null);
     }
 
     @Test

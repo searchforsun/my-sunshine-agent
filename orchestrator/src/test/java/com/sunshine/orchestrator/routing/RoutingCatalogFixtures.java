@@ -61,7 +61,6 @@ public final class RoutingCatalogFixtures {
                 text("system-prompt", "system", "你是 Sunshine AI 测试助手。"),
                 text("mode-overlay.react", "mode-overlay", "react-mode-minimal"),
                 text("mode-overlay.react-restart", "mode-overlay", ""),
-                text("mode-overlay.direct", "mode-overlay", ""),
                 text("mode-overlay.workflow", "mode-overlay", ""),
                 text("mode-overlay.subagent", "mode-overlay", ""),
                 text("context.layer-prompt", "context", "context-layer-prompt"),
@@ -69,13 +68,11 @@ public final class RoutingCatalogFixtures {
                 text("context.current-user-marker", "context", "【当前提问 · 仅此作答】"),
                 text("scope-prompt", "scope", ""),
                 text("hitl.agent-prompt", "hitl", ""),
-                text("intent.classifier", "intent", "classifier-stub"),
+                text("intent.classifier.skill-agent", "intent", "classifier-track-a-stub"),
+                text("intent.classifier.workflow", "intent", "classifier-track-b-stub"),
                 text("answer.template", "answer",
                         "用户问题：{{start.userQuery}}\n\n上游数据：\n{{plan.upstream}}\n\n请汇总。"),
                 text("answer.overlay", "answer", ""),
-                text("rewrite.intent", "rewrite", "rewrite-intent-stub"),
-                json("rewrite.timeline", "rewrite",
-                        "{\"intent\":\"补全问句\"}"),
                 json("timeline.intent", "timeline",
                         "{\"label\":\"识别意图\",\"before\":\"识别用户意图\","
                                 + "\"active\":\"正在识别用户意图\","

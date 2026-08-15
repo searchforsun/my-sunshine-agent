@@ -20,7 +20,7 @@
 - **禁止阶段 D**：不得删除 `PlanWorkflowExecutor` / `WorkflowPlanner` / `PlanApproval*` / Catalog `plan-workflow.*` 源文件
 - **`harness.enabled=true`** 现网已开；`pro`→harness；关则 pro 显式失败
 - **模型输出不二次加工**：不对 Planner/Worker 正文截断/摘要兜底；H1 投影只映射 status 枚举，不改 label 语义
-- **TaskBoard**：一级 = H1 `taskQueue` 投影；**禁止**再调 LLM 生成看板；二级仍靠 Worker 内 `manage_tasks`（有则展示）
+- **TaskBoard**：一级 = H1 `taskQueue` 投影；**禁止**再调 LLM 生成看板；二级仍靠 Worker 内 `todo_write`（有则展示）
 - **静态 Workflow / ReAct / spawn** 回归不得因本 plan 变红
 - 改 `docs/nacos/*.yaml` → `python scripts/sync_nacos.py` + `python scripts/start.py --restart orchestrator`
 - 单测：`mvn test -pl orchestrator -Dtest='*Harness*,*PlanNotebook*,*TaskBoard*' -q`
@@ -421,7 +421,7 @@ EOF
 | **P4** | / | `fast` 简单问答 → **无** `worker-*` harness 步；走 ReAct |
 | **P5** | chat | 启动 pro 长任务 → 记 notebook JSON → `python scripts/start.py --restart orchestrator` → 同会话 follow-up「继续」→ notebook `in_progress` 已被修复为 fail 或不阻塞；能继续出 `plan-R*` 或综合（hard：Redis load 成功且无 5xx） |
 | **P6** | chat | soft：多波后 notebook / 注入日志含 `[folded]` 或 rounds≥near-keep；无则 WARN |
-| **P7** | task | query 故意信息不足 → 首轮可仅调研 worker；随后出现 `plan-R2` 或 replan；若 SSE 有二级 `manage_tasks` 则 tasks.secondary 可观测（soft） |
+| **P7** | task | query 故意信息不足 → 首轮可仅调研 worker；随后出现 `plan-R2` 或 replan；若 SSE 有二级 `todo_write` 则 tasks.secondary 可观测（soft） |
 | **P8** | task | soft/可选：`--suite p8` 默认 skip；文档注明需长墙钟；检查 Nacos `worker.timeout-ms≥3600000` 配置存在即 PASS（真跑 spawn+exec 600s 作 `--full-p8`） |
 
 - [ ] **Step 1: 脚手架**（auth / create conv / chat_sse / parse_steps），抄 `verify_react_taskboard_live.py`

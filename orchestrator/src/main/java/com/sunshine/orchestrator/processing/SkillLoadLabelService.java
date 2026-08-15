@@ -28,11 +28,11 @@ public class SkillLoadLabelService {
     }
 
     public String beforeLine() {
-        return textOrDefault(skillTemplate().getBefore(), "准备加载 Skill");
+        return textOrDefault(skillTemplate().getBefore(), "加载技能");
     }
 
     public String activeLine() {
-        return textOrDefault(skillTemplate().getActive(), "正在加载 Skill 指令");
+        return textOrDefault(skillTemplate().getActive(), "正在加载技能");
     }
 
     public String afterLine(String skillId) {

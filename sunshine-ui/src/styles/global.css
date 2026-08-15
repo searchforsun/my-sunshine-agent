@@ -283,6 +283,18 @@ html.theme-switching *::after {
   --n-bar-color: var(--sun-text);
 }
 
+/* 分段 Tab（segment）：轨道浅灰、选中滑块取主题背景色，避免 Naive 默认 inputColor(#171717) 与背景割裂 */
+.n-tabs .n-tabs-rail {
+  --n-color-segment: var(--sun-row-hover);
+  --n-tab-color-segment: var(--sun-black);
+}
+
+/* 弹窗（preset card/dialog 均带 .n-modal）内分段滑块：暗色下与弹窗背景(#2f2f2f)一致；
+ * 亮色下弹窗背景为白色，沿用全局 --sun-black(=白) 即可 */
+html[data-theme='dark'] .n-modal .n-tabs .n-tabs-rail {
+  --n-tab-color-segment: var(--sun-surface);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

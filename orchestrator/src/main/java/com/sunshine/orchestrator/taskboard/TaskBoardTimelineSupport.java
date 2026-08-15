@@ -15,7 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TaskBoardTimelineSupport {
 
-    /** 首轮规划推理结束后立即占位，manage_tasks 到达后再填充 metadata */
+    /** 首轮规划推理结束后立即占位，todo_write 到达后再填充 metadata */
     public void ensurePlaceholderAfterFirstThink(ProcessingTimelineSession session) {
         if (session == null || session.hasStep(TimelineStepId.TASKS.id())) {
             return;
@@ -39,7 +39,7 @@ public class TaskBoardTimelineSupport {
         }
         String stepId = TimelineStepId.TASKS.id();
         String phase = TimelineStepId.TASKS.phase();
-        String activeTask = ReactTaskBoardService.findActiveTask(items);
+        String activeTask = TaskBoardService.findActiveTask(items);
         StepMetadata metadata = StepMetadata.withTasks(items, revision, taskProgress);
         session.updateTaskBoard(stepId, phase, TaskBoardStepLabels.active(activeTask), metadata);
     }
@@ -52,7 +52,7 @@ public class TaskBoardTimelineSupport {
         if (session == null || !session.hasStep(TimelineStepId.TASKS.id())) {
             return;
         }
-        boolean allDone = ReactTaskBoardService.allTerminal(items);
+        boolean allDone = TaskBoardService.allTerminal(items);
         String after = allDone ? TaskBoardStepLabels.allDone() : TaskBoardStepLabels.after();
         StepMetadata metadata = items != null && !items.isEmpty()
                 ? StepMetadata.withTasks(items, revision, taskProgress)
@@ -60,7 +60,7 @@ public class TaskBoardTimelineSupport {
         session.completeTaskBoard(after, metadata);
     }
 
-    /** 未调用 manage_tasks 时收起占位步，避免 tasks 永驻 running */
+    /** 未调用 todo_write 时收起占位步，避免 tasks 永驻 running */
     public void dismissEmptyPlaceholder(ProcessingTimelineSession session) {
         if (session == null || !session.hasStep(TimelineStepId.TASKS.id())) {
             return;

@@ -60,7 +60,7 @@ MCP_DEMO_JSON = json.dumps(
     },
     ensure_ascii=False,
 )
-SPECIAL_TOOL_IDS = ("manage_tasks", "search_knowledge")
+SPECIAL_TOOL_IDS = ("search_knowledge",)
 
 
 def wait_port(port: int, timeout: float = 90.0) -> bool:

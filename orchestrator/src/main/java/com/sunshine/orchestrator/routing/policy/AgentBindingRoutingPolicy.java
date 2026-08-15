@@ -1,9 +1,7 @@
 package com.sunshine.orchestrator.routing.policy;
 
-import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.catalog.AgentBindingOutcome;
 import com.sunshine.orchestrator.catalog.AgentBindingParser;
-import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import lombok.RequiredArgsConstructor;
@@ -36,15 +34,7 @@ public class AgentBindingRoutingPolicy implements RoutingPolicy {
         if (StringUtils.hasText(message) && message.strip().startsWith("#")) {
             return Mono.just(Optional.empty());
         }
-        AgentBindingOutcome binding;
-        try {
-            binding = agentBindingParser.parse(message, ctx.kindOrDefault());
-        } catch (IllegalStateException e) {
-            return Mono.error(new BizException(OrchestratorErrorCode.AGENT_NOT_FOUND));
-        }
-        if (binding.unknown()) {
-            return Mono.error(new BizException(OrchestratorErrorCode.AGENT_NOT_FOUND));
-        }
+        AgentBindingOutcome binding = agentBindingParser.parse(message, ctx.kindOrDefault());
         if (!binding.bound()) {
             return Mono.just(Optional.empty());
         }

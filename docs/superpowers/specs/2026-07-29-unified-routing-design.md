@@ -162,7 +162,7 @@ public record RoutingContext(
 
 | 层 | 行为 |
 |----|------|
-| **L0** | 解析 `$agent-id(s)`、`@skill-id(s)` → 累积；**不解析 `#`**（前端本模式不展示；后端若出现则忽略或 400，推荐忽略并打 warn） |
+| **L0** | 解析 `$agent-id(s)`、`/skill-id(s)` → 累积；**不解析 `#`**（前端本模式不展示；后端若出现则忽略或 400，推荐忽略并打 warn） |
 | **L1** | 仅匹配 `resourceType ∈ {agent, skill}` 的规则 → 累积；**跳过** workflow 规则 |
 | **L2** | 仅 **Agent / Skill** 两路 embedding 召回 → 累积候选；**不跑** Workflow 索引 |
 | **L3** | 快速分类或深层兜底：在候选 / Catalog 中筛选、合并 `agentIds` / `skillIds`；输出 **不含** 执行模式字段 |
@@ -182,6 +182,8 @@ L0–L2 **不 STOP 整链提前返回执行器**（无 workflow 独占）；始�
 
 - 二者皆空 → 合法：纯通用 ReAct / Planner（无预置子 Agent / skill）。  
 - **禁止**输出 `executionMode` / `planMode` / `workflowId`。
+
+> **Catalog 实现**：轨 A 走 `intent.classifier.skill-agent`（注入 `{{skill-catalog}}` + `{{agent-catalog}}`），轨 B 走 `intent.classifier.workflow`（注入 `{{workflow-catalog}}`）；`IntentRouter.renderClassifierPrompt` 按 `effectiveLockedMode` 选 key。单 key 时代的 `intent.classifier` 已停用。
 
 ### 5.3 分发
 
@@ -347,7 +349,7 @@ public class ResourceDispatcher {
 | **R-3** | ✅ | 专业模式接到 `PlannerHarnessExecutor`（= rebuild H-5）；三模式冒烟 | Live：`verify_routing_v6_smoke.py` V1/V3/V4/V5 | T3+T7 |
 | **R-4** | ✅ | 删除动态 plan-workflow 残留（`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*`）、`PLAN_WORKFLOW` 旧枚举；`ForcedExecutionRouter` 重写保留（见 §12.2） | grep 零残留 ✅ | rebuild **阶段 D** |
 
-> 与 4.14：R-3 = H-5 接线 **✅**（[unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)）。**延期**：`intent.classifier` Catalog live 版本 bump；H-7 Live（代码 ✅，待部署跑）；R-4 = rebuild 阶段 D **✅**（源码删除完成，Live 回归随 H-7 部署后跑）。`pro` **禁止**静默改回 `fast`。
+> 与 4.14：R-3 = H-5 接线 **✅**（[unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)）。`intent.classifier` Catalog 已拆双 key **✅**：轨 A `intent.classifier.skill-agent`（skill/agent 目录）、轨 B `intent.classifier.workflow`（workflow 目录），live catalog v91；H-7 Live（代码 ✅，待部署跑）；R-4 = rebuild 阶段 D **✅**（源码删除完成，Live 回归随 H-7 部署后跑）。`pro` **禁止**静默改回 `fast`。
 
 ---
 

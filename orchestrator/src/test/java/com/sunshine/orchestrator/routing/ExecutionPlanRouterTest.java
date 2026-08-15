@@ -74,7 +74,7 @@ class ExecutionPlanRouterTest {
                         agentCatalogService, workflowCatalog),
                 skillBindingParser,
                 agentBindingParser);
-        when(skillBindingParser.stripAtMention(org.mockito.ArgumentMatchers.anyString())
+        when(skillBindingParser.stripSlashMention(org.mockito.ArgumentMatchers.anyString())
                 ).thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
         when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
@@ -96,15 +96,15 @@ class ExecutionPlanRouterTest {
     }
 
     @Test
-    void atSkillBindingSingleStep_withFast_skipsL3WhenSkillBound() {
+    void slashSkillBindingSingleStep_withFast_skipsL3WhenSkillBound() {
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(eq("@finance-analysis 是否合规"), any(), any())).thenReturn(binding);
+                "finance-analysis", "是否合规", SkillBindingSource.SLASH_MENTION);
+        when(skillBindingParser.parse(eq("/finance-analysis 是否合规"), any(), any())).thenReturn(binding);
         when(intentRouter.classifyPlan(any(RoutingContext.class))).thenReturn(Mono.just(
                 new ExecutionPlan(ExecutionMode.FAST, null,
                         Map.of("status", "pending"), "llm")));
 
-        ExecutionPlan plan = router.route(ctx("@finance-analysis 是否合规", ExecutionPreference.FAST)).block();
+        ExecutionPlan plan = router.route(ctx("/finance-analysis 是否合规", ExecutionPreference.FAST)).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
@@ -113,10 +113,10 @@ class ExecutionPlanRouterTest {
     }
 
     @Test
-    void atSkillMultiStep_withPro_bindsSkillKeepsMode() {
-        String query = "@finance-analysis 先查制度再拉待办再分析再润色";
+    void slashSkillMultiStep_withPro_bindsSkillKeepsMode() {
+        String query = "/finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
+                "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(binding);
 
         ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();

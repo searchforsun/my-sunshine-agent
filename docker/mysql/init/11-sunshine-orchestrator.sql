@@ -116,8 +116,8 @@ CREATE TABLE execution_plan (
     INDEX idx_ep_msg (message_id)
 );
 
--- ReAct TaskBoard
-CREATE TABLE react_task_board (
+-- 任务板终态快照（原生 todo_write 收口落库）
+CREATE TABLE task_board (
     id              VARCHAR(64)  NOT NULL PRIMARY KEY,
     message_id      VARCHAR(64)  NOT NULL,
     conversation_id VARCHAR(64)  NOT NULL,
@@ -127,8 +127,8 @@ CREATE TABLE react_task_board (
     items_json      JSON         NOT NULL,
     created_at      DATETIME(3)  NOT NULL,
     updated_at      DATETIME(3)  NOT NULL,
-    UNIQUE KEY uk_react_task_board_msg (message_id),
-    INDEX idx_react_task_board_conv (conversation_id, updated_at)
+    UNIQUE KEY uk_task_board_msg (message_id),
+    INDEX idx_task_board_conv (conversation_id, updated_at)
 );
 
 -- 沙箱工作区（task 场景）

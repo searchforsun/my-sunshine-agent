@@ -6,7 +6,7 @@ import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
-import com.sunshine.orchestrator.taskboard.ReactTaskBoardService;
+import com.sunshine.orchestrator.taskboard.TaskBoardService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.context.AssembledContext;
@@ -51,7 +51,7 @@ class ReActAgentRuntimeTest {
     @Mock
     private AnswerGroundingChecker groundingChecker;
     @Mock
-    private ReactTaskBoardService taskBoardService;
+    private TaskBoardService taskBoardService;
     @Mock
     private SandboxSessionLifecycle sandboxSessionLifecycle;
     @Mock

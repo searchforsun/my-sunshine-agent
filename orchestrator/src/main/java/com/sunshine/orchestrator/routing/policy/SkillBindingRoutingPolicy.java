@@ -44,7 +44,7 @@ public class SkillBindingRoutingPolicy implements RoutingPolicy {
         params.put(SkillBindingOutcome.PARAM_SKILL, binding.skillId());
         params.put(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY, binding.effectiveQuery());
         String reason = switch (binding.source()) {
-            case AT_MENTION -> "skill:@mention";
+            case SLASH_MENTION -> "skill:/mention";
             case HINT_PATTERN -> "skill:hint";
             case CLIENT -> "skill:client";
         };

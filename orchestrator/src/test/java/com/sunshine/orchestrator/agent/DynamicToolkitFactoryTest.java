@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
+import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.sandbox.SandboxAgentTools;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
@@ -43,6 +44,8 @@ class DynamicToolkitFactoryTest {
     private GenericRemoteToolFactory remoteToolFactory;
     @Mock
     private ToolCatalogService toolCatalogService;
+    @Mock
+    private SkillCatalogService skillCatalogService;
     @Mock
     private ToolSetResolver toolSetResolver;
     @Mock

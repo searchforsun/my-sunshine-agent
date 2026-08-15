@@ -271,9 +271,9 @@ intent
 | 层级 | SSOT | 展示规则 |
 |------|------|----------|
 | **一级** | H1 `taskQueue` 投影（plan / replan / worker 状态变更时引擎刷新） | 调度单元 checklist；可按 `dependsOn` 做**波次并行样式**（分组/并排，**不画依赖边**） |
-| **二级** | Worker 内 todolist（`todo_write` / `manage_tasks` 等，有则挂在对应一级下） | **有 items 才展示，没有就不渲染该二级区域**；Worker 结束**不**把二级板收束进 handoff，板面状态原样保留（完成/取消等由 Worker 工具自身更新） |
+| **二级** | Worker 内 todolist（`todo_write`，有则挂在对应一级下） | **有 items 才展示，没有就不渲染该二级区域**；Worker 结束**不**把二级板收束进 handoff，板面状态原样保留（完成/取消等由 Worker 工具自身更新） |
 
-- 一级板 **不是** 要求 Planner 再调一次 `manage_tasks`（避免与 H1 双写漂移）；二级板仍是 Worker 模型自愿维护的软规划。
+- 一级板 **不是** 要求 Planner 再调一次 `todo_write`（避免与 H1 双写漂移）；二级板仍是 Worker 模型自愿维护的软规划。
 - handoff 文案/摘要 **禁止**替代或清空二级 todolist。
 
 ### 4.3 步骤契约（正文）

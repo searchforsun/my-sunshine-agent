@@ -110,31 +110,18 @@ public class ReactExecutor {
             }
             if (template != null) {
                 String[] ids = agentIdsRaw.split(",");
-                StringBuilder agentLines = new StringBuilder();
-                String firstId = null;
-                for (String id : ids) {
-                    String aid = id.strip();
-                    if (aid.isEmpty()) {
-                        continue;
-                    }
-                    if (firstId == null) {
-                        firstId = aid;
-                    }
-                    // findIndex：内存索引即可（displayName/description 均含），禁止远程 find——
-                    // executeWithInjected 可能在 reactor-http 线程执行，AgentCatalogClient.block() 必抛异常致注入静默丢失
-                    var entry = agentCatalogService.findIndex(aid);
-                    if (entry.isPresent()) {
-                        agentLines.append("- ").append(aid)
-                                .append(" (").append(entry.get().displayName()).append(")");
-                        if (entry.get().description() != null && !entry.get().description().isBlank()) {
-                            agentLines.append(": ").append(entry.get().description());
-                        }
-                        agentLines.append('\n');
-                    }
+                List<String> agentIdList = java.util.Arrays.stream(ids)
+                        .map(String::strip)
+                        .filter(StringUtils::hasText)
+                        .toList();
+                String agentLines = agentCatalogService.renderForSpawnHint(agentIdList);
+                if (!StringUtils.hasText(agentLines)) {
+                    agentLines = null;
                 }
-                if (firstId != null && !agentLines.isEmpty()) {
+                String firstId = agentIdList.isEmpty() ? null : agentIdList.get(0);
+                if (firstId != null && agentLines != null) {
                     blocks.add(template
-                            .replace("{agents}", agentLines.toString().strip())
+                            .replace("{agents}", agentLines)
                             .replace("{agentId}", firstId));
                 }
             }

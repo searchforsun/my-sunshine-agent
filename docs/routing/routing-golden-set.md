@@ -1,18 +1,18 @@
 # 路由 Golden-Set（验收提示词）
 
-> **配置 SSOT**：prompt-manager Catalog（`routing-rule.*`，种子见 `docker/mysql/init/17-sunshine-prompt-manager.sql`）→ orchestrator `PromptCatalogHolder`  
+> **配置 SSOT**：resource-manager Catalog（`routing-rule.*`，种子见 `docker/mysql/init/19-sunshine-resource.sql`）→ orchestrator `PromptCatalogHolder`  
 > **验收 SSOT（本文）**：人工/UI 验收 + `RoutingGoldenSetTest` 单测对照；其他文档**只链引用、勿复制规则 JSON**  
-> **代码**：`ExecutionPlanRouter` → `RoutingPolicyChain`（L0 → `UnifiedRuleRoutingPolicy` → L3）  
+> **代码**：`ExecutionPlanRouter` → `ForcedExecutionRouter`（L0 分轨 → `UnifiedRuleRoutingPolicy` → L3 双轨收集）  
 > **重试/降级详设**：[plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md)
 
 ## 策略链（意图识别步内）
 
 | 层级 | Policy | 配置 | 产出 |
 |:----:|--------|------|------|
-| L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `@` 硬编码 | 轨 A：`skillId` 绑定（不改 executionMode）；L3 后自动发现 skill |
+| L0 | `SkillBindingRoutingPolicy` + `SkillDiscoveryService` | `agent.skill.hint-patterns` + `/` 硬编码 | 轨 A：`skillId` 绑定（不改 executionMode）；L3 后自动发现 skill |
 | L1 | `UnifiedRuleRoutingPolicy` | Catalog `routing-rule.*`（轨 A：`mode=fast` 绑 skill；轨 B：`mode=workflow` 绑 workflowId） | 轨 A：`FAST/PRO` 命中快专业共享规则；轨 B：`WORKFLOW` 命中工作流规则 |
 | L2 | （同上引擎） | Catalog `matchType=regex`（轨 A：`mode=fast` P40/28/22/18 绑 skill；轨 B：`mode=workflow` P20/15/10） | 轨 A：技能/助手绑定；轨 B：静态工作流 |
-| L3 | `LlmClassifierRoutingPolicy` | Catalog `intent.classifier`（原 Nacos classifier-prompt） | LLM 选 mode/workflow；强制路径可带 `lockedMode` |
+| L3 | 双轨收集 | Catalog `intent.classifier.skill-agent`（轨 A）/ `intent.classifier.workflow`（轨 B） | 轨 A：`agentIds/skillIds`；轨 B：`workflowId`；不再自判 mode |
 | **强制** | `ForcedExecutionRouter` | 请求体 `executionPreference` ≠ `auto` | **锁死 mode**；仍跑同 mode 规则/L3 解析绑定；见 [§J](#j-chat-executionpreference-强制路由p0) |
 
 **链规则**：首个返回 `ExecutionPlan` 的策略胜出；统一引擎按 **priority** 择优（不再「L1 漏判时跳过 L2」）。**`executionPreference` 非 auto 时**走 `ForcedExecutionRouter`（锁 mode，累积解析绑定，非整段旁路意图）。
@@ -28,7 +28,7 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 ## 验收前准备
 
 1. **新建对话**（或 `python scripts/clear_session_cache.py --force`）
-2. prompt-manager :8500 已启动且 Catalog 有种子规则（改规则走 `/prompts` 发布，**勿**再改 Nacos `agent.routing.*`）
+2. resource-manager :8240 已启动且 Catalog 有种子规则（改规则走 `/prompts` 发布，**勿**再改 Nacos `agent.routing.*`）
 3. orchestrator :8200 已启动（会热拉 Catalog；若改了非提示词 Nacos 项才需 `sync_nacos.py` + 重启）
 4. API Live：`python scripts/verify_prompt_catalog_live.py`
 
@@ -165,16 +165,16 @@ mvn test -pl orchestrator -Dtest=RoutingGoldenSetTest,ExecutionPlanRouterTest,Fo
 
 ## E. Skill 绑定（L0，优先于一切）
 
-> **前缀 SSOT**：**`@` = Skill**（本节）；**`#` = Workflow**（见 [§I Workflow # 绑定](#i-workflow-绑定l0)）。二者首字符互斥。
+> **前缀 SSOT**：**`/` = Skill**（本节，与前端 Composer `/` 补全对齐）；**`#` = Workflow**（见 [§I Workflow # 绑定](#i-workflow-绑定l0)）；**`@` = 文件夹/路径补全**（前端 `useChatWorkspacePathMention`，非绑定语法）。`/` 与 `#` 首字符互斥。
 
 六种触发 SSOT 见 [multi-agent plan §三](../superpowers/plans/2026-06-19-multi-agent-architecture.md#三六种-skill-触发流程)。
 
 | # | 提示词 | 预期 |
 |---|--------|------|
-| E1 | `@policy-review` 审查这条报销 | `REACT` + skill=policy-review（**流程 1** 单步） |
+| E1 | `/policy-review` 审查这条报销 | `REACT` + skill=policy-review（**流程 1** 单步） |
 | E2 | 请使用 compliance-check skill 处理待审批单据 | `REACT` + skill=compliance-check（**流程 2**） |
-| E3 | `@finance-analysis 先查制度再拉待办再分析再润色` | `FAST`（默认）+ skill=finance-analysis（**Skill 绑定，轨 A**）；ReAct 编排，不再出 Plan DAG |
-| E4 | `@finance-analysis 这笔报销是否合规` | `REACT` + skill=finance-analysis；**不得**走 finance-smart（L0 压过 L2） |
+| E3 | `/finance-analysis 先查制度再拉待办再分析再润色` | `FAST`（默认）+ skill=finance-analysis（**Skill 绑定，轨 A**）；ReAct 编排，不再出 Plan DAG |
+| E4 | `/finance-analysis 这笔报销是否合规` | `REACT` + skill=finance-analysis；**不得**走 finance-smart（L0 压过 L2） |
 
 ### E-Live（5B 执行期）
 
@@ -227,7 +227,7 @@ python3 scripts/verify_skills_ui_live.py
 |--------|--------------|--------|
 | I1 | `REACT` / 无 `#` 时 L3 自选 | `WORKFLOW` + `#` 显式 knowledge-qa |
 | I3 | finance-smart 仅靠 L2 命中 | `WORKFLOW` + `#` 显式锁定 |
-| E4 `@finance-analysis …` | `WORKFLOW` | 仍为 Skill L0（§E 不变） |
+| E4 `/finance-analysis …` | `WORKFLOW` | 仍为 Skill L0（§E 不变） |
 
 ---
 
@@ -237,13 +237,13 @@ python3 scripts/verify_skills_ui_live.py
 > **请求**：SSE 发送体 `executionMode`（`fast` \| `pro` \| `workflow`；旧 `auto`/`react`/`plan-workflow` 读映射）  
 > **边界**：本节约 **执行路径**；**指定 workflow 模板**用正文 `#id`（4.13 §I），**不在底栏做 catalog 下拉**。
 
-| # | mode | 提示词 | 预期 mode | @skill |
+| # | mode | 提示词 | 预期 mode | /skill |
 |---|------------|--------|-----------|--------|
 | J1 | `fast` | 待审批是否合规 | `FAST`；`reason=user:forced-fast`（忽略异 mode workflow 规则） | ✅ |
 | J2 | `workflow` | 有哪些待审批报销 | `WORKFLOW` finance-list（同 mode 规则） | ❌ |
 | J3 | `pro` | 先查制度再查待审批 | `PRO`；`reason=user:forced-pro` | ✅ |
-| J4 | `workflow` | `@policy-review 有哪些待审批报销` | `WORKFLOW` finance-list；**忽略** @skill（strip 正文） | ❌ |
-| J5 | `pro` | `@finance-analysis 是否合规` | `PRO` + `params.skill=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
+| J4 | `workflow` | `/policy-review 有哪些待审批报销` | `WORKFLOW` finance-list；**忽略** /skill（strip 正文） | ❌ |
+| J5 | `pro` | `/finance-analysis 是否合规` | `PRO` + `params.skill=finance-analysis`（**保留** forced mode，仅合并 L0 params） | ✅ |
 | J6 | `fast` | 差旅办法制度怎么说 | `FAST` + 同 mode 规则绑定 `reactPromptId=react-prompt.policy-qa`；`reason=user:forced-fast` | ✅ |
 
 单测：`ForcedExecutionRouterTest` · `ExecutionPlanRouterTest` · `RoutingGoldenSetTest#forcedJ*`
@@ -265,7 +265,7 @@ Live：`python scripts/verify_execution_preference.py`
 | F3 | 待审批 | 短句 → intent 改写后分类（见 timeline detail） |
 | F4 | 帮我做一笔报销的合规分析 | L3→`REACT` + skillId=finance-analysis |
 | F5 | 看一下这个skills能做什么，分析一下脚本 | L3→`REACT`；**可选** skillId（挂载 `/skills/`）；`sandbox__*` **常驻**（方案 B，不依赖 skillId） |
-| F6 | 帮我创建一个csv文件，再使用脚本求和 | L3→`REACT`；须 `sandbox__write` + `exec`；有 `@skill` 时懒挂载脚本目录 |
+| F6 | 帮我创建一个csv文件，再使用脚本求和 | L3→`REACT`；须 `sandbox__write` + `exec`；有 `/skill` 时懒挂载脚本目录 |
 
 ---
 
@@ -277,9 +277,9 @@ Live：`python scripts/verify_execution_preference.py`
 | B1 有哪些待审批报销 | PLAN_WORKFLOW | finance-list |
 | C1 待审批报销是否合规 | finance-list | finance-smart |
 | A1 + 去掉「先…再…」改为逗号串联 | 若 L1 未命中且含「查询待审批」 | 曾误路由 finance-list；L2 保险丝 + 配置 domain 组应避免 |
-| E4 `@finance-analysis 是否合规` | finance-smart | `REACT` + skill=finance-analysis |
-| E3 `@finance-analysis 先…再…` | 仅 REACT 单 Agent | `PLAN_WORKFLOW` 5B + Plan DAG |
-| F4 帮我做合规分析 | finance-smart / workflow | `REACT` + L3 skillId=finance-analysis（无 @） |
+| E4 `/finance-analysis 是否合规` | finance-smart | `REACT` + skill=finance-analysis |
+| E3 `/finance-analysis 先…再…` | 仅 REACT 单 Agent | `PLAN_WORKFLOW` 5B + Plan DAG |
+| F4 帮我做合规分析 | finance-smart / workflow | `REACT` + L3 skillId=finance-analysis（无 /） |
 
 ---
 
@@ -353,11 +353,11 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 
 | 需求 | 改哪里 |
 |------|--------|
-| 新增多步句式 / 跨域信号 / 正则快路径 | prompt-manager Catalog `routing-rule.*`（`/prompts`）；发布后 orchestrator 热更新 |
+| 新增多步句式 / 跨域信号 / 正则快路径 | resource-manager Catalog `routing-rule.*`（`/prompts`）；发布后 orchestrator 热更新 |
 | 意图步文案 | Catalog `timeline.intent`（`/prompts`） |
-| 语义兜底 | Catalog `intent.classifier`（`/prompts`） |
+| 语义兜底（双轨收集） | Catalog `intent.classifier.skill-agent`（轨 A）/ `intent.classifier.workflow`（轨 B），见 `intent.classifier.*`（`/prompts`） |
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
-| Skill `@` / 强提示 | `agent.skill.hint-patterns`；L0 skill 绑定（轨 A，不再产出 skill-driven Plan） |
+| Skill `/` / 强提示 | `agent.skill.hint-patterns`；L0 skill 绑定（轨 A，不再产出 skill-driven Plan） |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
 | ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
 | Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
@@ -382,7 +382,7 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 |---|--------------|------|
 | K1 | `$policy-expert $finance-expert 是否合规` | `REACT`；主 Agent ReAct + `agentIds=[policy-expert, finance-expert]`，spawn 出 `subagent-*` 卡 |
 | K2 | `#finance-smart $policy-expert 是否合规` | `WORKFLOW` finance-smart；`#` 压过 `$`（WorkflowBinding order -20 先于 AgentBinding -10） |
-| K3 | `$policy-expert @finance-analysis 是否合规` | 仅 `$`（order -10 先于 `@` SkillBinding 0）→ `REACT` + agentIds |
+| K3 | `$policy-expert /finance-analysis 是否合规` | 仅 `$`（order -10 先于 `/` SkillBinding 0）→ `REACT` + agentIds |
 | K4 | `$not-exists 测试` | HTTP 400 `AGENT_NOT_FOUND` |
 
 **Timeline 成功路径**：

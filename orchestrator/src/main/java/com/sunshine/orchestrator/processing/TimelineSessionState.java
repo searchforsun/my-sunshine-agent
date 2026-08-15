@@ -19,7 +19,7 @@ final class TimelineSessionState {
     String activeStepId;
     int thinkIteration;
     String currentThinkId;
-    /** 自上次 think 结束以来是否完成过业务 tool（manage_tasks 不计） */
+    /** 自上次 think 结束以来是否完成过业务 tool（todo_write 不计） */
     boolean toolCompletedSinceLastThink = true;
     /** PostReasoning 刚结束的 think — TaskBoard 首建锚点 */
     String lastCompletedThinkId;
