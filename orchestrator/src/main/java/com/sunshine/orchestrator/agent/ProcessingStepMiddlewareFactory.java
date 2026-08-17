@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
@@ -26,6 +27,7 @@ public class ProcessingStepMiddlewareFactory {
     private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final PromptCatalogHolder catalogHolder;
+    private final ContextGroupEstimator contextGroupEstimator;
 
     private volatile MiddlewareBase shared;
 
@@ -42,7 +44,8 @@ public class ProcessingStepMiddlewareFactory {
                             sandboxTimelineLabels,
                             writeEditPlaceholder,
                             cancellableToolRunRegistry,
-                            catalogHolder);
+                            catalogHolder,
+                            contextGroupEstimator);
                 }
                 s = shared;
             }

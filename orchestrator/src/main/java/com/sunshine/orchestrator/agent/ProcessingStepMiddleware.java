@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.hitl.HitlParamSupport;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
@@ -18,7 +19,6 @@ import com.sunshine.orchestrator.sandbox.SandboxIds;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import com.sunshine.orchestrator.sandbox.SandboxStepContext;
-import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.taskboard.TaskBoardTimelineSupport;
 import com.sunshine.orchestrator.taskboard.TodoTasksBridge;
 import io.agentscope.core.agent.Agent;
@@ -36,6 +36,7 @@ import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultMessage;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.message.UserMessage;
+import io.agentscope.core.model.ToolSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -82,6 +83,9 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     /** RuntimeContext key：实际生效的 maxIters（由 runtime 注入，含 request 覆盖，middleware 读取） */
     public static final String CTX_REACT_MAX_ITERS = "sunshine.react.maxIters";
 
+    /** RuntimeContext key：per-call 上下文分组 token 快照（静态组由 composer 记录，动态组 onModelCall 补齐） */
+    public static final String CTX_CONTEXT_GROUPS = "sunshine.contextGroups";
+
     private final ToolCatalogService toolCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final TaskBoardTimelineSupport taskBoardTimelineSupport;
@@ -89,6 +93,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final PromptCatalogHolder catalogHolder;
+    private final ContextGroupEstimator contextGroupEstimator;
 
     public ProcessingStepMiddleware(
             ToolCatalogService toolCatalogService,
@@ -97,7 +102,8 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             SandboxTimelineLabelService sandboxTimelineLabels,
             SandboxWriteEditPlaceholderSupport writeEditPlaceholder,
             CancellableToolRunRegistry cancellableToolRunRegistry,
-            PromptCatalogHolder catalogHolder) {
+            PromptCatalogHolder catalogHolder,
+            ContextGroupEstimator contextGroupEstimator) {
         this.toolCatalogService = toolCatalogService;
         this.executionProperties = executionProperties;
         this.taskBoardTimelineSupport = taskBoardTimelineSupport;
@@ -105,6 +111,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         this.writeEditPlaceholder = writeEditPlaceholder;
         this.cancellableToolRunRegistry = cancellableToolRunRegistry;
         this.catalogHolder = catalogHolder;
+        this.contextGroupEstimator = contextGroupEstimator;
     }
 
     /** per-call bridgeId：由 ReActAgentRuntime 经 RuntimeContext 注入（缓存复用下禁止实例字段） */
@@ -122,6 +129,9 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         // 长期降级到无 reasoning 通道的模型，导致思考内容混入正文。发送前补齐缺失的
         // tool 响应，从根因上避免 400，让主模型持续走 reasoning 通道。
         List<Msg> messages = repairOrphanToolCalls(input.messages());
+        // 动态组快照必须在所有出口前记录一次（summaryTurn 分支有独立 return；guarded
+        // 仅追加一条 user 指令，其 token 计入「其他」残差，用 repair 后的原始 messages 即可）
+        recordContextGroups(ctx, messages, input.tools());
         // AgentScope maxIters 超限总结轮不传 tools（summaryStream 传 null）。DeepSeek-V4 在
         // 无 tools 参数时若仍想调用工具，会把 DSML 协议块直接写进 content，前端渲染成乱码且
         // 工具调用跑到正文后面。这里检测总结轮并向模型注入「如实汇报进度」的约束，从
@@ -146,6 +156,21 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             }
         }
         return next.apply(new ModelCallInput(messages, input.tools(), input.options(), input.model()));
+    }
+
+    /** 分组仅展示：messages 组 = 全量入参估算 − 静态组（composer 层已在静态组计过，避免双计） */
+    private void recordContextGroups(RuntimeContext ctx, List<Msg> messages, List<ToolSchema> tools) {
+        if (ctx == null) {
+            return;
+        }
+        Map<String, Integer> groups = ctx.get(CTX_CONTEXT_GROUPS);
+        if (groups == null) {
+            return;
+        }
+        int staticSum = groups.values().stream().mapToInt(Integer::intValue).sum();
+        int all = contextGroupEstimator.estimateMessages(messages);
+        groups.put("messages", Math.max(0, all - staticSum));
+        groups.put("tools", contextGroupEstimator.estimateTools(tools));
     }
 
     /** Catalog 缺失 → 空 + warn（seed 保证正常有值；缺失时该轮不注入约束） */

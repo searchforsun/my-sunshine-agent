@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
@@ -62,6 +63,7 @@ class ProcessingStepMiddlewareTest {
     private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder = mock(SandboxWriteEditPlaceholderSupport.class);
     private final CancellableToolRunRegistry cancellableToolRunRegistry = mock(CancellableToolRunRegistry.class);
     private final PromptCatalogHolder catalogHolder = mock(PromptCatalogHolder.class);
+    private final ContextGroupEstimator contextGroupEstimator = mock(ContextGroupEstimator.class);
     private final ProcessingTimelineSession session = mock(ProcessingTimelineSession.class);
 
     private ProcessingStepMiddleware newMiddleware() {
@@ -69,7 +71,7 @@ class ProcessingStepMiddlewareTest {
         return new ProcessingStepMiddleware(
                 toolCatalogService, executionProperties,
                 taskBoardTimelineSupport, sandboxTimelineLabels, writeEditPlaceholder,
-                cancellableToolRunRegistry, catalogHolder);
+                cancellableToolRunRegistry, catalogHolder, contextGroupEstimator);
     }
 
     /** P2-1：bridgeId 经 RuntimeContext 注入（middleware 无状态） */
