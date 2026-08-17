@@ -5,7 +5,6 @@ import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
-import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.plan.harness.PlannerActionTool;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
@@ -30,7 +29,7 @@ import java.util.Map;
 /**
  * 每次对话创建独立 ReActAgent，避免单例残留 pending tool call / 并发冲突。
  * 模型名 / 窗口来自 {@link ModelSceneResolver}（D10），不再读 Nacos agent.model.name。
- * base system-prompt 读 {@link PromptCatalogHolder}（id={@code system-prompt}）。
+ * base system-prompt 经 {@link ReActSystemPromptResolver} 解析（与 runtime 分组估算共用 SSOT）。
  */
 @Slf4j
 @Component
@@ -39,7 +38,7 @@ public class ReActAgentFactory {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final PromptCatalogHolder catalogHolder;
+    private final ReActSystemPromptResolver systemPromptResolver;
     private final AgentExecutionProperties executionProperties;
     private final DynamicToolkitFactory dynamicToolkitFactory;
     private final ProcessingStepMiddlewareFactory middlewareFactory;
@@ -178,21 +177,7 @@ public class ReActAgentFactory {
     }
 
     public String composeSystemPrompt(AgentRunRequest request) {
-        String base = catalogHolder.snapshot().entry("system-prompt")
-                .map(e -> e.contentText() != null ? e.contentText().strip() : "")
-                .orElseGet(() -> {
-                    log.warn("[ReActAgentFactory] catalog missing id=system-prompt");
-                    return "";
-                });
-        String overlay = request.systemOverlay();
-        if (!StringUtils.hasText(overlay)) {
-            return base;
-        }
-        String trimmed = overlay.strip();
-        if (base.isBlank()) {
-            return trimmed;
-        }
-        return base + "\n\n" + trimmed;
+        return systemPromptResolver.resolve(request);
     }
 
     Toolkit resolveToolkit(AgentRunRequest request) {

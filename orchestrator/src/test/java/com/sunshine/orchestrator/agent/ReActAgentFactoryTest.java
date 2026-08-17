@@ -9,7 +9,6 @@ import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.plan.harness.PlannerActionTool;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
-import com.sunshine.orchestrator.registry.ModelCapabilities;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
 import com.sunshine.orchestrator.registry.ModelCapabilities;
 import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
@@ -85,7 +84,8 @@ class ReActAgentFactoryTest {
                         new ModelCatalogScene("planner", "planner-model", null, Map.of(), true),
                         new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         factory = new ReActAgentFactory(
-                catalogHolder, executionProperties, dynamicToolkitFactory, middlewareFactory,
+                new ReActSystemPromptResolver(catalogHolder), executionProperties,
+                dynamicToolkitFactory, middlewareFactory,
                 stateStore, webClientBuilder, resolver, workerDispatchToolProvider,
                 plannerActionToolProvider);
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");

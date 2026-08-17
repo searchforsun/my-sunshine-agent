@@ -3,7 +3,9 @@ package com.sunshine.orchestrator.prompt;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.context.ContextMessageBuilder;
+import com.sunshine.orchestrator.context.TokenEstimator;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -40,7 +42,8 @@ class PromptComposerTest {
         hitlProperties = new AgentHitlProperties();
         catalogHolder = new PromptCatalogHolder();
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, defaultEntries()));
-        composer = new PromptComposer(catalogHolder, skillCatalogService, hitlProperties);
+        composer = new PromptComposer(catalogHolder, skillCatalogService, hitlProperties,
+                new ContextGroupEstimator(new TokenEstimator()));
     }
 
     @Test
@@ -63,6 +66,19 @@ class PromptComposerTest {
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
                 AssembledContext.empty(), "问", List.of()));
         assertThat(inputs.get(0).getTextContent()).isEqualTo("BASE\nF1\nF2");
+    }
+
+    @Test
+    void composeReactInputs_recordsStaticGroupTokens() {
+        // 既有 fixture：system-prompt / scope-prompt / mode-overlay.react 等 entry 已注入
+        ComposedReactInputs composed = composer.composeReactInputs(
+                PromptComposeRequest.forReact(AssembledContext.empty(), "问题", List.of()),
+                "BASE_SYSTEM");
+
+        assertThat(composed.inputs()).isNotEmpty();
+        Map<String, Integer> groups = composed.staticGroups();
+        assertThat(groups.get("system")).isPositive();
+        assertThat(groups).containsKeys("rules", "skills", "contextLayers");
     }
 
     @Test

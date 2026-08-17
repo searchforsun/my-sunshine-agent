@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.prompt;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.context.ContextMessageBuilder;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +31,7 @@ public class PromptComposer {
     private final PromptCatalogHolder catalogHolder;
     private final SkillCatalogService skillCatalogService;
     private final AgentHitlProperties hitlProperties;
+    private final ContextGroupEstimator estimator;
 
     /** 直连 Gateway / DIRECT 与 workflow llm 的消息列表（含 base-system） */
     public List<Map<String, Object>> composeGatewayMessages(PromptComposeRequest request) {
@@ -43,12 +46,19 @@ public class PromptComposer {
      * AS 2.0 Hook 校验：PreCallEvent.inputMessages 禁止 SYSTEM 角色 → 本方法链路所有
      * 指令性/上下文消息统一收敛为 USER 角色（P0 热修，语义基本等价；P1/P2 再迁原生
      * systemMessage / appendSystemContent 注入）。
+     * 过渡委托：ReActAgentRuntime 切换双参签名（携带 baseSystemPrompt 分组估算）后删除。
      */
     public List<Msg> composeReactInputs(PromptComposeRequest request) {
+        return composeReactInputs(request, "").inputs();
+    }
+
+    /** 双参版：额外记录静态层分组 token（baseSystemPrompt 为 resolver 已解析的完整 base-system） */
+    public ComposedReactInputs composeReactInputs(PromptComposeRequest request, String baseSystemPrompt) {
         List<Msg> inputs = new ArrayList<>();
-        appendCommonReactLayers(inputs, request, false);
+        Map<String, Integer> groups = new LinkedHashMap<>();
+        appendCommonReactLayers(inputs, request, false, groups, baseSystemPrompt);
         appendReactTail(inputs, request);
-        return inputs;
+        return new ComposedReactInputs(inputs, groups);
     }
 
     private void appendCommonGatewayLayers(
@@ -69,23 +79,46 @@ public class PromptComposer {
         addGatewaySystem(messages, nodePromptOrEmpty(request.nodePrompt()));
     }
 
-    private void appendCommonReactLayers(List<Msg> inputs, PromptComposeRequest request, boolean includeBaseSystem) {
+    private void appendCommonReactLayers(
+            List<Msg> inputs, PromptComposeRequest request, boolean includeBaseSystem,
+            Map<String, Integer> groups, String baseSystemPrompt) {
         AssembledContext ctx = request.context() != null ? request.context() : AssembledContext.empty();
         if (includeBaseSystem) {
             addReactUser(inputs, catalogText("system-prompt"));
         }
-        addReactUser(inputs, resolveModeOverlay(request.mode(), request.workflowId()));
+        // system 组按实际注入位归集：base-system（resolver 已含 overlay）+ scope + nodePrompt
+        groups.merge("system", estimator.estimateText(baseSystemPrompt)
+                + estimator.estimateText(catalogText("scope-prompt"))
+                + estimator.estimateText(nodePromptOrEmpty(request.nodePrompt())), Integer::sum);
+        String modeOverlay = resolveModeOverlay(request.mode(), request.workflowId());
+        addReactUser(inputs, modeOverlay);
         // 用户个人规则（soul）：mode-overlay 之后独立注入层；空不注入
-        addReactUser(inputs, PersonalRulesSupport.wrap(request.personalRules()));
-        addReactUser(inputs, resolveHarnessOverlay(request.harnessPromptId()));
-        addReactUser(inputs, resolveReactRestartOverlay(request));
-        addReactUser(inputs, resolveHitlOverlay(request.mode()));
-        addReactUser(inputs, resolveSkillOverlay(request.skillId()));
+        String rules = PersonalRulesSupport.wrap(request.personalRules());
+        addReactUser(inputs, rules);
+        groups.merge("rules", estimator.estimateText(rules), Integer::sum);
+        String harnessOverlay = resolveHarnessOverlay(request.harnessPromptId());
+        String restartOverlay = resolveReactRestartOverlay(request);
+        String hitlOverlay = resolveHitlOverlay(request.mode());
+        String skillOverlay = resolveSkillOverlay(request.skillId());
         // 场景覆盖层：根据 kind 注入专属上下文（chat / task）
-        addReactUser(inputs, resolveSceneOverlay(request.kind()));
+        String sceneOverlay = resolveSceneOverlay(request.kind());
         // 工作区 checkout 目录：让 AI 明确当前工作目录，避免误用 main checkout
-        addReactUser(inputs, resolveWorkspaceCheckoutOverlay(request.workspaceCheckout()));
-        appendReactContextLayers(inputs, ctx);
+        String workspaceOverlay = resolveWorkspaceCheckoutOverlay(request.workspaceCheckout());
+        addReactUser(inputs, harnessOverlay);
+        addReactUser(inputs, restartOverlay);
+        addReactUser(inputs, hitlOverlay);
+        addReactUser(inputs, skillOverlay);
+        addReactUser(inputs, sceneOverlay);
+        addReactUser(inputs, workspaceOverlay);
+        // skills 组：mode/harness/restart/hitl/skill/scene/workspace overlay 合计
+        groups.merge("skills", estimator.estimateText(modeOverlay)
+                + estimator.estimateText(harnessOverlay)
+                + estimator.estimateText(restartOverlay)
+                + estimator.estimateText(hitlOverlay)
+                + estimator.estimateText(skillOverlay)
+                + estimator.estimateText(sceneOverlay)
+                + estimator.estimateText(workspaceOverlay), Integer::sum);
+        appendReactContextLayers(inputs, ctx, groups);
         addReactUser(inputs, catalogText("scope-prompt"));
         addReactUser(inputs, nodePromptOrEmpty(request.nodePrompt()));
     }
@@ -95,13 +128,15 @@ public class PromptComposer {
                 messages, ctx, catalogText("context.layer-prompt"), catalogText("context.usage-rules"));
     }
 
-    private void appendReactContextLayers(List<Msg> inputs, AssembledContext ctx) {
+    private void appendReactContextLayers(List<Msg> inputs, AssembledContext ctx, Map<String, Integer> groups) {
         List<Map<String, Object>> layers = new ArrayList<>();
         ContextMessageBuilder.appendAll(
                 layers, ctx, catalogText("context.layer-prompt"), catalogText("context.usage-rules"));
+        int tokens = 0;
         for (Map<String, Object> msg : layers) {
             String role = String.valueOf(msg.get("role"));
             String content = String.valueOf(msg.get("content"));
+            tokens += estimator.estimateText(content);
             MsgRole msgRole = switch (role) {
                 case "assistant" -> MsgRole.ASSISTANT;
                 case "user" -> MsgRole.USER;
@@ -109,6 +144,7 @@ public class PromptComposer {
             };
             inputs.add(Msg.builder().role(msgRole).textContent(content).build());
         }
+        groups.merge("contextLayers", tokens, Integer::sum);
     }
 
     private void appendGatewayTail(List<Map<String, Object>> messages, PromptComposeRequest request) {
