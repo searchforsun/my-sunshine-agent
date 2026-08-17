@@ -35,6 +35,12 @@ public class OpenAiRequestBodyFactory {
         Map<String, Object> body = objectMapper.convertValue(
                 request, new TypeReference<LinkedHashMap<String, Object>>() {});
         body.put("stream", stream);
+        if (stream && request != null && request.getStreamOptions() != null
+                && !request.getStreamOptions().isEmpty()) {
+            body.put("stream_options", request.getStreamOptions());
+        } else {
+            body.remove("stream_options");
+        }
         body.remove("skip_cache");
         body.remove("fallback_model");
         body.remove("fallbackModel");

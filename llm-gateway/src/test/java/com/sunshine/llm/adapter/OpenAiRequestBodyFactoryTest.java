@@ -103,4 +103,26 @@ class OpenAiRequestBodyFactoryTest {
                 factory.build(request, false,
                         com.sunshine.llm.registry.ModelCapabilities.builder().toolCall(false).build()));
     }
+
+    @Test
+    void build_streamPassesThroughStreamOptions() {
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("deepseek-v4-pro");
+        request.setStreamOptions(Map.of("include_usage", true));
+
+        Map<String, Object> body = factory.build(request, true);
+
+        assertThat(body.get("stream_options")).isEqualTo(Map.of("include_usage", true));
+    }
+
+    @Test
+    void build_nonStreamOmitsStreamOptions() {
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("deepseek-v4-pro");
+        request.setStreamOptions(Map.of("include_usage", true));
+
+        Map<String, Object> body = factory.build(request, false);
+
+        assertThat(body).doesNotContainKey("stream_options");
+    }
 }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * OpenAI 兼容 Chat Completion 请求（含 tools / tool_calls，供 AgentScope ReAct 透传）
@@ -40,6 +41,10 @@ public class ChatCompletionRequest {
     @JsonProperty("fallback_model")
     private String fallbackModel;
 
+    /** 流式 usage 透传（AgentScope 自动携带 include_usage）；非流式不转发 */
+    @JsonProperty("stream_options")
+    private Map<String, Object> streamOptions;
+
     /** 降级链切换模型时保留 tools / fallback 等字段 */
     public ChatCompletionRequest copyWithModel(String model) {
         ChatCompletionRequest copy = new ChatCompletionRequest();
@@ -52,6 +57,7 @@ public class ChatCompletionRequest {
         copy.setToolChoice(this.toolChoice);
         copy.setSkipCache(this.skipCache);
         copy.setFallbackModel(this.fallbackModel);
+        copy.setStreamOptions(this.streamOptions);
         return copy;
     }
 
