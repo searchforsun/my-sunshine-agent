@@ -58,6 +58,7 @@ import {
 } from '../api/contentInterleave'
 import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
+import UsageStatusBar from '../components/chat/UsageStatusBar.vue'
 import ModelSelector from '../components/chat/ModelSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
@@ -1023,6 +1024,20 @@ function messageEndTimeLabel(msg: ChatMessage): string {
   return ts ? formatConversationTime(ts) : ''
 }
 
+/** 消息尾 usage meta 的 token 缩写（与 UsageStatusBar fmtK 同逻辑） */
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+const currentTurn = computed(() => messages.value.filter(m => m.role === 'user').length)
+const lastUsage = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m.role === 'assistant' && m.usage) return m.usage
+  }
+  return null
+})
+
 async function copyAssistantMessage(text: string, idx: number) {
   if (!text.trim()) return
   try {
@@ -1750,6 +1765,9 @@ watch(
                   <CopyToggleIcon :copied="copiedIndex === idx" />
                 </button>
                 <span v-if="messageEndTimeLabel(msg)" class="msg-end-time">{{ messageEndTimeLabel(msg) }}</span>
+                <span v-if="msg.usage" class="msg-usage-meta">
+                  {{ msg.usage.llmCalls }} calls · ↑{{ fmtTokens(msg.usage.inputTokens) }} ↓{{ fmtTokens(msg.usage.outputTokens) }}
+                </span>
               </div>
               <!-- 对话完成后：复制按钮下方的改动文件卡片（点击打开右侧工作区 diff 详情） -->
               <MessageDiffCard
@@ -1988,6 +2006,7 @@ watch(
                   :model-value="preference"
                   @update:model-value="setPreference"
                 />
+                <UsageStatusBar :turn="Math.max(currentTurn, 1)" :usage="lastUsage" />
                 <GitBranchSelector
                   v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
                   :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
@@ -2763,6 +2782,8 @@ watch(
 .msg-block:hover .msg-end-time {
   opacity: 1;
 }
+
+.msg-usage-meta { font-size: 11px; color: var(--text-3, rgba(255,255,255,0.45)); margin-left: 8px; }
 
 .msg-resume-bar {
   margin-top: 8px;
