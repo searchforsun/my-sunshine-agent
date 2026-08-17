@@ -46,13 +46,8 @@ public class PromptComposer {
      * AS 2.0 Hook 校验：PreCallEvent.inputMessages 禁止 SYSTEM 角色 → 本方法链路所有
      * 指令性/上下文消息统一收敛为 USER 角色（P0 热修，语义基本等价；P1/P2 再迁原生
      * systemMessage / appendSystemContent 注入）。
-     * 过渡委托：ReActAgentRuntime 切换双参签名（携带 baseSystemPrompt 分组估算）后删除。
+     * baseSystemPrompt 为 resolver 已解析的完整 base-system，用于静态层分组 token 估算。
      */
-    public List<Msg> composeReactInputs(PromptComposeRequest request) {
-        return composeReactInputs(request, "").inputs();
-    }
-
-    /** 双参版：额外记录静态层分组 token（baseSystemPrompt 为 resolver 已解析的完整 base-system） */
     public ComposedReactInputs composeReactInputs(PromptComposeRequest request, String baseSystemPrompt) {
         List<Msg> inputs = new ArrayList<>();
         Map<String, Integer> groups = new LinkedHashMap<>();

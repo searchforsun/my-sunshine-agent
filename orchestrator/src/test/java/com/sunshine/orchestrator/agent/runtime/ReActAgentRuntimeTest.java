@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
+import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
@@ -9,12 +10,19 @@ import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.taskboard.TaskBoardService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
+import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ModelWindowCache;
+import com.sunshine.orchestrator.prompt.ComposedReactInputs;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.ModelCallEndEvent;
+import io.agentscope.core.model.ChatUsage;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -28,6 +36,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -62,6 +72,14 @@ class ReActAgentRuntimeTest {
     private ObjectProvider<DecisionResumeSupport> decisionResumeSupport;
     @Mock
     private SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
+    @Mock
+    private ReActSystemPromptResolver systemPromptResolver;
+    @Mock
+    private ModelWindowCache modelWindowCache;
+    @Mock
+    private ModelSceneResolver modelSceneResolver;
+    @Mock
+    private ChatMessageRepository messageRepo;
 
     private ReActAgentRuntime runtime;
 
@@ -72,10 +90,16 @@ class ReActAgentRuntimeTest {
         AgentExecutionProperties executionProperties = new AgentExecutionProperties();
         lenient().when(spawnRunRegistry.getIfAvailable()).thenReturn(null);
         lenient().when(decisionResumeSupport.getIfAvailable()).thenReturn(null);
+        lenient().when(systemPromptResolver.resolve(any())).thenReturn("SYS");
+        lenient().when(modelWindowCache.windowFor(any())).thenReturn(128000);
+        lenient().when(modelSceneResolver.resolveChat(any()))
+                .thenReturn(new ResolvedModelScene("test-model", null, null, 128000, 0, null, false));
+        lenient().when(messageRepo.findById(any())).thenReturn(Optional.empty());
         runtime = new ReActAgentRuntime(
                 agentHolder, promptComposer, groundingChecker, groundingProperties,
                 taskBoardService, executionProperties, sandboxSessionLifecycle,
-                conversationRepo, spawnRunRegistry, decisionResumeSupport, writeEditPlaceholder);
+                conversationRepo, spawnRunRegistry, decisionResumeSupport, writeEditPlaceholder,
+                systemPromptResolver, modelWindowCache, modelSceneResolver, messageRepo);
     }
 
     @Test
@@ -107,7 +131,8 @@ class ReActAgentRuntimeTest {
     @Test
     void runPlannerReAct_acceptsPlannerWithoutDecisionResume() {
         Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of(userMsg));
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
         AgentRunRequest req = AgentRunRequest.planner("plan next", "u1", "default", "msg-p");
         when(agentHolder.get(req)).thenReturn(reactAgent);
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class)))
@@ -117,7 +142,7 @@ class ReActAgentRuntimeTest {
 
         assertThat(tokens).isNotNull();
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
-        verify(promptComposer).composeReactInputs(composeCaptor.capture());
+        verify(promptComposer).composeReactInputs(composeCaptor.capture(), any());
         assertThat(composeCaptor.getValue().harnessPromptId()).isEqualTo("planner.harness");
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
@@ -126,7 +151,8 @@ class ReActAgentRuntimeTest {
     @Test
     void run_workerAcceptedAndKeepsForWorkerMemory() {
         Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of(userMsg));
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
         AgentRunRequest req = AgentRunRequest.worker(
                 AssembledContext.forWorker("STABLE", ""),
                 "do task", List.of("sandbox__exec"), "u1", "default", "a1", "c1", 100, "parent");
@@ -137,7 +163,7 @@ class ReActAgentRuntimeTest {
         assertThat(tokens).isNotNull();
         assertThat(req.resolveBridgeId()).startsWith("worker-");
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
-        verify(promptComposer).composeReactInputs(composeCaptor.capture());
+        verify(promptComposer).composeReactInputs(composeCaptor.capture(), any());
         assertThat(composeCaptor.getValue().context().projectGuideBlock()).isEqualTo("STABLE");
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
@@ -146,7 +172,8 @@ class ReActAgentRuntimeTest {
     @Test
     void run_mainEmitsContentAndUsesAssistantBridge() {
         Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of(userMsg));
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
 
         AgentRunRequest req = AgentRunRequest.main(
                 AssembledContext.empty(), "用户问题", "u1", "default", "msg-1");
@@ -158,7 +185,7 @@ class ReActAgentRuntimeTest {
         assertThat(req.resolveBridgeId()).startsWith("main-");
 
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
-        verify(promptComposer).composeReactInputs(composeCaptor.capture());
+        verify(promptComposer).composeReactInputs(composeCaptor.capture(), any());
         assertThat(composeCaptor.getValue().userMessage()).isEqualTo("用户问题");
         assertThat(composeCaptor.getValue().skillId()).isNull();
         verify(agentHolder).get(req);
@@ -168,7 +195,8 @@ class ReActAgentRuntimeTest {
 
     @Test
     void run_createsAgentOnDedicatedScheduler_evenWhenSubscribedFromParallel() {
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         java.util.concurrent.atomic.AtomicReference<String> createThread = new java.util.concurrent.atomic.AtomicReference<>();
         when(agentHolder.get(any())).thenAnswer(inv -> {
@@ -188,7 +216,8 @@ class ReActAgentRuntimeTest {
 
     @Test
     void run_subUsesSubBridgePrefix() {
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
 
         ArgumentCaptor<AgentRunRequest> requestCaptor = ArgumentCaptor.forClass(AgentRunRequest.class);
@@ -202,7 +231,7 @@ class ReActAgentRuntimeTest {
         assertThat(requestCaptor.getValue().resolveBridgeId()).isEqualTo("sub-" + req.runId());
 
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
-        verify(promptComposer).composeReactInputs(composeCaptor.capture());
+        verify(promptComposer).composeReactInputs(composeCaptor.capture(), any());
         assertThat(composeCaptor.getValue().context().nearTurns()).isEmpty();
         assertThat(composeCaptor.getValue().injectedUserContexts()).containsExactly("制度上下文");
         verify(sandboxSessionLifecycle).prepareRun(req);
@@ -211,7 +240,8 @@ class ReActAgentRuntimeTest {
 
     @Test
     void run_subStripsStreamMemoryAndPassesSkillId() {
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         when(agentHolder.get(any())).thenReturn(reactAgent);
 
@@ -224,7 +254,7 @@ class ReActAgentRuntimeTest {
         runtime.run(req).collectList().block();
 
         ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
-        verify(promptComposer).composeReactInputs(composeCaptor.capture());
+        verify(promptComposer).composeReactInputs(composeCaptor.capture(), any());
         PromptComposeRequest composed = composeCaptor.getValue();
         assertThat(composed.context().nearTurns()).isEmpty();
         assertThat(composed.context().l2SystemBlock()).isBlank();
@@ -234,7 +264,8 @@ class ReActAgentRuntimeTest {
 
     @Test
     void run_mainPreparesSandboxContextAndClosesOnce() {
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
         when(agentHolder.get(any())).thenReturn(reactAgent);
 
@@ -249,7 +280,8 @@ class ReActAgentRuntimeTest {
 
     @Test
     void run_errorStillClosesSandboxSession() {
-        when(promptComposer.composeReactInputs(any())).thenReturn(List.of());
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
         when(agentHolder.get(any())).thenReturn(reactAgent);
         when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class))).thenReturn(Flux.<io.agentscope.core.event.AgentEvent>error(new RuntimeException("boom")));
 
@@ -261,5 +293,27 @@ class ReActAgentRuntimeTest {
 
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
+    }
+
+    @Test
+    void modelCallEndEvent_emitsUsageToken() {
+        Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of("system", 10)));
+        when(agentHolder.get(any())).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any()))
+                .thenReturn(Flux.just(new ModelCallEndEvent("reply-1",
+                        new ChatUsage(100, 50, 20, 1.0))));
+
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-usage");
+        List<StreamToken> tokens = runtime.run(req).collectList().block();
+
+        StreamToken usageToken = tokens.stream()
+                .filter(StreamToken::isUsage).findFirst().orElse(null);
+        assertThat(usageToken).isNotNull();
+        assertThat(usageToken.text()).contains("\"callSeq\":1")
+                .contains("\"inputTokens\":100").contains("\"outputTokens\":50")
+                .contains("\"llmCalls\":1");
     }
 }

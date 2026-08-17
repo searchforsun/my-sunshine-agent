@@ -64,7 +64,7 @@ class PromptComposerTest {
                 textEntry("scope-prompt", "scope", ""),
                 textEntry("hitl.agent-prompt", "hitl", ""))));
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "问", List.of()));
+                AssembledContext.empty(), "问", List.of()), "").inputs();
         assertThat(inputs.get(0).getTextContent()).isEqualTo("BASE\nF1\nF2");
     }
 
@@ -111,7 +111,7 @@ class PromptComposerTest {
                 "");
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                ctx, "当前问", List.of("rag-context")));
+                ctx, "当前问", List.of("rag-context")), "").inputs();
 
         assertThat(inputs).isNotEmpty();
         // AS 2.0 PreCall hook guard：inputMessages 禁止 SYSTEM 角色
@@ -151,7 +151,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, null, null, null, null));
+                List.of("injected-ctx"), null, true, null, null, null, null), "").inputs();
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
@@ -240,7 +240,8 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(
                 PromptComposeRequest.forPlannerHarness(
-                        AssembledContext.empty(), "问", List.of(), false, "planner.harness", null, null));
+                        AssembledContext.empty(), "问", List.of(), false, "planner.harness", null, null),
+                "").inputs();
         assertThat(inputs.stream().map(Msg::getTextContent)).contains("PLANNER-HARNESS");
     }
 
@@ -252,7 +253,7 @@ class PromptComposerTest {
                 "mode-overlay.react", ""));
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "问", List.of("", "  ", "有效上下文")));
+                AssembledContext.empty(), "问", List.of("", "  ", "有效上下文")), "").inputs();
 
         assertThat(inputs).hasSize(2);
         assertThat(inputs.get(0).getTextContent()).isEqualTo("有效上下文");
@@ -267,7 +268,7 @@ class PromptComposerTest {
                 "mode-overlay.react", ""));
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")));
+                AssembledContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")), "").inputs();
 
         assertThat(inputs.stream().map(Msg::getTextContent))
                 .anyMatch(t -> t.contains("catalog-skill-overlay"));
@@ -282,7 +283,7 @@ class PromptComposerTest {
                 "mode-overlay.react", ""));
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")));
+                AssembledContext.forSubAgent(), "分析待办", "finance-analysis", List.of("待办 JSON")), "").inputs();
 
         assertThat(inputs.stream().map(Msg::getTextContent))
                 .noneMatch(t -> t != null && t.contains("skill-finance"));
@@ -299,7 +300,7 @@ class PromptComposerTest {
         hitlProperties.setEnabled(true);
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.forSubAgent(), "审批 T1004", List.of()));
+                AssembledContext.forSubAgent(), "审批 T1004", List.of()), "").inputs();
 
         assertThat(inputs.stream().map(Msg::getTextContent))
                 .anyMatch(t -> t.contains("写操作须直接 tool call"));
@@ -315,7 +316,7 @@ class PromptComposerTest {
         hitlProperties.setEnabled(false);
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.forSubAgent(), "审批 T1004", List.of()));
+                AssembledContext.forSubAgent(), "审批 T1004", List.of()), "").inputs();
 
         assertThat(inputs.stream().map(Msg::getTextContent))
                 .noneMatch(t -> t.contains("写操作须直接 tool call"));
@@ -335,7 +336,7 @@ class PromptComposerTest {
     @Test
     void composeReactInputs_injectsPersonalRulesAfterModeOverlay() {
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "问", null, List.of(), false, "用文言文回答"));
+                AssembledContext.empty(), "问", null, List.of(), false, "用文言文回答"), "").inputs();
 
         assertThat(inputs.get(0).getTextContent()).isEqualTo("react-mode-minimal");
         assertThat(inputs.get(1).getTextContent()).isEqualTo("## 用户个人规则\n用文言文回答");
@@ -354,7 +355,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
                 AssembledContext.empty(), "改代码", null, List.of(), false, null, "task",
-                "/workspace/branches/wt-abc123"));
+                "/workspace/branches/wt-abc123"), "").inputs();
 
         List<String> texts = inputs.stream().map(Msg::getTextContent).filter(t -> t != null).toList();
         assertThat(texts).anyMatch(t -> t.contains("task-overlay"));
@@ -373,7 +374,7 @@ class PromptComposerTest {
         hitlProperties.setEnabled(false);
 
         List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "问", List.of()));
+                AssembledContext.empty(), "问", List.of()), "").inputs();
 
         assertThat(inputs.stream().map(Msg::getTextContent).filter(t -> t != null))
                 .noneMatch(t -> t.contains("当前工作目录"));
@@ -387,7 +388,7 @@ class PromptComposerTest {
                 .noneMatch(c -> c.contains("用户个人规则"));
 
         List<Msg> react = composer.composeReactInputs(PromptComposeRequest.forReact(
-                AssembledContext.empty(), "问", null, List.of(), false, null, null));
+                AssembledContext.empty(), "问", null, List.of(), false, null, null), "").inputs();
         assertThat(react.stream().map(Msg::getTextContent))
                 .noneMatch(t -> t != null && t.contains("用户个人规则"));
     }

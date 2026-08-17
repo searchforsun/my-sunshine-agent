@@ -1,17 +1,21 @@
 package com.sunshine.orchestrator.agent.runtime;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.agent.DecisionResumeOutcome;
 import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMiddleware;
+import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.config.VirtualThreadExecutors;
+import com.sunshine.orchestrator.context.ModelWindowCache;
 import com.sunshine.orchestrator.execution.DecisionResumeSteps;
 import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import com.sunshine.orchestrator.taskboard.TaskBoardService;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.grounding.GroundingEvidenceSupport;
@@ -21,9 +25,11 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.processing.ContentBlocksJson;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
+import com.sunshine.orchestrator.prompt.ComposedReactInputs;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
+import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
@@ -32,6 +38,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockEndEvent;
@@ -39,6 +46,7 @@ import io.agentscope.core.event.ThinkingBlockStartEvent;
 import io.agentscope.core.event.ToolCallDeltaEvent;
 import io.agentscope.core.event.ToolCallEndEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
+import io.agentscope.core.model.ChatUsage;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import lombok.RequiredArgsConstructor;
@@ -51,8 +59,10 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** ReAct 模式 Agent 运行时 — MAIN / SUB / WORKER 共用；PLANNER 由 Facade 路由 */
 @Slf4j
@@ -71,6 +81,10 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final ObjectProvider<SpawnRunRegistry> spawnRunRegistry;
     private final ObjectProvider<DecisionResumeSupport> decisionResumeSupport;
     private final SandboxWriteEditPlaceholderSupport writeEditPlaceholder;
+    private final ReActSystemPromptResolver systemPromptResolver;
+    private final ModelWindowCache modelWindowCache;
+    private final ModelSceneResolver modelSceneResolver;
+    private final ChatMessageRepository messageRepo;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -182,14 +196,17 @@ public class ReActAgentRuntime implements AgentRuntime {
                     injectedBlocks.addAll(outcome.injectBlocks());
                 }
             }
-            List<Msg> inputs = promptComposer.composeReactInputs(
+            ComposedReactInputs composed = promptComposer.composeReactInputs(
                     request.role() == AgentRole.PLANNER
                             ? PromptComposeRequest.forPlannerHarness(
                                     memory, query, injectedBlocks, request.reactRestart(),
                                     request.harnessPromptId(), convKind, workspaceCheckout)
                             : PromptComposeRequest.forReact(
                                     memory, query, request.skillId(), injectedBlocks,
-                                    request.reactRestart(), null, convKind, workspaceCheckout));
+                                    request.reactRestart(), null, convKind, workspaceCheckout),
+                    systemPromptResolver.resolve(request));
+            List<Msg> inputs = composed.inputs();
+            Map<String, Integer> contextGroups = new ConcurrentHashMap<>(composed.staticGroups());
             AtomicBoolean answerContentStarted = new AtomicBoolean(false);
             AtomicBoolean answerStreamFinished = new AtomicBoolean(false);
             StringBuilder answerContent = new StringBuilder();
@@ -202,11 +219,15 @@ public class ReActAgentRuntime implements AgentRuntime {
                     registry.bindAgent(request.runId(), agent);
                 }
             }
+            UsageAccumulator seed = seedUsageFromPersisted(assistantMessageId);
+            AtomicReference<UsageAccumulator> usageAcc = new AtomicReference<>(seed);
+            String resolvedModel = resolveModelName(request);
             RuntimeContext rt = RuntimeContext.builder()
                     .userId(request.userId())
                     .sessionId(assistantMessageId)
                     .put(ProcessingStepMiddleware.CTX_BRIDGE_ID, bridgeId)
                     .put(ProcessingStepMiddleware.CTX_REACT_MAX_ITERS, resolveMaxIters(request))
+                    .put(ProcessingStepMiddleware.CTX_CONTEXT_GROUPS, contextGroups)
                     .build();
             return agent.streamEvents(inputs, rt)
                     .flatMap(agentEvent -> {
@@ -214,7 +235,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                         // 订阅时捕获的旧 epoch 会让本轮所有 drain 失效（子 Agent 步骤卡到主 Agent drain）。
                         // 旧 run 写新流的防护由 GenerationJob.isStreamEpochValid / generationFlush 绑定 epoch 兜底。
                         // reasoning/content delta 经 bridge 路由进 hookQueue 由 runtime 统一 drain（不直灌 SSE）
-                        routeDeltaToBridge(agentEvent, bridgeId);
+                        routeDeltaToBridge(agentEvent, bridgeId, usageAcc, contextGroups, resolvedModel);
                         List<StreamToken> tokens = new ArrayList<>(drainHookTokens(hookQueue));
                         for (StreamToken token : tokens) {
                             if (token.isContent() && token.text() != null) {
@@ -337,7 +358,10 @@ public class ReActAgentRuntime implements AgentRuntime {
         return tokens;
     }
 
-    private void routeDeltaToBridge(AgentEvent ev, String bridgeId) {
+    private void routeDeltaToBridge(
+            AgentEvent ev, String bridgeId,
+            AtomicReference<UsageAccumulator> usageAcc,
+            Map<String, Integer> groupsSnapshot, String resolvedModel) {
         // AS2 streamEvents：reasoning/content/tool_call delta 经 bridge 写 hookQueue，runtime 统一 drain。
         if (log.isDebugEnabled()) {
             log.debug("[Runtime] routeDeltaToBridge ev={}", ev.getClass().getSimpleName());
@@ -358,8 +382,65 @@ public class ReActAgentRuntime implements AgentRuntime {
             writeEditPlaceholder.onToolCallEnd(end.getToolCallId());
         } else if (ev instanceof TextBlockDeltaEvent d) {
             StepEventBridge.emitReasoningContentChunk(bridgeId, d.getDelta());
+        } else if (ev instanceof ModelCallEndEvent end) {
+            emitUsageToken(end, bridgeId, usageAcc, groupsSnapshot, resolvedModel);
         }
         // ToolResult 事件由 ProcessingStepMiddleware.onActing 驱动（不经此处）
+    }
+
+    private void emitUsageToken(ModelCallEndEvent end, String bridgeId,
+            AtomicReference<UsageAccumulator> usageAcc,
+            Map<String, Integer> groups, String modelName) {
+        ChatUsage usage = end.getUsage();
+        if (usage == null) {
+            return;
+        }
+        UsageAccumulator next = usageAcc.updateAndGet(acc -> new UsageAccumulator(
+                acc.inputTokens() + usage.getInputTokens(),
+                acc.outputTokens() + usage.getOutputTokens(),
+                acc.llmCalls() + 1));
+        Integer window = resolveContextWindow(modelName);
+        StepEventBridge.offerStreamToken(bridgeId, StreamToken.usage(
+                UsageJsonSupport.buildUsageWire(next.llmCalls(), usage, next, window, groups)));
+    }
+
+    private Integer resolveContextWindow(String modelName) {
+        if (modelName == null) {
+            return null;
+        }
+        try {
+            return modelWindowCache.windowFor(modelName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 消息级 usage 累计（续跑从落库 usage_json 起算）；package-visible 供 UsageJsonSupport 引用 */
+    record UsageAccumulator(long inputTokens, long outputTokens, int llmCalls) {
+    }
+
+    // T8 加 usage_json 列后改为读库起算（见 plan Task 8）
+    private UsageAccumulator seedUsageFromPersisted(String assistantMessageId) {
+        if (assistantMessageId == null || assistantMessageId.isBlank()) {
+            return new UsageAccumulator(0, 0, 0);
+        }
+        return new UsageAccumulator(0, 0, 0);
+    }
+
+    /** 与 ReActAgentFactory.resolveModel 同语义；usage 帧展示模型名，解析失败不阻断主流程 */
+    private String resolveModelName(AgentRunRequest request) {
+        try {
+            AgentRole role = request.role();
+            if (role == AgentRole.MAIN) {
+                return modelSceneResolver.resolveChat(request.modelOverride()).effectiveModel();
+            }
+            if (role == AgentRole.SUB || role == AgentRole.WORKER) {
+                return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), request.modelOverride()).effectiveModel();
+            }
+            return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), request.modelOverride()).effectiveModel();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
