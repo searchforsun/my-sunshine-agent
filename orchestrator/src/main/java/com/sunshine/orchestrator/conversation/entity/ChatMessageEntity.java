@@ -42,6 +42,10 @@ public class ChatMessageEntity {
     @Column(name = "content_blocks", columnDefinition = "MEDIUMTEXT")
     private String contentBlocks;
 
+    /** 消息级 LLM usage + 上下文分组快照 JSON */
+    @Column(name = "usage_json", columnDefinition = "MEDIUMTEXT")
+    private String usageJson;
+
     @Column(nullable = false, length = 16)
     private String status = "completed";
 

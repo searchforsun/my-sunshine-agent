@@ -420,12 +420,18 @@ public class ReActAgentRuntime implements AgentRuntime {
     record UsageAccumulator(long inputTokens, long outputTokens, int llmCalls) {
     }
 
-    // T8 加 usage_json 列后改为读库起算（见 plan Task 8）
+    /** 续跑从落库 usage_json 的 messageUsage 起算，累计跨轮次不失真（spec §4.4） */
     private UsageAccumulator seedUsageFromPersisted(String assistantMessageId) {
         if (assistantMessageId == null || assistantMessageId.isBlank()) {
             return new UsageAccumulator(0, 0, 0);
         }
-        return new UsageAccumulator(0, 0, 0);
+        try {
+            return messageRepo.findById(assistantMessageId)
+                    .map(m -> UsageJsonSupport.parseAccumulator(m.getUsageJson()))
+                    .orElseGet(() -> new UsageAccumulator(0, 0, 0));
+        } catch (Exception e) {
+            return new UsageAccumulator(0, 0, 0);
+        }
     }
 
     /** 与 ReActAgentFactory.resolveModel 同语义：modelConfigJson.model > modelOverride > scene；解析失败不阻断主流程 */

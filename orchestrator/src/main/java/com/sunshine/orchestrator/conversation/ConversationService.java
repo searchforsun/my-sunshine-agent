@@ -421,6 +421,18 @@ public class ConversationService {
             String status,
             String stepsJson,
             String contentBlocksJson) {
+        return updateMessage(messageId, content, reasoning, status, stepsJson, contentBlocksJson, null);
+    }
+
+    @Transactional
+    public ChatMessageEntity updateMessage(
+            String messageId,
+            String content,
+            String reasoning,
+            String status,
+            String stepsJson,
+            String contentBlocksJson,
+            String usageJson) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setContent(content != null ? content : "");
@@ -432,6 +444,10 @@ public class ConversationService {
         }
         if (contentBlocksJson != null) {
             msg.setContentBlocks(contentBlocksJson);
+        }
+        // 仅终态携带 usage 时写入；null（如续跑 streaming 落库）保留旧值，避免起算基准丢失
+        if (usageJson != null) {
+            msg.setUsageJson(usageJson);
         }
         msg.setStatus(status);
         msg.setUpdatedAt(Instant.now());

@@ -94,8 +94,19 @@ public class GenerationFlushScheduler {
             String status,
             String stepsJson,
             String contentBlocksJson) {
+        commitFinal(messageId, content, reasoning, status, stepsJson, contentBlocksJson, null);
+    }
+
+    public void commitFinal(
+            String messageId,
+            String content,
+            String reasoning,
+            String status,
+            String stepsJson,
+            String contentBlocksJson,
+            String usageJson) {
         String scrubbed = desensitizeClient.scrub(content);
-        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson, contentBlocksJson);
+        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson, contentBlocksJson, usageJson);
     }
 
     public String metaConversation(String convId) {

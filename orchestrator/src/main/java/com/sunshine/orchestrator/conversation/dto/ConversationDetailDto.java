@@ -56,6 +56,8 @@ public class ConversationDetailDto {
         private String reasoning;
         private String steps;
         private String contentBlocks;
+        /** 消息级 LLM usage + 上下文分组快照 JSON（前端刷新恢复 usage 的数据源） */
+        private String usage;
         private String status;
         private String intent;
         private String executionPlanId;
@@ -73,6 +75,7 @@ public class ConversationDetailDto {
             dto.setReasoning(m.getReasoning());
             dto.setSteps(m.getSteps());
             dto.setContentBlocks(m.getContentBlocks());
+            dto.setUsage(m.getUsageJson());
             dto.setStatus(m.getStatus());
             dto.setIntent(m.getIntent());
             dto.setExecutionPlanId(m.getExecutionPlanId());

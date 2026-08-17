@@ -160,7 +160,7 @@ class GenerationJobTest {
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
         String stepsJson = stepsCaptor.getValue();
         assertThat(stepsJson == null || !stepsJson.contains("generate")).isTrue();
@@ -259,7 +259,7 @@ class GenerationJobTest {
         ArgumentCaptor<String> blocksCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
                 eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED),
-                org.mockito.ArgumentMatchers.any(), blocksCaptor.capture());
+                org.mockito.ArgumentMatchers.any(), blocksCaptor.capture(), isNull());
         assertThat(contentCaptor.getValue()).isEqualTo("第一段第二段");
         assertThat(blocksCaptor.getValue()).contains("第一段").contains("第二段");
     }
@@ -315,7 +315,7 @@ class GenerationJobTest {
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         assertThat(reasoningCaptor.getValue()).isEqualTo("think");
         assertThat(stepsCaptor.getValue()).contains("think").doesNotContain("\"id\":\"generate\"");
     }
@@ -351,7 +351,7 @@ class GenerationJobTest {
 
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         String stepsJson = stepsCaptor.getValue();
         assertThat(stepsJson).contains("识别意图").contains("简单对话");
         assertThat(stepsJson).contains("lifecycle").contains("summary");

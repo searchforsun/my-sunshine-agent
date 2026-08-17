@@ -334,6 +334,7 @@ public class GenerationJob {
         contentBlockAccumulator.mergeIntoSteps(stepsBuffer);
         String steps = stepsJson();
         String contentBlocks = contentBlockAccumulator.messageBlocksJson();
+        final String usageJson = chunkEmitter != null ? chunkEmitter.lastUsageJson() : null;
         // ReAct 旁路 emitStreamToken 曾漏写 mysqlBuffer：用 content_blocks 回填，保证 content SSOT（L1/历史）
         final String content;
         if (!StringUtils.hasText(buffered)) {
@@ -345,11 +346,11 @@ public class GenerationJob {
         Mono.fromRunnable(() -> {
                     try {
                         if (flushLock == null || flushLock.isHeldByThisInstance(generationId)) {
-                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks);
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks, usageJson);
                         } else {
                             log.warn("[GenerationJob] 终态落库时 flush 锁已丢失，仍强制 commitFinal genId={} msg={}",
                                     generationId, messageId);
-                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks);
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks, usageJson);
                         }
                         afterPersist.run();
                     } finally {

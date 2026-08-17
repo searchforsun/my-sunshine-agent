@@ -11,6 +11,7 @@ import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.taskboard.TaskBoardService;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.conversation.ChatTurn;
+import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.context.ModelWindowCache;
@@ -316,6 +317,32 @@ class ReActAgentRuntimeTest {
         assertThat(usageToken.text()).contains("\"callSeq\":1")
                 .contains("\"inputTokens\":100").contains("\"outputTokens\":50")
                 .contains("\"llmCalls\":1");
+    }
+
+    @Test
+    void restartSeedsUsageFromPersistedJson() {
+        Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
+        when(agentHolder.get(any())).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any()))
+                .thenReturn(Flux.just(new ModelCallEndEvent("reply-r",
+                        new ChatUsage(10, 5, 0, 1.0))));
+        ChatMessageEntity persisted = new ChatMessageEntity();
+        persisted.setId("msg-resume");
+        persisted.setUsageJson("{\"messageUsage\":{\"inputTokens\":100,\"outputTokens\":50,\"llmCalls\":2}}");
+        when(messageRepo.findById("msg-resume")).thenReturn(Optional.of(persisted));
+
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-resume");
+        List<StreamToken> tokens = runtime.run(req).collectList().block();
+
+        StreamToken usageToken = tokens.stream()
+                .filter(StreamToken::isUsage).findFirst().orElse(null);
+        assertThat(usageToken).isNotNull();
+        // 续跑起算：messageUsage 在落库累计（100/50/2）上叠加本轮（10/5/1）
+        assertThat(usageToken.text()).contains("\"inputTokens\":110")
+                .contains("\"llmCalls\":3");
     }
 
     @Test

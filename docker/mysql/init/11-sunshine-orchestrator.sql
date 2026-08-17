@@ -28,6 +28,7 @@ CREATE TABLE chat_message (
     reasoning        MEDIUMTEXT   NULL,
     steps            MEDIUMTEXT   NULL,
     content_blocks   MEDIUMTEXT   NULL COMMENT 'ReAct 正文分段 JSON',
+    usage_json       MEDIUMTEXT   NULL COMMENT '消息级 LLM usage + 上下文分组快照 JSON',
     status           VARCHAR(16)  NOT NULL DEFAULT 'completed',
     intent           VARCHAR(32)  NULL,
     execution_mode   VARCHAR(16)  NULL,
