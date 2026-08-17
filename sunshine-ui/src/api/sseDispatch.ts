@@ -3,6 +3,7 @@
  */
 import { normalizeStreamChunk } from './streamInvisible'
 import { normalizeStep, type ProcessingStep, type StepDelta } from './processingSteps'
+import type { MessageUsage } from './chat'
 
 export interface SseMeta {
   type: string
@@ -28,6 +29,7 @@ export type ParsedSsePayload =
   | { kind: 'step_delta'; delta: StepDelta }
   | { kind: 'confirmation'; confirmation: ToolConfirmationPayload }
   | { kind: 'error'; text: string }
+  | { kind: 'usage'; usage: MessageUsage }
   | { kind: 'ignore' }
 
 export interface ToolConfirmationPayload {
@@ -134,6 +136,30 @@ const handlers: Record<string, Handler> = {
     const text = typeof obj.text === 'string' ? obj.text.trim() : ''
     if (!text) return { kind: 'ignore' }
     return { kind: 'error', text }
+  },
+  usage(obj) {
+    const num = (k: string) => (typeof obj[k] === 'number' ? (obj[k] as number) : 0)
+    const usage: MessageUsage = {
+      inputTokens: num('inputTokens'),
+      outputTokens: num('outputTokens'),
+      llmCalls: num('callSeq'),
+      contextTokens: typeof obj.contextTokens === 'number' ? obj.contextTokens : undefined,
+      contextWindowTokens: typeof obj.contextWindowTokens === 'number' ? obj.contextWindowTokens : undefined,
+      contextPercent: typeof obj.contextPercent === 'number' ? obj.contextPercent : undefined,
+    }
+    const mu = obj.messageUsage as Record<string, unknown> | undefined
+    if (mu && typeof mu === 'object') {
+      usage.inputTokens = typeof mu.inputTokens === 'number' ? mu.inputTokens : usage.inputTokens
+      usage.outputTokens = typeof mu.outputTokens === 'number' ? mu.outputTokens : usage.outputTokens
+      usage.llmCalls = typeof mu.llmCalls === 'number' ? mu.llmCalls : usage.llmCalls
+    }
+    const groups = obj.groups as Record<string, unknown> | undefined
+    if (groups && typeof groups === 'object') {
+      usage.groups = Object.fromEntries(
+        Object.entries(groups).filter(([, v]) => typeof v === 'number') as [string, number][],
+      )
+    }
+    return { kind: 'usage', usage }
   },
 }
 

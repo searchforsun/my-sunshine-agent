@@ -3,6 +3,17 @@ import type { ExecutionPreference } from './executionModes'
 import type { HitlConfirmationPayload } from './hitlSteps'
 import type { ContentBlock } from './contentInterleave'
 
+/** 消息级 LLM usage（SSE type=usage 末帧 / 历史 usage_json） */
+export interface MessageUsage {
+  inputTokens: number
+  outputTokens: number
+  llmCalls: number
+  contextTokens?: number
+  contextWindowTokens?: number
+  contextPercent?: number
+  groups?: Record<string, number>
+}
+
 export interface ChatMessage {
   id?: string
   role: 'user' | 'assistant'
@@ -32,4 +43,6 @@ export interface ChatMessage {
   timelineStartedAt?: number
   /** 前端墙钟：正文结束 / 消息终态时写入 */
   timelineEndedAt?: number
+  /** 消息级 LLM usage（SSE type=usage 末帧 / 历史 usage_json） */
+  usage?: MessageUsage
 }

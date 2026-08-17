@@ -172,6 +172,17 @@ export async function consumeChatSseStream(
         continue
       }
 
+      if (parsed.kind === 'usage') {
+        if (eventSeq !== null) updateLastSeq(eventSeq)
+        const lastMsg = s.messages[s.messages.length - 1]
+        if (lastMsg?.role === 'assistant') {
+          lastMsg.usage = parsed.usage
+          scheduleAssistantMessageBump(s)
+        }
+        hooks.onProgress?.(s.id)
+        continue
+      }
+
       if (parsed.kind === 'reasoning') {
         if (eventSeq !== null) updateLastSeq(eventSeq)
         if (options.reactRestart && reactRestartGate

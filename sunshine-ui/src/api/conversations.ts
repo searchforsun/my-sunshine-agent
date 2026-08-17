@@ -52,6 +52,8 @@ export interface ConversationMessage {
   updatedAt?: string
   executionPlanId?: string
   executionPreference?: ExecutionPreference
+  /** usage_json 原始字符串（chatStore.parseMessageUsage 解析） */
+  usage?: string
 }
 
 export interface ConversationDetail extends ConversationSummary {
@@ -145,6 +147,7 @@ function parseMessage(m: Record<string, unknown>): ConversationMessage {
     updatedAt: m.updatedAt as string | undefined,
     executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
     executionPreference: mapStoredExecutionPreference(m.executionPreference),
+    usage: typeof m.usage === 'string' ? m.usage : undefined,
   }
   if (msg.role === 'assistant') {
     sanitizePlanAssistantMessage(msg)

@@ -5,7 +5,7 @@ import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed, reactive } from 'vue'
 import { useAuthStore } from './authStore'
 import { normalizeSidebarSectionsLayout } from '../api/sidebarSectionsLayouts'
-import type { ChatMessage } from '../api/chat'
+import type { ChatMessage, MessageUsage } from '../api/chat'
 import type { ConversationMessage } from '../api/conversations'
 import type { ExecutionPreference } from '../api/executionModes'
 import {
@@ -126,6 +126,7 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
       seq: m.seq,
     }
     if (msg.role === 'assistant') {
+      msg.usage = parseMessageUsage(m.usage)
       sanitizePlanAssistantMessage(msg)
       hydratePlanAnswerFromContent(msg)
       normalizeRestoredInterleavedContent(msg)
@@ -139,6 +140,26 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
     }
     return msg
   })
+}
+
+/** 历史 usage_json → MessageUsage；无 messageUsage 的旧数据回退顶层字段（obj.messageUsage ?? obj） */
+function parseMessageUsage(raw: string | undefined): MessageUsage | undefined {
+  if (!raw) return undefined
+  try {
+    const obj = JSON.parse(raw) as Record<string, unknown>
+    const mu = (obj.messageUsage ?? obj) as Record<string, unknown>
+    return {
+      inputTokens: typeof mu.inputTokens === 'number' ? mu.inputTokens : 0,
+      outputTokens: typeof mu.outputTokens === 'number' ? mu.outputTokens : 0,
+      llmCalls: typeof mu.llmCalls === 'number' ? mu.llmCalls : 0,
+      contextTokens: typeof obj.contextTokens === 'number' ? obj.contextTokens : undefined,
+      contextWindowTokens: typeof obj.contextWindowTokens === 'number' ? obj.contextWindowTokens : undefined,
+      contextPercent: typeof obj.contextPercent === 'number' ? obj.contextPercent : undefined,
+      groups: typeof obj.groups === 'object' && obj.groups ? (obj.groups as Record<string, number>) : undefined,
+    }
+  } catch {
+    return undefined
+  }
 }
 
 export const useChatStore = defineStore('chat', () => {
