@@ -33,6 +33,8 @@ final class GenerationJobChunkEmitter {
     private final ThinkStepMapper thinkMapper;
     private final ContentBlockAccumulator contentBlockAccumulator;
     private volatile StringBuilder reasoningBufferRef;
+    /** usage 末帧：append 锁内写入、终态落库在锁外读取，故 volatile */
+    private volatile String lastUsageJson;
     private final GenerationStreamService streamService;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties properties;
@@ -77,8 +79,16 @@ final class GenerationJobChunkEmitter {
         }
     }
 
+    String lastUsageJson() {
+        return lastUsageJson;
+    }
+
     private void onChunkUnfolded(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        if (token.isUsage()) {
+            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
+            return;
+        }
         if (token.isSandboxSession()) {
             emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
             return;
@@ -197,6 +207,12 @@ final class GenerationJobChunkEmitter {
             if (token.isSandboxSession()) {
                 streamService.appendChunk(generationId, nextSeq,
                         flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
+                return;
+            }
+            // usage 帧不写正文缓冲：seq 分配与 XADD 同锁原子，仅记录末帧供终态落库
+            if (token.isUsage()) {
+                lastUsageJson = token.text();
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaUsage(token.text()));
                 return;
             }
             if (token.isStep()) {

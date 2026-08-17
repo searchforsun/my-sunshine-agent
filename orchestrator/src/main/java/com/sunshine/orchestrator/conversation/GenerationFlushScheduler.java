@@ -345,6 +345,11 @@ public class GenerationFlushScheduler {
         }
     }
 
+    /** LLM usage 计量帧 — wire JSON 由 UsageJsonSupport 构造，此处原样包装下发 */
+    public String metaUsage(String usageJson) {
+        return usageJson != null ? usageJson : "{\"type\":\"usage\"}";
+    }
+
     private String metaText(String type, String text) {
         try {
             return objectMapper.writeValueAsString(java.util.Map.of(
