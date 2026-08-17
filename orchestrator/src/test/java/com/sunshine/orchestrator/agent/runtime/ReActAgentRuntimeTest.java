@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent.runtime;
 
+import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
@@ -315,5 +316,29 @@ class ReActAgentRuntimeTest {
         assertThat(usageToken.text()).contains("\"callSeq\":1")
                 .contains("\"inputTokens\":100").contains("\"outputTokens\":50")
                 .contains("\"llmCalls\":1");
+    }
+
+    @Test
+    void subWithModelConfigJson_usageModelPrefersConfigOverOverride() {
+        Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
+        when(agentHolder.get(any())).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any()))
+                .thenReturn(Flux.just(new ModelCallEndEvent("reply-2",
+                        new ChatUsage(80, 40, 0, 1.0))));
+        when(modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), "spawn-model"))
+                .thenReturn(new ResolvedModelScene("spawn-model", null, null, 128000, 0, null, false));
+
+        AgentRunRequest req = AgentRunRequest.sub(
+                AssembledContext.forSubAgent(), "子任务", List.of(), "u1", "default",
+                "msg-sub", null, List.of(), null, 0, "c1",
+                null, null, null, "{\"model\":\"spawn-model\"}");
+        List<StreamToken> tokens = runtime.run(req).collectList().block();
+
+        StreamToken usageToken = tokens.stream()
+                .filter(StreamToken::isUsage).findFirst().orElse(null);
+        assertThat(usageToken).isNotNull();
+        verify(modelSceneResolver).resolve(ModelSceneKey.SUBAGENT.key(), "spawn-model");
     }
 }

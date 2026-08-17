@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMiddleware;
+import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
@@ -427,17 +428,22 @@ public class ReActAgentRuntime implements AgentRuntime {
         return new UsageAccumulator(0, 0, 0);
     }
 
-    /** 与 ReActAgentFactory.resolveModel 同语义；usage 帧展示模型名，解析失败不阻断主流程 */
+    /** 与 ReActAgentFactory.resolveModel 同语义：modelConfigJson.model > modelOverride > scene；解析失败不阻断主流程 */
     private String resolveModelName(AgentRunRequest request) {
         try {
+            String fromConfig = ReActAgentFactory.extractModelFromConfigJson(request.modelConfigJson());
+            String override = StringUtils.hasText(fromConfig) ? fromConfig : request.modelOverride();
             AgentRole role = request.role();
             if (role == AgentRole.MAIN) {
-                return modelSceneResolver.resolveChat(request.modelOverride()).effectiveModel();
+                if (StringUtils.hasText(fromConfig)) {
+                    return modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), fromConfig).effectiveModel();
+                }
+                return modelSceneResolver.resolveChat(override).effectiveModel();
             }
             if (role == AgentRole.SUB || role == AgentRole.WORKER) {
-                return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), request.modelOverride()).effectiveModel();
+                return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), override).effectiveModel();
             }
-            return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), request.modelOverride()).effectiveModel();
+            return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), override).effectiveModel();
         } catch (Exception e) {
             return null;
         }

@@ -161,7 +161,8 @@ public class ReActAgentFactory {
         return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), override);
     }
 
-    private static String extractModelFromConfigJson(String modelConfigJson) {
+    /** 供 ReActAgentRuntime.resolveModelName 复用，保证 usage 帧模型名与 factory 实际执行模型一致 */
+    public static String extractModelFromConfigJson(String modelConfigJson) {
         if (modelConfigJson == null || modelConfigJson.isBlank() || "{}".equals(modelConfigJson)) {
             return null;
         }
