@@ -45,11 +45,13 @@ class HarnessPlannerTest {
 
     private AgentExecutionProperties executionProperties;
     private HarnessPlanner planner;
+    private PlannerActionTool actionTool;
 
     @BeforeEach
     void setUp() {
         executionProperties = new AgentExecutionProperties();
         executionProperties.getHarness().getPlanner().setMaxAttempts(3);
+        actionTool = new PlannerActionTool();
         planner = new HarnessPlanner(agentRuntime, contextAssembler, executionProperties, toolSetResolver);
         org.mockito.Mockito.lenient().when(contextAssembler.assemble(any()))
                 .thenReturn(AssembledContext.empty());
@@ -63,10 +65,14 @@ class HarnessPlannerTest {
     }
 
     @Test
-    void planNext_writesTaskQueueFromPlannerJson() {
+    void planNext_writesTaskQueueFromPlanSubmitTool() {
         PlanNotebook nb = PlanNotebook.create("完成调研", "帮我调研仓库", "task", 12, 24);
-        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content(planJson(
-                "t1", "摸底代码库", "只读", "结构摘要", "有目录图"))));
+        when(agentRuntime.run(any())).thenAnswer(inv -> {
+            WorkerDispatchTool.DispatchSession session = WorkerDispatchTool.currentSession("msg-1");
+            actionTool.submitPlan(session, List.of(taskArg(
+                    "t1", "摸底代码库", "只读", "结构摘要", "有目录图")));
+            return Flux.just(StreamToken.content("已规划"));
+        });
 
         planner.planNext(nb, streamCtx());
 
@@ -82,15 +88,17 @@ class HarnessPlannerTest {
     }
 
     @Test
-    void planNext_retriesInvalidJsonUntilSuccess() {
+    void planNext_retriesUntilPlanSubmitReceived() {
         PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
         AtomicInteger calls = new AtomicInteger();
         when(agentRuntime.run(any())).thenAnswer(inv -> {
             int n = calls.incrementAndGet();
             if (n < 3) {
-                return Flux.just(StreamToken.content("not-json"));
+                return Flux.just(StreamToken.content("我还在思考，没有提交计划"));
             }
-            return Flux.just(StreamToken.content(planJson("t2", "第二步", "", "", "")));
+            WorkerDispatchTool.DispatchSession session = WorkerDispatchTool.currentSession("msg-1");
+            actionTool.submitPlan(session, List.of(taskArg("t2", "第二步", "", "", "")));
+            return Flux.just(StreamToken.content("已规划"));
         });
 
         planner.planNext(nb, streamCtx());
@@ -101,10 +109,10 @@ class HarnessPlannerTest {
     }
 
     @Test
-    void planNext_throwsAfterMaxAttempts() {
+    void planNext_throwsAfterMaxAttemptsWithoutToolCall() {
         executionProperties.getHarness().getPlanner().setMaxAttempts(2);
         PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
-        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("<<<")));
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("只输出正文，未调用工具")));
 
         assertThatThrownBy(() -> planner.planNext(nb, streamCtx()))
                 .isInstanceOf(IllegalStateException.class)
@@ -116,8 +124,11 @@ class HarnessPlannerTest {
     @Test
     void planNext_injectsH1AndPlannerHarnessCatalogId() {
         PlanNotebook nb = PlanNotebook.create("完成调研", "帮我调研仓库", "task", 12, 24);
-        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content(planJson(
-                "t1", "摸底", "", "", ""))));
+        when(agentRuntime.run(any())).thenAnswer(inv -> {
+            WorkerDispatchTool.DispatchSession session = WorkerDispatchTool.currentSession("msg-1");
+            actionTool.submitPlan(session, List.of(taskArg("t1", "摸底", "", "", "")));
+            return Flux.just(StreamToken.content("已规划"));
+        });
 
         planner.planNext(nb, streamCtx());
 
@@ -138,8 +149,10 @@ class HarnessPlannerTest {
         PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
         AtomicReference<WorkerDispatchTool.DispatchSession> duringRun = new AtomicReference<>();
         when(agentRuntime.run(any())).thenAnswer(inv -> {
-            duringRun.set(WorkerDispatchTool.currentSession("msg-1"));
-            return Flux.just(StreamToken.content(planJson("t1", "步", "", "", "")));
+            WorkerDispatchTool.DispatchSession session = WorkerDispatchTool.currentSession("msg-1");
+            duringRun.set(session);
+            actionTool.submitPlan(session, List.of(taskArg("t1", "步", "", "", "")));
+            return Flux.just(StreamToken.content("已规划"));
         });
 
         planner.planNext(nb, streamCtx());
@@ -150,16 +163,29 @@ class HarnessPlannerTest {
     }
 
     @Test
-    void selfAssess_writesGoalCompletionAndNextDirection() {
+    void selfAssess_writesFromSelfAssessTool() {
         PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
-        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content(
-                "{\"action\":\"selfAssess\",\"goalCompletion\":0.4,\"reason\":\"调研未完\",\"nextDirection\":\"continue\"}")));
+        when(agentRuntime.run(any())).thenAnswer(inv -> {
+            WorkerDispatchTool.DispatchSession session = WorkerDispatchTool.currentSession("msg-1");
+            actionTool.submitAssess(session, 0.4, "continue", "调研未完");
+            return Flux.just(StreamToken.content("评估完成"));
+        });
 
         planner.selfAssess(nb, streamCtx());
 
         assertThat(nb.getGoalCompletion()).isEqualTo(0.4);
         assertThat(nb.getNextDirection()).isEqualTo("continue");
         assertThat(nb.getRounds()).isEmpty();
+    }
+
+    @Test
+    void selfAssess_throwsWithoutSelfAssessToolCall() {
+        PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("没有调用工具")));
+
+        assertThatThrownBy(() -> planner.selfAssess(nb, streamCtx()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("selfAssess");
     }
 
     @Test
@@ -192,14 +218,14 @@ class HarnessPlannerTest {
                 new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "harness"));
     }
 
-    private static String planJson(
+    private static Map<String, Object> taskArg(
             String taskId, String label, String constraints, String expectedOutput, String successCriteria) {
-        return "{\"action\":\"plan\",\"reason\":\"先调研\",\"tasks\":[{"
-                + "\"taskId\":\"" + taskId + "\","
-                + "\"label\":\"" + label + "\","
-                + "\"dependsOn\":[],"
-                + "\"constraints\":\"" + constraints + "\","
-                + "\"expectedOutput\":\"" + expectedOutput + "\","
-                + "\"successCriteria\":\"" + successCriteria + "\"}]}";
+        return Map.of(
+                "taskId", taskId,
+                "label", label,
+                "dependsOn", List.of(),
+                "constraints", constraints,
+                "expectedOutput", expectedOutput,
+                "successCriteria", successCriteria);
     }
 }

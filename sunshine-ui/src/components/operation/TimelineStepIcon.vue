@@ -190,18 +190,16 @@ const kind = computed<TimelineStepKind>(() => {
       />
     </template>
 
-    <!-- tool-view：查看文件 → 环形眼睛（dsh 风格自绘，非实心） -->
+    <!-- tool-view：查看文件 → 线条眼睛（dsh 风格描边：外轮廓均匀线条环，瞳孔实心中心点） -->
     <template v-else-if="kind === 'tool-view'">
       <path
-        fill-rule="evenodd"
-        d="M8 1.2C4.6 1.2 1.9 4 0.7 8c1.2 4 3.9 6.8 7.3 6.8s6.1-2.8 7.3-6.8c-1.2-4-3.9-6.8-7.3-6.8ZM8 3.6c2.7 0 4.9 1.9 5.9 4.4-1 2.5-3.2 4.4-5.9 4.4S3.1 10.5 2.1 8C3.1 5.5 5.3 3.6 8 3.6Z"
-        fill="currentColor"
+        d="M8 3.2C5.1 3.2 2.6 5.2 1.2 8c1.4 2.8 3.9 4.8 6.8 4.8s5.4-2 6.8-4.8C13.4 5.2 10.9 3.2 8 3.2Z"
+        stroke="currentColor"
+        stroke-width="1.3"
+        stroke-linejoin="round"
+        fill="none"
       />
-      <path
-        fill-rule="evenodd"
-        d="M8 6.1a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8ZM8 7.3a0.7 0.7 0 1 0 0 1.4 0.7 0.7 0 0 0 0-1.4Z"
-        fill="currentColor"
-      />
+      <circle cx="8" cy="8" r="1.7" fill="currentColor" />
     </template>
 
     <!-- tool-edit：编辑 → 铅笔（ic_ds_edit_outline_16） -->
@@ -243,6 +241,75 @@ const kind = computed<TimelineStepKind>(() => {
         stroke="currentColor"
         stroke-width="1.5"
         stroke-linecap="round"
+        fill="none"
+      />
+    </template>
+
+    <!-- tool-dispatch：调度执行单元 → 节点分派（圆点-箭头-方框，dsh 风格自绘） -->
+    <template v-else-if="kind === 'tool-dispatch'">
+      <circle cx="3.1" cy="8" r="1.9" fill="currentColor" />
+      <path
+        d="M5.2 8H9.6"
+        stroke="currentColor"
+        stroke-width="1.3"
+        stroke-linecap="round"
+      />
+      <path
+        d="M7.9 5.7L10.2 8L7.9 10.3"
+        stroke="currentColor"
+        stroke-width="1.3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+      <rect x="11.3" y="5.1" width="3.5" height="5.8" rx="1" fill="none" stroke="currentColor" stroke-width="1.3" />
+    </template>
+
+    <!-- tool-plan-submit：提交调度计划 → 文档+对勾（dsh 风格自绘） -->
+    <template v-else-if="kind === 'tool-plan-submit'">
+      <path
+        fill-rule="evenodd"
+        d="M3.6 0.8H9.7L13.2 4.3V13.6Q13.2 14.4 12.4 14.4H3.6Q2.8 14.4 2.8 13.6V1.6Q2.8 0.8 3.6 0.8ZM9.4 1.6V4.3Q9.4 5.1 10.2 5.1H12.4V13.6H3.6V1.6H9.4Z"
+        fill="currentColor"
+      />
+      <path
+        d="M5.9 9.2L7.6 10.9L10.9 7.3"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+    </template>
+
+    <!-- tool-assess：评估进展 → 仪表盘（弧线表盘+指针，dsh 风格自绘） -->
+    <template v-else-if="kind === 'tool-assess'">
+      <path
+        d="M2.5 12.7A6.2 6.2 0 1 1 13.5 12.7"
+        stroke="currentColor"
+        stroke-width="1.4"
+        stroke-linecap="round"
+        fill="none"
+      />
+      <path
+        d="M8 8.7L11.3 5.4"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        fill="none"
+      />
+      <circle cx="8" cy="8.7" r="1.3" fill="currentColor" />
+    </template>
+
+    <!-- tool-await：等待后台任务 → 时钟（dsh 风格自绘） -->
+    <template v-else-if="kind === 'tool-await'">
+      <circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.4" />
+      <path
+        d="M8 4.6V8.2L10.5 9.7"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
         fill="none"
       />
     </template>

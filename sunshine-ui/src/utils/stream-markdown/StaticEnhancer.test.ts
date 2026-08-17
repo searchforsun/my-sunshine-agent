@@ -17,6 +17,7 @@ describe('enhanceStaticMarkdown sandbox path links', () => {
     document.body.innerHTML = ''
     ;(window as any).__smd_sandboxRoot = ROOT
     ;(window as any).__smd_sandboxIndex = new Set([
+      '/workspace/wt-test/README.md',
       '/workspace/wt-test/scripts/README.md',
       '/workspace/wt-test/example',
       '/workspace/wt-test/example/sub.md',
@@ -76,5 +77,36 @@ describe('enhanceStaticMarkdown sandbox path links', () => {
     )
     enhanceStaticMarkdown(el)
     expect(el.querySelector('code.smd-sandbox-path')).toBeNull()
+  })
+
+  it('反解 linkify 补协议的纯文本文件名 (http://README.md) 为沙箱路径', () => {
+    // markdown-it linkify:true 把正文裸文件名 README.md 渲染为 <a href="http://README.md">
+    const el = mountContainer('msg-md static-md', '<p>见 <a href="http://README.md">README.md</a></p>')
+    enhanceStaticMarkdown(el)
+    const a = el.querySelector('a[data-sandbox-path]')
+    expect(a).not.toBeNull()
+    expect(a?.getAttribute('data-sandbox-path')).toBe('/workspace/wt-test/README.md')
+    expect(a?.hasAttribute('href')).toBe(false)
+  })
+
+  it('反解 linkify 补协议的多段相对路径 (http://scripts/README.md) 为沙箱路径', () => {
+    const el = mountContainer(
+      'msg-md static-md',
+      '<p>见 <a href="http://scripts/README.md">scripts/README.md</a></p>',
+    )
+    enhanceStaticMarkdown(el)
+    const a = el.querySelector('a[data-sandbox-path]')
+    expect(a).not.toBeNull()
+    expect(a?.getAttribute('data-sandbox-path')).toBe('/workspace/wt-test/scripts/README.md')
+  })
+
+  it('真外链 http://example.com/doc.md 不反解，保持外部链接', () => {
+    const el = mountContainer(
+      'msg-md static-md',
+      '<p>见 <a href="http://example.com/doc.md">外部文档</a></p>',
+    )
+    enhanceStaticMarkdown(el)
+    expect(el.querySelector('a[data-sandbox-path]')).toBeNull()
+    expect(el.querySelector('a')?.getAttribute('href')).toBe('http://example.com/doc.md')
   })
 })

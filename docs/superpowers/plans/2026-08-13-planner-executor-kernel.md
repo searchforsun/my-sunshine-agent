@@ -301,7 +301,7 @@ void workerFactorySetsRoleAndWhitelist() {
 
 **Interfaces:**
 - Produces Catalog IDs：
-  - `planner.harness`：要求输出调度单元 JSON（taskId/label/dependsOn/constraints/…）；信息不足先调研；禁止 full/hier；说明可调 worker 工具
+  - `planner.harness`：动作经 `plan_submit`/`self_assess`/`dispatch_worker` 工具表达（v15 起不再输出文本 JSON）；信息不足先调研；禁止 full/hier；说明可调 worker 工具
   - `harness.worker`：执行单元内细则；handoff 摘要格式；不全局重规划
 
 - [ ] **Step 1: 追加 INSERT IGNORE**（`prompt_definition` + `prompt_version`，`kind` 可用 `planner` / `harness`）
@@ -310,7 +310,7 @@ void workerFactorySetsRoleAndWhitelist() {
 
 **planner.harness**（摘要，实施时写完整段落）：
 ```
-你是专业模式 Planner。根据用户目标与 H1 计划状态，输出下一组可调度粗单元（JSON），或 selfAssess/综合回答。
+你是专业模式 Planner。根据用户目标与 H1 计划状态，调用 plan_submit 提交调度单元、self_assess 汇报决策、dispatch_worker 调度 Worker，信息已足时正文综合回答（v15 起动作经工具表达，不输出文本 JSON）。
 规则：信息不足先排调研单元；细则留给 Worker；禁止输出 full/hierarchical 模式标签；依赖用 dependsOn。
 ```
 

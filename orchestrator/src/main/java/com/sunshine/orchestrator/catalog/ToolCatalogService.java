@@ -85,7 +85,18 @@ public class ToolCatalogService {
         return Optional.ofNullable(entries.get(toolId));
     }
 
+    /** 平台内建元工具中文名：不经 tool-service catalog（Planner 元工具仅注册进 toolkit） */
+    private static final Map<String, String> BUILTIN_TOOL_DISPLAY_NAMES = Map.of(
+            "dispatch_worker", "调度执行单元",
+            "plan_submit", "提交调度计划",
+            "self_assess", "评估进展"
+    );
+
     public String displayName(String toolId) {
+        String builtin = BUILTIN_TOOL_DISPLAY_NAMES.get(toolId);
+        if (builtin != null) {
+            return builtin;
+        }
         if (RagTool.NAME.equals(toolId)) {
             return "检索知识库";
         }

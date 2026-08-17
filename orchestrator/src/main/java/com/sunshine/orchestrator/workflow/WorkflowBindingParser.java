@@ -55,8 +55,8 @@ public class WorkflowBindingParser {
         String prefix = "#" + workflowId;
         if (trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) {
             String rest = trimmed.substring(prefix.length()).strip();
-            return StringUtils.hasText(rest) ? rest : "请处理";
+            return StringUtils.hasText(rest) ? rest : trimmed;
         }
-        return StringUtils.hasText(trimmed) ? trimmed : "请处理";
+        return trimmed;
     }
 }

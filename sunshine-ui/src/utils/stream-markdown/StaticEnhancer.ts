@@ -130,15 +130,42 @@ function getSandboxRoot(): string {
   return (window as any).__smd_sandboxRoot ?? ''
 }
 
-/** 将路径增强为蓝色可点击链接（写入 data-sandbox-path 属性） */
-function applyPathAttrs(el: HTMLElement, displayPath: string, resolvedPath: string): void {
+/** 将路径增强为蓝色可点击链接（写入 data-sandbox-path 属性；可选行范围 L1-20） */
+function applyPathAttrs(
+  el: HTMLElement,
+  displayPath: string,
+  resolvedPath: string,
+  lineRange?: { start: number; end: number },
+): void {
   el.dataset.sandboxPathEnhanced = '1'
   el.setAttribute('data-sandbox-path', resolvedPath)
   el.setAttribute('data-sandbox-path-raw', displayPath)
+  if (lineRange) {
+    el.setAttribute('data-sandbox-line-start', String(lineRange.start))
+    el.setAttribute('data-sandbox-line-end', String(lineRange.end))
+  }
   el.classList.add('smd-sandbox-path')
   el.setAttribute('title', resolvedPath)
   el.setAttribute('role', 'link')
   el.setAttribute('tabindex', '0')
+}
+
+const LINE_RANGE_SUFFIX_RE = /^\s*\bL(\d+)(?:-(\d+))?\b/
+
+/**
+ * 只读探测路径元素后跟随的行范围后缀（" L1-20" / " L5"），不改动正文显示。
+ * markdown 把 `` `path` L1-20 `` 渲染为 <code>path</code> + 文本节点 " L1-20"，
+ * 行范围不在 code 内，点击数据从后续文本节点读取。
+ */
+function peekLineRangeSuffix(el: HTMLElement): { start: number; end: number } | undefined {
+  const next = el.nextSibling
+  if (!next || next.nodeType !== Node.TEXT_NODE) return undefined
+  const m = (next.nodeValue ?? '').match(LINE_RANGE_SUFFIX_RE)
+  if (!m) return undefined
+  const start = Number(m[1])
+  const end = m[2] ? Number(m[2]) : start
+  if (!Number.isFinite(start) || start < 1 || end < start) return undefined
+  return { start, end }
 }
 
 /**
@@ -148,7 +175,7 @@ function applyPathAttrs(el: HTMLElement, displayPath: string, resolvedPath: stri
  * basePath：文件预览场景的当前文件路径，用于解析 markdown 标准链接 [text](relative/path) 的相对 href。
  */
 function enhanceSandboxPathLinks(container: HTMLElement, basePath = ''): void {
-  // 1. inline code 元素
+  // 1. inline code 元素（可携带后缀行范围 L1-20）
   const codes = container.querySelectorAll('code:not(pre code)')
   for (const code of codes) {
     const el = code as HTMLElement
@@ -158,7 +185,7 @@ function enhanceSandboxPathLinks(container: HTMLElement, basePath = ''): void {
     const root = getSandboxRoot()
     const { resolved } = matchSandboxPathByIndex(text, root)
     if (!resolved) continue
-    applyPathAttrs(el, text, resolved)
+    applyPathAttrs(el, text, resolved, peekLineRangeSuffix(el))
   }
 
   // 2. 纯文本节点：遍历 p/li/td 等元素中的 TextNode，将路径片段包裹为 <code class="smd-sandbox-path">
@@ -175,6 +202,20 @@ function enhanceSandboxPathLinks(container: HTMLElement, basePath = ''): void {
 function resolveRelativeHref(href: string, basePath: string): string {
   const root = getSandboxRoot()
   if (!root) return ''
+  // linkify（markdown-it linkify:true）会把正文中未加反引号/链接语法的单段文件名
+  // 自动链接化并补协议：README.md → http://README.md。仅当剥掉协议后能命中沙箱索引时
+  // 反解为相对路径继续解析；真外链（example.com 等）不命中索引，保持外部链接。
+  if (/^https?:\/\//i.test(href)) {
+    const stripped = href.replace(/^https?:\/\//i, '').split('#')[0].split('?')[0].trim()
+    if (!stripped) return ''
+    if (isSandboxContainerPath(stripped)) {
+      href = stripped
+    } else if (!matchSandboxPathByIndex(stripped, root).resolved) {
+      return ''
+    } else {
+      href = stripped
+    }
+  }
   // 绝对路径（/workspace/... /skills/...）：直接用 matchSandboxPathByIndex 处理
   if (isSandboxContainerPath(href)) {
     return matchSandboxPathByIndex(href, root).resolved
@@ -261,7 +302,15 @@ function enhanceTextNodesInElement(host: HTMLElement): void {
       if (resolved) {
         const code = document.createElement('code')
         code.textContent = matched
-        applyPathAttrs(code, matched, resolved)
+        // 同一文本节点内紧随路径的 " L1-20" 后缀并入点击数据（只读探测，正文显示保持原样）
+        const suffix = text.slice(m.index + matched.length).match(LINE_RANGE_SUFFIX_RE)
+        let lineRange: { start: number; end: number } | undefined
+        if (suffix) {
+          const start = Number(suffix[1])
+          const end = suffix[2] ? Number(suffix[2]) : start
+          if (Number.isFinite(start) && start >= 1 && end >= start) lineRange = { start, end }
+        }
+        applyPathAttrs(code, matched, resolved, lineRange)
         fragments.push(code)
       } else {
         fragments.push(document.createTextNode(matched))
@@ -342,6 +391,8 @@ export function reEnhanceAllSandboxPathLinks(): void {
       if (raw) anchor.setAttribute('href', raw)
       anchor.removeAttribute('data-sandbox-path')
       anchor.removeAttribute('data-sandbox-path-raw')
+      anchor.removeAttribute('data-sandbox-line-start')
+      anchor.removeAttribute('data-sandbox-line-end')
       anchor.classList.remove('smd-sandbox-path')
       anchor.removeAttribute('title')
       delete anchor.dataset.sandboxPathEnhanced

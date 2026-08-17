@@ -7,6 +7,7 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.plan.harness.PlannerActionTool;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.registry.ModelCapabilities;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
@@ -50,6 +51,10 @@ class ReActAgentFactoryTest {
     private ObjectProvider<WorkerDispatchTool> workerDispatchToolProvider;
     @Mock
     private WorkerDispatchTool workerDispatchTool;
+    @Mock
+    private ObjectProvider<PlannerActionTool> plannerActionToolProvider;
+    @Mock
+    private PlannerActionTool plannerActionTool;
 
     private PromptCatalogHolder catalogHolder;
     private ReActAgentFactory factory;
@@ -81,7 +86,8 @@ class ReActAgentFactoryTest {
                         new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         factory = new ReActAgentFactory(
                 catalogHolder, executionProperties, dynamicToolkitFactory, middlewareFactory,
-                stateStore, webClientBuilder, resolver, workerDispatchToolProvider);
+                stateStore, webClientBuilder, resolver, workerDispatchToolProvider,
+                plannerActionToolProvider);
         ReflectionTestUtils.setField(factory, "modelBaseUrl", "http://localhost:8300/v1");
         ReflectionTestUtils.setField(factory, "apiKey", "test-key");
     }
@@ -175,11 +181,14 @@ class ReActAgentFactoryTest {
         AgentRunRequest req = AgentRunRequest.planner("plan next", "u1", "default", "msg-p");
         when(dynamicToolkitFactory.buildForPlanner("default", null, "u1", "chat")).thenReturn(subToolkit);
         when(workerDispatchToolProvider.getObject()).thenReturn(workerDispatchTool);
+        when(plannerActionToolProvider.getObject()).thenReturn(plannerActionTool);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
         verify(dynamicToolkitFactory).buildForPlanner("default", null, "u1", "chat");
         verify(workerDispatchToolProvider).getObject();
         verify(workerDispatchTool).registerIntoPlannerToolkit(subToolkit);
+        verify(plannerActionToolProvider).getObject();
+        verify(plannerActionTool).registerIntoPlannerToolkit(subToolkit);
         verify(dynamicToolkitFactory, org.mockito.Mockito.never()).build("default", null, "u1", "chat");
     }
 
@@ -190,6 +199,7 @@ class ReActAgentFactoryTest {
                 .withConversationKind("task");
         when(dynamicToolkitFactory.buildForPlanner("default", null, "u1", "task")).thenReturn(subToolkit);
         when(workerDispatchToolProvider.getObject()).thenReturn(workerDispatchTool);
+        when(plannerActionToolProvider.getObject()).thenReturn(plannerActionTool);
 
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
         verify(dynamicToolkitFactory).buildForPlanner("default", null, "u1", "task");

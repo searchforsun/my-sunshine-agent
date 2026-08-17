@@ -37,14 +37,14 @@ public final class StepEventBridge {
     }
 
     /** Spring 启动时注入单例 registry */
-    static void bindRegistry(StepEventBridgeRegistry r) {
+    public static void bindRegistry(StepEventBridgeRegistry r) {
         if (r != null) {
             registry = r;
         }
     }
 
     /** 单测隔离 */
-    static void resetRegistry() {
+    public static void resetRegistry() {
         registry = new StepEventBridgeRegistry();
     }
 
@@ -107,6 +107,14 @@ public final class StepEventBridge {
 
     public static void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
         registry.bindTokenWrapper(bridgeId, wrapper);
+    }
+
+    public static void unbindTokenWrapper(String bridgeId) {
+        registry.unbindTokenWrapper(bridgeId);
+    }
+
+    public static boolean hasSession(String bridgeId) {
+        return registry.hasSession(bridgeId);
     }
 
     public static void bindTokenWrapper(

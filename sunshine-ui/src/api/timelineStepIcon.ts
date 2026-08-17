@@ -12,6 +12,7 @@ export type TimelineStepKind =
   | 'decision' | 'subagent' | 'worker' | 'plan'
   | 'answer' | 'external' | 'node'
   | 'rag' | 'intent' | 'skill' | 'tasks' | 'think'
+  | 'tool-dispatch' | 'tool-plan-submit' | 'tool-assess' | 'tool-await'
   | 'tool-search' | 'tool-view' | 'tool-edit' | 'tool-fetch' | 'tool-exec' | 'tool'
   | 'summary' | 'round'
   | 'generic'
@@ -42,6 +43,11 @@ export function resolveTimelineStepKind(step: ProcessingStep): TimelineStepKind 
     const toolId = catalogToolIdFromStepId(step.id)
     // 查找文件（glob）：专属「文件夹」图标，不再并入 view 的眼睛
     if (toolId === 'sandbox__glob') return 'tool-search'
+    // 平台元工具专属图标（harness 派发 / 计划提交 / 自评 / 异步等待）
+    if (toolId === 'dispatch_worker') return 'tool-dispatch'
+    if (toolId === 'plan_submit') return 'tool-plan-submit'
+    if (toolId === 'self_assess') return 'tool-assess'
+    if (toolId === 'await_tool_run') return 'tool-await'
     const sandboxKind = sandboxToolKind(toolId)
     if (sandboxKind) return `tool-${sandboxKind}`
     return 'tool'

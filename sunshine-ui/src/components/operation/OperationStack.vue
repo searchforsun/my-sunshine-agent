@@ -369,19 +369,15 @@ const displaySteps = computed(() => {
   })
 })
 
-/** harness：stepId → indent / handoff（仅 harness 消息有值） */
+/** harness：stepId -> handoff（仅 harness 消息有值；worker 行不缩进，与工具折叠一致平铺） */
 const harnessEntryByStepId = computed(() => {
-  const map = new Map<string, { indent: 0 | 1; handoffText?: string }>()
+  const map = new Map<string, { handoffText?: string }>()
   if (!isHarnessTimeline.value) return map
   for (const entry of buildHarnessTimelineEntries(displaySteps.value)) {
-    map.set(entry.step.id, { indent: entry.indent, handoffText: entry.handoffText })
+    map.set(entry.step.id, { handoffText: entry.handoffText })
   }
   return map
 })
-
-function harnessIndentOf(step: ProcessingStep): 0 | 1 {
-  return harnessEntryByStepId.value.get(step.id)?.indent ?? 0
-}
 
 function harnessHandoffOf(step: ProcessingStep): string | undefined {
   return harnessEntryByStepId.value.get(step.id)?.handoffText
@@ -454,7 +450,13 @@ function groupToolSteps(steps: ProcessingStep[]): DisplayRow[] {
   return rows
 }
 
-const displayRows = computed(() => groupToolSteps(displaySteps.value))
+/** harness（pro）时间线：所有过程步/工具步平铺不折叠；其余模式连续同类工具折叠成组 */
+const displayRows = computed(() => {
+  if (isHarnessTimeline.value) {
+    return displaySteps.value.map(step => ({ kind: 'step', step }) as DisplayRow)
+  }
+  return groupToolSteps(displaySteps.value)
+})
 
 /** 头部钉扎步不进入 roundGroup：intent → skill → tasks */
 function isPinnedHeaderPhase(phase: string | undefined): boolean {
@@ -1026,7 +1028,6 @@ watch(
         <template v-else>
         <div
           class="op-row"
-          :class="{ 'is-harness-indent-1': row.kind === 'step' && harnessIndentOf(row.step) === 1 }"
         >
         <template v-if="row.kind === 'toolGroup'">
           <ToolGroupCard
@@ -1239,8 +1240,8 @@ watch(
   opacity: 1;
 }
 
-/* 行间距统一走 margin-top 单侧 8px（flex 中 margin 不折叠，避免 gap+margin 叠加）；
-   HITL 与折叠内工具调用不加行间距（折叠外的工具组行由 .op-row 承担） */
+/* 主时间线行间距统一 margin-top 单侧 8px（flex 中 margin 不折叠，避免 gap+margin 叠加）；
+   折叠组内行间距由各 body 的 gap/margin-top 承担；HITL 紧跟其操作行 */
 .op-row + .op-row {
   margin-top: 8px;
 }
@@ -1354,22 +1355,14 @@ watch(
   margin: 8px 0 0;
 }
 
+/* 内部时间线不缩进（与工具折叠一致平铺）；仅保留与主行的间距 */
 .op-nested-stack {
-  margin: 2px 0 8px 16px;
-  padding-left: 8px;
-  border-left: 1px solid var(--sun-border);
+  margin: 2px 0 8px 0;
 }
 
-/* harness：worker 挂在 plan 下一级缩进 */
-.op-row.is-harness-indent-1 {
-  padding-left: 16px;
-}
-
-/* harness：worker 结束 handoff 收束子行（非卡片） */
+/* harness：worker 结束 handoff 收束子行（非卡片，不缩进） */
 .op-harness-handoff {
-  margin: 2px 0 0 16px;
-  padding-left: 8px;
-  border-left: 1px solid var(--sun-border);
+  margin: 2px 0 0 0;
   font-size: var(--sun-font-sm);
   line-height: 1.45;
   color: var(--sun-text-muted);
@@ -1470,6 +1463,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* 折叠头与展开区首行保持 8px（gap 只作用于 body 内部行之间） */
+  margin-top: 8px;
 }
 
 .round-group-body .op-line {

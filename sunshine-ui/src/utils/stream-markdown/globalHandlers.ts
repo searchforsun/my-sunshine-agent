@@ -206,7 +206,11 @@ function handleSmdToolClick(e: MouseEvent): void {
     const path = pathLink.getAttribute('data-sandbox-path')
     if (path) {
       const fn = (window as any).__smd_openSandboxPath
-      if (typeof fn === 'function') fn(path)
+      const lineStart = Number(pathLink.getAttribute('data-sandbox-line-start'))
+      const lineEnd = Number(pathLink.getAttribute('data-sandbox-line-end'))
+      if (typeof fn === 'function') {
+        fn(path, Number.isFinite(lineStart) && lineStart > 0 ? lineStart : 0, Number.isFinite(lineEnd) && lineEnd > 0 ? lineEnd : 0)
+      }
     }
     return
   }

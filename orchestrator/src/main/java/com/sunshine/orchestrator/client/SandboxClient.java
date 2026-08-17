@@ -36,7 +36,8 @@ public class SandboxClient {
     private static final java.time.Duration RESPONSE_TIMEOUT = java.time.Duration.ofSeconds(180);
 
     public SandboxClient(WebClient.Builder builder) {
-        this.webClient = builder
+        // 同上：先 build 继承 @LoadBalanced filter，再 mutate，避免污染共享单例 builder
+        this.webClient = builder.build().mutate()
                 .baseUrl("http://sunshine-sandbox-service")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .clientConnector(new ReactorClientHttpConnector(

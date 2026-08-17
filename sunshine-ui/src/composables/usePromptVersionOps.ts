@@ -214,16 +214,17 @@ export function usePromptVersionOps(deps: PromptVersionOpsDeps) {
     }
   }
 
-  async function saveVersion(status: 'draft' | 'published' = 'draft') {
-    if (!selectedId.value || !detail.value) return
+  /** 保存版本；返回是否成功及保存后的最新 updatedAt（供后续发布作乐观锁校验） */
+  async function saveVersion(status: 'draft' | 'published' = 'draft'): Promise<{ ok: boolean; updatedAt?: string | null }> {
+    if (!selectedId.value || !detail.value) return { ok: false }
     if (status === 'draft' && !isContentEditable.value) {
       message.warning('生效版本不可直接修改，请先「复制为草稿」')
-      return
+      return { ok: false }
     }
     const raw = editContentText.value
     if (!raw.trim() && !editContentJson.value.trim()) {
       message.warning('请填写内容')
-      return
+      return { ok: false }
     }
     const contentText = contentUsesJson.value ? null : raw
     const contentJson = contentUsesJson.value
@@ -244,24 +245,27 @@ export function usePromptVersionOps(deps: PromptVersionOpsDeps) {
         contentJson,
         expectedUpdatedAt: latest.updatedAt ?? null,
       })
+      const refreshed = await getPrompt(selectedId.value)
       message.success(status === 'published' ? '已保存并发布' : '草稿已保存')
       await refreshList()
+      return { ok: true, updatedAt: refreshed.updatedAt ?? null }
     } catch (e) {
       message.error(friendlyErrorMessage(e, '保存版本失败'))
       console.error(e)
+      return { ok: false }
     } finally {
       saving.value = false
     }
   }
 
-  async function handlePublish(version?: number) {
+  async function handlePublish(version?: number, updatedAt?: string | null) {
     if (!selectedId.value || !detail.value) return
     const target = version ?? selectedVersion.value ?? undefined
     publishing.value = true
     try {
       await publishPrompt(selectedId.value, {
         version: target,
-        expectedUpdatedAt: detail.value.updatedAt ?? null,
+        expectedUpdatedAt: updatedAt ?? detail.value.updatedAt ?? null,
       })
       message.success('已发布并生效')
       await refreshList()
@@ -275,6 +279,13 @@ export function usePromptVersionOps(deps: PromptVersionOpsDeps) {
 
   async function handlePrimaryPublish() {
     if (!showPrimaryPublishButton.value || selectedVersion.value == null) return
+    if (selectedVersionStatus.value === 'draft') {
+      // 发布前先保存当前编辑内容为草稿，避免编辑器改动被丢弃
+      const saved = await saveVersion('draft')
+      if (!saved.ok) return
+      await handlePublish(selectedVersion.value, saved.updatedAt)
+      return
+    }
     await handlePublish(selectedVersion.value)
   }
 

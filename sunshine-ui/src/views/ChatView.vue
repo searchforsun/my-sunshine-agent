@@ -1458,7 +1458,7 @@ onMounted(async () => {
   applyChatDeepLink()
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
-  ;(window as any).__smd_openSandboxPath = (path: string) => {
+  ;(window as any).__smd_openSandboxPath = (path: string, lineStart = 0, lineEnd = 0) => {
     const cid = chatStore.currentId
     if (!cid || !path) return
     // 相对路径结合当前工作区根解析为绝对路径
@@ -1467,7 +1467,11 @@ onMounted(async () => {
     if (root && !path.startsWith('/workspace/') && !path.startsWith('/skills/')) {
       resolved = `${root.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
     }
-    openSandboxDrawer({ conversationId: cid, focusPath: resolved })
+    openSandboxDrawer({
+      conversationId: cid,
+      focusPath: resolved,
+      ...(lineStart > 0 ? { focusLine: lineStart, focusLineEnd: lineEnd > 0 ? lineEnd : lineStart } : {}),
+    })
   }
   // 工作区选中行 -> 插入输入框引用 `path` L120-125
   ;(window as any).__smd_addSandboxSelection = (path: string, start: number, end: number) => {

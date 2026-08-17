@@ -27,7 +27,8 @@ llm:
     # 上游 connect/response 超时：慢或挂起时快速失败，交由 ModelRouter 降级到备用模型
     connect-timeout: 10s
     response-timeout: 120s
-    # SSE 流两次 chunk 之间静默超过该阈值即断开（上游半挂时快速降级，避免前端干等满 response-timeout）
+    # SSE 数据静默超时：两次 data 事件之间静默超过该阈值即断开（上游半挂时快速降级，避免前端干等满 response-timeout）；
+    # 在 OpenAiCompatibleAdapter 直接作用于 bodyToFlux 的 data 事件流（SSE 解码器已消化心跳注释，无需字节级 ReadTimeoutHandler）
     read-idle-timeout: 60s
 
 # 模型注册表 SSOT = resource-manager；此处仅保留加解密密钥材料

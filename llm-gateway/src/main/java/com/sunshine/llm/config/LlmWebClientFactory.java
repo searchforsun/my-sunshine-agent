@@ -11,13 +11,11 @@ import io.netty.channel.ChannelOption;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
-import io.netty.handler.timeout.ReadTimeoutHandler;
 
 import javax.net.ssl.SSLException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 按 baseUrl 缓存 LLM 厂商 WebClient；provider 变更时 invalidate 强制重建。
@@ -34,9 +32,6 @@ public class LlmWebClientFactory {
 
     @Value("${llm.webclient.response-timeout:120s}")
     private Duration responseTimeout = Duration.ofSeconds(120);
-
-    @Value("${llm.webclient.read-idle-timeout:60s}")
-    private Duration readIdleTimeout = Duration.ofSeconds(60);
 
     private final Map<String, WebClient> cacheByBaseUrl = new ConcurrentHashMap<>();
 
@@ -61,12 +56,12 @@ public class LlmWebClientFactory {
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(baseUrl)
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024));
-        // 读空闲超时：SSE 两次 chunk 间静默过久即断开，交 ModelRouter 降级
+        // 不用 doOnConnected + ReadTimeoutHandler 做读空闲超时：其按字节读空闲计时，
+        // 上游 SSE 心跳注释会持续重置它，且连接池空闲连接残留计时会误杀复用请求。
+        // 数据静默超时由 OpenAiCompatibleAdapter 按 data 事件间隔实现（read-idle-timeout）。
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(connectTimeout.toMillis()))
-                .responseTimeout(responseTimeout)
-                .doOnConnected(conn -> conn.addHandlerLast(
-                        new ReadTimeoutHandler(readIdleTimeout.toMillis(), TimeUnit.MILLISECONDS)));
+                .responseTimeout(responseTimeout);
         if (insecureSsl) {
             try {
                 SslContext sslContext = SslContextBuilder.forClient()

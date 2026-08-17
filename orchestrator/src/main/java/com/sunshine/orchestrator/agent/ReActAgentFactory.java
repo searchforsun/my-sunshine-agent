@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.plan.harness.PlannerActionTool;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import com.sunshine.orchestrator.registry.ResolvedModelScene;
@@ -48,6 +49,8 @@ public class ReActAgentFactory {
     private final ModelSceneResolver modelSceneResolver;
     /** 惰性注入，避免 Factory → DispatchTool → AgentRuntime → Factory 环 */
     private final ObjectProvider<WorkerDispatchTool> workerDispatchTool;
+    /** 惰性注入，避免 Factory → ActionTool → AgentRuntime → Factory 环 */
+    private final ObjectProvider<PlannerActionTool> plannerActionTool;
 
     private LoadBalancedWebClientTransport transport;
 
@@ -203,6 +206,7 @@ public class ReActAgentFactory {
                     request.tenantId(), request.skillId(), request.userId(), conversationKind);
             // fail-fast：缺 bean 时 getObject 抛 NoSuchBeanDefinitionException，禁止静默跳过
             workerDispatchTool.getObject().registerIntoPlannerToolkit(tk);
+            plannerActionTool.getObject().registerIntoPlannerToolkit(tk);
             return tk;
         }
         return dynamicToolkitFactory.build(

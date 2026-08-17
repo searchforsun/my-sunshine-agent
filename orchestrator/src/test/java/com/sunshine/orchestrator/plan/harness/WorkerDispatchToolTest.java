@@ -1,10 +1,15 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.agent.StepEventBridgeRegistry;
+import com.sunshine.orchestrator.agent.TokenWrapperMode;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.prompt.PromptCatalogEntry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.prompt.PromptCatalogSnapshot;
@@ -18,8 +23,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,6 +46,7 @@ class WorkerDispatchToolTest {
     private WorkerContextFactory contextFactory;
     private AgentExecutionProperties executionProperties;
     private WorkerDispatchTool tool;
+    private StepEventBridgeRegistry registry;
 
     @BeforeEach
     void setUp() {
@@ -52,10 +60,14 @@ class WorkerDispatchToolTest {
         executionProperties = new AgentExecutionProperties();
         executionProperties.getHarness().setEnabled(true);
         tool = new WorkerDispatchTool(agentRuntime, contextFactory, executionProperties);
+        registry = new StepEventBridgeRegistry();
+        StepEventBridge.bindRegistry(registry);
     }
 
     @AfterEach
     void tearDown() {
+        registry.clearAll();
+        StepEventBridge.resetRegistry();
         WorkerDispatchTool.clearAllSessionsForTests();
     }
 
@@ -78,7 +90,8 @@ class WorkerDispatchToolTest {
                 "conv-1",
                 "planner-run-1",
                 40,
-                "chat");
+                "chat",
+                WorkerDispatchTool.DispatchSession.ActionSignals.fresh());
         WorkerDispatchTool.bindSession(session);
 
         when(agentRuntime.run(any())).thenReturn(Flux.just(
@@ -107,7 +120,8 @@ class WorkerDispatchToolTest {
     void dispatchFailsWhenTaskMissing() {
         PlanNotebook nb = PlanNotebook.create("g", "q", "task", 12, 24);
         WorkerDispatchTool.bindSession(new WorkerDispatchTool.DispatchSession(
-                nb, List.of(), "u", "t", "m", "c", "p", 10, "chat"));
+                nb, List.of(), "u", "t", "m", "c", "p", 10, "chat",
+                WorkerDispatchTool.DispatchSession.ActionSignals.fresh()));
         String result = tool.dispatchWorker("nope", "m");
         assertThat(result).contains("\"ok\":false");
         assertThat(result).contains("未找到任务");
@@ -125,7 +139,8 @@ class WorkerDispatchToolTest {
         PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
         nb.getTaskQueue().add(new TaskItem("t1", "单元", "pending", List.of(), "", "", ""));
         WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
-                nb, List.of("sandbox__exec"), "u", "t", "msg-x", "c", "run-xyz", 20, "chat");
+                nb, List.of("sandbox__exec"), "u", "t", "msg-x", "c", "run-xyz", 20, "chat",
+                WorkerDispatchTool.DispatchSession.ActionSignals.fresh());
         WorkerDispatchTool.bindSession(session);
 
         when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("done-handoff")));
@@ -159,6 +174,94 @@ class WorkerDispatchToolTest {
         io.agentscope.core.tool.Toolkit tk = new io.agentscope.core.tool.Toolkit();
         tool.registerIntoPlannerToolkit(tk);
         assertThat(tk.getToolNames()).contains("dispatch_worker");
+    }
+
+    @Test
+    void plannerDirectDispatch_foldsWorkerStepsIntoWorkerTimelineCard() {
+        PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
+        nb.getTaskQueue().add(new TaskItem("t1", "调研仓库", "pending", List.of(), "只读", "摘要", "有结论"));
+        WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
+                nb,
+                List.of("sandbox__exec"),
+                "u",
+                "t",
+                "msg-1",
+                "conv-1",
+                "planner-run-1",
+                40,
+                "chat",
+                WorkerDispatchTool.DispatchSession.ActionSignals.fresh());
+        WorkerDispatchTool.bindSession(session);
+        // Planner 直接 dispatch：mainBridge（planner-{parentRunId}）session 存活
+        ProcessingTimelineSession plannerSession = new ProcessingTimelineSession();
+        ConcurrentLinkedQueue<StreamToken> mainQueue = new ConcurrentLinkedQueue<>();
+        StepEventBridge.bind("planner-planner-run-1", plannerSession, mainQueue);
+
+        when(agentRuntime.run(any())).thenAnswer(inv -> {
+            AgentRunRequest req = inv.getArgument(0);
+            // 模拟 Worker 内部步骤到达 worker-{runId} bridge，触发 PASS_THROUGH wrapper fold
+            return Flux.defer(() -> {
+                StepEventBridge.offerStreamToken(req.resolveBridgeId(),
+                        StreamToken.step(ProcessingStep.running("think", "think", "思考")));
+                return Flux.just(StreamToken.content("【handoff】完成调研"));
+            });
+        });
+
+        String handoff = tool.dispatchWorker("t1", "msg-1");
+
+        assertThat(handoff).contains("handoff");
+        List<StreamToken> mainTokens = drain(mainQueue);
+        ProcessingStep workerCard = lastStep(mainTokens, "worker-t1");
+        assertThat(workerCard).isNotNull();
+        assertThat(workerCard.phase()).isEqualTo("worker");
+        assertThat(workerCard.subSteps()).isNotNull();
+        assertThat(workerCard.subSteps()).extracting(ProcessingStep::id).contains("think");
+        assertThat(workerCard.lifecycle()).isEqualTo("done");
+        assertThat(workerCard.result()).contains("handoff");
+    }
+
+    @Test
+    void loopFallback_withoutPlannerSession_doesNotFold() {
+        PlanNotebook nb = PlanNotebook.create("goal", "q", "task", 12, 24);
+        nb.getTaskQueue().add(new TaskItem("t1", "调研仓库", "pending", List.of(), "只读", "摘要", "有结论"));
+        WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
+                nb,
+                List.of(),
+                "u",
+                "t",
+                "msg-2",
+                "conv-2",
+                "harness-loop-msg-2",
+                0,
+                "chat",
+                WorkerDispatchTool.DispatchSession.ActionSignals.fresh());
+        WorkerDispatchTool.bindSession(session);
+        // Loop 兜底：planner-{loopRunId} 无 session → fold 静默
+        when(agentRuntime.run(any())).thenReturn(Flux.just(StreamToken.content("handoff-ok")));
+
+        String handoff = tool.dispatchWorker("t1", "msg-2");
+
+        assertThat(handoff).contains("handoff-ok");
+        assertThat(findTask(nb, "t1").status()).isEqualTo("done");
+    }
+
+    private static List<StreamToken> drain(ConcurrentLinkedQueue<StreamToken> queue) {
+        List<StreamToken> out = new ArrayList<>();
+        StreamToken token;
+        while ((token = queue.poll()) != null) {
+            out.add(token);
+        }
+        return out;
+    }
+
+    private static ProcessingStep lastStep(List<StreamToken> tokens, String stepId) {
+        ProcessingStep found = null;
+        for (StreamToken token : tokens) {
+            if (token.isStep() && token.step() != null && stepId.equals(token.step().id())) {
+                found = token.step();
+            }
+        }
+        return found;
     }
 
     private static TaskItem findTask(PlanNotebook nb, String taskId) {

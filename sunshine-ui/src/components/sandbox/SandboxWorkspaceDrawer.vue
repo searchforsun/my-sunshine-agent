@@ -49,7 +49,7 @@ const { mode: writeHitlMode } = useWriteHitlMode(() => state.conversationId)
 /** 是否任务工作区：仅 task 会话带 workspaceId 才显示 git/改动等复杂能力；chat 会话绑定工作区后仍为简化工作区 */
 const isTaskWorkspace = computed(() => props.sessionKind !== 'chat' && !!props.workspaceId)
 
-let openFile: (path: string, focusLine?: number) => void | Promise<void> = () => {}
+let openFile: (path: string, focusLine?: number, focusLineEnd?: number) => void | Promise<void> = () => {}
 const {
   treeLoading,
   errorText,
@@ -71,7 +71,7 @@ const {
   getCheckoutId: () => props.checkoutId || null,
   getWorkspaceName: () => props.workspaceName || null,
   getTaskMode: () => isTaskWorkspace.value,
-  onOpenFile: (path, focusLine) => openFile(path, focusLine),
+  onOpenFile: (path, focusLine, focusLineEnd) => openFile(path, focusLine, focusLineEnd),
 })
 
 // 文件树刷新版本号：refresh/checkout切换/sync 完成后 +1，通知会话级路径索引重新加载
@@ -93,6 +93,7 @@ const {
   canCopyPreview,
   breadcrumbs,
   focusLine,
+  focusLineEnd,
   copyPreview,
   openFile: previewOpenFile,
   activateTab,
@@ -257,8 +258,8 @@ function onAddSelection(payload: { start: number; end: number }) {
 }
 
 watch(
-  () => [state.open, state.conversationId, state.focusPath, state.focusLine] as const,
-  ([open, convId, focus, focusLine], prev) => {
+  () => [state.open, state.conversationId, state.focusPath, state.focusLine, state.focusLineEnd] as const,
+  ([open, convId, focus, focusLine, focusLineEnd], prev) => {
     if (!open || !convId) {
       resetTree()
       resetPreview()
@@ -276,7 +277,7 @@ watch(
     }
     void (async () => {
       await loadRoots()
-      if (focus) await revealPath(focus, focusLine || undefined)
+      if (focus) await revealPath(focus, focusLine || undefined, focusLineEnd || undefined)
     })()
   },
 )
@@ -425,6 +426,7 @@ watch(
         :preview-lang-class="previewLangClass"
         :preview-code-html="previewCodeHtml"
         :focus-line="focusLine"
+        :focus-line-end="focusLineEnd"
         :display-path="displayPath"
         @activate-tab="activateTab"
         @close-tab="closeTab"

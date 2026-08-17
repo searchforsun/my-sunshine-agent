@@ -43,6 +43,7 @@ function onPathClick(e: MouseEvent) {
     conversationId: cid,
     focusPath: path,
     focusLine: props.lineStart,
+    focusLineEnd: props.lineEnd,
   })
 }
 </script>

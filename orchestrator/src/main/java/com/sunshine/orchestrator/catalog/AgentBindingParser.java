@@ -53,13 +53,13 @@ public class AgentBindingParser {
         return AgentBindingOutcome.bound(new ArrayList<>(agentIds), trimmed);
     }
 
-    /** workflow 钉死等禁用绑定场景：剥离全部 $agent token 后按普通正文提问 */
+    /** workflow 钉死等禁用绑定场景：剥离全部 $agent token 后按普通正文提问；空则保留原文，不更改用户输入 */
     public String stripAgentMentions(String userMessage) {
         if (!StringUtils.hasText(userMessage)) {
             return userMessage != null ? userMessage : "";
         }
         String stripped = userMessage.replaceAll("\\$[\\w\\u4e00-\\u9fff-]+", " ").replaceAll("\\s+", " ").strip();
-        return stripped.isEmpty() ? "请处理" : stripped;
+        return stripped.isEmpty() ? userMessage.strip() : stripped;
     }
 
     private void collectInline(String text, LinkedHashSet<String> agentIds, String sessionKind) {

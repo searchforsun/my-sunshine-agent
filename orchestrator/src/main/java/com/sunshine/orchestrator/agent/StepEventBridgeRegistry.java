@@ -218,6 +218,18 @@ public class StepEventBridgeRegistry {
         }
     }
 
+    public void unbindTokenWrapper(String bridgeId) {
+        if (bridgeId == null) {
+            return;
+        }
+        tokenWrappers.remove(bridgeId);
+        tokenWrapperModes.remove(bridgeId);
+    }
+
+    public boolean hasSession(String bridgeId) {
+        return bridgeId != null && sessions.containsKey(bridgeId);
+    }
+
     public void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
         bindTokenWrapper(bridgeId, wrapper, TokenWrapperMode.EMIT_OUTGOING);
     }

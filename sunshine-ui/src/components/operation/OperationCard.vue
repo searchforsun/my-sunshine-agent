@@ -88,6 +88,7 @@ function onRowActivate() {
       conversationId: chatStore.currentId,
       focusPath: focus,
       focusLine: lineRange?.start,
+      focusLineEnd: lineRange?.end,
     })
   }
   if (canExpand.value) {

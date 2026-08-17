@@ -13,6 +13,8 @@ export interface SandboxWorkspaceDrawerPayload {
   focusPath?: string
   /** 打开后定位到文件起始行（read 步骤 L 范围起点）；不传则默认顶部 */
   focusLine?: number
+  /** 定位行范围终点（正文 `path` L1-20 点击）；不传则仅起始行单行定位 */
+  focusLineEnd?: number
   /** 进入「改动」diff 模式，展示该文件的 diff 详情（优先级高于 focusPath） */
   diffPath?: string
 }
@@ -55,6 +57,8 @@ const state = reactive({
   conversationId: '' as string,
   focusPath: '' as string,
   focusLine: 0 as number,
+  /** 定位行范围终点（0 = 仅单行定位） */
+  focusLineEnd: 0 as number,
   /** 任务工作区内容 tab：文件树 / 改动 diff */
   tab: 'files' as SandboxWorkspaceTab,
   /** diff 视图初始打开的文件（空 = 改动列表） */
@@ -256,12 +260,16 @@ export function useSandboxWorkspaceDrawer() {
     state.conversationId = payload.conversationId?.trim() ?? ''
     state.focusPath = payload.focusPath?.trim() ?? ''
     state.focusLine = typeof payload.focusLine === 'number' && payload.focusLine > 0 ? payload.focusLine : 0
+    state.focusLineEnd = typeof payload.focusLineEnd === 'number' && payload.focusLineEnd >= state.focusLine
+      ? payload.focusLineEnd
+      : state.focusLine
     state.diffPath = payload.diffPath?.trim() ?? ''
     state.tab = state.diffPath ? 'diff' : 'files'
     if (state.tab === 'diff') {
       // diff 模式下定位到改动视图，不需要文件定位参数
       state.focusPath = ''
       state.focusLine = 0
+      state.focusLineEnd = 0
     }
     state.open = true
   }
@@ -279,6 +287,7 @@ export function useSandboxWorkspaceDrawer() {
     state.diffPath = ''
     state.focusPath = path
     state.focusLine = 0
+    state.focusLineEnd = 0
   }
 
   function close() {
@@ -286,6 +295,7 @@ export function useSandboxWorkspaceDrawer() {
     state.conversationId = ''
     state.focusPath = ''
     state.focusLine = 0
+    state.focusLineEnd = 0
     state.tab = 'files'
     state.diffPath = ''
   }

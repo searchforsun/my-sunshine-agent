@@ -293,14 +293,21 @@ public class WorkspaceSandboxLifecycle {
     /**
      * 修复 clone 产物的权限，保证两边都可读写：
      * - 属主恢复为宿主 root（orchestrator 以 root 跑 host 侧 git，避免 dubious ownership）
-     * - 目录全 777（容器内 UID 10001 沙箱用户可写，AI 才能改代码 / git 才能写 index.lock）
+     * - a+rwX：目录加执行位可进入，普通文件只加读写不加执行位（容器内 UID 10001 沙箱用户
+     *   可写，AI 才能改代码 / git 才能写 index.lock）；禁止 a+rwx——会给全部 644 文件加执行位，
+     *   git 把整仓文件误报为 mode 100644→100755 的 modified
      */
     private void runFixPerms(Path target) {
         try {
             // 属主恢复为宿主 root（host 侧 orchestrator 以 root 跑 git，避免 dubious ownership）
             runQuiet("chown", "-R", "0:0", target.toAbsolutePath().toString());
-            // 全 777：容器内 UID 10001 沙箱用户可写，AI 才能改代码 / git 才能写 index.lock
-            runQuiet("chmod", "-R", "a+rwx", target.toAbsolutePath().toString());
+            runQuiet("chmod", "-R", "a+rwX", target.toAbsolutePath().toString());
+            // 凭据文件含 PAT，须维持 600 + 容器 UID=10001 属主（上面的 -R chown 会覆盖属主）
+            Path credFile = target.resolve(".git-credentials");
+            if (Files.exists(credFile)) {
+                runQuiet("chown", "10001:10001", credFile.toAbsolutePath().toString());
+                runQuiet("chmod", "600", credFile.toAbsolutePath().toString());
+            }
         } catch (Exception e) {
             log.warn("[WorkspaceLifecycle] fixPerms failed target={}: {}", target, e.getMessage());
         }

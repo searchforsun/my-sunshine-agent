@@ -296,7 +296,8 @@ function shouldShowInlineHitl(step: ProcessingStep): boolean {
 .tool-group-body {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .tool-group-hitl {

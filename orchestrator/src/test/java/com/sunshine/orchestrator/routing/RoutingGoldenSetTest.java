@@ -87,7 +87,7 @@ class RoutingGoldenSetTest {
             String msg = inv.getArgument(0);
             if (msg != null && msg.startsWith("/")) {
                 int space = msg.indexOf(' ');
-                return space > 0 ? msg.substring(space + 1).strip() : "请处理";
+                return space > 0 ? msg.substring(space + 1).strip() : msg.strip();
             }
             return msg;
         });

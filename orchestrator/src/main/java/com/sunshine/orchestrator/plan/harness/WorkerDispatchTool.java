@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.plan.harness;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.agent.TokenWrapperMode;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -65,7 +66,20 @@ public class WorkerDispatchTool implements AgentTool {
             String conversationId,
             String parentRunId,
             int maxIters,
-            String conversationKind) {
+            String conversationKind,
+            ActionSignals signals) {
+
+        /** 引擎侧动作接收标记：plan_submit / self_assess 工具调用后置位，供 planNext/selfAssess 判定。 */
+        public record ActionSignals(
+                java.util.concurrent.atomic.AtomicBoolean planReceived,
+                java.util.concurrent.atomic.AtomicBoolean assessReceived) {
+            public static ActionSignals fresh() {
+                return new ActionSignals(
+                        new java.util.concurrent.atomic.AtomicBoolean(false),
+                        new java.util.concurrent.atomic.AtomicBoolean(false));
+            }
+        }
+
         String plannerBridgeId() {
             return StringUtils.hasText(parentRunId) ? "planner-" + parentRunId.strip() : null;
         }
@@ -239,6 +253,23 @@ public class WorkerDispatchTool implements AgentTool {
         long timeoutMs = harness.getWorker().getTimeoutMs() > 0
                 ? harness.getWorker().getTimeoutMs()
                 : 3_600_000L;
+        // Planner 直接 dispatch：mainBridge（planner-{parentRunId}）session 存活时 fold Worker 内部
+        // 步骤为 worker-{taskId} 一级行 subSteps；Loop 兜底（planner-{loopRunId} 无 session）时不 fold，
+        // 骨架由 Loop 自身 emit，避免双写。
+        String workerBridgeId = request.resolveBridgeId();
+        String mainBridge = session.plannerBridgeId();
+        boolean foldActive = StringUtils.hasText(mainBridge) && StepEventBridge.hasSession(mainBridge);
+        WorkerTimelineBridge workerTimeline = null;
+        if (foldActive) {
+            final WorkerTimelineBridge timeline = new WorkerTimelineBridge(task.taskId(), task.label());
+            workerTimeline = timeline;
+            StepEventBridge.emit(mainBridge, s -> timeline.begin().forEach(s::enqueueAuxiliary));
+            // PASS_THROUGH：wrapper 只 fold；原 token 入队供 Flux（正文收集，步骤不进主时间线平铺）
+            StepEventBridge.bindTokenWrapper(workerBridgeId, token -> {
+                foldStepToken(mainBridge, timeline, token);
+                return List.of();
+            }, TokenWrapperMode.PASS_THROUGH);
+        }
         StringBuilder answer = new StringBuilder();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         try {
@@ -247,23 +278,56 @@ public class WorkerDispatchTool implements AgentTool {
                     .doOnError(failure::set)
                     .blockLast(Duration.ofMillis(timeoutMs));
             if (failure.get() != null) {
-                return failTask(nb, task, failure.get());
+                String msg = failTask(nb, task, failure.get());
+                emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
+                return msg;
             }
             String handoff = answer.toString().strip();
             if (!StringUtils.hasText(handoff)) {
                 handoff = "（Worker 未产出正文）";
             }
             completeTask(nb, task, handoff);
+            emitWorkerTerminal(mainBridge, workerTimeline, handoff, true);
             return handoff;
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (isTimeout(cause) || isTimeout(e)) {
                 String msg = "Worker 执行超时（" + timeoutMs + "ms）";
                 failTask(nb, task, new TimeoutException(msg));
+                emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
                 return msg;
             }
-            return failTask(nb, task, cause != null ? cause : e);
+            String msg = failTask(nb, task, cause != null ? cause : e);
+            emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
+            return msg;
+        } finally {
+            if (foldActive) {
+                StepEventBridge.unbindTokenWrapper(workerBridgeId);
+            }
         }
+    }
+
+    private void foldStepToken(String mainBridge, WorkerTimelineBridge bridge, StreamToken token) {
+        if (token == null || bridge == null) {
+            return;
+        }
+        if (token.isStep() || token.isStepDelta()) {
+            emitWorkerStep(mainBridge, bridge.wrap(token));
+        }
+    }
+
+    private void emitWorkerStep(String mainBridge, List<StreamToken> tokens) {
+        if (!StringUtils.hasText(mainBridge) || tokens == null || tokens.isEmpty()) {
+            return;
+        }
+        StepEventBridge.emit(mainBridge, s -> tokens.forEach(s::enqueueAuxiliary));
+    }
+
+    private void emitWorkerTerminal(String mainBridge, WorkerTimelineBridge bridge, String result, boolean ok) {
+        if (bridge == null || !StringUtils.hasText(mainBridge)) {
+            return;
+        }
+        emitWorkerStep(mainBridge, bridge.complete(ok ? "完成" : "执行失败", result, ok));
     }
 
     private String failTask(PlanNotebook nb, TaskItem task, Throwable error) {

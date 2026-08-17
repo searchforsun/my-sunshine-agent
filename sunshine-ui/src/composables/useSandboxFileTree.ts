@@ -18,7 +18,7 @@ export interface UseSandboxFileTreeOptions {
   getWorkspaceName?: () => string | null
   /** 是否任务工作区：task 会话绑定了工作区但未选 checkout 时显示空态；chat 简化工作区不在此列 */
   getTaskMode?: () => boolean
-  onOpenFile: (path: string, focusLine?: number) => void | Promise<void>
+  onOpenFile: (path: string, focusLine?: number, focusLineEnd?: number) => void | Promise<void>
 }
 
 /** 打开工作区时文件树加载超时（docker stop 后需重启容器，可能较慢） */
@@ -295,7 +295,7 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
     }
   }
 
-  async function revealPath(focus: string, focusLine?: number) {
+  async function revealPath(focus: string, focusLine?: number, focusLineEnd?: number) {
     if (!focus.startsWith('/workspace') && !focus.startsWith('/skills')) return
     // 通配符路径（含 * ? [ 等）：截断到最后一个不含通配符的段，作为目录展开
     const hasWildcard = /[*?\[\]{}]/.test(focus)
@@ -331,7 +331,7 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
         selectedKeys.value = [focus]
       } else {
         expandedKeys.value = [...new Set([...expandedKeys.value, ...ancestors])]
-        await options.onOpenFile(focus, focusLine)
+        await options.onOpenFile(focus, focusLine, focusLineEnd)
       }
     }
   }

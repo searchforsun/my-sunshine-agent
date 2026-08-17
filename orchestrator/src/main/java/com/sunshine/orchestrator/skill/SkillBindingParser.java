@@ -83,14 +83,14 @@ public class SkillBindingParser {
         return stripSkillMentions(userMessage);
     }
 
-    /** 去掉正文中全部 /skill token，折叠空白；空则返回「请处理」 */
+    /** 去掉正文中全部 /skill token，折叠空白；空则保留原文，不更改用户输入 */
     public String stripSkillMentions(String userMessage) {
         if (!StringUtils.hasText(userMessage)) {
             return userMessage != null ? userMessage : "";
         }
         String stripped = INLINE_SLASH_PATTERN.matcher(userMessage.strip()).replaceAll("");
         stripped = stripped.replaceAll("\\s{2,}", " ").strip();
-        return StringUtils.hasText(stripped) ? stripped : "请处理";
+        return StringUtils.hasText(stripped) ? stripped : userMessage.strip();
     }
 
     private SkillBindingOutcome resolveAndBind(String token, String effectiveQuery, SkillBindingSource source,
@@ -100,7 +100,7 @@ public class SkillBindingParser {
             // soft binding：/xxx 未命中注册 skill 时视为普通内容，保留原文走意图识别
             return SkillBindingOutcome.none(effectiveQuery);
         }
-        String query = StringUtils.hasText(effectiveQuery) ? effectiveQuery : "请处理";
+        String query = effectiveQuery != null ? effectiveQuery : "";
         return SkillBindingOutcome.bound(skillId.get(), query, source);
     }
 

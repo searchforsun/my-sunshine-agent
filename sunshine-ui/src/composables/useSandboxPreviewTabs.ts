@@ -149,6 +149,8 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   const previewCache = ref<Record<string, PreviewEntry>>({})
   const copyDone = ref(false)
   const focusLine = ref(0)
+  /** 定位行范围终点（0 = 仅 focusLine 单行定位） */
+  const focusLineEnd = ref(0)
   let copyTimer: ReturnType<typeof setTimeout> | null = null
 
   function scrollActiveTabIntoView() {
@@ -223,11 +225,14 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     }, 2000)
   }
 
-  async function openFile(path: string, focusLineArg?: number) {
+  async function openFile(path: string, focusLineArg?: number, focusLineEndArg?: number) {
     const conversationId = options.getConversationId()
     const wsId = options.getWorkspaceId?.()
     if ((!conversationId && !wsId) || !path || path === '/workspace' || path === '/skills') return
     focusLine.value = typeof focusLineArg === 'number' && focusLineArg > 0 ? focusLineArg : 0
+    focusLineEnd.value = typeof focusLineEndArg === 'number' && focusLineEndArg >= focusLine.value && focusLine.value > 0
+      ? focusLineEndArg
+      : focusLine.value
     if (!openTabs.value.some((t) => t.path === path)) {
       openTabs.value = [...openTabs.value, { path }]
     }
@@ -374,6 +379,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     previewLoadingMore.value = false
     mdRawMode.value = false
     focusLine.value = 0
+    focusLineEnd.value = 0
     options.selectedKeys.value = []
   }
 
@@ -386,6 +392,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     previewMeta.value = ''
     previewLoadingMore.value = false
     focusLine.value = 0
+    focusLineEnd.value = 0
   }
 
   function clearCache() {
@@ -434,5 +441,6 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     clearCache,
     clearCacheUnder,
     focusLine,
+    focusLineEnd,
   }
 }

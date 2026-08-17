@@ -49,7 +49,11 @@ public class LlmGatewayClient {
             WebClient.Builder builder) {
         this.promptComposer = promptComposer;
         this.modelSceneResolver = modelSceneResolver;
-        this.webClient = builder
+        // WebClient.Builder 可变且为 @Primary @LoadBalanced 单例：直接在共享 bean 上调
+        // baseUrl/codecs/clientConnector 会污染后续所有 build（曾致 AgentScope SSE 请求
+        // 继承 180s responseTimeout，静默 180s 即被本地 ReadTimeout 切断重试）。
+        // 故先 build 继承 LoadBalancer filter，再 mutate 叠加本客户端配置。
+        this.webClient = builder.build().mutate()
                 .baseUrl("http://sunshine-llm-gateway/v1")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .clientConnector(new ReactorClientHttpConnector(

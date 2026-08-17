@@ -62,6 +62,13 @@ describe('resolveTimelineStepKind', () => {
     expect(resolveTimelineStepKind(step({ id: 'tool-doc-search@5', phase: 'tool' }))).toBe('tool')
   })
 
+  it('平台元工具专属图标（harness 派发/计划提交/自评/异步等待）', () => {
+    expect(resolveTimelineStepKind(step({ id: 'tool-dispatch_worker@1', phase: 'tool' }))).toBe('tool-dispatch')
+    expect(resolveTimelineStepKind(step({ id: 'tool-plan_submit@1', phase: 'tool' }))).toBe('tool-plan-submit')
+    expect(resolveTimelineStepKind(step({ id: 'tool-self_assess@1', phase: 'tool' }))).toBe('tool-assess')
+    expect(resolveTimelineStepKind(step({ id: 'tool-await_tool_run@1', phase: 'tool' }))).toBe('tool-await')
+  })
+
   it('其余兜底 generic', () => {
     expect(resolveTimelineStepKind(step({ id: 'i9', phase: 'loop' }))).toBe('generic')
     expect(resolveTimelineStepKind(step({ id: 'x', phase: 'generate' }))).toBe('generic')

@@ -1,4 +1,4 @@
-/** harness 分层时间线：plan → worker → handoff 行分组 / 缩进 */
+/** harness 分层时间线：plan -> worker -> handoff 行分组（worker 不缩进，与工具折叠一致平铺） */
 import type { ProcessingStep } from './processingSteps'
 
 export function isWorkerStep(step: { id?: string; phase?: string }): boolean {
@@ -14,7 +14,7 @@ export function isHarnessPlanStep(step: { id?: string; phase?: string }): boolea
 
 /**
  * worker 结束收束文案（handoff 子行）；不发明独立 phase。
- * 优先 result → detail → summary.after；与 label 相同则仍可展示（后端可能只下 status）。
+ * 优先 result -> detail -> summary.after；与 label 相同则仍可展示（后端可能只下 status）。
  */
 export function resolveWorkerHandoffText(step: ProcessingStep): string | undefined {
   const lc = step.lifecycle ?? 'pending'
@@ -33,43 +33,16 @@ export function resolveWorkerHandoffText(step: ProcessingStep): string | undefin
   return candidates[0]
 }
 
-/**
- * 缩进：plan / intent / think / planner-answer = 0；
- * worker 挂在最近前置 plan* 下为 1，无 plan 时仍为 0。
- */
-export function resolveHarnessIndentLevels(steps: ProcessingStep[]): Map<string, number> {
-  const levels = new Map<string, number>()
-  let nearestPlanId: string | undefined
-  for (const step of steps) {
-    if (isHarnessPlanStep(step)) {
-      nearestPlanId = step.id
-      levels.set(step.id, 0)
-      continue
-    }
-    if (isWorkerStep(step)) {
-      levels.set(step.id, nearestPlanId ? 1 : 0)
-      continue
-    }
-    levels.set(step.id, 0)
-  }
-  return levels
-}
-
 export interface HarnessTimelineEntry {
   step: ProcessingStep
-  /** 0 = L0；1 = worker 缩进 */
-  indent: 0 | 1
   /** worker done 时的 handoff 子行文案 */
   handoffText?: string
 }
 
 /** 将扁平 steps 投影为 harness 层级行（保留原序；不含 tool 分组） */
 export function buildHarnessTimelineEntries(steps: ProcessingStep[]): HarnessTimelineEntry[] {
-  const indents = resolveHarnessIndentLevels(steps)
-  return steps.map((step) => {
-    const raw = indents.get(step.id) ?? 0
-    const indent: 0 | 1 = raw >= 1 ? 1 : 0
-    const handoffText = isWorkerStep(step) ? resolveWorkerHandoffText(step) : undefined
-    return { step, indent, handoffText }
-  })
+  return steps.map((step) => ({
+    step,
+    handoffText: isWorkerStep(step) ? resolveWorkerHandoffText(step) : undefined,
+  }))
 }

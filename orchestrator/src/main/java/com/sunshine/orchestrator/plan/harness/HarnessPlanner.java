@@ -1,7 +1,5 @@
 package com.sunshine.orchestrator.plan.harness;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
@@ -18,12 +16,13 @@ import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Planner-Executor 结构化入口：planNext / selfAssess / synthesizeAnswer。
  * <p>
+ * 动作协议（架构决议）：planNext/selfAssess 通过 {@link PlannerActionTool} 工具调用表达动作，
+ * 引擎按 {@code DispatchSession.ActionSignals} 判定是否收到；不再解析模型正文 JSON。
  * Round 边界：本类只更新 {@code taskQueue} / {@code goalCompletion} / {@code nextDirection}，
  * <b>不</b>追加 {@code RoundRecord}。Worker 执行回写由 {@link WorkerDispatchTool} 独占。
  */
@@ -33,11 +32,9 @@ import java.util.List;
 public class HarnessPlanner {
 
     public static final String CATALOG_ID = "planner.harness";
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String HINT_PLAN = "请仅输出 action=plan 的调度单元 JSON（tasks[]）。";
-    private static final String HINT_ASSESS = "请仅输出 action=selfAssess 的 JSON（goalCompletion / nextDirection）。";
-    private static final String HINT_ANSWER = "请综合回答用户，停止输出 JSON，停止调用工具。";
+    private static final String HINT_PLAN = "请通过 plan_submit 工具提交本轮调度单元；若未调用该工具，本轮规划视为失败。";
+    private static final String HINT_ASSESS = "请通过 self_assess 工具汇报本轮进度与决策；若未调用该工具，本轮自判视为失败。";
+    private static final String HINT_ANSWER = "请综合回答用户，停止调用工具。";
 
     private final AgentRuntime agentRuntime;
     private final ContextAssembler contextAssembler;
@@ -48,32 +45,32 @@ public class HarnessPlanner {
         int maxAttempts = plannerMaxAttempts();
         IllegalStateException last = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            String text = invokePlanner(notebook, ctx, HINT_PLAN);
-            List<TaskItem> tasks = parsePlanTasks(text);
-            if (tasks != null) {
-                replaceTaskQueue(notebook, tasks);
+            PlannerInvocation invocation = invokePlanner(notebook, ctx, HINT_PLAN);
+            if (invocation.session() != null && invocation.session().signals().planReceived().get()) {
                 return;
             }
-            last = new IllegalStateException("无法解析 plan JSON（attempt=" + attempt + "）: " + preview(text));
-            log.warn("[HarnessPlanner] planNext 解析失败 attempt={}/{} preview={}",
-                    attempt, maxAttempts, preview(text));
+            last = new IllegalStateException(
+                    "Planner 未调用 plan_submit 提交调度单元（attempt=" + attempt + "）: " + preview(invocation.text()));
+            log.warn("[HarnessPlanner] planNext 未收到 plan_submit attempt={}/{} preview={}",
+                    attempt, maxAttempts, preview(invocation.text()));
         }
-        throw new IllegalStateException("HarnessPlanner planNext 解析失败，已重试 " + maxAttempts, last);
+        throw new IllegalStateException("HarnessPlanner planNext 未收到 plan_submit，已重试 " + maxAttempts, last);
     }
 
     public void selfAssess(PlanNotebook notebook, ExecutionStreamContext ctx) {
         int maxAttempts = plannerMaxAttempts();
         IllegalStateException last = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            String text = invokePlanner(notebook, ctx, HINT_ASSESS);
-            if (applySelfAssess(notebook, text)) {
+            PlannerInvocation invocation = invokePlanner(notebook, ctx, HINT_ASSESS);
+            if (invocation.session() != null && invocation.session().signals().assessReceived().get()) {
                 return;
             }
-            last = new IllegalStateException("无法解析 selfAssess JSON（attempt=" + attempt + "）: " + preview(text));
-            log.warn("[HarnessPlanner] selfAssess 解析失败 attempt={}/{} preview={}",
-                    attempt, maxAttempts, preview(text));
+            last = new IllegalStateException(
+                    "Planner 未调用 self_assess 汇报决策（attempt=" + attempt + "）: " + preview(invocation.text()));
+            log.warn("[HarnessPlanner] selfAssess 未收到 self_assess attempt={}/{} preview={}",
+                    attempt, maxAttempts, preview(invocation.text()));
         }
-        throw new IllegalStateException("HarnessPlanner selfAssess 解析失败，已重试 " + maxAttempts, last);
+        throw new IllegalStateException("HarnessPlanner selfAssess 未收到 self_assess，已重试 " + maxAttempts, last);
     }
 
     public Flux<StreamToken> synthesizeAnswer(PlanNotebook notebook, ExecutionStreamContext ctx) {
@@ -92,10 +89,10 @@ public class HarnessPlanner {
     }
 
     /**
-     * 同步调用 Planner ReAct，收集正文。bindSession 包住本次 run，供模型调用 dispatch_worker。
+     * 同步调用 Planner ReAct，收集正文并回传本次 run 的 DispatchSession（供动作信号判定）。
      * RoundRecord 仍只由 WorkerDispatchTool 写入。
      */
-    private String invokePlanner(PlanNotebook notebook, ExecutionStreamContext ctx, String phaseHint) {
+    private PlannerInvocation invokePlanner(PlanNotebook notebook, ExecutionStreamContext ctx, String phaseHint) {
         AgentRunRequest request = buildRequest(notebook, ctx, phaseHint);
         WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, request.runId());
         try {
@@ -104,10 +101,13 @@ public class HarnessPlanner {
             agentRuntime.run(request)
                     .doOnNext(token -> WorkerDispatchTool.appendAnswerContent(answer, token))
                     .blockLast(Duration.ofMillis(timeoutMs));
-            return answer.toString();
+            return new PlannerInvocation(answer.toString(), session);
         } finally {
             WorkerDispatchTool.clearSession(session);
         }
+    }
+
+    private record PlannerInvocation(String text, WorkerDispatchTool.DispatchSession session) {
     }
 
     private AgentRunRequest buildRequest(PlanNotebook notebook, ExecutionStreamContext ctx, String phaseHint) {
@@ -164,7 +164,8 @@ public class HarnessPlanner {
                 ctx != null ? ctx.conversationId() : null,
                 parentRunId,
                 0,
-                resolveConversationKind(notebook, ctx));
+                resolveConversationKind(notebook, ctx),
+                WorkerDispatchTool.DispatchSession.ActionSignals.fresh());
         WorkerDispatchTool.bindSession(session);
         return session;
     }
@@ -180,110 +181,11 @@ public class HarnessPlanner {
         return "chat";
     }
 
-    static List<TaskItem> parsePlanTasks(String text) {
-        JsonNode root = parseObject(text);
-        if (root == null) {
-            return null;
-        }
-        String action = textOrEmpty(root, "action");
-        if (StringUtils.hasText(action) && !"plan".equals(action)) {
-            return null;
-        }
-        JsonNode tasks = root.get("tasks");
-        if (tasks == null || !tasks.isArray()) {
-            return null;
-        }
-        List<TaskItem> items = new ArrayList<>();
-        for (JsonNode node : tasks) {
-            String taskId = textOrEmpty(node, "taskId");
-            String label = textOrEmpty(node, "label");
-            if (!StringUtils.hasText(taskId) || !StringUtils.hasText(label)) {
-                return null;
-            }
-            items.add(new TaskItem(
-                    taskId.strip(),
-                    label.strip(),
-                    "pending",
-                    readDependsOn(node),
-                    textOrEmpty(node, "constraints"),
-                    textOrEmpty(node, "expectedOutput"),
-                    textOrEmpty(node, "successCriteria")));
-        }
-        return items;
-    }
-
-    static boolean applySelfAssess(PlanNotebook notebook, String text) {
-        JsonNode root = parseObject(text);
-        if (root == null || notebook == null) {
-            return false;
-        }
-        String action = textOrEmpty(root, "action");
-        if (StringUtils.hasText(action) && !"selfAssess".equals(action)) {
-            return false;
-        }
-        if (!root.has("goalCompletion") || !root.get("goalCompletion").isNumber()) {
-            return false;
-        }
-        double completion = root.get("goalCompletion").asDouble();
-        notebook.setGoalCompletion(Math.min(1.0, Math.max(0.0, completion)));
-        String direction = textOrEmpty(root, "nextDirection");
-        notebook.setNextDirection(StringUtils.hasText(direction) ? direction.strip() : null);
-        return true;
-    }
-
     static void replaceTaskQueue(PlanNotebook notebook, List<TaskItem> tasks) {
         notebook.getTaskQueue().clear();
         if (tasks != null) {
             notebook.getTaskQueue().addAll(tasks);
         }
-    }
-
-    private static JsonNode parseObject(String text) {
-        String json = extractJsonObject(text);
-        if (!StringUtils.hasText(json)) {
-            return null;
-        }
-        try {
-            JsonNode root = MAPPER.readTree(json);
-            return root != null && root.isObject() ? root : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    static String extractJsonObject(String text) {
-        if (!StringUtils.hasText(text)) {
-            return null;
-        }
-        String s = text.strip();
-        int start = s.indexOf('{');
-        int end = s.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            return null;
-        }
-        return s.substring(start, end + 1);
-    }
-
-    private static List<String> readDependsOn(JsonNode node) {
-        JsonNode deps = node.get("dependsOn");
-        if (deps == null || !deps.isArray()) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (JsonNode dep : deps) {
-            if (dep != null && dep.isTextual() && StringUtils.hasText(dep.asText())) {
-                out.add(dep.asText().strip());
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    private static String textOrEmpty(JsonNode node, String field) {
-        if (node == null || !node.has(field) || node.get(field).isNull()) {
-            return "";
-        }
-        JsonNode value = node.get(field);
-        return value.isTextual() || value.isNumber() ? value.asText() : "";
     }
 
     private static String buildQuery(ExecutionStreamContext ctx, String phaseHint) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onUnmounted, ref, watch, type ComputedRef } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
+import type { ContentBlock } from '../../api/contentInterleave'
 import type { HitlConfirmationPayload } from '../../api/hitlSteps'
 import { findHitlStep, isRecoveryAwaiting, isRecoverySkipped, stepHasHitlAwaiting } from '../../api/recoverySteps'
 import { isHitlSummaryAwaiting } from '../../api/hitlSteps'
@@ -237,8 +238,8 @@ const showLoopContinue = computed(() => loopContinueRows.value.length > 0)
 
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
-  // agent（含 spawn）：正文在 contentBlocks 穿插执行过程，勿再铺「详细输出」
-  if (node.value?.type === 'agent' && (step.value?.contentBlocks?.length ?? 0) > 0) return false
+  // agent（含 spawn）：正文已并入执行时间线（contentBlocks 穿插 + 终稿补段），无独立「详细输出」
+  if (node.value?.type === 'agent') return false
   return !!bodyDisplay.value
 })
 const showReasoningSection = computed(() =>
@@ -283,6 +284,20 @@ const skillLineText = computed(() => {
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() =>
   (node.value?.type === 'agent' || node.value?.type === 'loop') && subSteps.value.length > 0)
+/** agent（含 spawn）抽屉时间线正文：contentBlocks 穿插 + 未承载的 result 终稿补段。
+ * 终稿走 step_delta(result) 而未分段下发时（无 contentBlocks），补段到时间线末尾展示，
+ * 使抽屉执行时间线与主 agent 一致；contentBlocks 已完整承载终稿时不重复。 */
+const drawerContentBlocks = computed(() => {
+  const s = step.value
+  if (!s || node.value?.type !== 'agent') return s?.contentBlocks
+  const blocks = s.contentBlocks ?? []
+  const result = s.result?.trim()
+  if (!result) return blocks
+  const joined = blocks.map(b => b.text).join('').trim()
+  if (joined && joined.includes(result)) return blocks
+  const lastSubId = subSteps.value[subSteps.value.length - 1]?.id
+  return [...blocks, { segmentId: 'tail:final', afterStepId: lastSubId ?? s.id, text: result }]
+})
 /** loop：按 i{n}- 前缀分轮；agent：整段扁平 */
 const loopRoundGroups = computed(() => {
   if (node.value?.type !== 'loop') return []
@@ -312,6 +327,12 @@ const drawerStackSteps = computed(() => {
 const showDrawerOperationStack = computed(() =>
   drawerStackSteps.value.length > 0 || showLoopRoundTimeline.value,
 )
+/** agent 无 subSteps 时正文无步骤可锚定，OperationStack 无法穿插，兜底直接渲染 */
+const agentBareFinalText = computed(() => {
+  if (node.value?.type !== 'agent' || subSteps.value.length > 0) return ''
+  return (drawerContentBlocks.value ?? []).map(b => b.text).join('').trim()
+})
+const showAgentBareFinal = computed(() => !!agentBareFinalText.value)
 const showRecoverySection = computed(() => !!step.value && isRecoveryAwaiting(step.value))
 const subTimelineLive = computed(() => {
   const s = displayStatus.value
@@ -512,7 +533,7 @@ watch(
         <!-- 有总览折叠行时不再重复「执行过程」标题，与主时间线一致 -->
         <OperationStack
           :steps="drawerStackSteps"
-          :content-blocks="step?.contentBlocks"
+          :content-blocks="drawerContentBlocks"
           :stream-live="subTimelineLive"
           :live="subTimelineLive"
           :message-status="drawerTimelineMessageStatus"
@@ -522,6 +543,9 @@ watch(
           :pending-hitl-confirmations="pendingHitlList"
           @hitl-decided="applyHitlDecision"
         />
+      </section>
+      <section v-if="showAgentBareFinal" class="drawer-section">
+        <StaticMarkdown :source="agentBareFinalText" compact :streaming="isNodeStreaming" />
       </section>
       <section v-if="showHitlSection && hitlStep" class="drawer-section drawer-hitl">
         <h4>用户确认</h4>
@@ -587,7 +611,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact :streaming="isNodeStreaming" />
       </section>
-      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showRecoverySection && !showSpawnPrompt && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
+      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showAgentBareFinal && !showRecoverySection && !showSpawnPrompt && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : '暂无详情' }}
       </p>
     </div>

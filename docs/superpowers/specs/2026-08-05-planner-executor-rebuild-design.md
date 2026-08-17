@@ -10,6 +10,8 @@
 > **v12（2026-08-13）**：对照代码冻结 H-7 缺口；实施计划 [planner-h7-live](../plans/2026-08-13-planner-h7-live.md)。
 > **v13（2026-08-13）**：H-7 **代码**落地（`tasks` SSE / handoff / `planner-answer` / follow-up obsolete / `plan.worker_*` / `verify_planner_executor_live.py`）；单测绿；**全量 Live 需部署 orchestrator 后跑脚本**；阶段 D 仍后置。
 > **v14（2026-08-14）**：阶段 D 核对完成——`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*`/`PLAN_WORKFLOW` 路由入口源码**零残留**；`PlanMaterializer`/`PlanNormalizer`/`PlanTimeline`/`PendingInteraction`/`ResumeInteractionHint` 经代码核对为**静态 Workflow / HITL / Recovery 复用**，从舍弃表改列保留（§2.1）；routing spec R-4 同步 ✅。
+> **v15（2026-08-17）**：**动作工具化**——`plan_submit`/`self_assess` 两个 AgentTool 取代文本 JSON 输出协议（根治「模型手写非法 JSON」整类故障）；`HarnessPlanner` 按 `DispatchSession.ActionSignals` 判定动作收到与否；`planner.harness` 只写决策逻辑，字段契约由工具 schema 承载（§3.2 / §8.2）。
+> **v16（2026-08-17）**：**时间线平铺**——harness 时间线取消工具组折叠与多轮折叠、worker 行及内部时间线不缩进；Planner 元工具（`plan_submit`/`self_assess`/`dispatch_worker`）补中文名（`ToolCatalogService` 内建表）与专属图标（§4.1）。
 > **日期**：2026-08-05
 > **编号**：阶段四增量（重建 Planner-Executor，删除动态 Plan-Workflow）
 > **前置**：
@@ -207,15 +209,19 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 用户选择 executionMode=pro + kind + RoutingResult（轨 A：agentIds/skillIds）
   → PlannerHarnessExecutor
   → PlannerHarnessLoop.start()
-      → S1 Plan: HarnessPlanner 按现有信息输出下一组调度单元（写 H1 taskQueue）
+      → S1 Plan: HarnessPlanner 经 plan_submit 工具提交下一组调度单元（写 H1 taskQueue）
             · 信息不足 → 单元可为「调研/摸底」类 Worker
             · 信息够了 → 单元为可执行粗步骤（可并行 / dependsOn）
             · 细则（文件/命令级）不在此展开，留给 Worker 内 ReAct
       → S2 Validate: 轻量结构校验（id/label/依赖环）+ GoalAlignmentValidator（DEVIATED/STUCK，S7）
       → S3 Execute: Worker 工具调用（forWorker），handoff 双写 H1 + Planner L1 尾部
-      → S4 决策: Planner 自判（selfAssess，S1，无独立 Evaluator）
+      → S4 决策: Planner 经 self_assess 工具自判（S1，无独立 Evaluator）
       → done? YES → Planner 综合回答 / NO → 3 类触发重规划（S6）→ 下一轮
 ```
+
+> **动作协议（v15）**：Planner 的动作（提交调度单元 / 自判）一律经 AgentTool 表达——`plan_submit(tasks[])` 覆盖 taskQueue、`self_assess(goalCompletion, nextDirection, reason)` 写入决策；`dispatch_worker(taskId)` 调度 Worker。**不解析模型正文 JSON**；引擎按 `DispatchSession.ActionSignals` 判定动作是否收到，未收到即重试/失败。
+>
+> **Worker 执行行折叠（v15）**：Planner 直接经 `dispatch_worker` 调度 Worker 时，`WorkerDispatchTool` 经 `WorkerTimelineBridge`（与 `SpawnSubagentTimelineBridge` 同构）在主时间线发射一级 `worker-{taskId}` 卡（`phase=worker`），Worker 内部 think/tool 经 PASS_THROUGH wrapper 折叠为该行 `subSteps`；`Loop` 自发起任务走原兜底路径发射骨架。两条路径都以一级 `worker-*` 行呈现，**不重复**平铺内部步骤。
 
 > **高不确定开放探索**：用户显式选 **快速 `fast`** → ReactExecutor（含 spawn/taskboard/沙箱）；**不**在 harness 内再设模式分支，**不**由 L3 自动改道（S5 + routing v6）。
 
@@ -225,7 +231,7 @@ Planner 自判（selfAssess，S1 统一，无独立 Evaluator）→ Planner 决�
 
 | 角色 | 吐什么 | 不吐什么 |
 |------|--------|----------|
-| **Planner** | 可调度粗单元（里程碑/调研/执行步）+ `dependsOn` + 约束/成功标准；写入 H1 | 文件级/命令级细则；full/hier 模式标签 |
+| **Planner** | 可调度粗单元（里程碑/调研/执行步）+ `dependsOn` + 约束/成功标准（经 `plan_submit` 工具提交，写 H1）；自判经 `self_assess` | 文件级/命令级细则；full/hier 模式标签；**正文不输出 JSON** |
 | **Worker** | 单元内 ReAct：工具选择、试错、细则展开；handoff 摘要回传 | 全局重规划（那是 Planner 的事） |
 
 自然过程（Catalog 引导，非引擎枚举）：
@@ -243,26 +249,27 @@ Planner LLM 调用统一 `callSite=plan`（强弱模型若需分层，走 phase5
 
 ### 4.1 正文时间线（普通时间线，非卡片）
 
-形态对齐现有 ReAct `OperationStack`：**行式步骤时间线**，按层级缩进/折叠，**禁止**改成步骤卡片墙 / `WorkerCard` 形态。
+形态对齐现有 ReAct `OperationStack`：**行式步骤时间线**，**平铺不缩进**（worker 行与 plan 同级左对齐，与工具折叠思想一致），**禁止**改成步骤卡片墙 / `WorkerCard` 形态。
 
 ```
 intent
-└─ plan(R1)
-   ├─ worker-{taskA}                    ← 一级调度单元对应的执行行
-   │  ├─ think / tool-* / …             ← Worker 内过程（subSteps 层级）
-   │  └─ handoff（摘要行）              ← 仅正文时间线展示与收束
-   ├─ worker-{taskB}   （同波可并行推进）
-   │  └─ …
-   └─ plan(R2)?                         ← 重规划再出一行
-└─ planner-answer
+plan(R1)
+worker-{taskA}                        ← 调度单元执行行（不缩进）
+  think / tool-* / …                  ← Worker 内过程（subSteps 层级，展开后亦不缩进）
+  handoff（摘要行）                    ← 仅正文时间线展示与收束
+worker-{taskB}   （同波可并行推进）
+plan(R2)?                             ← 重规划再出一行
+planner-answer
 ```
 
 | 约定 | 说明 |
 |------|------|
-| 层级 | L0：`intent` / `plan(Rn)` / `planner-answer`；L1：`worker-{runId|taskId}`；L2：Worker 内 think/tool/spawn（`SubStepsFold`） |
+| 层级 | 一级平铺：`intent` / `plan(Rn)` / `worker-*` / `planner-answer`；二级：Worker 内 think/tool/spawn（`SubStepsFold`），展开渲染**无缩进线** |
+| 不折叠 | harness（pro）时间线**不做**工具组折叠（`groupToolSteps`）与多轮折叠（`roundGroupSteps`），所有过程步/工具步平铺 |
+| 元工具行 | `plan_submit` / `self_assess` / `dispatch_worker` 等 tool 步平铺展示：中文名（`ToolCatalogService` 内建表）+ 专属图标（`tool-plan-submit` / `tool-assess` / `tool-dispatch`） |
 | 并行/串行 | 同波（无互相 `dependsOn`）的 worker 行可并行推进展示；有依赖则按波次串行出现——**时间线表达执行序**，不画 DAG |
 | handoff | **只在正文时间线**以 worker 子行/收束摘要出现，并双写 H1 + Planner L1 尾部（引擎侧不变） |
-| 不做 | Plan DAG 画布、步骤卡片列表、`{mode}` 标签、把二级 todolist 折叠进 handoff |
+| 不做 | Plan DAG 画布、步骤卡片列表、`{mode}` 标签、把二级 todolist 折叠进 handoff、worker 缩进线 |
 
 ### 4.2 TaskBoard（一级 / 二级待办）
 
@@ -290,7 +297,7 @@ intent
 ### 4.4 前端组件
 
 - **复用**：`OperationStack`（普通时间线骨架）/ `TaskBoardPanel` / `SubStepsFold`
-- **扩展**：OperationStack harness 层级（plan 下挂 worker 行；worker 下挂过程 + handoff）；TaskBoard 一级波次并行样式 + 一级下嵌套二级 todolist（条件渲染）
+- **扩展**：OperationStack harness 平铺模式（不折叠工具组/多轮组、不缩进 worker 行）；TaskBoard 一级波次并行样式 + 一级下嵌套二级 todolist（条件渲染）；元工具专属图标 + 中文名
 - **移除**：`PlanWorkflowPanel` 动态 plan 分支、`PlanApprovalActions` 及 PlanApproval 对 Confirm 壳的绑定；**不新增** Worker 步骤卡片组件；**保留** `CollapsibleConfirmPanel`（HITL/Recovery）
 - **与 4.7.9 DecisionCard**：与 PlanApproval 解耦无关——DecisionCard 为 D16 **自建容器**；Planner 注册/续跑见 [D12](./2026-08-12-react-request-decision-planner-d12.md)
 - **静态 Workflow 不受影响**：继续用 `PlanExecutionCanvas` 渲染 DAG（D3）
@@ -442,7 +449,7 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 | **H-0** 基础设施 | ✅ | `PlanNotebook`（字段 `kind`）+ Store 接口 + Nacos `agent.execution.harness` 长负载默认 |
 | **H-1** Redis 单写 | ✅ | `PlanNotebookStoreImpl`；键 `sunshine:plan:notebook:{sessionId}` TTL 7d（MySQL Writer 本就未建，S2 无回改债） |
 | **H-2** 恢复 | ✅ | load 时 `in_progress`→`fail`；无独立 RecoveryService |
-| **H-3** Planner + 校验 | ✅ | `HarnessPlanner` / `TaskQueueValidator` / harness `GoalAlignmentValidator`；`WORKER`+`forWorker`；`WorkerDispatchTool`；Catalog `planner.harness`/`harness.worker`；`PlannerAgentRuntime`→ReAct |
+| **H-3** Planner + 校验 | ✅ | `HarnessPlanner` / `TaskQueueValidator` / harness `GoalAlignmentValidator`；`WORKER`+`forWorker`；`WorkerDispatchTool` + `PlannerActionTool`（`plan_submit`/`self_assess`，v15 动作工具化）；Catalog `planner.harness`/`harness.worker`；`PlannerAgentRuntime`→ReAct |
 | **H-4** Loop | ✅ | `PlannerHarnessLoop`（预算熔断 + `nextDirection` + Assess 后对齐）；`WorkerContextFactory` |
 | **过渡入口**（kernel 附带） | ✅ | 已被 H-5 取代主路径；历史：`harness.enabled`∧`PLAN_WORKFLOW`→harness |
 | **H-5** routing v6 三模式 | ✅ | [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)：`fast`/`pro`/`workflow` + ResourceDispatcher；`pro`→harness；冒烟 `verify_routing_v6_smoke.py` |
@@ -473,6 +480,7 @@ Executor 监控，命中即交 Planner 重规划（检测可量化，不做二�
 ### 阶段 H-3：HarnessPlanner + 校验 ✅
 
 - [x] `HarnessPlanner`（planNext / selfAssess / synthesizeAnswer；**无**模式自判）
+- [x] `PlannerActionTool`（v15 动作工具化）：`plan_submit` 覆盖 taskQueue、`self_assess` 写决策；`DispatchSession.ActionSignals` 判定动作收到；不解析正文 JSON
 - [x] `GoalAlignmentValidator`（DEVIATED/STUCK，机械薄实现；非完整 4.7.7 Middleware）
 - [x] `TaskQueueValidator`（S7，不复用 PlanValidator）
 - [x] `AgentRole.WORKER` + `AgentRunRequest.worker()` + `AssembledContext.forWorker()` + `WorkerDispatchTool`
@@ -594,7 +602,7 @@ agent:
 
 | ID | 用途 |
 |----|------|
-| `planner.harness` | Planner system prompt（按现有信息排调度单元；信息不足先调研；3 类触发重规划 + selfAssess + 综合回答；含 Worker 工具调用说明；**禁止**要求输出 full/hier 模式） |
+| `planner.harness` | Planner system prompt（**动作经 `plan_submit` / `self_assess` / `dispatch_worker` 工具表达，正文禁止输出 JSON/伪代码**；按现有信息排调度单元；信息不足先调研；3 类触发重规划 + selfAssess + 综合回答；**禁止** full/hier 模式标签） |
 | `harness.worker` | Worker system prompt（forWorker 模板；单元内细则展开） |
 
 > **S1/S5 裁撤**：`harness.task-evaluator` / `harness.goal-evaluator` / `planner.phase` **不建**（统一 Planner selfAssess；调用点 `callSite=plan`）。
@@ -612,6 +620,8 @@ agent:
 
 | 用例 | 预期 |
 |------|------|
+| 动作工具化（v15） | planNext/selfAssess 以 `plan_submit`/`self_assess` 工具调用信号判定；未收到动作即重试/失败；无正文 JSON 解析 |
+| Worker 执行行折叠（v15） | Planner 直接调度时 `WorkerTimelineBridge` 发 `worker-{taskId}` 一级行，内部 think/tool 折进 `subSteps`；`Loop` 兜底路径无 Planner session 时不折叠；begin→running→complete/done（或 error）生命周期完整 |
 | 单一循环无模式字段 | PlanNotebook / plan 步 **无** `taskDecomposition` / full|hier；引擎无模式分支 |
 | 信息不足→调研→重规划 | 首轮可只排调研单元；handoff 后 replan 更新 taskQueue，不臆测未知细节 |
 | 职责边界 | Planner 调度单元粗粒度；Worker handoff 可含执行结果摘要；二级 todolist 不收束进 handoff |

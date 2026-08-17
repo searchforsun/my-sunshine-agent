@@ -12,6 +12,7 @@ import com.sunshine.llm.registry.ModelProviderView;
 import com.sunshine.llm.registry.ModelRegistryCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 
@@ -35,6 +37,13 @@ public class OpenAiCompatibleAdapter implements LlmAdapter {
     private final OpenAiRequestBodyFactory requestBodyFactory;
     private final NormalizeFilter normalizeFilter;
     private final ObjectMapper objectMapper;
+
+    /**
+     * SSE 数据事件静默超时：上游持续发心跳注释（非 data 行）会重置 Netty 读空闲定时器，
+     * 无法用字节级 ReadTimeoutHandler 实现「两次 data 之间静默即降级」，须在此按 data 行间隔判定。
+     */
+    @Value("${llm.webclient.read-idle-timeout:60s}")
+    private Duration readIdleTimeout = Duration.ofSeconds(60);
 
     @Override
     public boolean supports(String model) {
@@ -83,6 +92,11 @@ public class OpenAiCompatibleAdapter implements LlmAdapter {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToFlux(String.class)
+                // bodyToFlux + SSE reader 只产出 data 事件（心跳注释被解码器消化），
+                // 数据静默超时即两次 data 之间无产出，无需先过滤原始行
+                .timeout(readIdleTimeout,
+                        Flux.error(new java.util.concurrent.TimeoutException(
+                                "SSE 数据静默超过 " + readIdleTimeout)))
                 .map(chunk -> normalizeFilter.normalizeStreamData(chunk, reasoning, state))
                 .map(chunk -> ServerSentEvent.<String>builder()
                         .id(UUID.randomUUID().toString().substring(0, 8))

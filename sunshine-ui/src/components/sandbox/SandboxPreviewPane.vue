@@ -28,6 +28,8 @@ const props = defineProps<{
   previewLangClass: string
   previewCodeHtml: string[]
   focusLine?: number
+  /** 定位行范围终点（正文 `path` L1-20 点击）；缺省仅 focusLine 单行 */
+  focusLineEnd?: number
   /** 显示路径转换（工作区模式去掉项目根前缀）；缺省原样展示 */
   displayPath?: (path: string) => string
 }>()
@@ -117,19 +119,40 @@ watch(
   },
 )
 
+/** 程序化原生选区：用 Range/Selection 模拟鼠标拖选 L 范围（原生选中底色 + 「添加到会话」按钮） */
+function applyNativeLineSelection(start: number, end: number) {
+  const first = lineEls.value[String(start)]
+  const last = lineEls.value[String(end)]
+  if (!first || !last) return
+  // 只选中行内容（code 元素），不含行号槽，视觉与鼠标拖选一致
+  const firstCode = first.querySelector('code') ?? first
+  const lastCode = last.querySelector('code') ?? last
+  const range = document.createRange()
+  range.setStartBefore(firstCode)
+  range.setEndAfter(lastCode)
+  const sel = window.getSelection()
+  if (!sel) return
+  sel.removeAllRanges()
+  sel.addRange(range)
+  selectionRange.value = { start, end }
+  selectionBtnTop.value = Math.max(first.offsetTop - 28, 0)
+}
+
 watch(
-  () => [props.selectedPath, props.focusLine, props.previewLoading, props.preview] as const,
+  () => [props.selectedPath, props.focusLine, props.focusLineEnd, props.previewLoading, props.preview] as const,
   () => {
     if (props.showMarkdownRendered) return
     void nextTick(() => {
-      const target = props.focusLine
-      if (!target || target < 1) return
-      const lineEl = lineEls.value[String(target)]
+      const start = props.focusLine
+      if (!start || start < 1) return
+      const end = props.focusLineEnd && props.focusLineEnd >= start ? props.focusLineEnd : start
+      const lineEl = lineEls.value[String(start)]
       const scroller = scrollEl.value
       if (lineEl && scroller) {
         const top = lineEl.offsetTop - Math.min(scroller.clientHeight / 2, 160)
         scroller.scrollTo({ top: Math.max(top, 0) })
       }
+      applyNativeLineSelection(start, end)
     })
   },
 )
