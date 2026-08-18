@@ -49,10 +49,13 @@ const groupRows = computed(() => {
   if (!g) return []
   const total = props.usage?.contextTokens ?? 0
   const sum = Object.values(g).reduce((a, b) => a + Math.max(0, b), 0)
-  const other = Math.max(0, total - sum)
-  const merged: Record<string, number> = { ...g, other }
-  return GROUP_DEFS
-    .map(def => ({ ...def, tokens: Math.max(0, merged[def.key] ?? 0) }))
+  // 后端按上下文实际位置定序下发；前端保持收到顺序渲染，仅补标签/颜色与残差 other
+  const merged: Record<string, number> = { ...g, other: Math.max(0, total - sum) }
+  return Object.entries(merged)
+    .map(([key, v]) => {
+      const def = GROUP_DEFS.find(d => d.key === key)
+      return { key, label: def?.label ?? key, color: def?.color ?? '#6b7280', tokens: Math.max(0, v) }
+    })
     .filter(r => r.tokens > 0)
 })
 

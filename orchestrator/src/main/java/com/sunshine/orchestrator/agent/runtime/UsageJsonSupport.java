@@ -5,12 +5,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.model.ChatUsage;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** usage SSE 帧 / usage_json 落库的 JSON SSOT（spec §3.2） */
 public final class UsageJsonSupport {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** 分组下发顺序 = 上下文实际位置（system 最前、messages 最后；对齐 Cursor Context Usage） */
+    private static final List<String> GROUP_ORDER = List.of(
+            "system", "tools", "rules", "skills", "contextLayers", "messages", "other");
 
     private UsageJsonSupport() {
     }
@@ -37,7 +42,18 @@ public final class UsageJsonSupport {
         messageUsage.put("llmCalls", acc.llmCalls());
         map.put("messageUsage", messageUsage);
         if (groups != null && !groups.isEmpty()) {
-            map.put("groups", groups);
+            // 入参 Map 可能无序（ConcurrentHashMap）：按上下文实际位置定序后下发
+            Map<String, Integer> ordered = new LinkedHashMap<>();
+            for (String key : GROUP_ORDER) {
+                Integer v = groups.get(key);
+                if (v != null) {
+                    ordered.put(key, v);
+                }
+            }
+            for (Map.Entry<String, Integer> e : groups.entrySet()) {
+                ordered.putIfAbsent(e.getKey(), e.getValue());
+            }
+            map.put("groups", ordered);
         }
         try {
             return MAPPER.writeValueAsString(map);
