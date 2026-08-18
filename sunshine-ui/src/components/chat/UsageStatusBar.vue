@@ -3,8 +3,8 @@ import { computed } from 'vue'
 import { NPopover } from 'naive-ui'
 import type { MessageUsage } from '../../api/chat'
 
+/** 上下文用量圆环（类 Cursor）：模型选择器旁，click 弹分组面板 */
 const props = defineProps<{
-  turn: number
   usage?: MessageUsage | null
 }>()
 
@@ -22,20 +22,22 @@ function fmtK(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
 }
 
-const ctxLabel = computed(() => {
-  const u = props.usage
-  if (!u) return ''
-  if (u.contextPercent != null) return `ctx ${u.contextPercent}%`
-  if (u.contextTokens != null) return `ctx ${fmtK(u.contextTokens)}`
+const percent = computed(() => props.usage?.contextPercent ?? null)
+
+const level = computed(() => {
+  const p = percent.value
+  if (p == null) return ''
+  if (p > 85) return 'usage-ring--error'
+  if (p >= 60) return 'usage-ring--warn'
   return ''
 })
 
-const ctxLevel = computed(() => {
-  const p = props.usage?.contextPercent
-  if (p == null) return ''
-  if (p > 85) return 'usage--error'
-  if (p >= 60) return 'usage--warn'
-  return ''
+// SVG 圆环：周长 2πr，r=7（16×16 viewBox）
+const RADIUS = 7
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS
+const dashOffset = computed(() => {
+  const p = Math.min(100, Math.max(0, percent.value ?? 0))
+  return CIRCUMFERENCE * (1 - p / 100)
 })
 
 const groupRows = computed(() => {
@@ -53,56 +55,46 @@ const groupRows = computed(() => {
 </script>
 
 <template>
-  <div class="usage-status" :class="ctxLevel">
-    <span class="usage-turn">T{{ turn }}</span>
-    <template v-if="usage">
-      <span class="usage-sep">·</span>
-      <span>↑ {{ fmtK(usage.inputTokens) }}</span>
-      <span>↓ {{ fmtK(usage.outputTokens) }}</span>
-      <template v-if="ctxLabel">
-        <NPopover v-if="groupRows.length" trigger="click" placement="top">
-          <template #trigger>
-            <button type="button" class="usage-ctx-btn">{{ ctxLabel }}</button>
-          </template>
-          <div class="usage-panel">
-            <div class="usage-panel-total">
-              ~{{ fmtK(usage.contextTokens ?? 0) }}<template v-if="usage.contextWindowTokens"> / {{ fmtK(usage.contextWindowTokens) }}</template>
-            </div>
-            <div v-for="row in groupRows" :key="row.label" class="usage-panel-row">
-              <span>{{ row.label }}</span>
-              <span>~{{ fmtK(row.tokens) }}</span>
-            </div>
-          </div>
-        </NPopover>
-        <span v-else>{{ ctxLabel }}</span>
-      </template>
+  <NPopover v-if="usage" trigger="click" placement="top-end">
+    <template #trigger>
+      <button type="button" class="usage-ring" :class="level" :title="percent != null ? `上下文已用 ${percent}%` : '上下文用量'">
+        <svg width="16" height="16" viewBox="0 0 16 16">
+          <circle class="usage-ring-track" cx="8" cy="8" :r="RADIUS" fill="none" stroke-width="2" />
+          <circle class="usage-ring-arc" cx="8" cy="8" :r="RADIUS" fill="none" stroke-width="2"
+            stroke-linecap="round" :stroke-dasharray="CIRCUMFERENCE" :stroke-dashoffset="dashOffset"
+            transform="rotate(-90 8 8)" />
+        </svg>
+        <span v-if="percent != null" class="usage-ring-pct">{{ percent }}%</span>
+      </button>
     </template>
-  </div>
+    <div class="usage-panel">
+      <div class="usage-panel-total">
+        ~{{ fmtK(usage.contextTokens ?? 0) }}<template v-if="usage.contextWindowTokens"> / {{ fmtK(usage.contextWindowTokens) }}</template>
+      </div>
+      <div v-for="row in groupRows" :key="row.label" class="usage-panel-row">
+        <span>{{ row.label }}</span>
+        <span>~{{ fmtK(row.tokens) }}</span>
+      </div>
+    </div>
+  </NPopover>
 </template>
 
 <style scoped>
-.usage-status {
+.usage-ring {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  height: 24px;
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-3, rgba(255, 255, 255, 0.55));
-  white-space: nowrap;
-}
-.usage-status.usage--warn { color: var(--warning-color, #f0a020); border-color: var(--warning-color, #f0a020); }
-.usage-status.usage--error { color: var(--error-color, #de5762); border-color: var(--error-color, #de5762); }
-.usage-ctx-btn {
+  gap: 4px;
   border: none;
   background: transparent;
-  padding: 0;
-  font: inherit;
-  color: inherit;
+  padding: 2px;
+  color: var(--text-3, rgba(255, 255, 255, 0.55));
   cursor: pointer;
+  font-size: 11px;
 }
+.usage-ring-track { stroke: var(--border-color, rgba(255, 255, 255, 0.15)); }
+.usage-ring-arc { stroke: currentColor; }
+.usage-ring--warn { color: var(--warning-color, #f0a020); }
+.usage-ring--error { color: var(--error-color, #de5762); }
 .usage-panel { min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
 .usage-panel-total { font-weight: 600; border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.12)); padding-bottom: 4px; }
 .usage-panel-row { display: flex; justify-content: space-between; gap: 16px; }

@@ -1037,6 +1037,20 @@ const lastUsage = computed(() => {
   }
   return null
 })
+// 会话级汇总：usage 为每条 assistant 消息内累计，跨消息求和即会话总量
+const sessionUsage = computed(() => {
+  let calls = 0
+  let inputTokens = 0
+  let outputTokens = 0
+  for (const m of messages.value) {
+    if (m.role === 'assistant' && m.usage) {
+      calls += m.usage.llmCalls
+      inputTokens += m.usage.inputTokens
+      outputTokens += m.usage.outputTokens
+    }
+  }
+  return { calls, inputTokens, outputTokens }
+})
 
 async function copyAssistantMessage(text: string, idx: number) {
   if (!text.trim()) return
@@ -2006,7 +2020,6 @@ watch(
                   :model-value="preference"
                   @update:model-value="setPreference"
                 />
-                <UsageStatusBar :turn="Math.max(currentTurn, 1)" :usage="lastUsage" />
                 <GitBranchSelector
                   v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
                   :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
@@ -2017,6 +2030,7 @@ watch(
                 />
               </div>
               <div class="composer-toolbar-right">
+                <UsageStatusBar :usage="lastUsage" />
                 <ModelSelector
                   v-if="!voiceListening"
                   :model-value="modelName"
@@ -2064,6 +2078,17 @@ watch(
                   </button>
                 </template>
               </div>
+            </div>
+            <div v-if="sessionUsage.calls > 0" class="composer-session-usage">
+              <span>T{{ Math.max(currentTurn, 1) }}</span>
+              <span class="usage-sep">·</span>
+              <span>{{ sessionUsage.calls }} calls</span>
+              <span class="usage-sep">·</span>
+              <span>↑{{ fmtTokens(sessionUsage.inputTokens) }} ↓{{ fmtTokens(sessionUsage.outputTokens) }}</span>
+              <template v-if="lastUsage?.contextPercent != null">
+                <span class="usage-sep">·</span>
+                <span>ctx {{ lastUsage.contextPercent }}%</span>
+              </template>
             </div>
           </div>
         </div>
@@ -2783,7 +2808,16 @@ watch(
   opacity: 1;
 }
 
-.msg-usage-meta { font-size: 11px; color: var(--text-3, rgba(255,255,255,0.45)); margin-left: 8px; }
+/* 轮次级 usage：与结束时间同样 hover 消息行时显示 */
+.msg-usage-meta {
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+.msg-block:hover .msg-usage-meta { opacity: 1; }
 
 .msg-resume-bar {
   margin-top: 8px;
@@ -3033,6 +3067,19 @@ watch(
   padding-top: 4px;
   min-height: 34px;
 }
+
+/* 输入框下方会话级汇总行（轮次/calls/↑↓/ctx%） */
+.composer-session-usage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+.composer-session-usage .usage-sep { opacity: 0.5; }
 
 .composer-toolbar-left {
   display: flex;
