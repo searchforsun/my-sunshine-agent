@@ -2030,13 +2030,13 @@ watch(
                 />
               </div>
               <div class="composer-toolbar-right">
-                <UsageStatusBar :usage="lastUsage" />
                 <ModelSelector
                   v-if="!voiceListening"
                   :model-value="modelName"
                   :options="chatModelOptions"
                   @update:model-value="onModelChange"
                 />
+                <UsageStatusBar :usage="lastUsage" />
                 <button
                   v-if="loading"
                   type="button"
@@ -2079,18 +2079,18 @@ watch(
                 </template>
               </div>
             </div>
-            <div v-if="sessionUsage.calls > 0" class="composer-session-usage">
-              <span>T{{ Math.max(currentTurn, 1) }}</span>
-              <span class="usage-sep">·</span>
-              <span>{{ sessionUsage.calls }} calls</span>
-              <span class="usage-sep">·</span>
-              <span>↑{{ fmtTokens(sessionUsage.inputTokens) }} ↓{{ fmtTokens(sessionUsage.outputTokens) }}</span>
-              <template v-if="lastUsage?.contextPercent != null">
-                <span class="usage-sep">·</span>
-                <span>ctx {{ lastUsage.contextPercent }}%</span>
-              </template>
-            </div>
           </div>
+        </div>
+        <div v-if="sessionUsage.calls > 0" class="composer-session-usage">
+          <span>T{{ Math.max(currentTurn, 1) }}</span>
+          <span class="usage-sep">·</span>
+          <span>{{ sessionUsage.calls }} calls</span>
+          <span class="usage-sep">·</span>
+          <span>↑{{ fmtTokens(sessionUsage.inputTokens) }} ↓{{ fmtTokens(sessionUsage.outputTokens) }}</span>
+          <template v-if="lastUsage?.contextPercent != null">
+            <span class="usage-sep">·</span>
+            <span>ctx {{ lastUsage.contextPercent }}%</span>
+          </template>
         </div>
       </div>
     </footer>
