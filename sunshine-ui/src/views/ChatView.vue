@@ -2889,7 +2889,7 @@ watch(
   align-items: stretch;
   max-width: 720px;
   margin: 0 auto;
-  padding-bottom: 4px;
+  padding-bottom: 0;
   pointer-events: auto;
 }
 
