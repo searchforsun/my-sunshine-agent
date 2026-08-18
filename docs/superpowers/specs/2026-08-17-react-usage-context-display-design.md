@@ -170,19 +170,12 @@ AgentScope OpenAIChatModel (stream_options: include_usage ✅ SDK 已带)
 - `mapApiMessages`（`chatStore.ts:111-142`）映射历史消息 `usage` → 刷新恢复。
 - 轮次：`turn = 会话内用户消息数`，由前端计算；进行中的一轮为当前 turn。
 
-**展示层**（遵循 `--sun-black` + 边框分区，禁止解释性文字）
+**展示层**（遵循 `--sun-black` + 边框分区，禁止解释性文字；2026-08-18 按用户反馈重设计为三处展示）
 
-- 新组件 `UsageStatusBar`，挂 `ChatView.vue:1981` `composer-toolbar`（右栏 ModelSelector 左侧）：
-
-```
-T3 · ↑ 3.1k ↓ 2.1k · ctx 12%
-```
-
-  - `T3`：当前轮次（turn）；`↑/↓`：本轮消息累计输入/输出 token（k 缩写）；`ctx`：context 百分比（无分母时显示 token 绝对值）。
-  - 颜色分级：`<60%` 默认色、`60–85%` warn、`>85%` error（复用 Naive UI 主题 token）。
-- **上下文构成面板**：点击状态栏 `ctx` 弹出 `NPopover` 分组面板（§3.4 分组：系统提示词 / 用户规则 / 技能·模式 / 工具定义 / 上下文层 / 对话消息 / 其他），组名 + ~token 值，总额用真实 `inputTokens`；数据来自 usage 帧 `groups` 字段。
-- assistant 消息尾部 meta 行（时间戳旁）追加小字：`3 calls · ↑3.1k ↓2.1k`（消息级，刷新后仍在）。
-- 状态栏数据源：会话末条 assistant 消息的 `usage` + 前端轮次计算；无 assistant 消息时仅显示 `T{N}`。
+- **① 上下文圆环**（类 Cursor）：`UsageStatusBar` 挂 `composer-toolbar-right` ModelSelector 左侧，SVG 进度圆环 + `ctx%`，描边按 `contextPercent`（`<60%` 默认、`60–85%` warn、`>85%` error）；click 弹 `NPopover` 分组面板（§3.4 七组，组名 + ~token，总额用真实 `inputTokens`）；无 usage 数据不渲染。
+- **② 会话级汇总行**（类 DSH）：composer 工具栏下方一行 `T{n} · {N} calls · ↑x ↓y · ctx p%`——`calls/↑/↓` 为**会话级汇总**（所有 assistant 消息 `messageUsage` 求和，前端 computed），`ctx%` 取最新 usage 帧；无调用时不渲染。
+- **③ 轮次级消息尾 meta**：assistant `msg-copy-bar` 内 `n calls · ↑x ↓y`，与结束时间同样 hover 消息行时显示（刷新后仍在）。
+- 状态栏数据源：会话末条 assistant 消息的 `usage`（圆环）+ 全量 assistant usage 求和（汇总行）+ 前端轮次计算。
 
 ### 4.5 持久化与恢复（改造点 ⑥）
 
