@@ -1,6 +1,6 @@
 # ReAct 实时轮次 / Context Token / 输入输出 Token 显示 — 设计方案
 
-> 状态：📋 设计稿（待评审）
+> 状态：✅ 已实现（待前端人工验收）
 > 范围：P1 仅 ReAct 主对话链路（用户已确认）；直连路径（workflow llm/answer 节点、意图路由）延后。
 > 对标：Claude Code status line / DeepSeek Harness session event log。
 
