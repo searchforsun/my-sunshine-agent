@@ -79,7 +79,7 @@ const barSegments = computed(() => {
     :title="percent != null ? `上下文已用 ${percent}%` : '上下文用量'"
     @click="usageCardOpen = !usageCardOpen"
   >
-    <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <circle class="usage-ring-track" cx="8" cy="8" :r="RADIUS" fill="none" stroke-width="2" />
       <circle class="usage-ring-arc" cx="8" cy="8" :r="RADIUS" fill="none" stroke-width="2"
         stroke-linecap="round" :stroke-dasharray="CIRCUMFERENCE" :stroke-dashoffset="dashOffset"
@@ -89,13 +89,13 @@ const barSegments = computed(() => {
 
   <div v-else-if="usage && usageCardOpen" class="usage-card">
     <div class="usage-card-head">
-      <span class="usage-card-title">Context Usage</span>
+      <span class="usage-card-title">上下文用量</span>
       <button type="button" class="usage-card-close" title="关闭" @click="usageCardOpen = false">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
       </button>
     </div>
     <div class="usage-card-sub">
-      <span>{{ percent ?? 0 }}% Full</span>
+      <span>{{ percent ?? 0 }}%</span>
       <span>~{{ fmtK(usage.contextTokens ?? 0) }} / {{ usage.contextWindowTokens ? fmtK(usage.contextWindowTokens) : '?' }} Tokens</span>
     </div>
     <div class="usage-bar">

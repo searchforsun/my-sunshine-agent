@@ -3075,8 +3075,10 @@ watch(
 .composer-session-usage {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding-top: 2px;
+  padding-top: 4px;
+  padding-bottom: 0;
   font-size: var(--sun-font-xs);
   color: var(--sun-text-muted);
   user-select: none;
