@@ -70,7 +70,7 @@ public final class UsageJsonSupport {
     /** 续跑起算：从落库 usage_json 的 messageUsage 恢复累计 */
     public static ReActAgentRuntime.UsageAccumulator parseAccumulator(String usageJson) {
         if (usageJson == null || usageJson.isBlank()) {
-            return new ReActAgentRuntime.UsageAccumulator(0, 0, 0);
+            return new ReActAgentRuntime.UsageAccumulator(0, 0, 0, 0);
         }
         try {
             JsonNode root = MAPPER.readTree(usageJson);
