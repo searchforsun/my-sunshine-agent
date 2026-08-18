@@ -1870,6 +1870,7 @@ watch(
             floating
           />
         </div>
+        <UsageStatusBar mode="card" :usage="lastUsage" />
         <!-- 发送前分支切换：当前分支有未提交改动 → 输入框上方提交确认框（样式对齐 todolist 卡片） -->
         <div v-if="branchSwitchOpen" class="branch-switch-commit">
           <div class="branch-switch-commit-head">
