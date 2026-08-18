@@ -399,6 +399,7 @@ public class ReActAgentRuntime implements AgentRuntime {
         UsageAccumulator next = usageAcc.updateAndGet(acc -> new UsageAccumulator(
                 acc.inputTokens() + usage.getInputTokens(),
                 acc.outputTokens() + usage.getOutputTokens(),
+                acc.cachedTokens() + usage.getCachedTokens(),
                 acc.llmCalls() + 1));
         Integer window = resolveContextWindow(modelName);
         StepEventBridge.offerStreamToken(bridgeId, StreamToken.usage(
@@ -417,20 +418,20 @@ public class ReActAgentRuntime implements AgentRuntime {
     }
 
     /** 消息级 usage 累计（续跑从落库 usage_json 起算）；package-visible 供 UsageJsonSupport 引用 */
-    record UsageAccumulator(long inputTokens, long outputTokens, int llmCalls) {
+    record UsageAccumulator(long inputTokens, long outputTokens, long cachedTokens, int llmCalls) {
     }
 
     /** 续跑从落库 usage_json 的 messageUsage 起算，累计跨轮次不失真（spec §4.4） */
     private UsageAccumulator seedUsageFromPersisted(String assistantMessageId) {
         if (assistantMessageId == null || assistantMessageId.isBlank()) {
-            return new UsageAccumulator(0, 0, 0);
+            return new UsageAccumulator(0, 0, 0, 0);
         }
         try {
             return messageRepo.findById(assistantMessageId)
                     .map(m -> UsageJsonSupport.parseAccumulator(m.getUsageJson()))
-                    .orElseGet(() -> new UsageAccumulator(0, 0, 0));
+                    .orElseGet(() -> new UsageAccumulator(0, 0, 0, 0));
         } catch (Exception e) {
-            return new UsageAccumulator(0, 0, 0);
+            return new UsageAccumulator(0, 0, 0, 0);
         }
     }
 

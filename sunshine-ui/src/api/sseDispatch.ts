@@ -146,6 +146,7 @@ const handlers: Record<string, Handler> = {
       contextTokens: typeof obj.contextTokens === 'number' ? obj.contextTokens : undefined,
       contextWindowTokens: typeof obj.contextWindowTokens === 'number' ? obj.contextWindowTokens : undefined,
       contextPercent: typeof obj.contextPercent === 'number' ? obj.contextPercent : undefined,
+      cachedPercent: typeof obj.cachedPercent === 'number' ? obj.cachedPercent : undefined,
     }
     const mu = obj.messageUsage as Record<string, unknown> | undefined
     if (mu && typeof mu === 'object') {

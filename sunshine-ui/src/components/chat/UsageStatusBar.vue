@@ -79,13 +79,12 @@ const barSegments = computed(() => {
     :title="percent != null ? `上下文已用 ${percent}%` : '上下文用量'"
     @click="usageCardOpen = !usageCardOpen"
   >
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
       <circle class="usage-ring-track" cx="8" cy="8" :r="RADIUS" fill="none" stroke-width="2" />
       <circle class="usage-ring-arc" cx="8" cy="8" :r="RADIUS" fill="none" stroke-width="2"
         stroke-linecap="round" :stroke-dasharray="CIRCUMFERENCE" :stroke-dashoffset="dashOffset"
         transform="rotate(-90 8 8)" />
     </svg>
-    <span v-if="percent != null" class="usage-ring-pct">{{ percent }}%</span>
   </button>
 
   <div v-else-if="usage && usageCardOpen" class="usage-card">

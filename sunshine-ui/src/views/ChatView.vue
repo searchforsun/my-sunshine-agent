@@ -1782,7 +1782,7 @@ watch(
                 </button>
                 <span v-if="messageEndTimeLabel(msg)" class="msg-end-time">{{ messageEndTimeLabel(msg) }}</span>
                 <span v-if="msg.usage" class="msg-usage-meta">
-                  {{ msg.usage.llmCalls }} 次调用 · 输入 {{ fmtTokens(msg.usage.inputTokens) }} · 输出 {{ fmtTokens(msg.usage.outputTokens) }}
+                  {{ (msg.steps ?? []).length }} 步 · 输入 {{ fmtTokens(msg.usage.inputTokens) }} · 输出 {{ fmtTokens(msg.usage.outputTokens) }}
                 </span>
               </div>
               <!-- 对话完成后：复制按钮下方的改动文件卡片（点击打开右侧工作区 diff 详情） -->
@@ -2090,9 +2090,9 @@ watch(
           <span>输入 {{ fmtTokens(sessionUsage.inputTokens) }}</span>
           <span class="usage-sep">·</span>
           <span>输出 {{ fmtTokens(sessionUsage.outputTokens) }}</span>
-          <template v-if="lastUsage?.contextPercent != null">
+          <template v-if="lastUsage?.cachedPercent != null">
             <span class="usage-sep">·</span>
-            <span>上下文 {{ lastUsage.contextPercent }}%</span>
+            <span>缓存命中 {{ lastUsage.cachedPercent }}%</span>
           </template>
         </div>
       </div>

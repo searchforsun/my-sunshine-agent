@@ -39,8 +39,13 @@ public final class UsageJsonSupport {
         Map<String, Object> messageUsage = new LinkedHashMap<>();
         messageUsage.put("inputTokens", acc.inputTokens());
         messageUsage.put("outputTokens", acc.outputTokens());
+        messageUsage.put("cachedTokens", acc.cachedTokens());
         messageUsage.put("llmCalls", acc.llmCalls());
         map.put("messageUsage", messageUsage);
+        // 缓存命中率 = Σcached / Σinput（消息级累计；input 含 cached，DeepSeek 同口径）
+        if (acc.inputTokens() > 0) {
+            map.put("cachedPercent", Math.round(100.0 * acc.cachedTokens() / acc.inputTokens()));
+        }
         if (groups != null && !groups.isEmpty()) {
             // 入参 Map 可能无序（ConcurrentHashMap）：按上下文实际位置定序后下发
             Map<String, Integer> ordered = new LinkedHashMap<>();
@@ -73,9 +78,10 @@ public final class UsageJsonSupport {
             return new ReActAgentRuntime.UsageAccumulator(
                     mu.path("inputTokens").asLong(0),
                     mu.path("outputTokens").asLong(0),
+                    mu.path("cachedTokens").asLong(0),
                     mu.path("llmCalls").asInt(0));
         } catch (Exception e) {
-            return new ReActAgentRuntime.UsageAccumulator(0, 0, 0);
+            return new ReActAgentRuntime.UsageAccumulator(0, 0, 0, 0);
         }
     }
 }

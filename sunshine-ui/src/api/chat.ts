@@ -11,6 +11,8 @@ export interface MessageUsage {
   contextTokens?: number
   contextWindowTokens?: number
   contextPercent?: number
+  /** 缓存命中率 = Σcached / Σinput（消息级累计，0–100） */
+  cachedPercent?: number
   groups?: Record<string, number>
 }
 
