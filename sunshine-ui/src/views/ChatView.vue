@@ -1037,19 +1037,21 @@ const lastUsage = computed(() => {
   }
   return null
 })
-// 会话级汇总：usage 为每条 assistant 消息内累计，跨消息求和即会话总量
+// 会话级汇总：usage 为每条 assistant 消息内累计，跨消息求和即会话总量；步数取各消息 steps 数之和
 const sessionUsage = computed(() => {
   let calls = 0
   let inputTokens = 0
   let outputTokens = 0
+  let steps = 0
   for (const m of messages.value) {
     if (m.role === 'assistant' && m.usage) {
       calls += m.usage.llmCalls
       inputTokens += m.usage.inputTokens
       outputTokens += m.usage.outputTokens
+      steps += (m.steps ?? []).length
     }
   }
-  return { calls, inputTokens, outputTokens }
+  return { calls, inputTokens, outputTokens, steps }
 })
 
 async function copyAssistantMessage(text: string, idx: number) {
@@ -1780,7 +1782,7 @@ watch(
                 </button>
                 <span v-if="messageEndTimeLabel(msg)" class="msg-end-time">{{ messageEndTimeLabel(msg) }}</span>
                 <span v-if="msg.usage" class="msg-usage-meta">
-                  {{ msg.usage.llmCalls }} calls · ↑{{ fmtTokens(msg.usage.inputTokens) }} ↓{{ fmtTokens(msg.usage.outputTokens) }}
+                  {{ msg.usage.llmCalls }} 次调用 · 输入 {{ fmtTokens(msg.usage.inputTokens) }} · 输出 {{ fmtTokens(msg.usage.outputTokens) }}
                 </span>
               </div>
               <!-- 对话完成后：复制按钮下方的改动文件卡片（点击打开右侧工作区 diff 详情） -->
@@ -2083,14 +2085,14 @@ watch(
           </div>
         </div>
         <div v-if="sessionUsage.calls > 0" class="composer-session-usage">
-          <span>T{{ Math.max(currentTurn, 1) }}</span>
+          <span>{{ Math.max(currentTurn, 1) }} 轮 {{ sessionUsage.steps }} 步</span>
           <span class="usage-sep">·</span>
-          <span>{{ sessionUsage.calls }} calls</span>
+          <span>输入 {{ fmtTokens(sessionUsage.inputTokens) }}</span>
           <span class="usage-sep">·</span>
-          <span>↑{{ fmtTokens(sessionUsage.inputTokens) }} ↓{{ fmtTokens(sessionUsage.outputTokens) }}</span>
+          <span>输出 {{ fmtTokens(sessionUsage.outputTokens) }}</span>
           <template v-if="lastUsage?.contextPercent != null">
             <span class="usage-sep">·</span>
-            <span>ctx {{ lastUsage.contextPercent }}%</span>
+            <span>上下文 {{ lastUsage.contextPercent }}%</span>
           </template>
         </div>
       </div>

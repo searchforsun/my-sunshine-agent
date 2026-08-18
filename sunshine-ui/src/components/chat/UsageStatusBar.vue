@@ -59,13 +59,13 @@ const groupRows = computed(() => {
     .filter(r => r.tokens > 0)
 })
 
-// 堆叠条分段：各组占 contextTokens 比例
+// 堆叠条分段：各组占总上下文窗口比例（剩余由轨道底色呈现）
 const barSegments = computed(() => {
-  const total = props.usage?.contextTokens ?? 0
-  if (total <= 0) return []
+  const window = props.usage?.contextWindowTokens ?? 0
+  if (window <= 0) return []
   return groupRows.value.map(r => ({
     color: r.color,
-    width: `${Math.max(0.5, (r.tokens / total) * 100)}%`,
+    width: `${Math.max(0.4, (r.tokens / window) * 100)}%`,
   }))
 })
 </script>
@@ -120,25 +120,26 @@ const barSegments = computed(() => {
   border: none;
   background: transparent;
   padding: 2px;
-  color: var(--sun-text-muted, rgba(255, 255, 255, 0.6));
+  color: var(--sun-text-muted);
   cursor: pointer;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.usage-ring-track { stroke: rgba(255, 255, 255, 0.18); }
-.usage-ring-arc { stroke: var(--sun-text-secondary, #d4d4d4); }
+/* 轨道/弧段用主题边框色与强调色，双主题均高对比 */
+.usage-ring-track { stroke: color-mix(in srgb, var(--sun-border) 60%, transparent); }
+.usage-ring-arc { stroke: var(--sun-accent); }
 .usage-ring--warn .usage-ring-arc { stroke: var(--warning-color, #f0a020); }
 .usage-ring--error .usage-ring-arc { stroke: var(--error-color, #de5762); }
 .usage-ring--warn { color: var(--warning-color, #f0a020); }
 .usage-ring--error { color: var(--error-color, #de5762); }
 
-/* 吸附卡片：与 taskboard 卡片同体系（--sun-black + 边框 + 圆角） */
+/* 吸附卡片：与 taskboard 卡片同体系（--sun-black + 边框），圆角对齐输入框 */
 .usage-card {
   min-width: 320px;
   margin-bottom: 8px;
   padding: 10px 12px;
   border: 1px solid var(--sun-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-lg, 12px);
   background: var(--sun-black);
   box-shadow: var(--composer-shadow);
   display: flex;
