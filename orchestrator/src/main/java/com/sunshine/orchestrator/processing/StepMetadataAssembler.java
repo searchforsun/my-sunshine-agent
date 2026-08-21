@@ -149,10 +149,11 @@ final class StepMetadataAssembler {
         if (tasks == null || tasks.isEmpty()) {
             return null;
         }
+        // 同时携带 tasks/taskRevision/taskProgress（与 withTasks 对齐，taskProgress 供前端卡片头进度显示）
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null,
+                List.copyOf(tasks), revision, progress, null, null, null, null, null, null, null, null,
                 List.copyOf(tasks));
     }
 

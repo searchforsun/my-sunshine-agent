@@ -21,19 +21,6 @@ public record TaskItem(
         String parentTaskId,
         String failReason) {
 
-    /** 旧构造兼容（无版本化字段） */
-    public TaskItem(
-            String taskId,
-            String label,
-            String status,
-            List<String> dependsOn,
-            String constraints,
-            String expectedOutput,
-            String successCriteria) {
-        this(taskId, label, status, dependsOn, constraints, expectedOutput, successCriteria,
-                null, 0, null, null);
-    }
-
     /** 首次创建：baseTaskId = taskId 去版本后缀，retryIndex = 1 */
     public static TaskItem initial(
             String taskId,

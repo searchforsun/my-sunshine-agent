@@ -47,7 +47,7 @@ class PlanNotebookStoreTest {
     void loadMarksInProgressTasksFailed() throws Exception {
         PlanNotebook nb = PlanNotebook.create("g", "q", "task", 12, 24);
         nb.setSessionId("s1");
-        nb.getTaskQueue().add(new TaskItem("t1", "x", "in_progress", List.of(), "", "", ""));
+        nb.getTaskQueue().add(TaskItem.initial("t1", "x", List.of(), "", "", "").withStatus("in_progress", null));
         when(values.get(anyString())).thenReturn(new ObjectMapper().writeValueAsString(nb));
         PlanNotebook loaded = new PlanNotebookStoreImpl(redis, props, new ObjectMapper()).load("s1").orElseThrow();
         assertThat(loaded.getTaskQueue().peekFirst().status()).isEqualTo("fail");

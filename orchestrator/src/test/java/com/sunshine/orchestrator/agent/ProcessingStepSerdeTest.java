@@ -105,4 +105,20 @@ class ProcessingStepSerdeTest {
         assertThat(json).contains("\"tasks\"");
         assertThat(json).contains("检索制度");
     }
+
+    @Test
+    void metadataToMap_includesHarnessTaskQueueWithProgress() {
+        StepMetadata metadata = StepMetadata.withTaskQueue(
+                List.of(new TaskBoardItemView("t1-1", "调研收件箱待办", "pending")),
+                1,
+                "0/1");
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);
+
+        assertThat(map.get("taskRevision")).isEqualTo(1);
+        assertThat(map.get("taskProgress")).isEqualTo("0/1");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> queue = (List<Map<String, Object>>) map.get("taskQueue");
+        assertThat(queue).hasSize(1);
+        assertThat(queue.get(0).get("id")).isEqualTo("t1-1");
+    }
 }

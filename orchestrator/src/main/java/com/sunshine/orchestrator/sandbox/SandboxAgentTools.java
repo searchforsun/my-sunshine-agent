@@ -208,9 +208,6 @@ public class SandboxAgentTools {
                     cancellableToolRunRegistry.unregister(invocationId);
                 }
                 String exhausted = promptCatalogHolder.requireText("sandbox.budget-exhausted").strip();
-                if (!StringUtils.hasText(exhausted)) {
-                    exhausted = "该命令此前已被取消，禁止原样重复调用；请换命令、换参数或改用其它能力。";
-                }
                 auditIfBound(name, auditParams(body, null, null, null), exhausted, "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(exhausted).build());
             }
@@ -386,7 +383,6 @@ public class SandboxAgentTools {
             // 时间线 paused 由 GenerationController.cancelTool 单写；此处只回 ToolResult
             Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
             auditIfBound(toolName, auditParams, text, "cancelled");
-            log.info("[SandboxAgentTool] {} 用户取消 toolUseId={} remaining={}", toolName, toolUseId, remaining);
             return ToolResultBlock.of(toolUseId, toolName, TextBlock.builder().text(text).build());
         }
 

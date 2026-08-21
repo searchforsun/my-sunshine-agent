@@ -58,61 +58,6 @@ public final class HitlParamSupport {
         return StringUtils.hasText(command) ? command : null;
     }
 
-    /**
-     * edit 展开：行级 unified（公共行前缀空格，删除 -，新增 +），同屏对照。
-     */
-    public static String formatEditUnifiedDiff(String oldStr, String newStr) {
-        String[] a = splitLines(oldStr != null ? oldStr : "");
-        String[] b = splitLines(newStr != null ? newStr : "");
-        int n = a.length;
-        int m = b.length;
-        int[][] dp = new int[n + 1][m + 1];
-        for (int i = n - 1; i >= 0; i--) {
-            for (int j = m - 1; j >= 0; j--) {
-                if (a[i].equals(b[j])) {
-                    dp[i][j] = dp[i + 1][j + 1] + 1;
-                } else {
-                    dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-                }
-            }
-        }
-        StringBuilder sb = new StringBuilder();
-        int i = 0;
-        int j = 0;
-        while (i < n && j < m) {
-            if (a[i].equals(b[j])) {
-                appendDiffLine(sb, ' ', a[i]);
-                i++;
-                j++;
-            } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-                appendDiffLine(sb, '-', a[i++]);
-            } else {
-                appendDiffLine(sb, '+', b[j++]);
-            }
-        }
-        while (i < n) {
-            appendDiffLine(sb, '-', a[i++]);
-        }
-        while (j < m) {
-            appendDiffLine(sb, '+', b[j++]);
-        }
-        return sb.toString();
-    }
-
-    private static String[] splitLines(String text) {
-        if (text.isEmpty()) {
-            return new String[]{""};
-        }
-        return text.split("\n", -1);
-    }
-
-    private static void appendDiffLine(StringBuilder sb, char prefix, String line) {
-        if (!sb.isEmpty()) {
-            sb.append('\n');
-        }
-        sb.append(prefix).append(line);
-    }
-
     public static boolean isBodyParamKey(String key) {
         return key != null && BODY_PARAM_KEYS.contains(key.strip());
     }

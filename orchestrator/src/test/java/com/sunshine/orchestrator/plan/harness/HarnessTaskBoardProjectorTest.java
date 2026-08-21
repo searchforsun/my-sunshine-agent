@@ -10,9 +10,9 @@ class HarnessTaskBoardProjectorTest {
     @Test
     void mapsDoneAndFailAndDependsOn() {
         PlanNotebook nb = PlanNotebook.create("g", "q", "chat", 12, 24);
-        nb.getTaskQueue().add(new TaskItem("t1", "调研", "done", List.of(), null, null, null));
-        nb.getTaskQueue().add(new TaskItem("t2", "分析", "pending", List.of("t1"), null, null, null));
-        nb.getTaskQueue().add(new TaskItem("t3", "废", "obsolete", List.of(), null, null, null));
+        nb.getTaskQueue().add(TaskItem.initial("t1", "调研", List.of(), null, null, null).withStatus("done", null));
+        nb.getTaskQueue().add(TaskItem.initial("t2", "分析", List.of("t1"), null, null, null));
+        nb.getTaskQueue().add(TaskItem.initial("t3", "废", List.of(), null, null, null).withStatus("obsolete", null));
         List<TaskBoardItemView> views = HarnessTaskBoardProjector.project(nb);
         assertThat(views).extracting(TaskBoardItemView::id, TaskBoardItemView::status)
                 .containsExactly(

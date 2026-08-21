@@ -38,9 +38,7 @@ class WorkerContextFactoryTest {
 
     @Test
     void stablePrefixListsTaskContractOnly() {
-        TaskItem worker = new TaskItem(
-                "t2", "分析代码", "pending", List.of("u1"),
-                "只读", "报告", "有结论");
+        TaskItem worker = TaskItem.initial("t2", "分析代码", List.of("u1"), "只读", "报告", "有结论");
 
         AssembledContext ctx = factory.build(worker);
 
@@ -54,10 +52,10 @@ class WorkerContextFactoryTest {
     @Test
     void dynamicQueryContainsUpstreamHandoffs_notInStablePrefix() {
         PlanNotebook nb = PlanNotebook.create("goal", "用户问题X", "task", 12, 24);
-        TaskItem u1 = new TaskItem("u1", "上游", "done", List.of(), "", "", "");
+        TaskItem u1 = TaskItem.initial("u1", "上游", List.of(), "", "", "").withStatus("done", null);
         nb.getTaskQueue().add(u1);
         nb.appendRound(new RoundRecord(0, u1, List.of(new NodeResult("u1", "done", "上游结论Z")), 0.3, "ok"));
-        TaskItem worker = new TaskItem("t2", "下游", "pending", List.of("u1"), "", "", "");
+        TaskItem worker = TaskItem.initial("t2", "下游", List.of("u1"), "", "", "");
 
         AssembledContext ctx = factory.build(worker);
         String query = factory.buildDynamicQuery(nb, worker);
@@ -71,7 +69,7 @@ class WorkerContextFactoryTest {
     @Test
     void dynamicQuerySkipsMissingDependencies() {
         PlanNotebook nb = PlanNotebook.create("g", "q", "task", 12, 24);
-        TaskItem worker = new TaskItem("t2", "下游", "pending", List.of("missing"), "", "", "");
+        TaskItem worker = TaskItem.initial("t2", "下游", List.of("missing"), "", "", "");
         String query = factory.buildDynamicQuery(nb, worker);
         assertThat(query).doesNotContain("missing");
         assertThat(query).contains("q");

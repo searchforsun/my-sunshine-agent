@@ -106,8 +106,8 @@ class PlannerHarnessExecutorTest {
     void followUpQueryMarksPendingObsoleteAndUpdatesGoal() {
         PlanNotebook existing = PlanNotebook.create("旧目标", "旧目标", "chat", 12, 24);
         existing.setSessionId("c1");
-        existing.getTaskQueue().add(new TaskItem("t1", "A", "done", List.of(), null, null, null));
-        existing.getTaskQueue().add(new TaskItem("t2", "B", "pending", List.of(), null, null, null));
+        existing.getTaskQueue().add(TaskItem.initial("t1", "A", List.of(), null, null, null).withStatus("done", null));
+        existing.getTaskQueue().add(TaskItem.initial("t2", "B", List.of(), null, null, null));
         when(store.load("c1")).thenReturn(Optional.of(existing));
         when(loop.run(any(), eq(existing))).thenReturn(Flux.just(StreamToken.content("ok")));
 

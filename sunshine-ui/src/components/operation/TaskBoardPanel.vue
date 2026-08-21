@@ -34,7 +34,7 @@ const doneCount = computed(() =>
   tasks.value.filter(t => t.status === 'completed').length,
 )
 
-/** 卡片头：对齐参考图 "1 of 4 Done" */
+/** 卡片头：优先后端 taskProgress（如 0/1、1/2 已完成）；缺失时兜底简单表达 */
 const progressLabel = computed(() => {
   if (!hasRealTasks.value) {
     return props.step.summary?.before?.trim() || '规划任务清单'
@@ -43,7 +43,7 @@ const progressLabel = computed(() => {
   if (progress) return progress
   const total = tasks.value.length
   if (!total) return '规划任务清单'
-  return `${doneCount.value} of ${total} Done`
+  return `${doneCount.value} / ${total}`
 })
 
 watch(isRunning, running => {

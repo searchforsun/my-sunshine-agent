@@ -100,17 +100,10 @@ public class HarnessAgentFactory {
 
     /**
      * 压缩摘要提示词 SSOT：prompt-manager Catalog id=compaction.summary-prompt；
-     * Catalog 缺失时回退代码默认模板（与 Nacos 旧 summary-prompt 同源），禁止空模板压缩丢思考。
+     * 缺失 → warn + 空串（Catalog 缺失即配置错误，禁止 Java/Nacos 影子兜底）。
      */
     private String resolveSummaryPrompt() {
-        String fromCatalog = promptCatalogHolder.snapshot().text("compaction.summary-prompt")
-                .map(String::strip).orElse("");
-        if (!fromCatalog.isBlank()) {
-            return fromCatalog;
-        }
-        String fromConfig = memoryProperties.getAutoContext().getSummaryPrompt();
-        return fromConfig != null && !fromConfig.isBlank()
-                ? fromConfig : MemoryProperties.DEFAULT_SUMMARY_PROMPT;
+        return promptCatalogHolder.requireText("compaction.summary-prompt").strip();
     }
 
     /** 压缩配置指纹：任一压缩参数变化 → 新实例（缓存复用安全） */

@@ -35,12 +35,6 @@ class HitlParamSupportTest {
     }
 
     @Test
-    void formatEditUnifiedDiff_replaceAll() {
-        assertThat(HitlParamSupport.formatEditUnifiedDiff("foo", "bar"))
-                .isEqualTo("-foo\n+bar");
-    }
-
-    @Test
     void summarizeParams_omitsCommand() {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("command", "python3 -c \"print(1)\"");

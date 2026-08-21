@@ -6,7 +6,7 @@ import java.util.Optional;
 
 /**
  * 基于改前全文定位 old_string，生成带 ±contextRadius 上下文与绝对行号的 edit diff。
- * 行级 LCS 语义同 {@code HitlParamSupport.formatEditUnifiedDiff}。
+ * 行级 LCS 语义：最长公共子序列行片段（ctx/del/add），命中唯一性校验失败返回空。
  */
 public final class EditDiffBuilder {
 

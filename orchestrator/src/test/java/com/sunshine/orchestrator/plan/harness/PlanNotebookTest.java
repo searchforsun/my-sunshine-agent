@@ -33,7 +33,7 @@ class PlanNotebookTest {
         PlanNotebook nb = PlanNotebook.create("goal", "query", "task", 12, 24);
         nb.setSessionId("sess-1");
         nb.setGoalCompletion(0.5);
-        nb.getTaskQueue().add(new TaskItem("t1", "label", "pending", List.of(), null, null, null));
+        nb.getTaskQueue().add(TaskItem.initial("t1", "label", List.of(), null, null, null));
         String json = mapper.writeValueAsString(nb);
         assertThat(json).contains("\"kind\"").doesNotContain("\"scene\"");
         PlanNotebook restored = mapper.readValue(json, PlanNotebook.class);
@@ -55,6 +55,6 @@ class PlanNotebookTest {
     }
 
     private static TaskItem task(String taskId) {
-        return new TaskItem(taskId, taskId, "done", List.of(), null, null, null);
+        return TaskItem.initial(taskId, taskId, List.of(), null, null, null).withStatus("done", null);
     }
 }
