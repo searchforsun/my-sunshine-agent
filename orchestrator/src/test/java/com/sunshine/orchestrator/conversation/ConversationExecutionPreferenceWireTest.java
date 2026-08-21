@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
 import com.sunshine.orchestrator.conversation.dto.ConversationSummaryDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -19,11 +19,11 @@ class ConversationExecutionPreferenceWireTest {
     @Test
     @DisplayName("toStoredWire 写出新 wire，空保持 null")
     void toStoredWire_keepsBlankNull() {
-        assertThat(ExecutionPreference.toStoredWire("pro")).isEqualTo("pro");
-        assertThat(ExecutionPreference.toStoredWire("workflow")).isEqualTo("workflow");
-        assertThat(ExecutionPreference.toStoredWire("fast")).isEqualTo("fast");
-        assertThat(ExecutionPreference.toStoredWire(null)).isNull();
-        assertThat(ExecutionPreference.toStoredWire("  ")).isNull();
+        assertThat(ExecutionMode.toStoredWire("pro")).isEqualTo("pro");
+        assertThat(ExecutionMode.toStoredWire("workflow")).isEqualTo("workflow");
+        assertThat(ExecutionMode.toStoredWire("fast")).isEqualTo("fast");
+        assertThat(ExecutionMode.toStoredWire(null)).isNull();
+        assertThat(ExecutionMode.toStoredWire("  ")).isNull();
     }
 
     @Test

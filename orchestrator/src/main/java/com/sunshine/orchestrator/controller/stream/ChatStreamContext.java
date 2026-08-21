@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.controller.stream;
 
 import com.sunshine.orchestrator.context.AssembledContext;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 
 /** 单次 chat/stream 请求的会话与执行上下文（新消息或续跑） */
 public record ChatStreamContext(
@@ -17,7 +17,7 @@ public record ChatStreamContext(
         boolean autoTitle,
         String userId,
         String tenantId,
-        ExecutionPreference executionPreference,
+        ExecutionMode executionPreference,
         String forcedWorkflowId,
         String clientSkillId,
         String kbId,

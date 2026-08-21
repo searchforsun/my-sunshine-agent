@@ -72,8 +72,8 @@ class ForcedExecutionRouterTest {
                 Map.of("status", "pending"), "llm")));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("/finance-analysis 分析", null, ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                new RoutingContext("/finance-analysis 分析", null, ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-fast");
@@ -100,8 +100,8 @@ class ForcedExecutionRouterTest {
 
         ExecutionPlan plan = router.resolve(
                 new RoutingContext("$compliance-agent $policy-agent 分析一下", null,
-                        ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                        ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         // L0 命中即短路：多个 $agent 全部进可调度池，跳过规则层与 L3
@@ -118,8 +118,8 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("差旅办法制度怎么说", null, ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                new RoutingContext("差旅办法制度怎么说", null, ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-fast");
@@ -135,8 +135,8 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("/policy-review 差旅办法制度怎么说", null, ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                new RoutingContext("/policy-review 差旅办法制度怎么说", null, ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         // L0 命中即短路：规则层不再叠加，ruleId 为空
@@ -152,8 +152,8 @@ class ForcedExecutionRouterTest {
                 ExecutionPlan.reactFallback("llm")));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("待审批是否合规", null, ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                new RoutingContext("待审批是否合规", null, ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.workflowId()).isNull();
@@ -168,8 +168,8 @@ class ForcedExecutionRouterTest {
                 ExecutionPlan.reactFallback("llm")));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("先查制度再查待审批并对合规分析", null, ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                new RoutingContext("先查制度再查待审批并对合规分析", null, ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-fast");
@@ -184,8 +184,8 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("/policy-review 老家有事请事假是否合理", null, ExecutionPreference.PRO, null, null),
-                ExecutionPreference.PRO, null).block();
+                new RoutingContext("/policy-review 老家有事请事假是否合理", null, ExecutionMode.PRO, null, null),
+                ExecutionMode.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
@@ -198,8 +198,8 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("差旅办法制度怎么说", null, ExecutionPreference.PRO, null, null),
-                ExecutionPreference.PRO, null).block();
+                new RoutingContext("差旅办法制度怎么说", null, ExecutionMode.PRO, null, null),
+                ExecutionMode.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
@@ -211,8 +211,8 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_workflow_withExplicitId() {
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("年假", null, ExecutionPreference.WORKFLOW, "knowledge-qa", null),
-                ExecutionPreference.WORKFLOW, "knowledge-qa").block();
+                new RoutingContext("年假", null, ExecutionMode.WORKFLOW, "knowledge-qa", null),
+                ExecutionMode.WORKFLOW, "knowledge-qa").block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
@@ -224,8 +224,8 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_workflow_fromCatalogRule() {
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("有哪些待审批报销", null, ExecutionPreference.WORKFLOW, null, null),
-                ExecutionPreference.WORKFLOW, null).block();
+                new RoutingContext("有哪些待审批报销", null, ExecutionMode.WORKFLOW, null, null),
+                ExecutionMode.WORKFLOW, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-list");
@@ -241,8 +241,8 @@ class ForcedExecutionRouterTest {
                         ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("年假制度", null, ExecutionPreference.WORKFLOW, null, null),
-                ExecutionPreference.WORKFLOW, null).block();
+                new RoutingContext("年假制度", null, ExecutionMode.WORKFLOW, null, null),
+                ExecutionMode.WORKFLOW, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         ArgumentCaptor<RoutingContext> cap = ArgumentCaptor.forClass(RoutingContext.class);
@@ -257,8 +257,8 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.of(skillPlan)));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("/policy-review 请事假合规吗", null, ExecutionPreference.PRO, null, null),
-                ExecutionPreference.PRO, null).block();
+                new RoutingContext("/policy-review 请事假合规吗", null, ExecutionMode.PRO, null, null),
+                ExecutionMode.PRO, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.routingTraces()).isNotNull();
         assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
@@ -273,8 +273,8 @@ class ForcedExecutionRouterTest {
         when(skillBindingRoutingPolicy.tryRoute(any())).thenReturn(Mono.just(Optional.empty()));
 
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("差旅办法制度怎么说", null, ExecutionPreference.FAST, null, null),
-                ExecutionPreference.FAST, null).block();
+                new RoutingContext("差旅办法制度怎么说", null, ExecutionMode.FAST, null, null),
+                ExecutionMode.FAST, null).block();
         assertThat(plan).isNotNull();
         assertThat(plan.routingTraces()).isNotNull();
         assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)
@@ -286,8 +286,8 @@ class ForcedExecutionRouterTest {
     @Test
     void resolve_workflow_withExplicitId_recordsWorkflowL0Traces() {
         ExecutionPlan plan = router.resolve(
-                new RoutingContext("年假", null, ExecutionPreference.WORKFLOW, "knowledge-qa", null),
-                ExecutionPreference.WORKFLOW, "knowledge-qa").block();
+                new RoutingContext("年假", null, ExecutionMode.WORKFLOW, "knowledge-qa", null),
+                ExecutionMode.WORKFLOW, "knowledge-qa").block();
         assertThat(plan).isNotNull();
         assertThat(plan.routingTraces()).isNotNull();
         assertThat(plan.routingTraces()).extracting(RoutingTrace::layer)

@@ -1,7 +1,7 @@
 import type { SkillCatalogIndexEntry } from '../api/skills'
 import type { AgentCatalogIndexEntry } from '../api/agents'
 import type { WorkflowCatalogEntry } from '../api/workflows'
-import type { ExecutionPreference } from '../api/executionModes'
+import type { ExecutionMode } from '../api/executionModes'
 import {
   allowsAgentMention,
   allowsSkillMention,
@@ -138,7 +138,7 @@ export function segmentChatMentions(
   return segments.length > 0 ? segments : [{ type: 'text', value: content }]
 }
 
-export function allowsForPreference(preference: ExecutionPreference): ChatMentionAllows {
+export function allowsForPreference(preference: ExecutionMode): ChatMentionAllows {
   return {
     skill: allowsSkillMention(preference),
     agent: allowsAgentMention(preference),
@@ -149,7 +149,7 @@ export function allowsForPreference(preference: ExecutionPreference): ChatMentio
 export function segmentChatMentionsForMessage(
   content: string,
   catalogs: ChatMentionCatalogs,
-  executionPreference?: ExecutionPreference,
+  executionPreference?: ExecutionMode,
 ): ChatMentionSegment[] {
   const pref = executionPreference ?? 'fast'
   return segmentChatMentions(content, catalogs, allowsForPreference(pref))

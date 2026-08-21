@@ -12,7 +12,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -297,7 +297,7 @@ public class ConversationService {
     @Transactional
     public void updateExecutionPreference(String id, String userId, String tenantId, String preference) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
-        conv.setExecutionPreference(ExecutionPreference.toStoredWire(preference));
+        conv.setExecutionPreference(ExecutionMode.toStoredWire(preference));
         conv.setUpdatedAt(Instant.now());
         conversationRepo.save(conv);
     }
@@ -353,7 +353,7 @@ public class ConversationService {
         msg.setContent(content != null ? content : "");
         msg.setStatus(status);
         if ("user".equals(role)) {
-            String wire = ExecutionPreference.toStoredWire(executionPreference);
+            String wire = ExecutionMode.toStoredWire(executionPreference);
             if (wire != null) {
                 msg.setExecutionPreference(wire);
             }
@@ -471,7 +471,6 @@ public class ConversationService {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setIntent(plan.intentLabel());
-        msg.setExecutionMode(plan.mode().name().toLowerCase().replace('_', '-'));
         msg.setWorkflowId(plan.workflowId());
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);

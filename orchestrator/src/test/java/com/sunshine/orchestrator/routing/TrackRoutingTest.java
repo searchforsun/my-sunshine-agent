@@ -100,10 +100,10 @@ class TrackRoutingTest {
         assertThat(trackB.get().workflowId()).isEqualTo("finance-smart");
         assertThat(trackB.get().mode()).isEqualTo(ExecutionMode.WORKFLOW);
 
-        ExecutionPlan fastPlan = router.route(ctx(ExecutionPreference.FAST, COMPLIANCE_QUERY, null, "chat"))
+        ExecutionPlan fastPlan = router.route(ctx(ExecutionMode.FAST, COMPLIANCE_QUERY, null, "chat"))
                 .block();
         ExecutionPlan workflowPlan = router.route(
-                ctx(ExecutionPreference.WORKFLOW, COMPLIANCE_QUERY, null, "chat")).block();
+                ctx(ExecutionMode.WORKFLOW, COMPLIANCE_QUERY, null, "chat")).block();
 
         assertThat(fastPlan).isNotNull();
         assertThat(fastPlan.mode()).isEqualTo(ExecutionMode.FAST);
@@ -128,7 +128,7 @@ class TrackRoutingTest {
         assertThat(trackPro.get().ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
         assertThat(trackWorkflow).isEmpty();
 
-        ExecutionPlan proPlan = router.route(ctx(ExecutionPreference.PRO, POLICY_QUERY, null, "task"))
+        ExecutionPlan proPlan = router.route(ctx(ExecutionMode.PRO, POLICY_QUERY, null, "task"))
                 .block();
         assertThat(proPlan).isNotNull();
         assertThat(proPlan.mode()).isEqualTo(ExecutionMode.PRO);
@@ -142,7 +142,7 @@ class TrackRoutingTest {
                         ExecutionMode.FAST, null, Map.of("status", "draft"), "llm")));
 
         ExecutionPlan plan = router.route(
-                ctx(ExecutionPreference.FAST, "#knowledge-qa 制度怎么说", null, "chat")).block();
+                ctx(ExecutionMode.FAST, "#knowledge-qa 制度怎么说", null, "chat")).block();
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
@@ -162,7 +162,7 @@ class TrackRoutingTest {
             return Mono.just(IntentRouter.applyLockedMode(raw, c.lockedMode()));
         });
 
-        ExecutionPlan plan = router.route(ctx(ExecutionPreference.FAST, "随便聊聊", null, "chat")).block();
+        ExecutionPlan plan = router.route(ctx(ExecutionMode.FAST, "随便聊聊", null, "chat")).block();
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
@@ -173,7 +173,7 @@ class TrackRoutingTest {
 
     @Test
     void routingContext_preservesKind_defaultChat() {
-        RoutingContext withKind = ctx(ExecutionPreference.PRO, "hi", null, "task");
+        RoutingContext withKind = ctx(ExecutionMode.PRO, "hi", null, "task");
         assertThat(withKind.kindOrDefault()).isEqualTo("task");
         assertThat(withKind.withLockedMode(ExecutionMode.PRO).kindOrDefault()).isEqualTo("task");
 
@@ -182,7 +182,7 @@ class TrackRoutingTest {
     }
 
     private static RoutingContext ctx(
-            ExecutionPreference preference, String query, String workflowId, String kind) {
+            ExecutionMode preference, String query, String workflowId, String kind) {
         return new RoutingContext(query, null, preference, workflowId, null, null, null, kind);
     }
 }

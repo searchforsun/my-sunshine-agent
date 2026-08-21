@@ -1,13 +1,13 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { listAgentCatalogIndex, type AgentCatalogIndexEntry } from '../api/agents'
-import { allowsAgentMention, type ExecutionPreference } from '../api/executionModes'
+import { allowsAgentMention, type ExecutionMode } from '../api/executionModes'
 import { matchesSessionKind } from '../utils/kindFilter'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
 /** Composer $ 智能体 补全 */
 export function useChatAgentMention(
   inputText: Ref<string>,
-  preference: Ref<ExecutionPreference>,
+  preference: Ref<ExecutionMode>,
   loading: Ref<boolean>,
   sessionKind: Ref<string>,
 ) {

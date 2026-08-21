@@ -1,5 +1,5 @@
 import type { WorkflowCatalogEntry } from '../api/workflows'
-import type { ExecutionPreference } from '../api/executionModes'
+import type { ExecutionMode } from '../api/executionModes'
 import { allowsWorkflowMention } from '../api/executionModes'
 
 const HASH_TOKEN = /#([\w\u4e00-\u9fff-]+)/g
@@ -52,7 +52,7 @@ export function segmentWorkflowMentions(
 export function segmentWorkflowMentionsForMessage(
   content: string,
   catalog: WorkflowCatalogEntry[],
-  executionPreference?: ExecutionPreference,
+  executionPreference?: ExecutionMode,
 ): WorkflowMentionSegment[] {
   const pref = executionPreference ?? 'fast'
   if (!allowsWorkflowMention(pref)) {
@@ -69,7 +69,7 @@ export interface WorkflowBindingForSend {
 export function resolveWorkflowBindingForSend(
   content: string,
   catalog: WorkflowCatalogEntry[],
-  executionPreference?: ExecutionPreference,
+  executionPreference?: ExecutionMode,
 ): WorkflowBindingForSend {
   const pref = executionPreference ?? 'fast'
   if (!allowsWorkflowMention(pref)) {

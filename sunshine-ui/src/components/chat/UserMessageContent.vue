@@ -4,7 +4,7 @@ import MentionChip from './MentionChip.vue'
 import type { SkillCatalogIndexEntry } from '../../api/skills'
 import type { AgentCatalogIndexEntry } from '../../api/agents'
 import type { WorkflowCatalogEntry } from '../../api/workflows'
-import type { ExecutionPreference } from '../../api/executionModes'
+import type { ExecutionMode } from '../../api/executionModes'
 import { segmentChatMentionsForMessage } from '../../utils/chatMention'
 
 const props = defineProps<{
@@ -12,7 +12,7 @@ const props = defineProps<{
   catalog: SkillCatalogIndexEntry[]
   agentCatalog?: AgentCatalogIndexEntry[]
   workflowCatalog?: WorkflowCatalogEntry[]
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
 }>()
 
 const segments = computed(() =>

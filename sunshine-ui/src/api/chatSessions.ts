@@ -152,7 +152,7 @@ export function useChatSessions(
     onProgress?.(sessionId)
 
     try {
-      const body: Record<string, string> = { content, conversationId: convId, executionPreference: pref }
+      const body: Record<string, string> = { content, conversationId: convId, executionMode: pref }
       if (options?.workflowId) {
         body.workflowId = options.workflowId
       }

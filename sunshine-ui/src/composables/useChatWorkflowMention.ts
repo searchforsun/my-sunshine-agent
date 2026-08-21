@@ -1,13 +1,13 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { listWorkflowCatalog, type WorkflowCatalogEntry } from '../api/workflows'
-import { allowsWorkflowMention, type ExecutionPreference } from '../api/executionModes'
+import { allowsWorkflowMention, type ExecutionMode } from '../api/executionModes'
 import { matchesSessionKind } from '../utils/kindFilter'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
 /** Composer # Workflow 补全 */
 export function useChatWorkflowMention(
   inputText: Ref<string>,
-  preference: Ref<ExecutionPreference>,
+  preference: Ref<ExecutionMode>,
   loading: Ref<boolean>,
   sessionKind: Ref<string>,
 ) {

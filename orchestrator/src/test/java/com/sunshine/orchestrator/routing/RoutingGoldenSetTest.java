@@ -106,7 +106,7 @@ class RoutingGoldenSetTest {
             "报销规定和差旅办法是什么"
     })
     void proPrompts_hitSharedTrackARule(String query) {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
@@ -121,7 +121,7 @@ class RoutingGoldenSetTest {
             "待审批付款有哪些"
     })
     void financeListPrompts_withWorkflow(String query) {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-list");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
@@ -134,7 +134,7 @@ class RoutingGoldenSetTest {
             "这笔报销合规吗"
     })
     void financeSmartPrompts_withWorkflow(String query) {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.workflowId()).isEqualTo("finance-smart");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_SMART_ID);
     }
@@ -146,7 +146,7 @@ class RoutingGoldenSetTest {
             "预算和出差冲突怎么处理"
     })
     void knowledgeQaPrompts_withWorkflow(String query) {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.KNOWLEDGE_BUDGET_ID);
     }
@@ -156,7 +156,7 @@ class RoutingGoldenSetTest {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
 
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, "先帮我写一封邮件再总结一下", null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, "先帮我写一封邮件再总结一下", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
@@ -164,7 +164,7 @@ class RoutingGoldenSetTest {
     @Test
     void mainAcceptance_withPro_mustNotRouteFinanceList() {
         String query = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论";
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
         assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isNull();
     }
@@ -175,7 +175,7 @@ class RoutingGoldenSetTest {
             "待审批报销是否合规, finance-smart"
     })
     void singleStep_withWorkflow_notPro(String query, String workflowId) {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo(workflowId);
     }
@@ -199,7 +199,7 @@ class RoutingGoldenSetTest {
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
 
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_PLANNER_MODE);
@@ -231,7 +231,7 @@ class RoutingGoldenSetTest {
                 .thenReturn(Mono.just(new ExecutionPlan(
                         ExecutionMode.FAST, null, Map.of("status", "pending"), "llm")));
 
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.FAST, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.workflowId()).isNull();
@@ -243,7 +243,7 @@ class RoutingGoldenSetTest {
     void forcedJ2_react() {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, "待审批是否合规", null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.FAST, "待审批是否合规", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
@@ -253,7 +253,7 @@ class RoutingGoldenSetTest {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                         ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "青松假有多少天、怎么申请", null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, "青松假有多少天、怎么申请", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("user:forced-workflow");
@@ -261,7 +261,7 @@ class RoutingGoldenSetTest {
 
     @Test
     void forcedJ4_pro() {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, "先查制度再查待审批", null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, "先查制度再查待审批", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
@@ -272,7 +272,7 @@ class RoutingGoldenSetTest {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
                         ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("user:forced-workflow");
@@ -285,7 +285,7 @@ class RoutingGoldenSetTest {
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
                 "finance-analysis", "是否合规", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PRO, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
@@ -297,7 +297,7 @@ class RoutingGoldenSetTest {
     void workflowI1_hashKnowledgeQa() {
         when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
         ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.WORKFLOW, "#knowledge-qa 青松假有多少天、怎么申请", null);
+                ExecutionMode.WORKFLOW, "#knowledge-qa 青松假有多少天、怎么申请", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
@@ -309,7 +309,7 @@ class RoutingGoldenSetTest {
     void workflowI2_hashKnowledgeQaReimbursement() {
         when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
         ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.WORKFLOW, "#knowledge-qa 市内网约车报销上限多少", null);
+                ExecutionMode.WORKFLOW, "#knowledge-qa 市内网约车报销上限多少", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
@@ -319,7 +319,7 @@ class RoutingGoldenSetTest {
     void workflowI3_hashFinanceSmartOverridesRules() {
         when(workflowCatalog.isKnownWorkflow("finance-smart")).thenReturn(true);
         ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.WORKFLOW, "#finance-smart 待审批报销是否合规", null);
+                ExecutionMode.WORKFLOW, "#finance-smart 待审批报销是否合规", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-smart");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
@@ -329,7 +329,7 @@ class RoutingGoldenSetTest {
     @Test
     void workflowI4_unknownWorkflowNotFound() {
         when(workflowCatalog.isKnownWorkflow("not-exists")).thenReturn(false);
-        assertThatThrownBy(() -> forcedRoute(ExecutionPreference.WORKFLOW, "#not-exists 测试", null))
+        assertThatThrownBy(() -> forcedRoute(ExecutionMode.WORKFLOW, "#not-exists 测试", null))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(OrchestratorErrorCode.WORKFLOW_NOT_FOUND);
@@ -338,7 +338,7 @@ class RoutingGoldenSetTest {
     @Test
     void workflowI6_clientWorkflowIdBindsWithoutLlm() {
         when(workflowCatalog.isKnownWorkflow("security-analyze")).thenReturn(true);
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "请继续分析", "security-analyze");
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, "请继续分析", "security-analyze");
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("security-analyze");
         assertThat(plan.reason()).isEqualTo("workflow:client");
@@ -352,12 +352,12 @@ class RoutingGoldenSetTest {
         when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(SkillBindingOutcome.none(query));
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.FAST, query, null);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.FAST, query, null);
         assertThat(plan.workflowId()).isNull();
         assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);
     }
 
-    private ExecutionPlan forcedRoute(ExecutionPreference preference, String query, String workflowId) {
+    private ExecutionPlan forcedRoute(ExecutionMode preference, String query, String workflowId) {
         return router.route(new RoutingContext(query, null, preference, workflowId, null)).block();
     }
 }

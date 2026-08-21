@@ -9,7 +9,7 @@ import TimelineStyleSelector from './chat/TimelineStyleSelector.vue'
 import WriteHitlModeSelector from './sandbox/WriteHitlModeSelector.vue'
 import TenantSelector from './knowledge/TenantSelector.vue'
 import KbSelector from './knowledge/KbSelector.vue'
-import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useExecutionMode } from '../composables/useExecutionMode'
 import { useTimelineStyle, type TimelineStyle } from '../composables/useTimelineStyle'
 import { useKbPreference } from '../composables/useKbPreference'
 import { useWriteHitlMode } from '../composables/useWriteHitlMode'
@@ -37,7 +37,7 @@ const emit = defineEmits<{ 'update:show': [value: boolean] }>()
 const auth = useAuthStore()
 const chatStore = useChatStore()
 const message = useMessage()
-const { globalDefault, setGlobalDefault } = useExecutionPreference()
+const { globalDefault, setGlobalDefault } = useExecutionMode()
 const { timelineStyle, setTimelineStyle } = useTimelineStyle()
 const { setGlobalDefaultKb } = useKbPreference()
 const { globalDefault: writeHitlGlobal, setGlobalDefault: setWriteHitlGlobal } = useWriteHitlMode(

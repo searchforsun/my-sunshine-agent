@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Planner-Executor 内核冒烟（非完整 H-7）。
 
-验证：`agent.execution.harness.enabled=true` 时，Chat `executionPreference=pro`
+验证：`agent.execution.harness.enabled=true` 时，Chat `executionMode=pro`
 走 PlannerHarnessExecutor，并出现 PlanNotebook Redis 键或 harness 日志。
 
 用法:
@@ -132,7 +132,7 @@ def chat_sse(token: str, conv_id: str, query: str) -> str:
     body = {
         "content": query,
         "conversationId": conv_id,
-        "executionPreference": "pro",
+        "executionMode": "pro",
     }
     payload = json.dumps(body, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:

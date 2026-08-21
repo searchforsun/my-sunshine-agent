@@ -211,7 +211,7 @@ def live_a6_react_stop(token: str, conv_id: str) -> None:
     sess = StreamSession(token, {
         "conversationId": conv_id,
         "content": "用 ReAct 查一下财务消息列表，慢慢想",
-        "executionPreference": "fast",
+        "executionMode": "fast",
     })
     sess.start()
     sess.wait_chunks(min_chunks=0, timeout=45)
@@ -238,7 +238,7 @@ def live_a1_plan_stop_resume(token: str, conv_id: str) -> None:
     sess = StreamSession(token, {
         "conversationId": conv_id,
         "content": "帮我查制度并拉 OA 待办，分步执行",
-        "executionPreference": "pro",
+        "executionMode": "pro",
     })
     sess.start()
     sess.wait_chunks(min_chunks=1, timeout=90)
@@ -289,7 +289,7 @@ def live_a7_react_resume_think_continuation(token: str, conv_id: str) -> None:
     sess = StreamSession(token, {
         "conversationId": conv_id,
         "content": "查我的报销单和财务待办，并结合报销制度分析风险",
-        "executionPreference": "fast",
+        "executionMode": "fast",
     })
     sess.start()
     # 等出现 running 的 tool / rag 步

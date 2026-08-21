@@ -352,7 +352,7 @@ def suite_hash(wf_id: str | None = None) -> None:
 
     query = "#knowledge-qa 青松假有多少天、怎么申请"
     print(f"  query={query}")
-    chat_sse(token, conv_id, query, executionPreference="workflow")
+    chat_sse(token, conv_id, query, executionMode="workflow")
     assistant = wait_assistant(token, conv_id, HASH_TIMEOUT_SEC)
     wf = assistant.get("workflowId")
     intent = assistant.get("intent")
@@ -371,7 +371,7 @@ def suite_hash(wf_id: str | None = None) -> None:
         conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         q2 = f"#{wf_id} 测试路由"
         print(f"  query={q2}")
-        proc = chat_sse_async(token, conv2, q2, executionPreference="workflow")
+        proc = chat_sse_async(token, conv2, q2, executionMode="workflow")
         try:
             assistant2 = wait_workflow_routed(token, conv2, wf_id, 60)
             print(
@@ -390,7 +390,7 @@ def suite_parallel() -> None:
     conv_id = conversation_id(auth_json("POST", "/api/conversations", None, token))
     query = "#knowledge-dual 青松假和网约车报销上限一起查"
     print(f"  query={query}")
-    chat_sse(token, conv_id, query, executionPreference="workflow")
+    chat_sse(token, conv_id, query, executionMode="workflow")
     assistant = wait_assistant(token, conv_id, HASH_TIMEOUT_SEC)
     if not workflow_hit(assistant, "knowledge-dual"):
         raise RuntimeError(
@@ -429,7 +429,7 @@ def suite_exclusive() -> None:
     conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q1 = "#knowledge-branch 网约车报销需要哪些材料"
     print(f"  query={q1}")
-    chat_sse(token, conv1, q1, executionPreference="workflow")
+    chat_sse(token, conv1, q1, executionMode="workflow")
     a1 = wait_assistant(token, conv1, HASH_TIMEOUT_SEC)
     if not workflow_hit(a1, "knowledge-branch"):
         raise RuntimeError(
@@ -446,7 +446,7 @@ def suite_exclusive() -> None:
     conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q2 = "#knowledge-branch 青松假怎么申请"
     print(f"  query={q2}")
-    chat_sse(token, conv2, q2, executionPreference="workflow")
+    chat_sse(token, conv2, q2, executionMode="workflow")
     a2 = wait_assistant(token, conv2, HASH_TIMEOUT_SEC)
     if not workflow_hit(a2, "knowledge-branch"):
         raise RuntimeError(
@@ -463,7 +463,7 @@ def suite_exclusive() -> None:
     conv3 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q3 = "#knowledge-branch 发票申请流程"
     print(f"  query={q3}")
-    chat_sse(token, conv3, q3, executionPreference="workflow")
+    chat_sse(token, conv3, q3, executionMode="workflow")
     a3 = wait_assistant(token, conv3, max(HASH_TIMEOUT_SEC, 180))
     if not workflow_hit(a3, "knowledge-branch"):
         raise RuntimeError(
@@ -518,7 +518,7 @@ def suite_loop() -> None:
     conv1 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q1 = "#knowledge-loop 分析青松假余额和我的待报销"
     print(f"  query={q1}")
-    chat_sse(token, conv1, q1, executionPreference="workflow")
+    chat_sse(token, conv1, q1, executionMode="workflow")
     a1 = wait_assistant(token, conv1, max(HASH_TIMEOUT_SEC, 180))
     if not workflow_hit(a1, "knowledge-loop"):
         raise RuntimeError(
@@ -551,7 +551,7 @@ def suite_loop() -> None:
     conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
     q2 = "#knowledge-loop 继续出差违规处理和待报销"
     print(f"  query={q2}")
-    chat_sse(token, conv2, q2, executionPreference="workflow")
+    chat_sse(token, conv2, q2, executionMode="workflow")
     a2 = wait_assistant(token, conv2, max(HASH_TIMEOUT_SEC, 180))
     if not workflow_hit(a2, "knowledge-loop"):
         raise RuntimeError(

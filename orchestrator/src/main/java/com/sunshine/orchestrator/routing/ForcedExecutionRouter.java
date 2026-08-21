@@ -54,7 +54,7 @@ public class ForcedExecutionRouter {
     private final AgentCatalogService agentCatalogService;
     private final WorkflowCatalog workflowCatalog;
 
-    public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionPreference preference, String workflowId) {
+    public Mono<ExecutionPlan> resolve(RoutingContext ctx, ExecutionMode preference, String workflowId) {
         if (preference == null) {
             return Mono.error(new IllegalStateException("ForcedExecutionRouter 需要非空 preference"));
         }

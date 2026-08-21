@@ -1,7 +1,7 @@
 import { apiHeaders } from '../stores/authStore'
 import { resolveApiBase } from './config'
-import type { ExecutionPreference } from './executionModes'
-import { normalizeExecutionPreference } from './executionModes'
+import type { ExecutionMode } from './executionModes'
+import { normalizeExecutionMode } from './executionModes'
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
 import { normalizeStep, parseContentBlocks } from './processingSteps'
@@ -15,7 +15,7 @@ export interface ConversationSummary {
   title: string
   createdAt: number
   updatedAt: number
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
   kbId?: string | null
   /** 会话绑定模型（注册表 model_name） */
   modelName?: string | null
@@ -51,7 +51,7 @@ export interface ConversationMessage {
   createdAt?: string
   updatedAt?: string
   executionPlanId?: string
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
   /** usage_json 原始字符串（chatStore.parseMessageUsage 解析） */
   usage?: string
 }
@@ -77,9 +77,9 @@ function requireConversationId(raw: Record<string, unknown>): string {
   return raw.id
 }
 
-function mapStoredExecutionPreference(raw: unknown): ExecutionPreference | undefined {
+function mapStoredExecutionPreference(raw: unknown): ExecutionMode | undefined {
   if (raw == null || raw === '') return undefined
-  return normalizeExecutionPreference(raw)
+  return normalizeExecutionMode(raw)
 }
 
 function mapSummary(raw: Record<string, unknown>): ConversationSummary {

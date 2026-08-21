@@ -1,9 +1,9 @@
-/** Chat 底栏执行模式 — 与后端 ExecutionPreference / ExecutionMode 对齐（routing v6） */
+/** Chat 底栏执行模式 — 与后端 ExecutionMode 对齐（routing v6） */
 
-export type ExecutionPreference = 'fast' | 'pro' | 'workflow'
+export type ExecutionMode = 'fast' | 'pro' | 'workflow'
 
 export interface ExecutionModeOption {
-  value: ExecutionPreference
+  value: ExecutionMode
   label: string
   shortLabel: string
   description: string
@@ -42,31 +42,31 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
   },
 ]
 
-export function findExecutionModeOption(value: ExecutionPreference): ExecutionModeOption {
+export function findExecutionModeOption(value: ExecutionMode): ExecutionModeOption {
   return EXECUTION_MODE_OPTIONS.find(o => o.value === value) ?? EXECUTION_MODE_OPTIONS[0]
 }
 
-export function allowsSkillMention(preference: ExecutionPreference): boolean {
+export function allowsSkillMention(preference: ExecutionMode): boolean {
   return findExecutionModeOption(preference).allowsSkillMention
 }
 
-export function allowsAgentMention(preference: ExecutionPreference): boolean {
+export function allowsAgentMention(preference: ExecutionMode): boolean {
   return findExecutionModeOption(preference).allowsAgentMention
 }
 
-export function allowsWorkflowMention(preference: ExecutionPreference): boolean {
+export function allowsWorkflowMention(preference: ExecutionMode): boolean {
   return findExecutionModeOption(preference).allowsWorkflowMention
 }
 
 export const EXECUTION_PREFERENCE_STORAGE_KEY = 'sunshine-execution-preference'
 
 /** 新 wire 三值；旧 localStorage / API 值经 normalize 映射 */
-export function isExecutionPreference(raw: unknown): raw is ExecutionPreference {
+export function isExecutionMode(raw: unknown): raw is ExecutionMode {
   return raw === 'fast' || raw === 'pro' || raw === 'workflow'
 }
 
 /** 读路径仅认协议三值；未知/旧值一律回退 fast */
-export function normalizeExecutionPreference(raw: unknown): ExecutionPreference {
-  if (isExecutionPreference(raw)) return raw
+export function normalizeExecutionMode(raw: unknown): ExecutionMode {
+  if (isExecutionMode(raw)) return raw
   return 'fast'
 }

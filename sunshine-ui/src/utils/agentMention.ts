@@ -1,5 +1,5 @@
 import type { AgentCatalogIndexEntry } from '../api/agents'
-import type { ExecutionPreference } from '../api/executionModes'
+import type { ExecutionMode } from '../api/executionModes'
 import { allowsAgentMention } from '../api/executionModes'
 
 const DOLLAR_TOKEN = /\$([\w\u4e00-\u9fff-]+)/g
@@ -52,7 +52,7 @@ export function segmentAgentMentions(
 export function segmentAgentMentionsForMessage(
   content: string,
   catalog: AgentCatalogIndexEntry[],
-  executionPreference?: ExecutionPreference,
+  executionPreference?: ExecutionMode,
 ): AgentMentionSegment[] {
   const pref = executionPreference ?? 'fast'
   if (!allowsAgentMention(pref)) {

@@ -74,7 +74,7 @@ def chat_sse(token: str, conv_id: str, query: str, *, preference: str | None = N
         raise RuntimeError("curl not found")
     body: dict = {"content": query, "conversationId": conv_id}
     if preference:
-        body["executionPreference"] = preference
+        body["executionMode"] = preference
     payload = json.dumps(body, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
         f.write(payload)

@@ -12,7 +12,7 @@ function loadTimelineStyle(): TimelineStyle {
   return 'minimal'
 }
 
-/** 模块级单例：与 useExecutionPreference 同模式，组件直接读取响应式生效 */
+/** 模块级单例：与 useExecutionMode 同模式，组件直接读取响应式生效 */
 const timelineStyle = ref<TimelineStyle>(loadTimelineStyle())
 
 export function useTimelineStyle() {

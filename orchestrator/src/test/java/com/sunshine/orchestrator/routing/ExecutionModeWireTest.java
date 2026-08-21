@@ -13,19 +13,19 @@ class ExecutionModeWireTest {
         assertThat(ExecutionMode.from("fast")).isEqualTo(ExecutionMode.FAST);
         assertThat(ExecutionMode.from("pro")).isEqualTo(ExecutionMode.PRO);
         assertThat(ExecutionMode.from("workflow")).isEqualTo(ExecutionMode.WORKFLOW);
-        assertThat(ExecutionPreference.from("fast").wireValue()).isEqualTo("fast");
-        assertThat(ExecutionPreference.from("pro").wireValue()).isEqualTo("pro");
-        assertThat(ExecutionPreference.from("workflow").wireValue()).isEqualTo("workflow");
-        assertThat(ExecutionPreference.toStoredWire("pro")).isEqualTo("pro");
+        assertThat(ExecutionMode.from("fast").wireValue()).isEqualTo("fast");
+        assertThat(ExecutionMode.from("pro").wireValue()).isEqualTo("pro");
+        assertThat(ExecutionMode.from("workflow").wireValue()).isEqualTo("workflow");
+        assertThat(ExecutionMode.toStoredWire("pro")).isEqualTo("pro");
     }
 
     @Test
     void from_blankDefaultsToFast() {
         assertThat(ExecutionMode.from(null)).isEqualTo(ExecutionMode.FAST);
         assertThat(ExecutionMode.from("  ")).isEqualTo(ExecutionMode.FAST);
-        assertThat(ExecutionPreference.from(null)).isEqualTo(ExecutionPreference.FAST);
-        assertThat(ExecutionPreference.toStoredWire(null)).isNull();
-        assertThat(ExecutionPreference.toStoredWire("  ")).isNull();
+        assertThat(ExecutionMode.from(null)).isEqualTo(ExecutionMode.FAST);
+        assertThat(ExecutionMode.toStoredWire(null)).isNull();
+        assertThat(ExecutionMode.toStoredWire("  ")).isNull();
     }
 
     @Test
@@ -34,7 +34,7 @@ class ExecutionModeWireTest {
         assertThatThrownBy(() -> ExecutionMode.from("auto")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> ExecutionMode.from("plan-workflow")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> ExecutionMode.from("plan")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> ExecutionPreference.from("pipeline")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> ExecutionPreference.toStoredWire("plan-workflow")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ExecutionMode.from("pipeline")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ExecutionMode.toStoredWire("plan-workflow")).isInstanceOf(IllegalArgumentException.class);
     }
 }

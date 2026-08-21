@@ -119,7 +119,7 @@ def chat_sse_live(token: str, conv_id: str, query: str) -> SseCollector:
                 json={
                     "content": query,
                     "conversationId": conv_id,
-                    "executionPreference": "fast",
+                    "executionMode": "fast",
                     "writeHitlMode": "always",
                 },
                 stream=True,

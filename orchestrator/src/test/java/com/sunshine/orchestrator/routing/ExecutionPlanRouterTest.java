@@ -86,7 +86,7 @@ class ExecutionPlanRouterTest {
         String query = "差旅办法制度怎么说";
         when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
 
-        ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
+        ExecutionPlan plan = router.route(ctx(query, ExecutionMode.PRO)).block();
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
@@ -104,7 +104,7 @@ class ExecutionPlanRouterTest {
                 new ExecutionPlan(ExecutionMode.FAST, null,
                         Map.of("status", "pending"), "llm")));
 
-        ExecutionPlan plan = router.route(ctx("/finance-analysis 是否合规", ExecutionPreference.FAST)).block();
+        ExecutionPlan plan = router.route(ctx("/finance-analysis 是否合规", ExecutionMode.FAST)).block();
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
@@ -119,7 +119,7 @@ class ExecutionPlanRouterTest {
                 "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.SLASH_MENTION);
         when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(binding);
 
-        ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.PRO)).block();
+        ExecutionPlan plan = router.route(ctx(query, ExecutionMode.PRO)).block();
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
@@ -132,7 +132,7 @@ class ExecutionPlanRouterTest {
         String query = "有哪些待审批报销";
         when(skillBindingParser.parse(eq(query), any(), any())).thenReturn(SkillBindingOutcome.none(query));
 
-        ExecutionPlan plan = router.route(ctx(query, ExecutionPreference.WORKFLOW)).block();
+        ExecutionPlan plan = router.route(ctx(query, ExecutionMode.WORKFLOW)).block();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-list");
         assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
@@ -153,7 +153,7 @@ class ExecutionPlanRouterTest {
         assertThat(plan.params()).containsEntry("status", "draft");
     }
 
-    private static RoutingContext ctx(String message, ExecutionPreference preference) {
+    private static RoutingContext ctx(String message, ExecutionMode preference) {
         return new RoutingContext(message, null, preference, null, null);
     }
 }

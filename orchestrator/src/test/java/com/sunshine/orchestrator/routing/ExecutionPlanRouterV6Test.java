@@ -84,7 +84,7 @@ class ExecutionPlanRouterV6Test {
                         Map.of("status", "pending"), "llm:says-react")));
 
         ExecutionPlan plan = router.route(new RoutingContext(
-                "随便聊聊", null, ExecutionPreference.PRO, null, null)).block();
+                "随便聊聊", null, ExecutionMode.PRO, null, null)).block();
 
         assertThat(plan).isNotNull();
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
@@ -98,7 +98,7 @@ class ExecutionPlanRouterV6Test {
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm:no-workflow")));
 
         assertThatThrownBy(() -> router.route(new RoutingContext(
-                "完全无关的闲聊", null, ExecutionPreference.WORKFLOW, null, null)).block())
+                "完全无关的闲聊", null, ExecutionMode.WORKFLOW, null, null)).block())
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(OrchestratorErrorCode.WORKFLOW_TEMPLATE_NOT_FOUND);

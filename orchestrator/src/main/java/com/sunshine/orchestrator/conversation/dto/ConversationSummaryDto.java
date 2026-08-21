@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.conversation.dto;
 
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import lombok.Builder;
 import lombok.Data;
 
@@ -28,7 +28,7 @@ public class ConversationSummaryDto {
                 .title(conv.getTitle())
                 .createdAt(conv.getCreatedAt())
                 .updatedAt(conv.getUpdatedAt())
-                .executionPreference(ExecutionPreference.toStoredWire(conv.getExecutionPreference()))
+                .executionPreference(ExecutionMode.toStoredWire(conv.getExecutionPreference()))
                 .kbId(conv.getKbId())
                 .modelName(conv.getModelName())
                 .kind(conv.getKind())

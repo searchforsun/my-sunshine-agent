@@ -184,7 +184,7 @@ def tasks_item_count(step: dict | None) -> int:
 def run_react_taskboard(token: str, conv_id: str) -> dict:
     query = "帮我查待审批报销，并对有风险的单据逐条说明原因"
     print(f"\n[react-taskboard] SSE chat preference=react query={query}")
-    sse_raw = chat_sse(token, conv_id, query, executionPreference="fast")
+    sse_raw = chat_sse(token, conv_id, query, executionMode="fast")
     assistant = wait_assistant_completed(token, conv_id, 120)
     steps = merge_steps(sse_raw, assistant)
     tasks = latest_step(steps, "tasks")

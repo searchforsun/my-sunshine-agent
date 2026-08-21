@@ -18,7 +18,7 @@ import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +65,7 @@ public class ChatStreamContextFactory {
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
-        ExecutionPreference preference = ExecutionPreference.from(msg.resolveExecutionModeWire());
+        ExecutionMode preference = ExecutionMode.from(msg.resolveExecutionModeWire());
         String userContent = desensitizeClient.scrub(msg.getContent());
         boolean firstMessage = ConversationService.DEFAULT_TITLE.equals(conv.getTitle());
         conversationService.appendMessage(conv.getId(), "user",

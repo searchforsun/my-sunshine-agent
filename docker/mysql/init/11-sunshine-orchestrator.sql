@@ -18,7 +18,7 @@ CREATE TABLE chat_conversation (
     INDEX idx_user_tenant_updated (user_id, tenant_id, updated_at)
 );
 
--- 消息表（含 reasoning / steps / content_blocks / execution_mode / workflow_id / execution_plan_id / react_pause_checkpoint / execution_preference）
+-- 消息表（含 reasoning / steps / content_blocks / workflow_id / execution_plan_id / react_pause_checkpoint / execution_preference）
 CREATE TABLE chat_message (
     id               VARCHAR(64)  NOT NULL PRIMARY KEY,
     conversation_id  VARCHAR(64)  NOT NULL,
@@ -31,7 +31,6 @@ CREATE TABLE chat_message (
     usage_json       MEDIUMTEXT   NULL COMMENT '消息级 LLM usage + 上下文分组快照 JSON',
     status           VARCHAR(16)  NOT NULL DEFAULT 'completed',
     intent           VARCHAR(32)  NULL,
-    execution_mode   VARCHAR(16)  NULL,
     workflow_id      VARCHAR(64)  NULL,
     execution_plan_id VARCHAR(36) NULL,
     resume_count     INT          NOT NULL DEFAULT 0,

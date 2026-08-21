@@ -170,7 +170,7 @@ def chat_with_confirm(
             body = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": "fast",
+                "executionMode": "fast",
             }
             with requests.post(
                 f"{gw}/api/chat/stream",

@@ -213,7 +213,7 @@ def chat_sse(
             body = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": "fast",
+                "executionMode": "fast",
             }
             with requests.post(
                 f"{GATEWAY_URL}/api/chat/stream",

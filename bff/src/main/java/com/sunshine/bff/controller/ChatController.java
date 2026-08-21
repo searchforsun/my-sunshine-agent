@@ -33,9 +33,7 @@ public class ChatController {
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
 
-        String modeWire = request.getExecutionMode() != null && !request.getExecutionMode().isBlank()
-                ? request.getExecutionMode()
-                : request.getExecutionPreference();
+        String modeWire = request.getExecutionMode();
         log.info("[BFF] 用户 {} 发送消息 conv={} mode={} resume={}",
                 userId, request.getConversationId(), modeWire, request.getResumeMessageId());
 

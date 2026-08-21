@@ -29,19 +29,19 @@ public class ExecutionPlanRouter {
     }
 
     public Mono<ExecutionPlan> route(RoutingContext ctx) {
-        ExecutionPreference preference = ctx.preference() != null ? ctx.preference() : ExecutionPreference.FAST;
+        ExecutionMode preference = ctx.preference() != null ? ctx.preference() : ExecutionMode.FAST;
         RoutingContext routedCtx = routingContextForPinnedPreference(ctx, preference);
         return forcedExecutionRouter.resolve(routedCtx, preference, ctx.forcedWorkflowId())
-                .map(plan -> preference == ExecutionPreference.FAST
+                .map(plan -> preference == ExecutionMode.FAST
                         ? skillDiscoveryService.enrich(plan, routedCtx.userMessage())
                         : plan)
-                .map(plan -> skillDiscoveryService.filterForTrack(plan, preference == ExecutionPreference.WORKFLOW
+                .map(plan -> skillDiscoveryService.filterForTrack(plan, preference == ExecutionMode.WORKFLOW
                         ? ExecutionMode.WORKFLOW
                         : ExecutionMode.from(preference.wireValue())));
     }
 
     /** WORKFLOW 钉死：路由与执行均忽略 /skill、$agent，仅保留正文；保留 kind */
-    private RoutingContext routingContextForPinnedPreference(RoutingContext ctx, ExecutionPreference preference) {
+    private RoutingContext routingContextForPinnedPreference(RoutingContext ctx, ExecutionMode preference) {
         if (preference.allowsSkillBinding()) {
             return ctx;
         }

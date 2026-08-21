@@ -12,11 +12,8 @@ public class ChatRequest {
     /** 续传目标 assistant 消息 id，与 content 互斥 */
     private String resumeMessageId;
 
-    /** 执行模式（v6）：fast | pro | workflow；缺省回落 executionPreference */
+    /** 执行模式（v6 wire）：fast | pro | workflow */
     private String executionMode;
-
-    /** @deprecated 兼容旧 wire；优先 executionMode */
-    private String executionPreference;
 
     /** 强制 workflow 模式时可选指定 catalog id */
     private String workflowId;

@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.controller.stream;
 
 import com.sunshine.orchestrator.context.AssembledContext;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 
 /** 续跑前从 DB 组装的上下文 */
 public record ChatResumePreparation(
@@ -35,7 +35,7 @@ public record ChatResumePreparation(
                 false,
                 userId,
                 tenantId,
-                ExecutionPreference.FAST,
+                ExecutionMode.FAST,
                 null,
                 null,
                 kbId,

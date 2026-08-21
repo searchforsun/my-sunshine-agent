@@ -7,7 +7,7 @@ import { useAuthStore } from './authStore'
 import { normalizeSidebarSectionsLayout } from '../api/sidebarSectionsLayouts'
 import type { ChatMessage, MessageUsage } from '../api/chat'
 import type { ConversationMessage } from '../api/conversations'
-import type { ExecutionPreference } from '../api/executionModes'
+import type { ExecutionMode } from '../api/executionModes'
 import {
   listConversationsPage,
   createConversation,
@@ -40,7 +40,7 @@ export interface Conversation {
   createdAt: number
   updatedAt: number
   messages: ChatMessage[]
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
   kbId?: string | null
   modelName?: string | null
   kind?: string
@@ -578,7 +578,7 @@ export const useChatStore = defineStore('chat', () => {
     kind?: string
     workspaceId?: string
     checkoutPath?: string
-    executionPreference?: ExecutionPreference
+    executionPreference?: ExecutionMode
   }): Promise<string> {
     const kind = params?.kind ?? 'chat'
     // 点「新对话」：已有空白会话则直接定位，避免侧栏堆多个空会话。
@@ -758,7 +758,7 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
-  function updateExecutionPreferenceLocal(id: string, pref: ExecutionPreference) {
+  function updateExecutionPreferenceLocal(id: string, pref: ExecutionMode) {
     const conv = conversations.value.find(c => c.id === id)
     if (conv) conv.executionPreference = pref
   }
@@ -846,7 +846,7 @@ export const useChatStore = defineStore('chat', () => {
     await switchTo(id)
   }
 
-  async function ensureCurrent(params?: { executionPreference?: ExecutionPreference }): Promise<string> {
+  async function ensureCurrent(params?: { executionPreference?: ExecutionMode }): Promise<string> {
     await init()
     if (!isValidConversationId(currentId.value) || !conversations.value.some(c => c.id === currentId.value)) {
       return create(params)

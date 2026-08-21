@@ -4,19 +4,19 @@ import {
   allowsSkillMention,
   allowsWorkflowMention,
   EXECUTION_MODE_OPTIONS,
-  isExecutionPreference,
-  normalizeExecutionPreference,
+  isExecutionMode,
+  normalizeExecutionMode,
 } from './executionModes'
 
 describe('executionModes · fast/pro/workflow', () => {
   it('normalize 仅认新 wire，未知/旧值回退 fast', () => {
-    expect(normalizeExecutionPreference('plan-workflow')).toBe('fast')
-    expect(normalizeExecutionPreference('auto')).toBe('fast')
-    expect(normalizeExecutionPreference('react')).toBe('fast')
-    expect(normalizeExecutionPreference('fast')).toBe('fast')
-    expect(normalizeExecutionPreference('pro')).toBe('pro')
-    expect(normalizeExecutionPreference('workflow')).toBe('workflow')
-    expect(normalizeExecutionPreference(undefined)).toBe('fast')
+    expect(normalizeExecutionMode('plan-workflow')).toBe('fast')
+    expect(normalizeExecutionMode('auto')).toBe('fast')
+    expect(normalizeExecutionMode('react')).toBe('fast')
+    expect(normalizeExecutionMode('fast')).toBe('fast')
+    expect(normalizeExecutionMode('pro')).toBe('pro')
+    expect(normalizeExecutionMode('workflow')).toBe('workflow')
+    expect(normalizeExecutionMode(undefined)).toBe('fast')
   })
 
   it('mention 门控：fast/pro 开 skill+agent，仅 workflow 开 #', () => {
@@ -31,11 +31,11 @@ describe('executionModes · fast/pro/workflow', () => {
     expect(allowsSkillMention('workflow')).toBe(false)
   })
 
-  it('选项仅三项且 isExecutionPreference 拒旧值', () => {
+  it('选项仅三项且 isExecutionMode 拒旧值', () => {
     expect(EXECUTION_MODE_OPTIONS.map(o => o.value)).toEqual(['fast', 'pro', 'workflow'])
-    expect(isExecutionPreference('fast')).toBe(true)
-    expect(isExecutionPreference('auto')).toBe(false)
-    expect(isExecutionPreference('react')).toBe(false)
-    expect(isExecutionPreference('plan-workflow')).toBe(false)
+    expect(isExecutionMode('fast')).toBe(true)
+    expect(isExecutionMode('auto')).toBe(false)
+    expect(isExecutionMode('react')).toBe(false)
+    expect(isExecutionMode('plan-workflow')).toBe(false)
   })
 })

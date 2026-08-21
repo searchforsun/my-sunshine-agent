@@ -6,18 +6,18 @@ import { executionModeIcon } from '../../api/executionModeIcons'
 import {
   EXECUTION_MODE_OPTIONS,
   findExecutionModeOption,
-  type ExecutionPreference,
+  type ExecutionMode,
 } from '../../api/executionModes'
 
 const props = defineProps<{
-  modelValue: ExecutionPreference
+  modelValue: ExecutionMode
   disabled?: boolean
   /** compact：Chat 底栏；block：设置页等表单场景 */
   variant?: 'compact' | 'block'
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: ExecutionPreference]
+  'update:modelValue': [value: ExecutionMode]
 }>()
 
 const variant = computed(() => props.variant ?? 'compact')
@@ -29,7 +29,7 @@ const COMPACT_MENU_WIDTH = 304
 
 const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : COMPACT_MENU_WIDTH))
 
-function select(value: ExecutionPreference) {
+function select(value: ExecutionMode) {
   emit('update:modelValue', value)
   showMenu.value = false
 }

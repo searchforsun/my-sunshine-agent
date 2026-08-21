@@ -109,7 +109,7 @@ def chat_sse(
         raise RuntimeError("curl not found (required for SSE)")
     body: dict = {"content": query, "conversationId": conv_id}
     if execution_preference:
-        body["executionPreference"] = execution_preference
+        body["executionMode"] = execution_preference
     if workflow_id:
         body["workflowId"] = workflow_id
     payload = json.dumps(body, ensure_ascii=False)

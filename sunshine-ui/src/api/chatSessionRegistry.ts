@@ -3,10 +3,10 @@
  */
 import { reactive } from 'vue'
 import type { ChatMessage } from './chat'
-import type { ExecutionPreference } from './executionModes'
+import type { ExecutionMode } from './executionModes'
 
 export interface SendOptions {
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
   workflowId?: string | null
   skillId?: string
   kbId?: string | null

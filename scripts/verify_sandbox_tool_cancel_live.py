@@ -113,7 +113,7 @@ def main() -> int:
                 json={
                     "content": QUERY,
                     "conversationId": conv_id,
-                    "executionPreference": "fast",
+                    "executionMode": "fast",
                     "writeHitlMode": "always",
                 },
                 stream=True,

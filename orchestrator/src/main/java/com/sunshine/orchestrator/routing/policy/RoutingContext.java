@@ -2,14 +2,13 @@ package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
 import org.springframework.util.StringUtils;
 
 /** 路由上下文：preference 过渡承载用户钉死的 executionMode；kind 正交透传 */
 public record RoutingContext(
         String userMessage,
         String traceMessageId,
-        ExecutionPreference preference,
+        ExecutionMode preference,
         String forcedWorkflowId,
         String clientSkillId,
         AssembledContext memory,
@@ -19,13 +18,13 @@ public record RoutingContext(
         String kind) {
 
     public RoutingContext(String userMessage, String traceMessageId) {
-        this(userMessage, traceMessageId, ExecutionPreference.FAST, null, null, null, null, null);
+        this(userMessage, traceMessageId, ExecutionMode.FAST, null, null, null, null, null);
     }
 
     public RoutingContext(
             String userMessage,
             String traceMessageId,
-            ExecutionPreference preference,
+            ExecutionMode preference,
             String forcedWorkflowId,
             String clientSkillId) {
         this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, null, null, null);
@@ -34,7 +33,7 @@ public record RoutingContext(
     public RoutingContext(
             String userMessage,
             String traceMessageId,
-            ExecutionPreference preference,
+            ExecutionMode preference,
             String forcedWorkflowId,
             String clientSkillId,
             AssembledContext memory) {
@@ -44,7 +43,7 @@ public record RoutingContext(
     public RoutingContext(
             String userMessage,
             String traceMessageId,
-            ExecutionPreference preference,
+            ExecutionMode preference,
             String forcedWorkflowId,
             String clientSkillId,
             AssembledContext memory,
@@ -53,7 +52,7 @@ public record RoutingContext(
     }
 
     public static RoutingContext of(String userMessage) {
-        return new RoutingContext(userMessage, null, ExecutionPreference.FAST, null, null, null, null, null);
+        return new RoutingContext(userMessage, null, ExecutionMode.FAST, null, null, null, null, null);
     }
 
     public RoutingContext withLockedMode(ExecutionMode mode) {

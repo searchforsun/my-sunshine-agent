@@ -127,7 +127,7 @@ def chat_sse(token: str, conv_id: str, query: str, *, preference: str = "fast") 
     body: dict = {
         "content": query,
         "conversationId": conv_id,
-        "executionPreference": preference,
+        "executionMode": preference,
     }
     payload = json.dumps(body, ensure_ascii=False)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as f:
@@ -218,7 +218,7 @@ def chat_sse_live(
             body: dict[str, Any] = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": preference,
+                "executionMode": preference,
             }
             if write_hitl_mode:
                 body["writeHitlMode"] = write_hitl_mode

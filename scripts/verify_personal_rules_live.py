@@ -76,7 +76,7 @@ def chat_once(token: str, query: str, *, preference: str | None = None,
     conv_id = (conv.json().get("data") or conv.json()).get("id")
     body: dict = {"content": query, "conversationId": conv_id}
     if preference:
-        body["executionPreference"] = preference
+        body["executionMode"] = preference
     if workflow_id:
         body["workflowId"] = workflow_id
     if personal_rules:

@@ -65,7 +65,7 @@ import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
-import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useExecutionMode } from '../composables/useExecutionMode'
 import { useKbPreference } from '../composables/useKbPreference'
 import { useModelPreference } from '../composables/useModelPreference'
 import {
@@ -476,7 +476,7 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
   ),
 )
 const inputText = ref('')
-const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
+const { preference, setPreference, applyConversationPreference } = useExecutionMode()
 const { kbId, applyConversationKb } = useKbPreference()
 const { modelName, setModelName, applyConversationModel } = useModelPreference()
 const chatModelDefs = ref<ModelCatalogDefinition[]>([])

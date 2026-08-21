@@ -8,7 +8,7 @@ import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanRouter;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ForcedExecutionRouter;
 import com.sunshine.orchestrator.routing.RoutingCatalogFixtures;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -112,7 +112,7 @@ class TaskBoardRoutingTest {
         String query = "差旅办法制度怎么说";
 
         ExecutionPlan plan = router.route(new RoutingContext(
-                query, null, ExecutionPreference.PRO, null, null)).block();
+                query, null, ExecutionMode.PRO, null, null)).block();
 
         assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.reason()).isEqualTo("user:forced-pro");

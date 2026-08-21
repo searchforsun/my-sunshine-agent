@@ -54,9 +54,6 @@ public class ChatMessageEntity {
     @Column(length = 32)
     private String intent;
 
-    @Column(name = "execution_mode", length = 16)
-    private String executionMode;
-
     @Column(name = "workflow_id", length = 64)
     private String workflowId;
 

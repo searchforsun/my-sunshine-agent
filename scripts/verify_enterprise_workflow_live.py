@@ -168,7 +168,7 @@ def chat_sse_stream(
             body = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": execution_preference,
+                "executionMode": execution_preference,
             }
             with requests.post(
                 f"{GATEWAY_URL}/api/chat/stream",

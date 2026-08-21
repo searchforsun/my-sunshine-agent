@@ -1,5 +1,5 @@
 import type { ProcessingStep } from './processingSteps'
-import type { ExecutionPreference } from './executionModes'
+import type { ExecutionMode } from './executionModes'
 import type { HitlConfirmationPayload } from './hitlSteps'
 import type { ContentBlock } from './contentInterleave'
 
@@ -21,7 +21,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   /** user 消息发送时的 executionPreference */
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
   /** 模型推理过程（SSE type:reasoning，不落库） */
   reasoning?: string
   /** 后端处理流水线步骤（SSE type:step） */

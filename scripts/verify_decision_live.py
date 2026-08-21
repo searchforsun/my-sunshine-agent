@@ -207,7 +207,7 @@ def chat_sse_live(
         try:
             body: dict[str, Any] = {
                 "conversationId": conv_id,
-                "executionPreference": preference,
+                "executionMode": preference,
             }
             if resume_message_id:
                 body["resumeMessageId"] = resume_message_id

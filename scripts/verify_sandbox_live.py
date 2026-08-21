@@ -455,7 +455,7 @@ def chat_sse(
             body: dict[str, Any] = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": execution_preference,
+                "executionMode": execution_preference,
             }
             if write_hitl_mode:
                 body["writeHitlMode"] = write_hitl_mode

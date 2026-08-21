@@ -1,5 +1,5 @@
 import type { SkillCatalogIndexEntry } from '../api/skills'
-import type { ExecutionPreference } from '../api/executionModes'
+import type { ExecutionMode } from '../api/executionModes'
 import { allowsSkillMention } from '../api/executionModes'
 
 const AT_TOKEN = /\/([\w\u4e00-\u9fff-]+)/g
@@ -55,7 +55,7 @@ export function segmentSkillMentions(
 export function segmentSkillMentionsForMessage(
   content: string,
   catalog: SkillCatalogIndexEntry[],
-  executionPreference?: ExecutionPreference,
+  executionPreference?: ExecutionMode,
 ): SkillMentionSegment[] {
   const pref = executionPreference ?? 'fast'
   if (!allowsSkillMention(pref)) {
@@ -79,7 +79,7 @@ export interface SkillBindingForSend {
 export function resolveSkillBindingForSend(
   content: string,
   catalog: SkillCatalogIndexEntry[],
-  executionPreference?: ExecutionPreference,
+  executionPreference?: ExecutionMode,
 ): SkillBindingForSend {
   const pref = executionPreference ?? 'fast'
   if (!allowsSkillMention(pref)) {
