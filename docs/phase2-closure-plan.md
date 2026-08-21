@@ -1,6 +1,6 @@
 # 阶段二收尾完善方案
 
-> **状态**：设计已锁定 → 详见 **[superpowers/specs/2026-06-20-phase2-closure-design.md](./superpowers/specs/2026-06-20-phase2-closure-design.md)**  
+> **状态**：设计已锁定 → 详见 **[superpowers/specs/2026-06-20-phase2-closure-design.md](superpowers/specs/archive/2026-06-20-phase2-closure-design.md)**  
 > **实施计划**（已就绪）：[superpowers/plans/2026-06-20-phase2-closure.md](./superpowers/plans/2026-06-20-phase2-closure.md)  
 > **周期**：3–4 周 · **环境**：ecs4c16g
 
@@ -23,13 +23,13 @@
 
 | 任务 | 优先级 | 要点 |
 |------|:------:|------|
-| [2.10](./superpowers/specs/2026-06-20-phase2-closure-design.md#5-210-live-验收) | P0 | `--suite all` ecs4c16g 全绿 |
-| [2.11](./superpowers/specs/2026-06-20-phase2-closure-design.md#6-211-legacy-清理--rag-统一) | P0 | Legacy 删 + Rag 统一 |
-| [2.12](./superpowers/specs/2026-06-20-phase2-closure-design.md#4-212-rag-系统性评测重点) | P0 | rebuild API + 语料 + eval |
-| [2.13](./superpowers/specs/2026-06-20-phase2-closure-design.md#7-213-审计-tool-摘要) | P1 | audit `toolNames` |
-| [2.14](./superpowers/specs/2026-06-20-phase2-closure-design.md#8-214-规则硬路由) | P1 | `RuleBasedRouter` |
-| [2.15](./superpowers/specs/2026-06-20-phase2-closure-design.md#9-215-catalog-白名单校验) | P2 | 启动 ERROR 校验 |
-| [2.16](./superpowers/specs/2026-06-20-phase2-closure-design.md#10-216-文档) | P2 | CLAUDE / rag README |
+| [2.10](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#5-210-live-验收) | P0 | `--suite all` ecs4c16g 全绿 |
+| [2.11](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#6-211-legacy-清理--rag-统一) | P0 | Legacy 删 + Rag 统一 |
+| [2.12](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#4-212-rag-系统性评测重点) | P0 | rebuild API + 语料 + eval |
+| [2.13](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#7-213-审计-tool-摘要) | P1 | audit `toolNames` |
+| [2.14](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#8-214-规则硬路由) | P1 | `RuleBasedRouter` |
+| [2.15](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#9-215-catalog-白名单校验) | P2 | 启动 ERROR 校验 |
+| [2.16](superpowers/specs/archive/2026-06-20-phase2-closure-design.md#10-216-文档) | P2 | CLAUDE / rag README |
 
 ---
 

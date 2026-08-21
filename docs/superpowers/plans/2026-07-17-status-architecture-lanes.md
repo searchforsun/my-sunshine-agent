@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vue3/TS · Naive UI（仅刷新按钮等）· Nacos Gateway YAML · `scripts/start.py` · vitest
 
-**Spec:** [2026-07-17-status-architecture-lanes-design.md](../specs/2026-07-17-status-architecture-lanes-design.md)
+**Spec:** [2026-07-17-status-architecture-lanes-design.md](../specs/archive/2026-07-17-status-architecture-lanes-design.md)
 
 ---
 

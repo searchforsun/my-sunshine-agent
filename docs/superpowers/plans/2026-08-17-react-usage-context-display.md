@@ -1336,7 +1336,7 @@ Expected: 全部 ✅。
 
 - [ ] **Step 4: 文档状态更新**
 
-spec 状态行改为 `✅ 已实现（待前端人工验收）`；`CLAUDE.md` 进度行追加「**Usage 状态栏 ✅**（轮次/输入输出/ctx 分组；[spec](docs/superpowers/specs/2026-08-17-react-usage-context-display-design.md)）」。
+spec 状态行改为 `✅ 已实现（待前端人工验收）`；`CLAUDE.md` 进度行追加「**Usage 状态栏 ✅**（轮次/输入输出/ctx 分组；[spec](../specs/2026-08-17-react-usage-context-display-design.md)）」。
 
 - [ ] **Step 5: Commit**
 

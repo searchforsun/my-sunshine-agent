@@ -3,7 +3,7 @@
 > **状态**：实施中（主体已落地，2026-08-05 接通 A2A 外部执行分派链路；术语清理完成：`sync_enterprise_agents.py` 重命名 + prompt-manager 种子 peer/expert 退役 ID 删除；遗留：X5 INPUT_REQUIRED 续传、subagent 卡 `metadata.source` badge、`$` 绑定租户校验）
 > **日期**：2026-07-29（修订版）  
 > **编号**：阶段四增量（统一智能体定义 + A2A 外部接入 + spawn_subagent 多智能体协作）  
-> **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作（原设计）](./2026-07-07-expert-consultation-design.md) · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)  
+> **前置**：[4.7.6 spawn_subagent](archive/2026-07-18-react-spawn-subagent-design.md) · [多专家协作（原设计）](archive/2026-07-07-expert-consultation-design.md) · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)  
 > **一句话**：将「专家」统一为「智能体」概念，内部走 `AgentRuntime.run` 统一内核、外部走 A2A 接入；多智能体协作统一为 **spawn_subagent(expertId) 中心化编排**（主 Agent 有全局视角，可并行 spawn、综合结论），替代 peer-collab 的 Hub 固定轮次和 Agent Team 的去中心化委派；同步扩展智能体定义模型（租户/知识库/权限/数据范围）。  
 > **修订理由**：Agent Team 去中心化方案引入 10+ 新组件（TeamOrchestrator/TeamState/HandoffEnvelope/delegate/RosterManager 等），但外部智能体（A2A fire-and-forget 语义）无法参与 Team 的 delegate/TeamState/Handoff 机制；路由层无法在 t=0 可靠判断「是否需要团队协作」；spawn_subagent(expertId) 已覆盖同等协作能力且组件零新增、主 Agent 全局视角、支持并行、无死锁风险。
 

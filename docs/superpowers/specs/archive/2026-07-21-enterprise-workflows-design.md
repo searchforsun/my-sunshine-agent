@@ -3,7 +3,7 @@
 > **状态**：✅ 已实现（Live sync + 验收脚本；2026-07-21）  
 > **范围**：深化现有 8 条 workflow 标杆 + 新建 3 条企业读写流程；Live 同步；验收脚本对齐 corpus-50  
 > **决策**：方案 **C（深化+新建）** · 写路径 **C（读写均开，HITL）** · 实现路线 **方案 1（增量，不改旧 id）**  
-> **实现计划**：[plans/2026-07-21-enterprise-workflows.md](../plans/2026-07-21-enterprise-workflows.md)  
+> **实现计划**：[plans/2026-07-21-enterprise-workflows.md](../../plans/2026-07-21-enterprise-workflows.md)  
 > **关联**：[corpus50-platform-adapt](./2026-07-21-corpus50-platform-adapt-design.md) · [workflow-studio](./2026-06-25-workflow-studio-design.md) · [tool-integration HITL](./2026-07-09-tool-integration-design.md) · Skills SSOT `docs/skills/`
 
 ---

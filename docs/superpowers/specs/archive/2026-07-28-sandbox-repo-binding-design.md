@@ -2,7 +2,7 @@
 
 > **阶段**：4.5 沙箱 · **状态**：**已被 [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) 吸收**（2026-07-28）——粒度从「会话级」升级为「工作区级」，绑定从可选增强变为工作区创建强制前置；本文保留 T0（egress per-session）与 T1（用户级 Git 令牌）作为**粒度无关的基础设施**继续有效，T2–T4 由新设计 W2/W6 取代
 > **触发**：对话级工作区目前只有「空目录 + Skill 只读挂载」一档；需支持**绑定 Git 项目**——演进为 Codex 式智能体工作区后，绑定是工作区的一等属性
-> **关联**：索引 [docs/sandbox/README.md](../../sandbox/README.md) · 基座 [skills-docker-sandbox-design](./2026-07-15-skills-docker-sandbox-design.md) · 用户级配置范式 [user-default-write-hitl-design](./2026-07-16-user-default-write-hitl-design.md) · 出网 [EgressProxyManager](../../../sandbox-service/src/main/java/com/sunshine/sandbox/docker/EgressProxyManager.java) · **粒度升级** [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md)
+> **关联**：索引 [docs/sandbox/README.md](../../../sandbox/README.md) · 基座 [skills-docker-sandbox-design](./2026-07-15-skills-docker-sandbox-design.md) · 用户级配置范式 [user-default-write-hitl-design](./2026-07-16-user-default-write-hitl-design.md) · 出网 [EgressProxyManager](../../../sandbox-service/src/main/java/com/sunshine/sandbox/docker/EgressProxyManager.java) · **粒度升级** [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md)
 
 ---
 

@@ -17,7 +17,7 @@
 > **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 kind 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
 > **v3–v7**：T0 双块 / 压缩点 / 引用化 / Near 场景差异 / `sunshine_session_search` 撞名区分等（正文除 **T0 作废（v14）** 外仍有效，启用面以 v8 §2.2 为准）
 > **定位**：为 `kind=task` 编码会话建立区别于 chat 的上下文治理体系——对齐 Cursor Dynamic Context Discovery 与 KV Cache 经济学；压缩主目标为**续跑状态保真**（§2.0）；「项目规范」已先行落地 ✅；**执行模式轴**见 routing v6（与 `kind` 正交）
-> **关联**：[unified-context-compression-design](./2026-07-31-unified-context-compression-design.md)（五层基线 ✅ / §4.5 方案 A = run 内 SSOT；§2.1 状态保真；§5.5 压缩点仍为设计稿）· [unified-routing v6](./2026-07-29-unified-routing-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板/Policy；一期主挂 chat，与本文 task 编码闸门正交）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（管理页 chat/task 分栏 §6；默认工具集按 kind）· [task-workspace-codex](./archive/2026-07-28-task-workspace-codex-design.md) · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内正交能力见五层 §4.5）
+> **关联**：[unified-context-compression-design](./2026-07-31-unified-context-compression-design.md)（五层基线 ✅ / §4.5 方案 A = run 内 SSOT；§2.1 状态保真；§5.5 压缩点仍为设计稿）· [unified-routing v6](./2026-07-29-unified-routing-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板/Policy；一期主挂 chat，与本文 task 编码闸门正交）· [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md)（管理页 chat/task 分栏 §6；默认工具集按 kind）· [task-workspace-codex](./archive/2026-07-28-task-workspace-codex-design.md) · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内正交能力见五层 §4.5）
 
 ---
 
@@ -435,7 +435,7 @@ task_progress（JSON · v5 引用化 · v10 状态保真）：
 
 ### 6.4 task 过程原文恢复：`session_search`（v4 新增 · v5 扩展双范围 · v7 与 AS 原生撞名区分 · **v14 收缩 → v15 重启**）
 
-> **v15 重启（2026-08-18 · 联合 [unified-context-compression §7.4.4 v26](../2026-07-31-unified-context-compression-design.md)）**：v14 延后的 process 层与 workspace scope 重新启用——
+> **v15 重启（2026-08-18 · 联合 [unified-context-compression §7.4.4 v26](2026-07-31-unified-context-compression-design.md)）**：v14 延后的 process 层与 workspace scope 重新启用——
 > - **process 层**（v15 启用）：工具调用结果摘要（`ProcessingStep.result` 截断 200 chars + refs）入向量库；`sunshine_chat_history` 加 `layer=process` 字段；`session_search` 召回面扩展
 > - **scope=workspace**（v15 二期启用）：跨工作区 task 会话工具摘要检索；与 KV Memory `todo` 互补（KV 存结构化事实，`session_search workspace` 存原文摘要）
 > - 详见五层 spec §7.4.4 / §13.4。

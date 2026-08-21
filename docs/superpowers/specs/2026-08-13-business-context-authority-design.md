@@ -6,7 +6,7 @@
 > **v4（2026-08-18）**：**场景来源双轨**（§2.1c/§4.4/§5.5/§9）——`biz_scene_definition` 增 `source` 列（`manual` 预定义 / `auto` 大模型自动发现）；`auto` 场景初始 `pending_review`，**不可**用于 Policy/任务板装载，仅嵌入检索过渡使用；运营审核后升 `active` 方可正式启用。前端 Lab 拆双 Tab：预定义 / 自动发现。**防污染机制**：`auto` 场景 TTL 自动清理 + 同 tenant 上限 + 相似度去重。  
 > **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`；embedding 场景回退 + 场景双轨方案已并入）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
-> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
+> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
 
 ---
 
@@ -56,7 +56,7 @@
 | Skill | `skill_definition.biz_scene`（可空 VARCHAR） | `19-sunshine-resource.sql` |
 | 子 Agent | `agent_definition.biz_scene`（可空 VARCHAR） | 同上 |
 
-`biz_scene` 取值必须落在 **业务场景 Lab** 闭集码表（与 `biz_scene_policy.biz_scene` 同码空间；见 [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) §3）；空 = 该资源不触发结构化业务记忆。码表**不**挂在「提示词 / react-prompt」下。
+`biz_scene` 取值必须落在 **业务场景 Lab** 闭集码表（与 `biz_scene_policy.biz_scene` 同码空间；见 [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md) §3）；空 = 该资源不触发结构化业务记忆。码表**不**挂在「提示词 / react-prompt」下。
 
 **解析算法（唯一）**：
 
@@ -673,7 +673,7 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 | routing v6 | 产品 `kind` / `executionMode`；本层 `biz_scene` 业务轴 |
 | request_decision | 仅业务工具确认等既有 HITL；**不**用于选场景/选任务板焦点 |
 | Skill / Agent Catalog | `biz_scene` **引用**入口；码表 SSOT = 业务场景 Lab；与路由召回同链路 |
-| [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) | Lab UI/DDL、资源 `kind` 过滤、工具集 chat/task、退役 react-prompt |
+| [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md) | Lab UI/DDL、资源 `kind` 过滤、工具集 chat/task、退役 react-prompt |
 | [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 会话级执行态 + KV Memory `todo` 沉淀；与 `business_task` **边界隔离**、不双写；装配时序对齐 §2.2（P3′） |
 
 ---

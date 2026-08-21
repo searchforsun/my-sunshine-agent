@@ -8,7 +8,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot Web · sunshine-tool-sdk · Nacos · Vue3/Naive UI · MySQL init · Python 运维脚本
 
-**设计 SSOT:** [2026-07-21-corpus50-platform-adapt-design.md](../specs/2026-07-21-corpus50-platform-adapt-design.md)
+**设计 SSOT:** [2026-07-21-corpus50-platform-adapt-design.md](../specs/archive/2026-07-21-corpus50-platform-adapt-design.md)
 
 **硬约束:** §0.1 — 删除旧工具名/全局 MOCK/旧验收句；禁止 alias、双 ID、无 user 回退全局数据。
 

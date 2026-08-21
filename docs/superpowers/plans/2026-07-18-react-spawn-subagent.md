@@ -8,7 +8,7 @@
 
 **Tech Stack:** AgentScope-Java Hook/Toolkit · Spring · Vue3/Naive UI · Nacos `docs/nacos/sunshine-orchestrator.yaml` · Live `scripts/verify_spawn_subagent_live.py`
 
-**Spec:** [2026-07-18-react-spawn-subagent-design.md](../specs/2026-07-18-react-spawn-subagent-design.md)
+**Spec:** [2026-07-18-react-spawn-subagent-design.md](../specs/archive/2026-07-18-react-spawn-subagent-design.md)
 
 ---
 

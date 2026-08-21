@@ -1,8 +1,8 @@
 # Agent Team 去中心化协作 - 技术设计
 
-> **⚠️ 已被取代**：本文档内容已合并入 [`2026-07-29-multi-agent-unified-design.md`](./2026-07-29-multi-agent-unified-design.md)。保留仅供历史追溯，请以统一设计文档为准。
+> **⚠️ 已被取代**：本文档内容已合并入 [`2026-07-29-multi-agent-unified-design.md`](../2026-07-29-multi-agent-unified-design.md)。保留仅供历史追溯，请以统一设计文档为准。
 
-> **状态**：设计稿（待评审）
+> **状态**：**→ 已归档** · Agent Team 去中心化方案**被否决**（理由见 multi-agent-unified §1.3；外部 A2A 无法参与 delegate/TeamState/Handoff）
 > **日期**：2026-07-28
 > **编号**：阶段四增量（重构 peer-collab -> agent-team）
 > **前置**：[多专家协作](./2026-07-07-expert-consultation-design.md) · [4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [专家作为子 Agent + Handoff](./2026-07-24-expert-as-subagent-design.md)

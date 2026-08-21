@@ -319,4 +319,4 @@ agent:
 | 文档 | 关联 |
 |------|------|
 | [peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) | 第五模式基线（本设计 supersede 仲裁与 Timeline §） |
-| [routing-golden-set.md](../../routing/routing-golden-set.md) | §K Expert `$`；§E L1 句式 peer |
+| [routing-golden-set.md](../../../routing/routing-golden-set.md) | §K Expert `$`；§E L1 句式 peer |

@@ -2,7 +2,7 @@
 
 # 沙箱写操作 HITL 跳过模式 · Implementation Plan
 
-> Spec: [2026-07-16-sandbox-write-hitl-skip-design.md](../../specs/2026-07-16-sandbox-write-hitl-skip-design.md)
+> Spec: [2026-07-16-sandbox-write-hitl-skip-design.md](../../specs/archive/2026-07-16-sandbox-write-hitl-skip-design.md)
 
 **Goal:** Chat 工作区三档写确认模式（never/always/smart），本会话生效。
 

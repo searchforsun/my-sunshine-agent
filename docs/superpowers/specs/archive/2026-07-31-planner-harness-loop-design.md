@@ -6,13 +6,13 @@
 > **日期**：2026-07-31
 > **编号**：阶段四 P1 增量（Planner-Worker 架构：Chat 3-agent 分工 · Task Cursor 模式）· **归档**
 > **v8（2026-08-02）**：三态分解（FULL/HIERARCHICAL/INCREMENTAL）——采纳「分层增量规划 + 触发式重规划」：阶段粗规划进 G 域稳定层（强模型 1 次/任务），到达阶段再细拆 task DAG（轻模型 `plan-phase`，N 次/任务）；重规划 5 类触发 + 4 条边界规则（局部修正/保留成果/上下文隔离/收敛控制）；H1 拆成「阶段骨架 Tier 1 + 阶段细节 Tier 2」。
-> **v9（2026-08-05 · 简化决议覆盖，见 [2026-08-05-planner-executor-rebuild-design.md §0.1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05)**：
+> **v9（2026-08-05 · 简化决议覆盖，见 [2026-08-05-planner-executor-rebuild-design.md §0.1](../2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05)**：
 >
 > | v8 章节 | 简化决议 | 说明 |
 > |---------|---------|------|
 > | §0 术语「Evaluator / Chat 3-agent」 | **S1：砍独立 Evaluator** | Chat/Task 统一 Planner 自判，无 Maker-Checker |
-> | §0.2、§4.1（三态分解） | **S5 v4：取消分解模式枚举** | 无 full/hierarchical/incremental；单一 Plan→Execute→Assess 循环；信息不足先调研再重规划；细则在 Worker（见 [rebuild §0.1 S5 / §3.3](./2026-08-05-planner-executor-rebuild-design.md)） |
-> | §2.3.4 / §2.4（Tier 0/1/2 分层 + 压缩点） | **S3：去形式化分层与压缩点基建（仅 H1）** | run 内压缩用 AgentScope `CompactionMiddleware`；跨轮 L1 压缩用既有 `L1Compressor` + 压缩点模式（[五层 spec §5.5](./2026-07-31-unified-context-compression-design.md)）保持不动；H1 仅注入块 + rounds 超阈值截断摘要 |
+> | §0.2、§4.1（三态分解） | **S5 v4：取消分解模式枚举** | 无 full/hierarchical/incremental；单一 Plan→Execute→Assess 循环；信息不足先调研再重规划；细则在 Worker（见 [rebuild §0.1 S5 / §3.3](../2026-08-05-planner-executor-rebuild-design.md)） |
+> | §2.3.4 / §2.4（Tier 0/1/2 分层 + 压缩点） | **S3：去形式化分层与压缩点基建（仅 H1）** | run 内压缩用 AgentScope `CompactionMiddleware`；跨轮 L1 压缩用既有 `L1Compressor` + 压缩点模式（[五层 spec §5.5](../2026-07-31-unified-context-compression-design.md)）保持不动；H1 仅注入块 + rounds 超阈值截断摘要 |
 > | §2.5.1 / §8.1（PlanSharedMemoryStore P2） | **S4：砍 P2 共享内存** | WorkerContextFactory 从 H1 rounds 按 taskId/dependsOn 读已完成 handoff |
 > | §5.1（Redis+MySQL 双写 + C1-C4 checkpoint） | **S2：Redis 单写** | 删 MysqlWriter/Entity/Repository/DDL/version 重放；每轮结束 save 一次 |
 > | §5.3.2/§5.3.3（RecoveryService / Orphan / 幂等重放） | **S2：恢复简化** | 恢复 = Redis load + IN_PROGRESS→FAIL→replan；复用 AgentScope StateStore 续跑 |
@@ -21,14 +21,14 @@
 >
 > **v9 生效范围**：本文档 §0~§17 的细节描述与上表冲突处以**简化决议为准**；未列章节保持 v8 语义。
 >
-> **v10（2026-08-07 · 上下文契约定稿，对齐 [rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md)）**：① `forWorker()` **不注入 L2 用户画像**（§2.4/§4.3 已改，只含任务契约 + 定向上游 + P0/W0 只读子集）；② H1 注入块内部两级（§2.3.4 v11 注记：当前计划摘要 + 近 `near-keep-rounds` 轮原文，超阈值折叠为摘要，**无 `last_folded_round` 压缩点**）；③ Planner 的 L1 组装与普通 ReAct MAIN 完全一致（chat 含 L3 召回）。
+> **v10（2026-08-07 · 上下文契约定稿，对齐 [rebuild §3.1.1](../2026-08-05-planner-executor-rebuild-design.md)）**：① `forWorker()` **不注入 L2 用户画像**（§2.4/§4.3 已改，只含任务契约 + 定向上游 + P0/W0 只读子集）；② H1 注入块内部两级（§2.3.4 v11 注记：当前计划摘要 + 近 `near-keep-rounds` 轮原文，超阈值折叠为摘要，**无 `last_folded_round` 压缩点**）；③ Planner 的 L1 组装与普通 ReAct MAIN 完全一致（chat 含 L3 召回）。
 > **v11（2026-08-10 · 对齐 rebuild S5 v4）**：正文 §0.2 / §4.1 / 术语表中 full|hierarchical|incremental、`completeness`、阶段细拆协议、`planner.phase` **一律作废**；以 rebuild §3.2/§3.3 单一循环为准。未改章节仅作历史详设参考。
 > **前置**：
->   - [统一资源路由 v3](./2026-07-29-unified-routing-design.md) — `RoutingResult.planMode` + `RoutingResult.scene`（用户选择） + `ResourceDispatcher` 分发
->   - [ReAct 目标对齐与失败预算 4.7.7](./2026-07-27-react-goal-alignment-design.md) — `GoalAlignmentMiddleware` + `FailureBudgetMiddleware` + `AgentRunState`
+>   - [统一资源路由 v3](../2026-07-29-unified-routing-design.md) — `RoutingResult.planMode` + `RoutingResult.scene`（用户选择） + `ResourceDispatcher` 分发
+>   - [ReAct 目标对齐与失败预算 4.7.7](../2026-07-27-react-goal-alignment-design.md) — `GoalAlignmentMiddleware` + `FailureBudgetMiddleware` + `AgentRunState`
 >   - [ReAct 目标对齐 4.7.7](../2026-07-27-react-goal-alignment-design.md) · [archive/4.7.8](./2026-07-28-harness-loop-enhancement-design.md)（已归档，run 内见五层 §4.5）
->   - [Plan-Workflow 重试降级](../routing/plan-workflow-retry-degradation.md) — `PlanValidator` / `NodeRetryExecutor` / Plan 终态
->   - [多 Agent 统一设计](./2026-07-29-multi-agent-unified-design.md) — spawn_subagent 中心化编排 + `AgentRunRequest`
+>   - [Plan-Workflow 重试降级](../../../routing/plan-workflow-retry-degradation.md) — `PlanValidator` / `NodeRetryExecutor` / Plan 终态
+>   - [多 Agent 统一设计](../2026-07-29-multi-agent-unified-design.md) — spawn_subagent 中心化编排 + `AgentRunRequest`
 > **关联**：[ReAct TaskBoard 4.7.5](./2026-06-24-react-taskboard-design.md) · [ReAct Spawn Subagent 4.7.6](./2026-07-18-react-spawn-subagent-design.md) · [Cursor Agent Swarm](https://cursor.com/blog/agent-swarm-model-economics) · [Cursor Scaling Agents](https://cursor.com/blog/scaling-agents)
 > **一句话**：用户选择 `scene`（chat/task）贯穿全链路。L3 路由输出 `planMode=harness` → PlannerHarnessExecutor。Planner 是 ReAct 主 Agent（全量上下文 L1+L2+H1），Worker 是其**工具调用**（`forWorker()` 丰富上下文），Worker 内部可 spawn 真正隔离的**子 Agent**（`forSubAgent=empty()`）。**v9 S1**：Chat/Task 统一 Planner 自判（无独立 Evaluator）。**v11 / rebuild S5 v4**：**无**分解模式枚举，单一边规划边执行循环。
 
@@ -127,7 +127,7 @@ Planner 被调用（首次，PlanNotebook 为空）
 | **HIERARCHICAL** | 阶段粗规划（`completeness=phase-closed`）：3~5 个阶段 + 依赖 + 全局约束 | **复杂任务默认**（绝大多数任务信息不完备，无法一次全拆但可定阶段） | 阶段骨架只依赖原始需求（成功率近 100%）→ 到达当前阶段时再基于前序真实产出细拆 task 列表（§4.1.1） |
 | ~~INCREMENTAL~~ | ~~仅第一步（`completeness=open`）~~ | **v9 S5 删除**：完全开放/探索性任务（未知根因排查、陌生领域调研）走既有 ReAct | ReAct 已含 spawn/taskboard/沙箱，能力面覆盖；不进 harness |
 
-**模型成本分层（对齐 [phase5 §5.3](./phase5-operation-openness-design.md)）**：HIERARCHICAL 下全局粗规划 `call_scene=plan`（强模型，1 次/任务，保质量）；阶段细规划 `call_scene=plan-phase`（轻量模型，N 次/任务，控成本）。同一 `HarnessPlanner` 组件，不新增角色。
+**模型成本分层（对齐 [phase5 §5.3](../phase5-operation-openness-design.md)）**：HIERARCHICAL 下全局粗规划 `call_scene=plan`（强模型，1 次/任务，保质量）；阶段细规划 `call_scene=plan-phase`（轻量模型，N 次/任务，控成本）。同一 `HarnessPlanner` 组件，不新增角色。
 
 ---
 
@@ -412,7 +412,7 @@ H1: renderForPlanner() — 原始目标 + 已完成轮次摘要 + 当前进度
 | H1 压缩 | 无 | Near/Mid/Far 窗口：Mid 结构摘要（仅 summary），Far LLM 合并 |
 | Worker 内部 | 无 | Worker 自己的 L1 scratchpad，**不进入 Planner 上下文** |
 
-> **v6 注记（prefix 稳定性）**：Worker handoff 在 Planner L1 中**天然处于 tail 位置**（`assistant(tool_call) → observe(handoff)` 始终 append 在消息末尾，C2 友好）。**禁止**在 L1 压缩时把旧 handoff 挪入中段或重排——L1 压缩点前进（对齐 [五层 spec §5.5](./2026-07-31-unified-context-compression-design.md)）应把旧 handoff 折叠进 Far 摘要，而非重排 Near/Mid。
+> **v6 注记（prefix 稳定性）**：Worker handoff 在 Planner L1 中**天然处于 tail 位置**（`assistant(tool_call) → observe(handoff)` 始终 append 在消息末尾，C2 友好）。**禁止**在 L1 压缩时把旧 handoff 挪入中段或重排——L1 压缩点前进（对齐 [五层 spec §5.5](../2026-07-31-unified-context-compression-design.md)）应把旧 handoff 折叠进 Far 摘要，而非重排 Near/Mid。
 
 #### 2.3.3 Worker 记忆隔离
 
@@ -440,11 +440,11 @@ H1 自身的压缩策略（与 `2026-07-31-unified-context-compression-design.md
 
 H1 压缩与 Planner L1 压缩**独立触发**。L1 压缩看 token 预算，H1 压缩看 round 数量。两者无耦合。
 
-> **v6 注记（压缩点模式）**：H1 的 Near/Mid/Far 为**固定轮数窗口**（3/6），每次 Mid 截断都会改变 H1 块字节 → 破坏 Planner Tier 2 prefix。对齐 [五层 spec §5.5](./2026-07-31-unified-context-compression-design.md) 压缩点模式：H1 引入**压缩点**（`last_folded_round`），Near = 压缩点之后的轮次原文，Mid/Far = 压缩点之前（结构截断 + LLM 合并），触发压缩时压缩点前移一次重建。由于 H1 位于 Planner 上下文 **Tier 2 尾部**（§2.4），其变化只 miss 尾部小块，不影响 Tier 0/1。
+> **v6 注记（压缩点模式）**：H1 的 Near/Mid/Far 为**固定轮数窗口**（3/6），每次 Mid 截断都会改变 H1 块字节 → 破坏 Planner Tier 2 prefix。对齐 [五层 spec §5.5](../2026-07-31-unified-context-compression-design.md) 压缩点模式：H1 引入**压缩点**（`last_folded_round`），Near = 压缩点之后的轮次原文，Mid/Far = 压缩点之前（结构截断 + LLM 合并），触发压缩时压缩点前移一次重建。由于 H1 位于 Planner 上下文 **Tier 2 尾部**（§2.4），其变化只 miss 尾部小块，不影响 Tier 0/1。
 
 > **v8 注记（H1 拆分：骨架与细节分层）**：HIERARCHICAL 模式（§0.2/§4.1.1）下 H1 **拆成两块**——**阶段骨架**（3~5 阶段 + 依赖 + 全局约束）只在阶段切换时变 → **Tier 1 幂等 upsert**（真变才失效一次，字节稳定跨阶段可复用）；**当前阶段 task 细节 + handoff 摘要**每轮追加 → **Tier 2 尾部**（变化只 miss 尾部小块）。比「H1 整体沉 Tier 2 尾部」更优：阶段骨架稳定时上移 Tier 1，跨阶段前缀复用更好。FULL/INCREMENTAL 模式无阶段骨架，H1 仍整体在 Tier 2 尾部。
 >
-> **v11 注记（2026-08-07 · 本表被 [rebuild S3](./2026-08-05-planner-executor-rebuild-design.md) 作废）**：上表 Near/Mid/Far 窗口 + v6 `last_folded_round` 压缩点**均不落地**。H1 现行落地（rebuild §3.1.1 定稿）：注入块内部**两级**——阶段骨架 + 近 `near-keep-rounds`（默认 6）轮原文逐轮追加，超阈值最老轮次 LLM 折叠为摘要；无 `last_folded_round`、无独立 Near/Mid/Far 窗口，`near-keep-rounds` 与 L1 压缩窗口（chat 4+4 / task 2+2）无关。
+> **v11 注记（2026-08-07 · 本表被 [rebuild S3](../2026-08-05-planner-executor-rebuild-design.md) 作废）**：上表 Near/Mid/Far 窗口 + v6 `last_folded_round` 压缩点**均不落地**。H1 现行落地（rebuild §3.1.1 定稿）：注入块内部**两级**——阶段骨架 + 近 `near-keep-rounds`（默认 6）轮原文逐轮追加，超阈值最老轮次 LLM 折叠为摘要；无 `last_folded_round`、无独立 Near/Mid/Far 窗口，`near-keep-rounds` 与 L1 压缩窗口（chat 4+4 / task 2+2）无关。
 
 #### 2.3.5 跨轮用户交互
 
@@ -463,7 +463,7 @@ Planner 决策:
 
 #### 2.4 上下文分层分配（v6 优化 · 压缩点模式适配）
 
-> 对齐 [unified-context-compression-design §5.5](./2026-07-31-unified-context-compression-design.md) 的 Tier 0/1/2 分层与压缩点模式。Planner 是唯一有跨轮 KV 缓存包袱的角色（多轮 ReAct run、每轮多次 LLM 调用），**分层只应用于 Planner 与 Worker 稳定前缀**。
+> 对齐 [unified-context-compression-design §5.5](../2026-07-31-unified-context-compression-design.md) 的 Tier 0/1/2 分层与压缩点模式。Planner 是唯一有跨轮 KV 缓存包袱的角色（多轮 ReAct run、每轮多次 LLM 调用），**分层只应用于 Planner 与 Worker 稳定前缀**。
 >
 > **双视角关系**：本节按**变化频率**分层（Tier 0/1/2，KV 缓存视角）；§2.5 按**共享范围**隔离（G 全局 / P 任务计划 / S 子任务）。两维正交——本节 Tier 2 尾部 = S 域入口，本节 Tier 0/1 = G 域主体，H1 = P1 载体（**注：P2 / 分层分解已由 rebuild S3/S4/S5 作废**）。
 
@@ -499,7 +499,7 @@ Tier 2 · 每轮动态段（tail append，只 miss 尾部小块）
   + 本 worker 的 toolWhitelist（绑定 skill 工具集）+ query
 ```
 
-> **v10 注记（2026-08-07 · 上下文契约定稿，对齐 [rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md)）**：`forWorker()` **不注入 L2 用户画像**——Worker 是任务执行器，只需任务契约（taskGoal/constraints/expectedOutput/successCriteria）；L2 对 Worker 是纯 Token 开销且可能污染任务定向（§2.5.3 规则 3 一致）。上游结果按 `dependsOn` 定向渲染**动态段**，禁止进稳定前缀（KV 红线，§2.5.3 规则 6）。
+> **v10 注记（2026-08-07 · 上下文契约定稿，对齐 [rebuild §3.1.1](../2026-08-05-planner-executor-rebuild-design.md)）**：`forWorker()` **不注入 L2 用户画像**——Worker 是任务执行器，只需任务契约（taskGoal/constraints/expectedOutput/successCriteria）；L2 对 Worker 是纯 Token 开销且可能污染任务定向（§2.5.3 规则 3 一致）。上游结果按 `dependsOn` 定向渲染**动态段**，禁止进稳定前缀（KV 红线，§2.5.3 规则 6）。
 
 `upstreamResults` 不再逐 worker 全量注入（避免 vLLM 实证的 append 全失效 → 每个 worker 都 miss），改由 Worker 通过 `plan_shared_memory` 按需读取。Worker 子会话数不受 L1 压缩点影响（子会话各自独立）。
 
@@ -516,9 +516,9 @@ H1 每轮 round 结束时**必然追加**（NodeResult + goal 更新），属**�
 | 用户**自定义 skills** | Planner **Tier 1** | 个人配置块 | 同上 |
 | 命中 skill 正文（`systemOverlay`） | Planner **Tier 2** | 尾部 system | 随命中动态变化，放尾部 |
 | 业务工具 / MCP | Worker 工具集 / spawn 子 Agent | 动态 | 子会话无前缀包袱，不占 Planner 预算 |
-| 工具规模 > 阈值 | **Planner Tier 0 名列表 + Tier 2 schema** | 候选集 | 工具检索（[phase5 §5.5](./phase5-operation-openness-design.md)）由 **Planner 检索生成候选集 → 下发 toolWhitelist 给 Worker**；Worker 不二次检索 |
+| 工具规模 > 阈值 | **Planner Tier 0 名列表 + Tier 2 schema** | 候选集 | 工具检索（[phase5 §5.5](../phase5-operation-openness-design.md)）由 **Planner 检索生成候选集 → 下发 toolWhitelist 给 Worker**；Worker 不二次检索 |
 
-前端「插件」菜单（关联 [task-scene spec](./2026-08-01-task-scene-context-design.md) §7.4）的 system/user 级标识即对应 Tier 0 / Tier 1 划分：**system 级**=后台统一开启、全局共有（进 Tier 0 前缀）；**user 级**=个人自选或自建（进 Tier 1 幂等块）。Worker 的 `toolWhitelist` 是 Planner 动态下发的（`call_scene=worker` 走 5.3 快模型分层，见 [phase5 §5.3](./phase5-operation-openness-design.md)）。
+前端「插件」菜单（关联 [task-scene spec](../2026-08-01-task-scene-context-design.md) §7.4）的 system/user 级标识即对应 Tier 0 / Tier 1 划分：**system 级**=后台统一开启、全局共有（进 Tier 0 前缀）；**user 级**=个人自选或自建（进 Tier 1 幂等块）。Worker 的 `toolWhitelist` 是 Planner 动态下发的（`call_scene=worker` 走 5.3 快模型分层，见 [phase5 §5.3](../phase5-operation-openness-design.md)）。
 
 #### 2.5 上下文隔离边界：三层模型（v7 细化）
 
@@ -566,7 +566,7 @@ S 子任务执行上下文 = forWorker() 动态段（taskGoal + toolWhitelist + 
 | 场景 | 共享侧重（G/P） | 隔离侧重（S） | 特殊机制 |
 |------|----------------|---------------|----------|
 | **task 编码** | 项目结构 / 代码索引 / 技术栈约束 / 编码规范 / 依赖版本（P0 项目规范 + W0 工作区记忆，均进 G 域） | 每文件/模块修改独立 S 域，A 文件的调试逻辑不透传 B 文件；并行改不同模块完全隔离，避免同文件覆盖冲突 | **写隔离由 `agent_workspace` checkout 承载**（用户显式选主分支/worktree，[task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) §2.3）——**不引入应用层读写锁**（业界验证锁是错误抽象，冲突语义交给 Git + 用户）；临时代码不写全局，仅最终合入回传 |
-| **chat 企业** | 业务目标 / 身份权限 / 合规规则 / 审计 traceId | 不同系统工具调用隔离（内部库查询结果不透传外部 API 工具）；高权限操作中间结果不向低权限任务透传 | 上下文流转全程留痕（审计）；敏感数据跨任务传递前自动脱敏（[desensitize 服务](./2026-07-27-observability-enhancement-design.md)） |
+| **chat 企业** | 业务目标 / 身份权限 / 合规规则 / 审计 traceId | 不同系统工具调用隔离（内部库查询结果不透传外部 API 工具）；高权限操作中间结果不向低权限任务透传 | 上下文流转全程留痕（审计）；敏感数据跨任务传递前自动脱敏（[desensitize 服务](../2026-07-27-observability-enhancement-design.md)） |
 
 ##### 2.5.5 与纯 ReAct 的核心区别
 
@@ -659,7 +659,7 @@ switch (plan.completeness()) {
 }
 ```
 
-**后续轮次 Planner 输入**（两态通用；v9 S3 去 Tier 形式化分层）：稳定前缀 + Near 原文 + H1 注入块 + 本轮 query。记忆与普通 ReAct MAIN 的跨轮压缩管线完全一致，采用既有**压缩点模式**（[五层 spec §5.5](./2026-07-31-unified-context-compression-design.md)）：当 L1 上下文爆满时，Worker handoff 视同 tool_result 参与压缩点前进（旧 handoff 折叠进 Far，**不重排 Near/Mid**）。H1 仅注入块，rounds 超阈值时简单截断为摘要（v9 S3，不建压缩点窗口）。
+**后续轮次 Planner 输入**（两态通用；v9 S3 去 Tier 形式化分层）：稳定前缀 + Near 原文 + H1 注入块 + 本轮 query。记忆与普通 ReAct MAIN 的跨轮压缩管线完全一致，采用既有**压缩点模式**（[五层 spec §5.5](../2026-07-31-unified-context-compression-design.md)）：当 L1 上下文爆满时，Worker handoff 视同 tool_result 参与压缩点前进（旧 handoff 折叠进 Far，**不重排 Near/Mid**）。H1 仅注入块，rounds 超阈值时简单截断为摘要（v9 S3，不建压缩点窗口）。
 
 #### 4.1.1 HIERARCHICAL：阶段细拆（走到哪、规划到哪）
 
@@ -782,7 +782,7 @@ Planner L1 上下文（单轮 ReAct run）:
 
 ### 4.4 S4: Evaluate — ~~Chat 模式专用~~ v9 S1：砍独立 Evaluator
 
-> **v9 S1 覆盖**：独立 `TaskEvaluator` / `GoalEvaluator` **不实现**。Chat/Task 统一由 Planner `selfAssess`（0~1 分 + 简短理由）决策。真实代价与兜底见 [rebuild spec §0.1 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05)。
+> **v9 S1 覆盖**：独立 `TaskEvaluator` / `GoalEvaluator` **不实现**。Chat/Task 统一由 Planner `selfAssess`（0~1 分 + 简短理由）决策。真实代价与兜底见 [rebuild spec §0.1 S1](../2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05)。
 
 | ~~评估器~~ | ~~粒度~~ | ~~问题~~ | ~~使用模式~~ |
 |--------|------|------|:---:|
@@ -791,7 +791,7 @@ Planner L1 上下文（单轮 ReAct run）:
 
 **Task 模式**：无独立 Evaluator。Worker 的 handoff 包含「做了什么、遇到什么问题、有什么建议」——评估信息自包含。Planner 基于 handoff 直接决策。
 
-> **v6 注记（Evaluator 结果落库）**：Chat 模式 `TaskEvaluator`/`GoalEvaluator` 的 task PASS/FAIL 结果**写入 `harness_eval_result`**（`run_id` + task + PASS/FAIL + reason），供 [phase5 §5.1](./phase5-operation-openness-design.md) 效果看板按 run 聚合 task 级成功率。字段约定见 phase5 §5.1 v2 注记——Evaluator 结果当前不落库将导致 harness 效果完全不可见。
+> **v6 注记（Evaluator 结果落库）**：Chat 模式 `TaskEvaluator`/`GoalEvaluator` 的 task PASS/FAIL 结果**写入 `harness_eval_result`**（`run_id` + task + PASS/FAIL + reason），供 [phase5 §5.1](../phase5-operation-openness-design.md) 效果看板按 run 聚合 task 级成功率。字段约定见 phase5 §5.1 v2 注记——Evaluator 结果当前不落库将导致 harness 效果完全不可见。
 
 **Maker-Checker 分离**：执行 task 的 Worker 和评估 task 的 Evaluator 是不同 LLM 调用、不同 prompt，确保评估不受执行过程认知偏差影响。
 
@@ -1207,7 +1207,7 @@ intent → plan(R1,inc) → worker → think → plan(R2) → worker → ... →
 - `PlanExecutionCanvas`：Full 模式 Task Tree + 逐 task 高亮当前执行
 - `PlanNodeDrawer`：节点记录（复用）
 - `PlanWorkflowPanel`：整体进度视图
-- `PlanApprovalActions`：**已随动态 Plan-Workflow 删除**（[planner-executor-rebuild D5](./2026-08-05-planner-executor-rebuild-design.md)）；Harness 无用户确认步（渐进式/自驱）
+- `PlanApprovalActions`：**已随动态 Plan-Workflow 删除**（[planner-executor-rebuild D5](../2026-08-05-planner-executor-rebuild-design.md)）；Harness 无用户确认步（渐进式/自驱）
 
 ---
 
@@ -1416,7 +1416,7 @@ agent:
 - L3 分类器判断 taskDecomposition（Planner 自行决定）
 - 独立 Synthesizer（合并到 Planner）
 - 独立意图识别判断 full/incremental
-- 用户确认（Plan Approval）— **已废弃**（[planner-executor-rebuild D5](./2026-08-05-planner-executor-rebuild-design.md) 删除 PlanApproval；Harness 目标对齐/失败预算替代，需求澄清走 `request_decision` 4.7.9）
+- 用户确认（Plan Approval）— **已废弃**（[planner-executor-rebuild D5](../2026-08-05-planner-executor-rebuild-design.md) 删除 PlanApproval；Harness 目标对齐/失败预算替代，需求澄清走 `request_decision` 4.7.9）
 - Worker 用 `forSubAgent()=empty()` — Worker 是 Planner 的工具调用，需 `forWorker()` 丰富上下文
 - AgentScope 2.0 PlanModeContextState
 

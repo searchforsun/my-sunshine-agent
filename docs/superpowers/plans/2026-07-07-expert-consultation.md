@@ -10,7 +10,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA · MySQL `sunshine_expert` · Nacos · AgentScope MsgHub · Vue3/Naive UI · Gateway/BFF 透传
 
-**设计 SSOT:** [2026-07-07-expert-consultation-design.md](../specs/2026-07-07-expert-consultation-design.md) · L0 优先级与 `#` 对称：[workflow-studio-design.md](../specs/2026-06-25-workflow-studio-design.md) §3 · 旧 peer 基线：[peer-collab-routing-design.md](../specs/2026-06-24-peer-collab-routing-design.md)
+**设计 SSOT:** [2026-07-07-expert-consultation-design.md](../specs/archive/2026-07-07-expert-consultation-design.md) · L0 优先级与 `#` 对称：[workflow-studio-design.md](../specs/archive/2026-06-25-workflow-studio-design.md) §3 · 旧 peer 基线：[peer-collab-routing-design.md](../specs/archive/2026-06-24-peer-collab-routing-design.md)
 
 **前置条件:** 设计文档 §13 检查门评审通过后再写业务代码；`executionPreference: peer-collab` 强制路由（本会话已合入 orchestrator）须在本计划 Task 15 一并改为 expert roster 语义。
 

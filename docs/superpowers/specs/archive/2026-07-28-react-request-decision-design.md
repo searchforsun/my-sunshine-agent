@@ -1,6 +1,6 @@
 # 4.7.9 ReAct Request Decision（主 Agent 主动向用户出选择题 / 需求澄清）
 
-> **状态**：✅ Chat ReAct MAIN 已实现 · **已归档**（2026-08-12 tech-debt-refactor）· ⬜ Planner MAIN / D12 见 [../2026-08-12-react-request-decision-planner-d12.md](../2026-08-12-react-request-decision-planner-d12.md)  
+> **状态**：✅ Chat ReAct MAIN 已实现 · **已归档**（2026-08-12 tech-debt-refactor）· ⬜ Planner MAIN / D12 见 [../2026-08-12-react-request-decision-planner-d12.md](2026-08-12-react-request-decision-planner-d12.md)  
 > **契约 SSOT**：[2026-08-11-request-decision-cursor-align-design.md](./2026-08-11-request-decision-cursor-align-design.md)（替换下文 §3–§6 旧 `choice`/`customInput` 叙述；以代码与 cursor-align 为准）  
 > **日期**：2026-07-28 · **修订**：2026-08-11（Chat MAIN + Cursor align）· 2026-08-12（归档）  
 > **编号**：阶段四 **4.7.9**（原 4.7.7 占号冲突，goal-alignment 已用 4.7.7）  

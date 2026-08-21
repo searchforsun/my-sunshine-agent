@@ -7,18 +7,18 @@
 
 | 文档 | 内容 |
 |------|------|
-| [skills-docker-sandbox-design](../superpowers/specs/2026-07-15-skills-docker-sandbox-design.md) | 4.5 初版六工具 + sandbox-service + PathJail / HITL / 审计 |
-| [conversation-sandbox-permanent-tools](../superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md) | **方案 B**：MAIN 常驻六工具 + 懒开箱 |
-| [conversation-sandbox-multi-skill](../superpowers/specs/2026-07-16-conversation-sandbox-multi-skill-design.md) | 同会话多 Skill 懒挂载 `/skills/{id}/` |
-| [sandbox-workspace-drawer](../superpowers/specs/2026-07-16-sandbox-workspace-drawer-design.md) | Chat 工作区抽屉（多 tab / 代码横向滚动 / `.md` 美化·原始 / 路径芯片） |
-| [plan-sandbox-drawer-coexistence](../superpowers/specs/2026-07-17-plan-sandbox-drawer-coexistence-design.md) | 节点抽屉 × 沙箱对照模式（隐藏 Chat；树可独立调宽） |
-| [sandbox-write-hitl-skip](../superpowers/specs/2026-07-16-sandbox-write-hitl-skip-design.md) | 工作区三档写确认：`never` / `always` / `smart` |
-| [user-default-write-hitl](../superpowers/specs/2026-07-16-user-default-write-hitl-design.md) | 用户级默认写确认（auth `sys_user`，账号设置） |
-| [sub-agent-sandbox-default](../superpowers/specs/2026-07-17-sub-agent-sandbox-default-design.md) | SUB / Workflow agent 默认六工具 + 对话级复用 |
-| [sandbox-container-lifecycle](../superpowers/specs/2026-07-17-sandbox-container-lifecycle-design.md) | idle 停机 / 再进开机 / 7 天销毁 |
-| [sandbox-tool-cancel](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) | **✅** exec/grep/glob 单工具取消（杀进程）· 主行「已取消」· 同族预算 3 · Live `verify_sandbox_tool_cancel_live` |
-| [sandbox-diff-line-numbers](../superpowers/specs/2026-07-21-sandbox-diff-line-numbers-design.md) | **✅** 工作区代码预览绝对行号 · 时间线 write/edit Git 双栏 diff（`metadata.editDiff` ±3 上下文） |
-| [sandbox-repo-binding](../superpowers/specs/2026-07-28-sandbox-repo-binding-design.md) | **已被 task-workspace-codex 吸收** 工作区绑定 Git 项目：用户级 GitHub/GitLab 令牌（T1）+ egress per-session（T0）保留有效；粒度升级为工作区级 |
+| [skills-docker-sandbox-design](../superpowers/specs/archive/2026-07-15-skills-docker-sandbox-design.md) | 4.5 初版六工具 + sandbox-service + PathJail / HITL / 审计 |
+| [conversation-sandbox-permanent-tools](../superpowers/specs/archive/2026-07-16-conversation-sandbox-permanent-tools-design.md) | **方案 B**：MAIN 常驻六工具 + 懒开箱 |
+| [conversation-sandbox-multi-skill](../superpowers/specs/archive/2026-07-16-conversation-sandbox-multi-skill-design.md) | 同会话多 Skill 懒挂载 `/skills/{id}/` |
+| [sandbox-workspace-drawer](../superpowers/specs/archive/2026-07-16-sandbox-workspace-drawer-design.md) | Chat 工作区抽屉（多 tab / 代码横向滚动 / `.md` 美化·原始 / 路径芯片） |
+| [plan-sandbox-drawer-coexistence](../superpowers/specs/archive/2026-07-17-plan-sandbox-drawer-coexistence-design.md) | 节点抽屉 × 沙箱对照模式（隐藏 Chat；树可独立调宽） |
+| [sandbox-write-hitl-skip](../superpowers/specs/archive/2026-07-16-sandbox-write-hitl-skip-design.md) | 工作区三档写确认：`never` / `always` / `smart` |
+| [user-default-write-hitl](../superpowers/specs/archive/2026-07-16-user-default-write-hitl-design.md) | 用户级默认写确认（auth `sys_user`，账号设置） |
+| [sub-agent-sandbox-default](../superpowers/specs/archive/2026-07-17-sub-agent-sandbox-default-design.md) | SUB / Workflow agent 默认六工具 + 对话级复用 |
+| [sandbox-container-lifecycle](../superpowers/specs/archive/2026-07-17-sandbox-container-lifecycle-design.md) | idle 停机 / 再进开机 / 7 天销毁 |
+| [sandbox-tool-cancel](../superpowers/specs/archive/2026-07-18-sandbox-tool-cancel-design.md) | **✅** exec/grep/glob 单工具取消（杀进程）· 主行「已取消」· 同族预算 3 · Live `verify_sandbox_tool_cancel_live` |
+| [sandbox-diff-line-numbers](../superpowers/specs/archive/2026-07-21-sandbox-diff-line-numbers-design.md) | **✅** 工作区代码预览绝对行号 · 时间线 write/edit Git 双栏 diff（`metadata.editDiff` ±3 上下文） |
+| [sandbox-repo-binding](../superpowers/specs/archive/2026-07-28-sandbox-repo-binding-design.md) | **已被 task-workspace-codex 吸收** 工作区绑定 Git 项目：用户级 GitHub/GitLab 令牌（T1）+ egress per-session（T0）保留有效；粒度升级为工作区级 |
 | [task-workspace-codex](../superpowers/specs/archive/2026-07-28-task-workspace-codex-design.md) | **✅ 已实现** Codex 式智能体工作区：强制绑定 Git repo+分支 · 完全体沙箱（出网+任意命令）· 硬件档位 · 多会话任务流 · 「新任务」入口 · 实现演进差异见 spec §12（裸镜像库 + 无主 checkout + 完整 git 工作流替代 mergeToMain） |
 
 ## 运维与示例
@@ -39,7 +39,7 @@
 |------|------|
 | 工具 | MAIN / SUB ReAct 始终 `sandbox__*`；不进 tool-manager Catalog；SUB 复用对话容器 |
 | 开箱 | 首次 `sandbox__*` 或抽屉 list → `ensureSession`；同 `conversationId` 复用；**idle 30min 停机、再进 start；自上次活动 7d 销毁** |
-| 粒度 | **对话级**（轻量，skills 脚本场景）；**工作区级**完全体沙箱见 [task-workspace-codex](../superpowers/specs/2026-07-28-task-workspace-codex-design.md)（强制绑 repo · 出网 · 硬件档位 · 读并发/写串行 · 手动销毁） |
+| 粒度 | **对话级**（轻量，skills 脚本场景）；**工作区级**完全体沙箱见 [task-workspace-codex](../superpowers/specs/archive/2026-07-28-task-workspace-codex-design.md)（强制绑 repo · 出网 · 硬件档位 · 读并发/写串行 · 手动销毁） |
 | PathJail | `/workspace` 可写；`/skills/{id}/` 只读挂载 |
 | write | **拒覆盖**已存在文件（须 edit / 换路径） |
 | exec | `SandboxExecGuard` 硬拒破坏性命令；只读白名单免 HITL |
@@ -47,7 +47,7 @@
 | 工作区跳过 | 会话 `writeHitlMode`：`never` / `always` / `smart`；**用户默认**见账号设置（auth） |
 | 工作区抽屉 | 多 tab 预览；与 Plan 节点抽屉**可同时开**（`Chat \| 节点 \| 沙箱`，保留执行计划/DAG）；树可独立调宽；激活 tab 自动滚入可视区；**代码预览左侧绝对行号**（1…N，空文件 / `.md` 美化模式无 gutter）；代码不换行+横向滚动；**.md 美化/原始切换**；树节点拖入 Composer 为路径芯片 |
 | 时间线主行 | 标签「调用工具 xxx」+ 摘要目标（无前导 ·）；glob 为 `{pattern} · /skills`；grep 仅 pattern；read 为 `{headerPath}` |
-| **工具取消** | `exec`/`grep`/`glob` hover 圆形停止钮 → 杀该次调用；主行 **已取消**（`lifecycle=paused`）；展开可见 command/pattern；同族再调用 ≤3 · [详设](../superpowers/specs/2026-07-18-sandbox-tool-cancel-design.md) |
+| **工具取消** | `exec`/`grep`/`glob` hover 圆形停止钮 → 杀该次调用；主行 **已取消**（`lifecycle=paused`）；展开可见 command/pattern；同族再调用 ≤3 · [详设](../superpowers/specs/archive/2026-07-18-sandbox-tool-cancel-design.md) |
 | HITL 确认框 | 不展示 content/old_string/new_string/command 正文（进展开） |
 | edit 展开 | Git 双栏行号（旧 \| 新 \| `+/-`）+ ±3 上下文 + `···` 折叠；**仅** `metadata.editDiff` 结构化渲染（复制仍用 unified 文本）；**无**旧消息 `+/-/ ` 回退解析 |
 | write 展开 | 全文按 `add` 渲染（仅新侧行号 1…N、绿底）；与抽屉行号语义一致 |
@@ -59,6 +59,6 @@
 | Live：`writeHitlMode` | Chat SSE：`G7` never 有确认 · `G10` always / `G11` smart 写免确认（`verify_sandbox_live --suite chat`） | ✅ |
 | **单工具取消** | exec/grep/glob · Live `verify_sandbox_tool_cancel_live.py` | ✅ |
 | 工作区可编辑 | 抽屉仍只读；写靠 Agent 工具 | 低（非目标） |
-| SUB / Workflow 节点沙箱 | 默认注入六工具 + 对话级复用 · [详设](../superpowers/specs/2026-07-17-sub-agent-sandbox-default-design.md) | ✅ |
-| 用户级默认写确认 | auth `sys_user.default_write_hitl_mode` + 账号设置；工作区仍本会话覆盖 · [详设](../superpowers/specs/2026-07-16-user-default-write-hitl-design.md) | ✅ |
+| SUB / Workflow 节点沙箱 | 默认注入六工具 + 对话级复用 · [详设](../superpowers/specs/archive/2026-07-17-sub-agent-sandbox-default-design.md) | ✅ |
+| 用户级默认写确认 | auth `sys_user.default_write_hitl_mode` + 账号设置；工作区仍本会话覆盖 · [详设](../superpowers/specs/archive/2026-07-16-user-default-write-hitl-design.md) | ✅ |
 | 二进制 / 下载 | 抽屉非目标 | — |

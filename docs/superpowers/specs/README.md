@@ -50,11 +50,13 @@
 | `2026-07-18-sandbox-tool-cancel-design.md` | 阶段四 §4.5.7 · 沙箱 exec/grep/glob 单工具取消 · **✅** · [sandbox 索引](../../sandbox/README.md) |
 | `2026-06-25-phase4-agent-capabilities-boundaries.md` | 阶段四 §4.7 · P0 接入边界（MsgHub / Parallel / TaskBoard） |
 | `2026-06-25-workflow-studio-design.md` | 阶段四 **§4.13** · Workflow Studio · **DB 唯一 SSOT**（废弃 Nacos workflow）· Chat `#` · MySQL init 种子 |
-| `2026-07-24-workflow-structured-io-design.md` | 阶段四 **§4.13.8** · 结构化 I/O 设计（变量赋值 + 参数提取 + TypedValue）· **WF-3/WF-5 已完成** |
+| `2026-07-24-workflow-structured-io-design.md` | 阶段四 **§4.13.8** · 结构化 I/O 设计（变量赋值 + 参数提取 + TypedValue）· **✅ 已实现**（WF-1～WF-5；TypedValue / VariableAssignmentNodeHandler / ParameterExtractorNodeHandler） |
 | `2026-07-28-workflow-composite-condition-design.md` | 阶段四 **§4.13.7** · loop + exclusive 条件复合化（AND/OR 多条件）· **✅ 已完成** |
+| `2026-07-24-expert-as-subagent-design.md` | **→ 已归档** · 内容并入 `2026-07-29-multi-agent-unified-design.md`（内部统一 + 外部 A2A） |
+| `2026-07-28-agent-team-design.md` | **→ 已归档** · Agent Team 去中心化方案**被否决**（理由见 multi-agent-unified §1.3；外部 A2A 无法参与 delegate/TeamState/Handoff） |
 | `2026-06-25-chat-execution-mode-selector-design.md` | Chat 底栏执行**路径**选择器 · `executionPreference` · P0 ✅；workflow catalog **不做**（移交 4.13 `#`） |
 | `2026-06-26-pause-resume-consistency-design.md` | 阶段三 **§3.9.5 收尾** · Plan/Workflow 暂停/续跑语义与 UI 一致性 · [plan](../plans/2026-06-26-pause-resume-consistency.md) |
-| `2026-07-22-agentscope-2-upgrade-design.md` | **AS Java 2.0 升级** · ✅ P0–P3+P7 完成（native-first）· P4/P5/P6 E5 不迁移 · AgentState **Redis-only / TTL 7d / 不改表** · 原生续跑/TaskList · §1 背景 / §6 E5 决策仍有效；P1–P7 正文被 [redesign](./2026-07-23-agentscope-2-native-first-redesign.md) 取代 |
+| `2026-07-22-agentscope-2-upgrade-design.md` | **AS Java 2.0 升级** · ✅ P0–P3+P7 完成（native-first）· P4/P5/P6 E5 不迁移 · AgentState **Redis-only / TTL 7d / 不改表** · 原生续跑/TaskList · §1 背景 / §6 E5 决策仍有效；P1–P7 正文被 [redesign](./archive/2026-07-23-agentscope-2-native-first-redesign.md) 取代 |
 | `2026-07-17-autocontext-memory-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` §4 Layer 1 |
 | `2026-07-22-context-optimization-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` |
 | `2026-07-24-dynamic-context-compression-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` §§5-8 |
@@ -62,7 +64,7 @@
 | `2026-07-09-tool-integration-design.md` | 阶段四 **§4.8 ✅** · SDK + MCP Catalog + `/tools` + 工具集 + HITL · [plan](../plans/2026-07-09-tool-integration.md) |
 | `2026-07-20-prompt-ops-routing-catalog-design.md` | 阶段四 **§4.11 实施中** · Prompt 运营中心 + 统一 Rule Engine（DB SSOT，弃 Nacos 规则/提示词）· `/prompts` · [plan](../plans/2026-07-20-prompt-ops-routing-catalog.md) · Live `verify_prompt_catalog_live.py` |
 | `2026-07-20-timeline-summary-duration-design.md` | Chat 时间线总览行 · 墙钟总耗时 · 整段展开/折叠（终态只留终稿）· **✅** · [plan](../plans/2026-07-20-timeline-summary-duration.md) |
-| `2026-06-27-rag-knowledge-studio-design.md` | 阶段四 **§4.0–4.2** · `/knowledge` 工作台 · [V2 扩展](./2026-07-01-rag-studio-v2-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) |
+| `2026-06-27-rag-knowledge-studio-design.md` | 阶段四 **§4.0–4.2** · `/knowledge` 工作台 · [V2 扩展](./archive/2026-07-01-rag-studio-v2-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) |
 | `2026-07-01-rag-studio-v2-design.md` | **V2 SSOT**：`(tenant,kb)` 配置版本 · MinIO · 评测/Suggest · 索引 [docs/rag/README.md](../../rag/README.md) |
 | `2026-07-02-kb-config-version-lifecycle-design.md` | V3 配置生命周期（draft→评测→active） |
 | `2026-07-02-kb-eval-ui-redesign.md` | 评测 Tab UI · Suggest 应用规则 |
@@ -143,14 +145,14 @@ flowchart TB
 | [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 任务清单跨轮/跨会话记忆一体化（**v2 清爽收敛**：两级作用域 = 会话级执行态 + KV Memory 沉淀；fast 跨轮恢复；`kind=todo`；H1 终态导出；**T0 作废**） | task-scene 读写闸门（P1/P2 前置）、planner H1、skill-sticky（换题沉淀同步） | — |
 | [goal-alignment](./2026-07-27-react-goal-alignment-design.md) | 机械门禁 | TaskBoard/AS2（已有） | rebuild S6（可同批） |
 | [orchestrator-stateless](./2026-08-03-orchestrator-stateless-design.md) | 物理无状态 | 波次 A 独立；B2/B3 要 harness | 多实例生产 |
-| [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md) | Planner decision | 4.14 Planner MAIN | — |
+| [request-decision D12](./archive/2026-08-12-react-request-decision-planner-d12.md) | Planner decision | 4.14 Planner MAIN | — |
 | [phase5](./phase5-operation-openness-design.md) / [observability](./2026-07-27-observability-enhancement-design.md) | 运营/观测 | 部分可前置；5.1 等长任务样本 | — |
 
 **推荐落地顺序**
 
 1. **已完成**：4.14 **H-0～H-4 + 过渡入口** — [kernel plan](../plans/2026-08-13-planner-executor-kernel.md) ✅；**routing v6 R-0～R-3 + H-5** — [unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) ✅；**H-6 前端** — [planner-h6-frontend](../plans/2026-08-13-planner-h6-frontend.md) ✅（分层时间线 + Composer UX；TaskBoard H1 待 `tasks` SSE）；旁路仍可并行：stateless **波次 A** ∥ 观测 6.2/6.4、phase5 **5.2**
 2. **下一波**：部署后跑 [H-7 Live](../plans/2026-08-13-planner-h7-live.md)（阶段 D / R-4 源码删除 ✅ 已完成，Live 回归随 H-7 一并）→ skill-sticky → D12
-3. **第三波**：五层 §5.5 压缩点（优先 task，v25 收敛后仅此一套跨轮压缩）→ **task-list-memory M0（fast 跨轮恢复，成本最低）** → task-scene（v14：KV Memory 统一 + 读写闸门）→ business-context（可与 task-scene 并行）→ [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（工具集/Lab/退役 react-prompt，可与 biz 同波）
+3. **第三波**：五层 §5.5 压缩点（优先 task，v25 收敛后仅此一套跨轮压缩）→ **task-list-memory M0（fast 跨轮恢复，成本最低）** → task-scene（v14：KV Memory 统一 + 读写闸门）→ business-context（可与 task-scene 并行）→ [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md)（工具集/Lab/退役 react-prompt，可与 biz 同波）
 4. **刻意后置**：stateless B2/B3/拆进程、phase5 5.1/5.4/5.7、压缩点全面铺 chat
 
 **routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；H-7 Live；harness `tasks` SSE（TaskBoard H1）。R-4 / 阶段 D **✅**（源码删除完成，Live 回归随 H-7）。
@@ -170,4 +172,4 @@ flowchart TB
 | 一 | `plans/2026-06-11-phase1.5-conversation-mvp.md`、`plans/2026-06-11-phase1.6-generation-reconnect.md` |
 | 二 | `plans/2026-06-18-workflow-orchestration.md`、`plans/2026-06-20-phase2-closure.md` |
 | 三 | [phase3-production-hardening.md](../plans/2026-06-19-phase3-production-hardening.md)、[multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)、[2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)（**3.9.5 收尾**）、[覆盖度审计](../plans/2026-06-20-phased-implementation-coverage.md) |
-| 四 | 按需；**RAG 4.1** 见 [docs/rag/README.md](../../rag/README.md) + **检查门留档** [backlog](../../rag/backlog.md)；**4.0 pipeline** 见 [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) + [2026-06-27-rag-knowledge-studio.md](../plans/2026-06-27-rag-knowledge-studio.md)；**4.7.3 多专家协作 ✅** 见 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) + [peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md)；**4.8 工具集成 ✅** 见 [2026-07-09-tool-integration-design.md](./2026-07-09-tool-integration-design.md) + [2026-07-09-tool-integration.md](../plans/2026-07-09-tool-integration.md)；**4.13 Workflow Studio** 见 [workflow-studio-design.md](./2026-06-25-workflow-studio-design.md) + [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)；**4.11 Prompt 运营** 见 [prompt-ops-routing-catalog-design.md](./2026-07-20-prompt-ops-routing-catalog-design.md) + [2026-07-20-prompt-ops-routing-catalog.md](../plans/2026-07-20-prompt-ops-routing-catalog.md)；**时间线总览** 见 [timeline-summary-duration-design.md](./2026-07-20-timeline-summary-duration-design.md) + [2026-07-20-timeline-summary-duration.md](../plans/2026-07-20-timeline-summary-duration.md) |
+| 四 | 按需；**RAG 4.1** 见 [docs/rag/README.md](../../rag/README.md) + **检查门留档** [backlog](../../rag/backlog.md)；**4.0 pipeline** 见 [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) + [2026-06-27-rag-knowledge-studio.md](../plans/2026-06-27-rag-knowledge-studio.md)；**4.7.3 多专家协作 ✅** 见 [expert-consultation-design.md](./archive/2026-07-07-expert-consultation-design.md) + [peer-collab-routing-design.md](./archive/2026-06-24-peer-collab-routing-design.md)；**4.8 工具集成 ✅** 见 [2026-07-09-tool-integration-design.md](./archive/2026-07-09-tool-integration-design.md) + [2026-07-09-tool-integration.md](../plans/2026-07-09-tool-integration.md)；**4.13 Workflow Studio** 见 [workflow-studio-design.md](./archive/2026-06-25-workflow-studio-design.md) + [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)；**4.11 Prompt 运营** 见 [prompt-ops-routing-catalog-design.md](./archive/2026-07-20-prompt-ops-routing-catalog-design.md) + [2026-07-20-prompt-ops-routing-catalog.md](../plans/2026-07-20-prompt-ops-routing-catalog.md)；**时间线总览** 见 [timeline-summary-duration-design.md](./archive/2026-07-20-timeline-summary-duration-design.md) + [2026-07-20-timeline-summary-duration.md](../plans/2026-07-20-timeline-summary-duration.md) |

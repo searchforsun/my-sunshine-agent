@@ -1,7 +1,7 @@
 
 
 > 日期：2026-07-24
-> 状态：实施中（WF-3 变量赋值 + 参数提取 + WF-5 Studio 前端已完成；WF-1/WF-2/WF-4 待 AS2 迁移后推进）
+> 状态：✅ 已实现（WF-1～WF-5；TypedValue / VariableAssignmentNodeHandler / ParameterExtractorNodeHandler 落地，4.13.8）
 > 前置依赖：AgentScope 2.0 迁移完成 ✅（P0–P3+P7，2026-07-26）
 
 ## 1. 背景与问题

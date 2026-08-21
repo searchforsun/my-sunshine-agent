@@ -295,7 +295,7 @@ if (pausePhase == EXECUTING && !WorkflowContextCodec.hasNodes(checkpoint.wfCtxJs
 
 ## 9. 任务拆分（实施顺序）
 
-> **实施计划 SSOT:** [2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)
+> **实施计划 SSOT:** [2026-06-26-pause-resume-consistency.md](../../plans/2026-06-26-pause-resume-consistency.md)
 
 | Task | 模块 | 估时 | 依赖 |
 |------|------|------|------|

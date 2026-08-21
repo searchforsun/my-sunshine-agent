@@ -24,12 +24,12 @@
 | TD-105 | P2 | open | `KbDocPanel.vue` (~1281 行) | RAG 分块预览门禁堆入上帝组件；下一轮 RAG scope 拆分 |
 | TD-106 | P3 | open | finance/oa/hr `*BizService` | 三服务平行 CRUD 样板；暂不抽泛型 |
 | TD-140 | P1 | closed | IntentRouter / ContextMessageBuilder | AssembledContext 三重格式化旁路；RewriteConversationContext 已删，此项已随意图改写退役收口 |
-| TD-141 | P3 | open | sandbox `formatEditUnifiedDiff` / `formatDiffLinesAsText` | editDiff 死代码与 detail 双写；产品路径已收口 |
-| TD-157 | P3 | open | `implementation-plan.md` 缺口段 | 三份未实施 spec（dynamic-context-compression / workflow-structured-io / expert-as-subagent-A2A）状态未统一登记 |
+| TD-141 | P3 | done | sandbox `formatEditUnifiedDiff` / `formatDiffLinesAsText` | edit diff 产品路径已收口 `EditDiffBuilder`（HitlConfirmationService / SandboxToolExecutor 消费）：删 `HitlParamSupport.formatEditUnifiedDiff` + 私有辅助 + 测试 + `EditDiffBuilder` 注释引用；`formatDiffLinesAsText` 已不存在；12 单测绿 |
+| TD-157 | P3 | done | `implementation-plan.md` / `specs/README.md` 缺口段 | 三份 spec 状态统一登记 + 归档引用同步：`workflow-structured-io` ✅ 已实现（4.13.8；README/spec 状态头更新）；`dynamic-context-compression` → 已归档（整合入 unified-context-compression）；`expert-as-subagent-A2A`（agent-team）→ 已归档/被否决（并入 multi-agent-unified）；implementation-plan 16 处 + README 10 处归档死链补 `archive/` 前缀 |
 | TD-162 | P0 | open | `sys_user.github_token` / `gitlab_token` | Git PAT 明文落库（`10-sunshine-auth.sql`）；2026-08-04 用户决策「先明文」，加密/外置凭据延后单独 scope |
 | TD-163 | P2 | open | `MainLayout.vue`(1456 行) / `ChatView.vue`(2445 行) | 上帝组件（模板/样式混排）；拆分是跨模块大动作，下轮单独 scope |
-| TD-164 | P2 | open | `specs/2026-07-31-unified-context-compression-design.md` | 基线压缩已 ✅；登记「Layer1 待恢复」表述过时——剩余为 §5.5+ 压缩点增强（设计稿），非 Layer1 整层缺失 |
-| TD-167 | P3 | open | `SandboxAgentTools.java` L207 / `MemoryProperties.DEFAULT_SUMMARY_PROMPT` + `HarnessAgentFactory.resolveSummaryPrompt` | Catalog 缺失兜底默认文案残留（`sandbox.budget-exhausted` 与 `compaction.summary-prompt` 已有 seed，缺省不触发）；按「删兜底」纪律可进一步收敛 |
+| TD-164 | P2 | done | `specs/2026-07-31-unified-context-compression-design.md` | 基线压缩已 ✅；spec 状态行已更新「基线管道 ✅ / §5.5+ 增强 ⬜ 设计稿」（§13.3 落地清单为验收依据）；「Layer1 待恢复」表述已不存在；archive 历史文件不在范围 |
+| TD-167 | P3 | done | `SandboxAgentTools.java` L207 / `MemoryProperties.DEFAULT_SUMMARY_PROMPT` + `HarnessAgentFactory.resolveSummaryPrompt` | 删兜底：`sandbox.budget-exhausted` 死分支 `if(!hasText)` 删除（Catalog 已有 seed）；`compaction.summary-prompt` 回退链（config→Java 硬编码副本）删除，`resolveSummaryPrompt` 只读 Catalog（requireText 缺失 warn），`DEFAULT_SUMMARY_PROMPT` 常量与 `summaryPrompt` 字段删除；20 单测绿 |
 | TD-168 | P1 | open | Catalog DTO `ModelCapabilities`/`ModelCatalog*` 四方平行（rm/orch/gw/ui） | 2026-08-10 已统一 `defaults().toolCall=true` 与 Crypto/SceneKey SSOT；完整 DTO 生成/上收 common 延后 |
 | TD-169 | P1 | open | `OperationStack.vue` `buildRoundGroupLabel` | 本地 sandbox 步骤话术 Map；应走后端 summary/label |
 | TD-170 | P2 | open | `useModelsPage.ts` / `ModelsView.vue` / `ModelSceneResolver` | 上帝类拆分（按 Provider/Definition/Scene；Resolver Fetch vs Resolve） |
@@ -38,6 +38,9 @@
 | TD-184 | P2 | open | `DecisionCard.vue` (~847 行) | 状态机+多题 UI+CSS 上帝组件；拆 `useDecisionForm` / QuestionList（R5 延后） |
 | TD-185 | P2 | open | `DecisionLabels` `{choice}` 旧模板键 | Catalog 改 `{answers}` 后删兼容键 |
 | TD-186 | P3 | open | Labels.bind 样板（17×） | 中期统一 `TimelineLabelFacade`；本轮不合并 |
+| TD-194 | P3 | done | `ChatMessageEntity.execution_mode` 列 | v6 迁移后双列仅写不读：删 entity 字段 + `updateMessageExecutionPlan` 写入 + DDL 列；读侧 DTO/审计零消费，39 单测绿 |
+| TD-195 | P3 | done | `sunshine-ui` `ExecutionPreference` 类型 / `useExecutionPreference` | 类型 `ExecutionMode` + 组合函数 `useExecutionMode`（文件改名）+ `isExecutionMode`/`normalizeExecutionMode`；读侧 DTO 属性 `executionPreference` 与 storage key 保留；vue-tsc 仅存量 ModelsView 4 错，单测绿 |
+| TD-196 | P3 | done | 归档引用死链（全仓） | spec 归档 `archive/` 时未同步引用，全仓 278 处死链全部修复：核心文档 `implementation-plan.md`/`specs/README.md`/`CLAUDE.md` + 全部次级文档（103 文件 279/274 行）；880 链接复扫零死链；修复规则：`specs|plans` 段后补 `archive/`、archive 内回退 `../`、README 类按原 rel 目录语义匹配 `docs/<dir>/README.md` |
 
 ### 文档债
 
@@ -162,10 +165,8 @@
 | TD-100 | 2026-07-15 | Studio 大文件拆分：Admin Package/Support；layout metrics/loop；FlowNode visual；ExclusiveEdges |
 | TD-102 | 2026-07-15 | 历史 orchestration 文档加 SUPERSEDED（Nacos workflow） |
 | TD-104 | 2026-07-15 | Chat/Studio 画布边界：`workflowFlowProjection` 只读投影；删孤儿 PlanDagGraph / previewNodes |
-| TD-105 | 2026-07-17 | 删 `SandboxSessionLifecycle.openIfNeeded`；bridge 废弃 no-op / 未用 getter |
 | TD-107 | 2026-07-17 | 删未接线 `grepAfterWithPath`（Properties + Nacos） |
 | TD-108 | 2026-07-17 | 删 edit 旧 `<<< old` 解析；Binding 5 字段兼容构造 |
-| TD-106 | 2026-07-17 | 沙箱时间线 SSOT：后端 headerPath/glob 推断 + metadata；前端停二次加工 |
 | TD-111 | 2026-07-17 | `agent.sandbox.tools` SSOT；删 ToolCatalogService 硬编码 + AgentTools schema |
 | TD-110 | 2026-07-17 | 沙箱 Policy/DTO SSOT：`com.sunshine.common.sandbox`；删 14 处模块内拷贝 |
 | TD-109 | 2026-07-17 | 抽 `useSandboxFileTree` + `useSandboxPreviewTabs` + 子组件；抽屉 1031→~254 行 |
@@ -196,11 +197,6 @@
 | TD-137 | 2026-07-20 | ReAct Toolkit 组装改 `boundedElastic`；`ToolManagerClient` 禁止在 reactor-http 上 `block` 静默空工具集 |
 | TD-138 | 2026-07-20 | AgentScope ↑1.0.8（并行 tool `mergeSequential` 保序）；`completeRunningActive` 跳过 tool 步，避免空 after |
 | TD-139 | 2026-07-20 | Plan 执行期 `NodeRetryPolicy` 改 boundedElastic；规划/执行错误分流，禁执行失败静默降级 ReAct |
-| TD-100 | 2026-07-21 | 三服务 Admin 鉴权收敛 `BizAdminAuth`（common） |
-| TD-101 | 2026-07-21 | `MockDataView` 拆 `bizTableSchema` + `useBizDataPage` + `BizDataView` |
-| TD-102 | 2026-07-21 | 路由 `/mock-data`→`/biz-data`；token 默认 `sunshine-biz-admin-dev`；删 `VITE_MOCK_ADMIN` 兼容 |
-| TD-104 | 2026-07-21 | 删一次性 `sync_corpus50_platform.py`（Live 已无旧 Catalog ID） |
-| TD-107 | 2026-07-21 | `sync_nacos.py` 补漏 `sunshine-oa.yaml`（否则 OA admin-token 永不更新） |
 | TD-142 | 2026-07-22 | 删 rag 孤儿 MTM（`MemoryMilvus*`/`MemoryController`/`MemoryRetrievalService`） |
 | TD-143 | 2026-07-22 | 统一 `agent.context.l1.max-chars=120000`（Java 默认对齐 Nacos） |
 | TD-144 | 2026-07-22 | 拆 `ContextAuditService` → `L2RuleAuditor` / `ContextLlmAuditClient` / `L1AuditApplier` |
@@ -222,6 +218,13 @@
 | TD-180 | 2026-08-12 | decision/async 文档去双轨：删 active 重复 plan；✅ specs/plans 归档；D12 短 open stub |
 | TD-181 | 2026-08-12 | `DecisionCard` 状态行删本地「决策 · *」表，只信 `summary.*`（缺省 title） |
 | TD-182 | 2026-08-12 | `StepTimeline.afterTimeout/afterSkip` + `DecisionLabelService` 读 Catalog；decision seed v2 |
+| TD-187 | 2026-07-21 | 三服务 Admin 鉴权收敛 `BizAdminAuth`（common） |
+| TD-188 | 2026-07-21 | `MockDataView` 拆 `bizTableSchema` + `useBizDataPage` + `BizDataView` |
+| TD-189 | 2026-07-21 | 路由 `/mock-data`→`/biz-data`；token 默认 `sunshine-biz-admin-dev`；删 `VITE_MOCK_ADMIN` 兼容 |
+| TD-190 | 2026-07-21 | 删一次性 `sync_corpus50_platform.py`（Live 已无旧 Catalog ID） |
+| TD-191 | 2026-07-17 | 删 `SandboxSessionLifecycle.openIfNeeded`；bridge 废弃 no-op / 未用 getter |
+| TD-192 | 2026-07-17 | 沙箱时间线 SSOT：后端 headerPath/glob 推断 + metadata；前端停二次加工 |
+| TD-193 | 2026-07-21 | `sync_nacos.py` 补漏 `sunshine-oa.yaml`（否则 OA admin-token 永不更新） |
 
 ### 文档债（DOC）
 

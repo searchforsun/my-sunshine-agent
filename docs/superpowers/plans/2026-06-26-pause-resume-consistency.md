@@ -1,7 +1,7 @@
 # 3.9.5 暂停/续跑一致性 — 实施计划
 
 > **For agentic workers:** 推荐 superpowers:subagent-driven-development，按 Task 顺序逐条执行；每 Task 完成后再勾选状态。  
-> **设计 SSOT:** [2026-06-26-pause-resume-consistency-design.md](../specs/2026-06-26-pause-resume-consistency-design.md)  
+> **设计 SSOT:** [2026-06-26-pause-resume-consistency-design.md](../specs/archive/2026-06-26-pause-resume-consistency-design.md)  
 > **阶段归属:** 阶段三收尾 · 检查门 §3.9.5
 
 **Goal:** 统一 Plan/静态 Workflow 暂停与「继续生成」语义——Planner 阶段可续跑、HITL/Recovery 停止不丢交互、按钮文案分态、ReAct 步骤终态、wfCtx 空明确失败。

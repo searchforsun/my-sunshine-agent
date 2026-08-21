@@ -3,7 +3,7 @@
 **日期**：2026-07-17  
 **状态**：✅ 已实现  
 **范围**：Chat 右侧 `PlanNodeDrawer` 与 `SandboxWorkspaceDrawer` 共存布局；取消硬互斥销毁。  
-**关联**：修订 [sandbox-workspace-drawer](./2026-07-16-sandbox-workspace-drawer-design.md)「与 PlanNodeDrawer 互斥」条款；索引 [docs/sandbox/README.md](../../sandbox/README.md)。
+**关联**：修订 [sandbox-workspace-drawer](./2026-07-16-sandbox-workspace-drawer-design.md)「与 PlanNodeDrawer 互斥」条款；索引 [docs/sandbox/README.md](../../../sandbox/README.md)。
 
 ## 问题
 

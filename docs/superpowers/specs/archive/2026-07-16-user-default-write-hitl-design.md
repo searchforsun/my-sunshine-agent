@@ -2,7 +2,7 @@
 
 > **阶段**：4.5 沙箱 · **状态**：✅ 已实现  
 > **触发**：工作区 `writeHitlMode` 仅本会话内存；需与「账号设置 · 租户 / 默认执行模式」同构的**用户级默认**，跨设备/刷新保留  
-> **关联**：[sandbox-write-hitl-skip-design.md](./2026-07-16-sandbox-write-hitl-skip-design.md) · 索引 [docs/sandbox/README.md](../../sandbox/README.md) · 计划 [2026-07-16-user-default-write-hitl.md](../plans/2026-07-16-user-default-write-hitl.md)
+> **关联**：[sandbox-write-hitl-skip-design.md](./2026-07-16-sandbox-write-hitl-skip-design.md) · 索引 [docs/sandbox/README.md](../../../sandbox/README.md) · 计划 [2026-07-16-user-default-write-hitl.md](../../plans/2026-07-16-user-default-write-hitl.md)
 
 ---
 

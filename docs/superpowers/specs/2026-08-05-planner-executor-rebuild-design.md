@@ -444,7 +444,7 @@ content tokens                              ← Planner 正文 = 综合回答（
 - **复用**：`OperationStack`（普通时间线骨架）/ `TaskBoardPanel` / `SubStepsFold`
 - **扩展**：OperationStack harness 平铺模式（v16）+ Planner 元工具专属图标与中文名（v16）；v17 起 **不再隐藏** `plan_submit`/`self_assess`（旧 v16 隐藏 plan_submit 因 taskBoard 承载，新架构下统一平铺）
 - **移除**：`PlanWorkflowPanel` 动态 plan 分支、`PlanApprovalActions` 及 PlanApproval 对 Confirm 壳的绑定；**不新增** Worker 步骤卡片组件；**保留** `CollapsibleConfirmPanel`（HITL/Recovery）；v17 起 TaskBoard 取消 `taskboard-waves` 横向布局
-- **与 4.7.9 DecisionCard**：与 PlanApproval 解耦无关——DecisionCard 为 D16 **自建容器**；Planner 注册/续跑见 [D12](./2026-08-12-react-request-decision-planner-d12.md)
+- **与 4.7.9 DecisionCard**：与 PlanApproval 解耦无关——DecisionCard 为 D16 **自建容器**；Planner 注册/续跑见 [D12](archive/2026-08-12-react-request-decision-planner-d12.md)
 - **静态 Workflow 不受影响**：继续用 `PlanExecutionCanvas` 渲染 DAG（D3）
 
 ---

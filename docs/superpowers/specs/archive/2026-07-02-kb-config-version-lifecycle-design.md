@@ -3,7 +3,7 @@
 > **日期**：2026-07-02（Suggest 规则修订 2026-07-03）  
 > **状态**：已实施  
 > **父文档**：[2026-07-01-rag-studio-v2-design.md](./2026-07-01-rag-studio-v2-design.md)  
-> **索引**：[docs/rag/README.md](../../rag/README.md)
+> **索引**：[docs/rag/README.md](../../../rag/README.md)
 
 ## 1. 状态机
 

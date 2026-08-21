@@ -8,7 +8,7 @@
 
 **Architecture:** sandbox-service stop/start；orchestrator Redis dual ZSET（expiry/purge）；Reaper 分 stop/destroy；ensure 对 stopped 调 start。
 
-**Spec:** [2026-07-17-sandbox-container-lifecycle-design.md](../../specs/2026-07-17-sandbox-container-lifecycle-design.md)
+**Spec:** [2026-07-17-sandbox-container-lifecycle-design.md](../../specs/archive/2026-07-17-sandbox-container-lifecycle-design.md)
 
 ---
 

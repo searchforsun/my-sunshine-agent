@@ -2,7 +2,7 @@
 
 > **状态**：已实施（2026-07-03）  
 > **父文档**：[2026-07-01-rag-studio-v2-design.md](./2026-07-01-rag-studio-v2-design.md)  
-> **索引**：[docs/rag/README.md](../../rag/README.md) · **未实现**：[backlog.md](../../rag/backlog.md)  
+> **索引**：[docs/rag/README.md](../../../rag/README.md) · **未实现**：[backlog.md](../../../rag/backlog.md)  
 > **原则**：两 Tab + 记录内嵌；Badcase 并入评测集；内置评测集 SSOT 在 `docker/mysql/init/`
 
 ---

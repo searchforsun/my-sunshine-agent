@@ -8,7 +8,7 @@
 
 **Tech Stack:** Spring Boot · JPA · Redis（仅非 STM）· rag-service Milvus · Prompt Catalog · Vue3/Naive UI · Nacos · Live Python
 
-**Spec:** [2026-07-22-context-optimization-design.md](../specs/2026-07-22-context-optimization-design.md)
+**Spec:** [2026-07-22-context-optimization-design.md](../specs/archive/2026-07-22-context-optimization-design.md)
 
 ---
 

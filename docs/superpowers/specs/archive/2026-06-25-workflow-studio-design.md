@@ -7,8 +7,8 @@
 > **修订（2026-07-12）**：种子扩至 **5 条**（含 `knowledge-dual`）；节点 id=`{type}-{8位hex}`；rag/agent **必填** `params.query`；标杆 SSOT 为 init SQL  
 > **修订（2026-07-14）**：种子扩至 **7 条**（+ `knowledge-branch` / `knowledge-loop`）；**4.13.7** exclusive 边条件 + loop 容器落地  
 > **修订（2026-07-15）**：**收口当前形态**；for-each / 预检测 while / 框内嵌套网关·loop / 多出边汇合 / 画布边条件标签等 **不做**  
-> **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md)  
-> **实施计划**：[2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md)  
+> **平台 SSOT**：[phase4-platformization-design.md](../phase4-platformization-design.md)  
+> **实施计划**：[2026-07-11-workflow-studio.md](../../plans/2026-07-11-workflow-studio.md)  
 > **对称参照**：[skills-management-ui-design.md](./skills-management-ui-design.md)（skill-manager + `/skills`）  
 > **执行引擎复用**：`WorkflowExecutor` · `StaticPlanAdapter` · `PlanMaterializer` · `PlanValidator`
 
@@ -179,7 +179,7 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 - rag 节点须含 `params.query`（`{{start.userQuery}}`）
 - **禁止**各模块 Flyway 灌入；**禁止**启动时静默写 DB
 
-完整约定见 [docs/workflow/README.md](../../workflow/README.md)。
+完整约定见 [docs/workflow/README.md](../../../workflow/README.md)。
 
 ---
 
@@ -187,7 +187,7 @@ DB 存 **可执行完整 Plan**（含 `start` + 业务节点 + `answer`）。Stu
 
 标杆 workflow **不**再维护独立 JSON 文件；新环境仅依赖 init SQL。跨环境迁移可用 Studio **`POST /api/workflows/import`** 或导出已发布版本的 `GET /api/workflows/{id}/versions/{version}/export`。
 
-维护约定见 [docs/workflow/README.md](../../workflow/README.md)。
+维护约定见 [docs/workflow/README.md](../../../workflow/README.md)。
 
 ---
 
@@ -310,11 +310,11 @@ CRUD · 发布 · 可选 import · `GET /api/workflows/catalog` · `GET /api/wor
 
 ## 12. 相关文档
 
-- [2026-07-11-workflow-studio.md](../plans/2026-07-11-workflow-studio.md) — 实施计划
+- [2026-07-11-workflow-studio.md](../../plans/2026-07-11-workflow-studio.md) — 实施计划
 - [2026-07-14-exclusive-gateway-edge-condition-design.md](./2026-07-14-exclusive-gateway-edge-condition-design.md) — 条件分支
 - [2026-07-14-workflow-loop-container-design.md](./2026-07-14-workflow-loop-container-design.md) — loop 容器
-- [routing-golden-set.md](../../routing/routing-golden-set.md) §I
-- [workflow/README.md](../../workflow/README.md)
-- [plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md)
+- [routing-golden-set.md](../../../routing/routing-golden-set.md) §I
+- [workflow/README.md](../../../workflow/README.md)
+- [plan-workflow-retry-degradation.md](../../../routing/plan-workflow-retry-degradation.md)
 - [2026-06-25-phase4-agent-capabilities-boundaries.md](./2026-06-25-phase4-agent-capabilities-boundaries.md)
 - [skills-management-ui-design.md](./skills-management-ui-design.md)

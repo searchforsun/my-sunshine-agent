@@ -4,7 +4,7 @@
 > **状态**：📋 设计评审中（未实现）
 > **日期**：2026-07-27 · **v2（2026-08-10）**：吸收原 4.7.8 中仍有观察价值的可选项（§12）；4.7.8 全文已归档
 > **前置**：4.7.5 ReAct TaskBoard（原生 `todo_write` + `tasksContext`）、AS 2.0 `TaskReminderMiddleware`、4.5.7 可取消工具（`ToolResultEndEvent.state`）
-> **关联**：[2026-06-24-react-taskboard-design.md](./2026-06-24-react-taskboard-design.md)（D11）· `ProcessingStepMiddleware` · `AgentExecutionProperties` · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)
+> **关联**：[2026-06-24-react-taskboard-design.md](archive/2026-06-24-react-taskboard-design.md)（D11）· `ProcessingStepMiddleware` · `AgentExecutionProperties` · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # 阶段二收尾 — 技术设计（细化版）
 
-> **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.10–2.16**。下文为历史详设。
+> **⚠️ 已并入** [phase2-benchmark-design.md](../phase2-benchmark-design.md) **§2.10–2.16**。下文为历史详设。
 
 > **日期**：2026-06-20  
 > **状态**：已评审锁定（brainstorming 2026-06-19/20）  
@@ -224,7 +224,7 @@ userQuery → RuleBasedRouter → 命中则 ExecutionPlan + ruleId
            └─ 未命中 → IntentRouter (flash LLM)
 ```
 
-**Nacos** `agent.routing.structural` / `agent.routing.rules`：配置 SSOT 见 `docs/nacos/sunshine-orchestrator.yaml`；**验收提示词与变更指引**见 [routing-golden-set.md](../../routing/routing-golden-set.md)（勿在 design 内重复规则 YAML）。
+**Nacos** `agent.routing.structural` / `agent.routing.rules`：配置 SSOT 见 `docs/nacos/sunshine-orchestrator.yaml`；**验收提示词与变更指引**见 [routing-golden-set.md](../../../routing/routing-golden-set.md)（勿在 design 内重复规则 YAML）。
 
 **文件**：
 

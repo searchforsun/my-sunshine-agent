@@ -47,7 +47,7 @@
 | 2.1–2.8 MVP | ✅ | ⚠️ | **B** | 任务在 SSOT + implementation-plan；无逐步 plan（已交付） |
 | 2.9.1–2.9.6 Workflow | ✅ | ✅ | **A** | [2026-06-18-workflow-orchestration.md](./2026-06-18-workflow-orchestration.md) |
 | 2.10–2.16 收尾 | ✅ | ✅ | **A** | [2026-06-20-phase2-closure.md](./2026-06-20-phase2-closure.md) |
-| 2.17 记忆 | ✅ | ⚠️ | **B** | 设计在 [agent-memory-design](../specs/2026-06-17-agent-memory-design.md)；无独立 plan |
+| 2.17 记忆 | ✅ | ⚠️ | **B** | 设计在 [agent-memory-design](../specs/archive/2026-06-17-agent-memory-design.md)；无独立 plan |
 | 2.18 Timeline V2 | ✅ | ✅ | **A** | [archive/plans/2026-06-13-processing-timeline-v2.md](../../archive/plans/2026-06-13-processing-timeline-v2.md) |
 
 **检查门：** SSOT §5 共 10+ 条，2.12 `rag_eval --gate` 已 PASS。

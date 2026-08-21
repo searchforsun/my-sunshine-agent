@@ -2,7 +2,7 @@
 
 > **阶段**：4.5 沙箱 · **状态**：✅ 已实现  
 > **触发**：Chat 工作区需可按会话选择写操作确认强度，避免每次 write/edit 打断  
-> **关联**：[sandbox-workspace-drawer-design.md](./2026-07-16-sandbox-workspace-drawer-design.md)、[skills-docker-sandbox-design.md](./2026-07-15-skills-docker-sandbox-design.md)、[conversation-sandbox-permanent-tools-design.md](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · 索引 [docs/sandbox/README.md](../../sandbox/README.md)
+> **关联**：[sandbox-workspace-drawer-design.md](./2026-07-16-sandbox-workspace-drawer-design.md)、[skills-docker-sandbox-design.md](./2026-07-15-skills-docker-sandbox-design.md)、[conversation-sandbox-permanent-tools-design.md](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · 索引 [docs/sandbox/README.md](../../../sandbox/README.md)
 
 ---
 

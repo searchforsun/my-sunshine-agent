@@ -32,7 +32,7 @@ python3 scripts/sync_enterprise_skills.py
 
 ### 沙箱与 Skill 的关系（方案 B）
 
-> **SSOT 索引**：[docs/sandbox/README.md](../sandbox/README.md) · [permanent-tools](../superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md)
+> **SSOT 索引**：[docs/sandbox/README.md](../sandbox/README.md) · [permanent-tools](../superpowers/specs/archive/2026-07-16-conversation-sandbox-permanent-tools-design.md)
 
 - 主 Chat ReAct **始终**可使用 `sandbox__*`（对话级 `/workspace`）。
 - Skill 提供 **指令 overlay** + 可选 **`/skills/{skillId}/` 物料挂载**（`/skill` 或 L3 `skillId`）。
@@ -56,4 +56,4 @@ Chat 试跑（有 `@` 时懒挂载物料到 `/skills/sandbox-coding-demo/`）：
 @sandbox-coding-demo 请用沙箱工具：读取 /skills/sandbox-coding-demo 下脚本，在 /workspace 写 test.txt，再 ls
 ```
 
-Workflow 节点通过 `skillId` 引用已在平台发布并启用的 Skill；workflow 图定义在 **workflow-manager DB**（`/workflows` Studio），见 [workflow-studio-design](../superpowers/specs/2026-06-25-workflow-studio-design.md).
+Workflow 节点通过 `skillId` 引用已在平台发布并启用的 Skill；workflow 图定义在 **workflow-manager DB**（`/workflows` Studio），见 [workflow-studio-design](../superpowers/specs/archive/2026-06-25-workflow-studio-design.md).

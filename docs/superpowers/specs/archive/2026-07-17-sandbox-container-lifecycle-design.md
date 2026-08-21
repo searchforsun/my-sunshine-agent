@@ -2,7 +2,7 @@
 
 > **阶段**：4.5 沙箱 · **状态**：✅ 已实现（2026-07-28 增补工作区级生命周期差异，见 §7）  
 > **日期**：2026-07-17  
-> **前序**：[conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · [sandbox-workspace-drawer](./2026-07-16-sandbox-workspace-drawer-design.md) · 索引 [docs/sandbox/README.md](../../sandbox/README.md)
+> **前序**：[conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · [sandbox-workspace-drawer](./2026-07-16-sandbox-workspace-drawer-design.md) · 索引 [docs/sandbox/README.md](../../../sandbox/README.md)
 
 ---
 

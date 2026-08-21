@@ -3,7 +3,7 @@
 **日期**：2026-07-16  
 **状态**：✅ 已实现  
 **范围**：Chat 右侧抽屉浏览当前会话 `/workspace`（及挂载的 `/skills`）；对话级复用沙箱容器。  
-**索引**：[docs/sandbox/README.md](../../sandbox/README.md)
+**索引**：[docs/sandbox/README.md](../../../sandbox/README.md)
 
 ## 需求（已确认）
 

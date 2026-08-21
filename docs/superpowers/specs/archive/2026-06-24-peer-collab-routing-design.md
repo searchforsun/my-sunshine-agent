@@ -3,10 +3,10 @@
 > **阶段**：四 · **任务卡**：4.7.3（及 4.7.3a–d）  
 > **状态**：✅ **已交付**（2026-07-08）— L1 路由 §E + 第五模式 `PEER_COLLAB`；**执行/Timeline 以 [expert-consultation-design.md](./2026-07-07-expert-consultation-design.md) 为准**（Expert Catalog 取代 `peer.templates`、无仲裁 Agent、Synthesizer 汇总）  
 > **锁定决策**：[2026-06-19-locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) **D10**  
-> **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.7  
+> **平台 SSOT**：[phase4-platformization-design.md](../phase4-platformization-design.md) §4.7  
 > **多 Agent 详设**：[2026-06-19-multi-agent-architecture-design.md](./2026-06-19-multi-agent-architecture-design.md) §5.4（模式 D / L4）  
-> **实施计划**：[plans/2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md) §阶段四  
-> **路由验收**：[routing-golden-set.md](../../routing/routing-golden-set.md) §E（阶段四启用）
+> **实施计划**：[plans/2026-06-19-multi-agent-architecture.md](../../plans/2026-06-19-multi-agent-architecture.md) §阶段四  
+> **路由验收**：[routing-golden-set.md](../../../routing/routing-golden-set.md) §E（阶段四启用）
 
 ---
 
@@ -177,9 +177,9 @@ agent:
 
 | 文档 | 关联 |
 |------|------|
-| [phase4-platformization-design.md](./phase4-platformization-design.md) | §4.7 任务总览与检查门 |
+| [phase4-platformization-design.md](../phase4-platformization-design.md) | §4.7 任务总览与检查门 |
 | [2026-06-19-locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) | D10 锁定 |
 | [2026-06-19-multi-agent-architecture-design.md](./2026-06-19-multi-agent-architecture-design.md) | L4、§5.4 模式 D |
 | [2026-06-19-advanced-capabilities-design.md](./2026-06-19-advanced-capabilities-design.md) | §2.9 方案 C（MsgHub 仅 Plan 修订 / L4 补充） |
-| [routing-golden-set.md](../../routing/routing-golden-set.md) | §E 验收用例 |
-| [implementation-plan.md](../../implementation-plan.md) | 阶段四 4.7 摘要 |
+| [routing-golden-set.md](../../../routing/routing-golden-set.md) | §E 验收用例 |
+| [implementation-plan.md](../../../implementation-plan.md) | 阶段四 4.7 摘要 |

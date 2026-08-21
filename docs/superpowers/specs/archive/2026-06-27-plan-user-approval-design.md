@@ -4,7 +4,7 @@
 > **配置 SSOT**：`docs/nacos/sunshine-orchestrator.yaml` → `agent.execution.plan-workflow.approval`  
 > **后端**：`PlanApprovalService`、`PlanWorkflowExecutor.runUserApprovalLoop`  
 > **前端**：`PlanWorkflowPanel`、`PlanApprovalActions`、`PlanExecutionCanvas`、`PlanNodeDrawer`  
-> **关联**：[plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md) §8
+> **关联**：[plan-workflow-retry-degradation.md](../../../routing/plan-workflow-retry-degradation.md) §8
 
 ## 1. 行为概要
 

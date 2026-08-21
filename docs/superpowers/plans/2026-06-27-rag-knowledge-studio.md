@@ -10,7 +10,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA + Flyway · Milvus · ES · Redis · **MinIO** · Vue3/Naive UI · DashScope OCR · llm-gateway
 
-**设计 SSOT:** [2026-06-27-rag-knowledge-studio-design.md](../specs/2026-06-27-rag-knowledge-studio-design.md) · **[V2 扩展](./2026-07-01-rag-studio-v2-design.md)**（2026-07-01 Brainstorming 定稿）· [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+**设计 SSOT:** [2026-06-27-rag-knowledge-studio-design.md](../specs/archive/2026-06-27-rag-knowledge-studio-design.md) · **[V2 扩展](../specs/archive/2026-07-01-rag-studio-v2-design.md)**（2026-07-01 Brainstorming 定稿）· [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
 
 **非目标:** 新建 rag-manager 微服务 · Chat `#kb` · 4.3 L2 全量 · RBAC 细分 · **Nacos 承载租户业务参数**（已废弃）
 

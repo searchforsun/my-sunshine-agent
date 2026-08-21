@@ -3,8 +3,8 @@
 > **阶段**：四 · **任务卡**：4.7.5（及 4.7.5a–e）  
 > **状态**：✅ 4.7.5 已实现（Hook 锚定 think、merge content 去重、prompt/Hook 职责分离）  
 > **锁定决策**：[2026-06-19-locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) **D11**  
-> **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.7  
-> **路由验收**：[routing-golden-set.md](../../routing/routing-golden-set.md) §F（阶段四启用）  
+> **平台 SSOT**：[phase4-platformization-design.md](../phase4-platformization-design.md) §4.7  
+> **路由验收**：[routing-golden-set.md](../../../routing/routing-golden-set.md) §F（阶段四启用）  
 > **前置**：阶段三 ReAct Timeline（think/tool/generate）、3.6 tool 审计、3.10 `AgentRuntime` 统一入口
 
 ---
@@ -373,7 +373,7 @@ agent:
 
 ### 9.1 启用条件
 
-同 [routing-golden-set.md](../../routing/routing-golden-set.md) 验收前准备；额外：`agent.execution.react.taskboard.enabled=true`。
+同 [routing-golden-set.md](../../../routing/routing-golden-set.md) 验收前准备；额外：`agent.execution.react.taskboard.enabled=true`。
 
 ### 9.2 正例（应出现 `tasks` 步）
 

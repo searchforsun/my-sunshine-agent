@@ -8,7 +8,7 @@
 
 **Tech Stack:** auth-center (JPA) · sunshine-ui Vue3 · MySQL init `10-sunshine-auth.sql`
 
-**Spec:** [2026-07-16-user-default-write-hitl-design.md](../specs/2026-07-16-user-default-write-hitl-design.md)
+**Spec:** [2026-07-16-user-default-write-hitl-design.md](../specs/archive/2026-07-16-user-default-write-hitl-design.md)
 
 ---
 

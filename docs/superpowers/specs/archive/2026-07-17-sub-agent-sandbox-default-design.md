@@ -2,7 +2,7 @@
 
 > **阶段**：4.5 沙箱 · **状态**：✅ 已实现（2026-07-28 增补工作区级粒度说明，见 §8）  
 > **日期**：2026-07-17  
-> **前序**：[conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · 索引 [docs/sandbox/README.md](../../sandbox/README.md)
+> **前序**：[conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md) · 索引 [docs/sandbox/README.md](../../../sandbox/README.md)
 
 ---
 
@@ -95,7 +95,7 @@ flowchart LR
 ## 6. 文档联动（实现时更新）
 
 - [conversation-sandbox-permanent-tools](./2026-07-16-conversation-sandbox-permanent-tools-design.md)：子 Agent 行、§6 非目标「Workflow 子 Agent 默认沙箱」、B4
-- [docs/sandbox/README.md](../../sandbox/README.md)：缺口「SUB / Workflow 节点沙箱」→ ✅
+- [docs/sandbox/README.md](../../../sandbox/README.md)：缺口「SUB / Workflow 节点沙箱」→ ✅
 - 本文件状态 → 已实现（落地后勾选）
 - Workflow 标杆种子 `sandbox-agent`（`13-sunshine-workflow-manager.sql`）
 

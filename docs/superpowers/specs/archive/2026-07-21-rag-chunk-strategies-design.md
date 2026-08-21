@@ -2,7 +2,7 @@
 
 > **状态**：📝 设计已定稿（Brainstorming 2026-07-21）  
 > **范围**：rag-service 入库分块 + `/knowledge` 文档 Tab；**不新增微服务**  
-> **关联**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md) · [实施计划](../plans/2026-07-21-rag-chunk-strategies.md) · [docs/rag/README.md](../../rag/README.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+> **关联**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md) · [实施计划](../../plans/2026-07-21-rag-chunk-strategies.md) · [docs/rag/README.md](../../../rag/README.md) · [ADR-002](../../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
 
 ---
 

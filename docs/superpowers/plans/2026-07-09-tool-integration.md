@@ -25,7 +25,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA · MySQL `sunshine_tool` · Nacos Discovery · Redis pub/sub · WebClient · Vue3/Naive UI · Python Live 脚本
 
-**设计 SSOT:** [2026-07-09-tool-integration-design.md](../specs/2026-07-09-tool-integration-design.md)
+**设计 SSOT:** [2026-07-09-tool-integration-design.md](../specs/archive/2026-07-09-tool-integration-design.md)
 
 **前置条件:** 设计 spec 已 review；MySQL / Nacos / Redis 可用（ecs4c16g）；实现前在 `docker/mysql/init/` 应用新库表。
 

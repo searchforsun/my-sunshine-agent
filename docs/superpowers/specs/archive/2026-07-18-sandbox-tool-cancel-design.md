@@ -1,12 +1,12 @@
 # 可取消沙箱工具（exec / grep / glob）单工具取消
 
 > **状态**：✅ 已落地（Live：`verify_sandbox_tool_cancel_live.py`）  
-> **计划**：[2026-07-18-sandbox-tool-cancel.md](../plans/2026-07-18-sandbox-tool-cancel.md)  
+> **计划**：[2026-07-18-sandbox-tool-cancel.md](../../plans/2026-07-18-sandbox-tool-cancel.md)  
 
 > **日期**：2026-07-18  
 > **相关**：子 Agent 单独取消（`SpawnRunRegistry`）· `SandboxAgentTools` · `OperationCard` · Chat 底栏停止图标  
 > **示意**：`docs/superpowers/mockups/2026-07-18-sandbox-tool-cancel-hover.html`  
-> **索引**：[`docs/sandbox/README.md`](../../sandbox/README.md)
+> **索引**：[`docs/sandbox/README.md`](../../../sandbox/README.md)
 
 ---
 

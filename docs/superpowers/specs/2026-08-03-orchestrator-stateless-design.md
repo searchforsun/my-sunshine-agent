@@ -2,7 +2,7 @@
 
 > **日期**：2026-08-03 · **修订**：2026-08-12（v2：从「generation 粘连可续跑」升级为「Activity 任意实例调度」）  
 > **状态**：📋 设计评审中 · **类型**：架构重构 · **编排层唯一 SSOT（无状态 / 扩缩）**  
-> **对齐**：[planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./2026-07-29-unified-routing-design.md) · [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md)
+> **对齐**：[planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./2026-07-29-unified-routing-design.md) · [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md)
 
 ---
 
@@ -435,7 +435,7 @@ Notebook 键：`sunshine:plan:notebook:{sessionId}`（与 rebuild §5.1 v7 一�
 |------|------|
 | [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 逻辑 Planner/Worker/H1；本文提供物理 Activity 映射 |
 | [unified-routing v6](./2026-07-29-unified-routing-design.md) | router 侧 fast/pro/workflow；本文负责投递哪种首 Activity |
-| [request-decision D12](./2026-08-12-react-request-decision-planner-d12.md) | Planner HITL；阻塞走 §6.2 |
+| [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md) | Planner HITL；阻塞走 §6.2 |
 | 本文 v1 段落 | 控制面细节（cancel/HITL/sandbox）并入 §6；generation 粘连模型废弃 |
 
 ---

@@ -1,8 +1,8 @@
 # 架构锁定决策（2026-06-19）
 
-> **⚠️ 阶段三相关决策已摘要至** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.11**；OCR 见 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.2**。下文为完整锁定原文。
+> **⚠️ 阶段三相关决策已摘要至** [phase3-production-hardening-design.md](../phase3-production-hardening-design.md) **§3.9–3.11**；OCR 见 [phase4-platformization-design.md](../phase4-platformization-design.md) **§4.2**。下文为完整锁定原文。
 
-> **状态**：**边界已锁定**（D1–D11）— 新 spec 不得违背执行模式、落库、服务边界等。**实现层**遗留 API/垫片若与 [ADR-001](../../architecture/ADR-001-delete-legacy-compat.md) 或代码冲突，以 ADR + 代码为准并回写本文件 API 表。  
+> **状态**：**边界已锁定**（D1–D11）— 新 spec 不得违背执行模式、落库、服务边界等。**实现层**遗留 API/垫片若与 [ADR-001](../../../architecture/ADR-001-delete-legacy-compat.md) 或代码冲突，以 ADR + 代码为准并回写本文件 API 表。  
 > **适用范围**：动态 Plan、Planner 模型、Skills 运营、沙箱运行时、**OCR 提供商**、**第五模式 Peer 协作（阶段四）**
 
 ---
@@ -276,7 +276,7 @@ rag:
 - 子 Agent **不是**第二个面向用户的聊天助手；默认 **不**生成用户可见正文（由下游 `llm` / `answer` 合成）。
 - **调度权在 Workflow / Planner 引擎**，不在子 Agent LLM 自由委派。
 - 子 Agent 输入 **仅** 编排层显式传入：`query` + 上游 `context`（→ `injectedBlocks`）+ 节点 `skill` / `tools` / `systemOverlay`。
-- 子 Agent **不默认共享**主会话 LTM/MTM/STM；锁定决策与 [multi-agent plan §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot) 一致。
+- 子 Agent **不默认共享**主会话 LTM/MTM/STM；锁定决策与 [multi-agent plan §子 Agent 实现目标](../../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot) 一致。
 - System prompt：**base + skill overlay + 节点 systemOverlay**（分层叠加，非独立人格）。
 - 内部 think/tool **不上主 Timeline SSE**；`sub_agent_run` 审计独立落库（3.10.6）。
 
@@ -343,7 +343,7 @@ public enum ExecutionMode {
 - **引擎**（`ReactTaskBoardService`）：`merge=true` 无 `id` 时按 `content` 匹配合并，防重复项。
 - plan 降级 ReAct 时 **禁止** 将 Planner JSON 自动转为 DAG todo。
 
-详设 SSOT：[2026-06-24-react-taskboard-design.md](./2026-06-24-react-taskboard-design.md) · 验收 [routing-golden-set.md](../../routing/routing-golden-set.md) §F。
+详设 SSOT：[2026-06-24-react-taskboard-design.md](./2026-06-24-react-taskboard-design.md) · 验收 [routing-golden-set.md](../../../routing/routing-golden-set.md) §F。
 
 ---
 

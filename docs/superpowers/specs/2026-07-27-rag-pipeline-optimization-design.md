@@ -2,7 +2,7 @@
 
 > **状态**：📝 设计定稿（待用户评审确认）  
 > **范围**：rag-service 入库链路 + 检索链路 + `/knowledge` 前端 + `scripts/rag_*.py`；**不新增微服务**  
-> **关联**：[2026-07-21-rag-chunk-strategies-design.md](./2026-07-21-rag-chunk-strategies-design.md) · [2026-07-01-rag-studio-v2-design.md](./2026-07-01-rag-studio-v2-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) · 评估依据：通用 RAG 流程对照评估（2026-07-27 会话）
+> **关联**：[2026-07-21-rag-chunk-strategies-design.md](archive/2026-07-21-rag-chunk-strategies-design.md) · [2026-07-01-rag-studio-v2-design.md](archive/2026-07-01-rag-studio-v2-design.md) · [ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) · 评估依据：通用 RAG 流程对照评估（2026-07-27 会话）
 
 ---
 

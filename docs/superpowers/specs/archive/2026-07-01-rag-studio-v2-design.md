@@ -1,9 +1,9 @@
 # RAG 知识库工作台 V2 扩展设计
 
-> **状态**：已实施（核心 2026-07-03）· 缺口见 [docs/rag/backlog.md](../../rag/backlog.md)  
+> **状态**：已实施（核心 2026-07-03）· 缺口见 [docs/rag/backlog.md](../../../rag/backlog.md)  
 > **父文档**：[2026-06-27-rag-knowledge-studio-design.md](./2026-06-27-rag-knowledge-studio-design.md)  
-> **实施计划**：[2026-06-27-rag-knowledge-studio.md](../plans/2026-06-27-rag-knowledge-studio.md)（T23–T28）  
-> **关联**：[ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+> **实施计划**：[2026-06-27-rag-knowledge-studio.md](../../plans/2026-06-27-rag-knowledge-studio.md)（T23–T28）  
+> **关联**：[ADR-002](../../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
 
 ---
 

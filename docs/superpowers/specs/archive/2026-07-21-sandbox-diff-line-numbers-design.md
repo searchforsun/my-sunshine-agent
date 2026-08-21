@@ -1,8 +1,8 @@
 # 沙箱 / 时间线：行号与 Git 风格 contextual diff
 
-> **状态**：✅ 已落地 · [实施计划](../plans/2026-07-21-sandbox-diff-line-numbers.md)  
+> **状态**：✅ 已落地 · [实施计划](../../plans/2026-07-21-sandbox-diff-line-numbers.md)  
 > **范围**：沙箱工作区全文预览行号 + 时间线 `sandbox__write` / `sandbox__edit` 展开 Git 风格 diff（旧/新行号、±3 上下文）  
-> **关联**：[docs/sandbox/README.md](../../sandbox/README.md) · [2026-07-16-sandbox-workspace-drawer-design.md](./2026-07-16-sandbox-workspace-drawer-design.md) · 现有 `sunshine-ui/src/api/sandboxEditDiff.ts`
+> **关联**：[docs/sandbox/README.md](../../../sandbox/README.md) · [2026-07-16-sandbox-workspace-drawer-design.md](./2026-07-16-sandbox-workspace-drawer-design.md) · 现有 `sunshine-ui/src/api/sandboxEditDiff.ts`
 
 ---
 
@@ -205,7 +205,7 @@ flowchart LR
 
 ## 8. 文档索引
 
-落地后更新 [`docs/sandbox/README.md`](../../sandbox/README.md)：
+落地后更新 [`docs/sandbox/README.md`](../../../sandbox/README.md)：
 
 - 工作区抽屉：代码预览带行号
 - edit 展开：Git 双行号 + ±3 上下文（替代「仅 old/new 片段 unified」描述）

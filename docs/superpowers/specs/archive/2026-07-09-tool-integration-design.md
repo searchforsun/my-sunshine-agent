@@ -2,9 +2,9 @@
 
 > **阶段**：四 · **任务卡**：4.8 演进（MCP 动态引入 + SDK 业务解耦）  
 > **状态**：✅ Phase 1 检查门通过（2026-07-10）  
-> **实施计划**：[2026-07-09-tool-integration.md](../plans/2026-07-09-tool-integration.md)
+> **实施计划**：[2026-07-09-tool-integration.md](../../plans/2026-07-09-tool-integration.md)
 > **日期**：2026-07-09  
-> **前置**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.8 · [locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) D3 · [react-taskboard-design.md](./2026-06-24-react-taskboard-design.md)  
+> **前置**：[phase4-platformization-design.md](../phase4-platformization-design.md) §4.8 · [locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) D3 · [react-taskboard-design.md](./2026-06-24-react-taskboard-design.md)  
 > **对称参照**：skill-manager（:8225 + `/skills`）— tool-manager 扩 Catalog + Admin API + `/tools` 管理页
 
 ---

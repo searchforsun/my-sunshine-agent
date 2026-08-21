@@ -1,12 +1,12 @@
 # 多智能体协作 + Handoff 交接 + 外部智能体市场 - 技术设计
 
-> **⚠️ 已被取代**：本文档内容已合并入 [`2026-07-29-multi-agent-unified-design.md`](./2026-07-29-multi-agent-unified-design.md)。保留仅供历史追溯，请以统一设计文档为准。
+> **⚠️ 已被取代**：本文档内容已合并入 [`2026-07-29-multi-agent-unified-design.md`](../2026-07-29-multi-agent-unified-design.md)。保留仅供历史追溯，请以统一设计文档为准。
 
 > **状态**：**内部「专家内核统一并入 P6」方向经 E5 评审不采纳（2026-07-25）**——P6 peer-collab 保留全栈自研，不迁移官方 Subagent；本文仅 **外部专家 A2A 接入（P6+）** 部分仍可作为未来增量参考
 
 > **日期**：2026-07-24（rev.3 · 2026-07-28 术语重命名+Handoff；rev.2 · 2026-07-27 E5 结论）
 > **编号**：阶段四增量（~~内部统一并入 AS2 P6~~【E5 否决】；外部 A2A 独立 P6+；Handoff 交接 P6+）
-> **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作](./2026-07-07-expert-consultation-design.md) · ~~[AS2 P6 peer-collab 正式化](../plans/2026-07-23-agentscope-2-native-first-redesign.md)~~（E5 不迁移，peer 保留自研） · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)
+> **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作](./2026-07-07-expert-consultation-design.md) · ~~[AS2 P6 peer-collab 正式化](../../plans/archive/2026-07-23-agentscope-2-native-first-redesign.md)~~（E5 不迁移，peer 保留自研） · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)
 > **一句话**：术语「专家」->「智能体」、「多专家协作」->「多智能体协作」（用户可见层）；智能体间任务交接（Handoff）引入结构化交接包 + 上下文过滤 + 权限裁剪；外部智能体通过 A2A Agent Card 接入。
 
 ---
@@ -27,7 +27,7 @@
 ---
 > **日期**：2026-07-24（2026-07-27 标注 E5 结论）  
 > **编号**：阶段四增量（~~内部统一并入 AS2 P6~~【E5 否决】；外部专家 A2A 独立增量 P6+）  
-> **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作](./2026-07-07-expert-consultation-design.md) · ~~[AS2 P6 peer-collab 正式化](../plans/2026-07-23-agentscope-2-native-first-redesign.md)~~（E5 不迁移，peer 保留自研） · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)  
+> **前置**：[4.7.6 spawn_subagent](./2026-07-18-react-spawn-subagent-design.md) · [多专家协作](./2026-07-07-expert-consultation-design.md) · ~~[AS2 P6 peer-collab 正式化](../../plans/archive/2026-07-23-agentscope-2-native-first-redesign.md)~~（E5 不迁移，peer 保留自研） · [A2A Protocol v1.0](https://github.com/a2aproject/A2A)  
 > **一句话**：专家定义 = 命名的子 Agent 配置。内部专家统一执行内核（消除与 spawn_subagent 平行路径）；外部专家通过 A2A Agent Card 接入，后端适配成与内部专家一致的调用契约，前端 `/experts` 分内部/外部两个 tab。
 
 ---

@@ -1,11 +1,11 @@
 # 阶段四 · 4.5 Skills Docker 沙箱（Coding Agent 工具面）
 
 > **阶段**：四 · **任务卡**：**4.5**  
-> **状态**：✅ 方案 B 已落地（常驻工具+懒开箱）· 工作区/写确认/时间线展示见 [docs/sandbox/README.md](../../sandbox/README.md)  
+> **状态**：✅ 方案 B 已落地（常驻工具+懒开箱）· 工作区/写确认/时间线展示见 [docs/sandbox/README.md](../../../sandbox/README.md)  
 > **日期**：2026-07-15  
 > **前置锁定**：D4 Docker 沙箱（[locked-architecture-decisions.md](./2026-06-19-locked-architecture-decisions.md) §D4）  
 > **相关**：skill-manager `/skills` · 3.3 HITL · 4.8 特殊工具不进 Catalog（同 `search_knowledge` / `manage_tasks`）  
-> **平台索引**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.5  
+> **平台索引**：[phase4-platformization-design.md](../phase4-platformization-design.md) §4.5  
 > **演进 SSOT**：[conversation-sandbox-permanent-tools-design.md](./2026-07-16-conversation-sandbox-permanent-tools-design.md)
 
 ---

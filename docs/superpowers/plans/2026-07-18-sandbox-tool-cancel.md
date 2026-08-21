@@ -1,7 +1,7 @@
 # Sandbox 工具单次取消 Implementation Plan
 
 > **状态**：✅ 已完成（2026-07-18）· Live `verify_sandbox_tool_cancel_live.py`  
-> **Spec**：[2026-07-18-sandbox-tool-cancel-design.md](../specs/2026-07-18-sandbox-tool-cancel-design.md)
+> **Spec**：[2026-07-18-sandbox-tool-cancel-design.md](../specs/archive/2026-07-18-sandbox-tool-cancel-design.md)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
@@ -11,7 +11,7 @@
 
 **Tech Stack:** Java/Spring · sandbox-service DockerCli · Vue3 · Nacos · Live Python
 
-**Spec:** [2026-07-18-sandbox-tool-cancel-design.md](../specs/2026-07-18-sandbox-tool-cancel-design.md)
+**Spec:** [2026-07-18-sandbox-tool-cancel-design.md](../specs/archive/2026-07-18-sandbox-tool-cancel-design.md)
 
 ---
 

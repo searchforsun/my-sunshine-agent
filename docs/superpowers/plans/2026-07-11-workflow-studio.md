@@ -2,7 +2,7 @@
 
 > **日期**：2026-07-11  
 > **状态**：✅ **当前形态收口**（2026-07-15）；v1 非目标不做  
-> **详设 SSOT**：[2026-06-25-workflow-studio-design.md](../specs/2026-06-25-workflow-studio-design.md)  
+> **详设 SSOT**：[2026-06-25-workflow-studio-design.md](../specs/archive/2026-06-25-workflow-studio-design.md)  
 > **决策**：Workflow **完全 DB 单轨**；废弃 Nacos `sunshine-workflows.yaml` 与一切兼容逻辑；标杆由 **MySQL init 种子** 初始化（现 **7** 条，含 `knowledge-dual` / `knowledge-branch` / `knowledge-loop`）
 
 ---

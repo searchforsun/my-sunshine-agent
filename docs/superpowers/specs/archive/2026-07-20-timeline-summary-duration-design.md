@@ -1,7 +1,7 @@
 # 时间线总览行（总耗时 + 整段折叠）
 
 > **阶段**：体验增强（前端）  
-> **状态**：🟢 已实施 · [plan](../plans/2026-07-20-timeline-summary-duration.md)  
+> **状态**：🟢 已实施 · [plan](../../plans/2026-07-20-timeline-summary-duration.md)  
 > **日期**：2026-07-20  
 > **前置**：Timeline V2（`lifecycle` + `summary`）· `OperationStack` / `OperationCard` · 正文穿插 `contentInterleave.ts`  
 > **范围**：以 `sunshine-ui` 为主；为刷新兜底可暴露已有 `MessageDto.updatedAt`（不新增 SSE duration 字段）

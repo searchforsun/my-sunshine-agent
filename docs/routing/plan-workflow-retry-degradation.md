@@ -125,7 +125,7 @@
 
 ## 8. 用户确认（Plan Approval）
 
-> SSOT：[2026-06-27-plan-user-approval-design.md](../superpowers/specs/2026-06-27-plan-user-approval-design.md)
+> SSOT：[2026-06-27-plan-user-approval-design.md](../superpowers/specs/archive/2026-06-27-plan-user-approval-design.md)
 
 | 项 | 说明 |
 |----|------|

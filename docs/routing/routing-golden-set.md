@@ -204,7 +204,7 @@ python3 scripts/verify_skills_ui_live.py
 
 ## I. Workflow `#` 绑定（L0，阶段四 4.13）
 
-> **详设**：[workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3  
+> **详设**：[workflow-studio-design.md](../superpowers/specs/archive/2026-06-25-workflow-studio-design.md) §3  
 > **与 §E 区分**：**`#` 仅 Workflow** · **`@` 仅 Skill**；首字符互斥，均优先于 L1/L2/L3。  
 > **数据源**：workflow-manager DB init 种子 **7 条**（`docs/workflow/README.md`）。
 
@@ -233,7 +233,7 @@ python3 scripts/verify_skills_ui_live.py
 
 ## J. Chat 执行模式强制路由（v6 语义；P0 ✅）
 
-> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) · [unified-routing](docs/superpowers/specs/2026-07-29-unified-routing-design.md)  
+> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/archive/2026-06-25-chat-execution-mode-selector-design.md) · [unified-routing](../superpowers/specs/2026-07-29-unified-routing-design.md)  
 > **请求**：SSE 发送体 `executionMode`（`fast` \| `pro` \| `workflow`；旧 `auto`/`react`/`plan-workflow` 读映射）  
 > **边界**：本节约 **执行路径**；**指定 workflow 模板**用正文 `#id`（4.13 §I），**不在底栏做 catalog 下拉**。
 
@@ -254,7 +254,7 @@ Live：`python scripts/verify_execution_preference.py`
 
 ## F. LLM 兜底（L3）与 Skill 绑定（流程 3）
 
-> **沙箱（方案 B）**：[conversation-sandbox-permanent-tools-design.md](../superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md) — 主 ReAct **始终**有 `sandbox__*`；`skillId` 仅影响 overlay/挂载，**非**沙箱前置条件。
+> **沙箱（方案 B）**：[conversation-sandbox-permanent-tools-design.md](../superpowers/specs/archive/2026-07-16-conversation-sandbox-permanent-tools-design.md) — 主 ReAct **始终**有 `sandbox__*`；`skillId` 仅影响 overlay/挂载，**非**沙箱前置条件。
 
 规则与结构均未命中时走 `IntentRouter`（短句可能先 intent 改写）。L3 一次输出 `mode` + 可选 `skillId`（须为 Skill Catalog 内 id）；后置 **`SkillDiscoveryService`** 仅做 catalog 校验（剥离未知 id）。
 
@@ -303,7 +303,7 @@ Live：`python scripts/verify_execution_preference.py`
 ## F. ReAct TaskBoard（阶段四 · 4.7.5）
 
 > **状态**：✅ 4.7.5 单测 + F1 Live（2026-07-07）；F-N1 需 plan-workflow 长链路（`TASKBOARD_TIMEOUT_SEC≥300`）  
-> **详设**：[react-taskboard-design.md](../superpowers/specs/2026-06-24-react-taskboard-design.md) · **锁定 D11** · 配置键 `agent.execution.react.taskboard.*`
+> **详设**：[react-taskboard-design.md](../superpowers/specs/archive/2026-06-24-react-taskboard-design.md) · **锁定 D11** · 配置键 `agent.execution.react.taskboard.*`
 
 **前置**：`agent.execution.react.taskboard.enabled=true`；Nacos 已同步并重启 orchestrator。
 
@@ -337,7 +337,7 @@ Live：`python scripts/verify_execution_preference.py`
 撰写回复 → generate
 ```
 
-**职责**：prompt 只管是否建板 / 更新 status；think 锚点与 merge 去重见 [taskboard spec §3.3](../superpowers/specs/2026-06-24-react-taskboard-design.md)。
+**职责**：prompt 只管是否建板 / 更新 status；think 锚点与 merge 去重见 [taskboard spec §3.3](../superpowers/specs/archive/2026-06-24-react-taskboard-design.md)。
 
 ### 单测（阶段四）
 
@@ -359,9 +359,9 @@ python scripts/phase2_agent_demo.py --suite react-taskboard
 | Plan 重试/降级/Replan | `agent.execution.plan-workflow` · 见 [plan-workflow-retry-degradation.md](./plan-workflow-retry-degradation.md) |
 | Skill `/` / 强提示 | `agent.skill.hint-patterns`；L0 skill 绑定（轨 A，不再产出 skill-driven Plan） |
 | Skill 自动发现阈值 | `SkillDiscoveryService`（catalog description bigram 打分） |
-| ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/2026-06-24-react-taskboard-design.md) |
-| Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/2026-06-25-chat-execution-mode-selector-design.md) |
-| Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/2026-06-25-workflow-studio-design.md) §3 |
+| ReAct TaskBoard（阶段四） | `agent.execution.react.taskboard.*` / `agent.execution.react.max-iters` / `agent.timeline.steps.tasks` / `mode-overlays.react`（仅建板与 status 语义）· 详设 [taskboard spec](../superpowers/specs/archive/2026-06-24-react-taskboard-design.md) |
+| Chat 强制执行模式 | 请求体 `executionPreference`；intent 文案 `agent.timeline.intent.modes.*.forced-after` · 见 [chat selector spec](../superpowers/specs/archive/2026-06-25-chat-execution-mode-selector-design.md) |
+| Workflow 模板 / `#` 绑定 | `workflow-manager` catalog + L0 `#` · **非**底栏二级下拉 · 见 [workflow-studio spec](../superpowers/specs/archive/2026-06-25-workflow-studio-design.md) §3 |
 
 改完路由/提示词：`/prompts` 保存并发布 → 等 orchestrator Catalog 热更新（或重启）→ 跑上表至少 A1/B1/C1/D1 + G 对照；API 门：`verify_prompt_catalog_live.py`。仅改 Nacos 非提示词项时才 `sync_nacos.py`。
 

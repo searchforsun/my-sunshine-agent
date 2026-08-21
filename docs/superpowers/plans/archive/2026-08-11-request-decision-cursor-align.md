@@ -10,7 +10,7 @@
 
 **Tech Stack:** AgentScope-Java · Spring WebFlux · Redis · Vue3/Naive UI · Prompt Catalog seed · `scripts/verify_decision_live.py`
 
-**Spec:** [2026-08-11-request-decision-cursor-align-design.md](../specs/archive/2026-08-11-request-decision-cursor-align-design.md)
+**Spec:** [2026-08-11-request-decision-cursor-align-design.md](../../specs/archive/2026-08-11-request-decision-cursor-align-design.md)
 
 ## Global Constraints
 

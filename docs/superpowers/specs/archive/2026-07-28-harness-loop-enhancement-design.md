@@ -27,7 +27,7 @@
 | ReAct 错误无分类重试 | `ExecutionErrorClassifier` 仅 Plan 节点用；ReAct 工具失败全占 LLM 轮次 | 瞬态错误（超时/限流）浪费决策轮次，加速 max-iters 耗尽 |
 | compaction 能力栈未启用 | `buildCompactionConfig()` 仅 `triggerMessages/keepMessages`，AS 2.0 原生 token 触发 / offload 引用化 / tool 结果驱逐 / overflow 恢复 / 参数截断全部未启用 | 长 tool 结果全量进 context 爆窗；压缩后原始消息丢失无法回溯；`write_file` body 白占预算；超窗直接报错无恢复 |
 
-**定位**：本 spec 是 4.7.7 的续篇，复用其 `AgentRunState` 载体与瞬态注入模式，分五阶段补齐上述缺口。**不引入新 ExecutionMode、不新增前端组件、不违背 D11（TaskBoard 非 mini-DAG）**。阶段五全面启用 AS 2.0 原生 compaction 能力栈；与 [上下文压缩统一设计 §4.4](./2026-07-31-unified-context-compression-design.md) 的「三阶段一次原则」对齐——**原生能力承接 Phase 0/2（tail 裁剪/收缩），Phase 1 唯一一次跨轮激进压缩由 `CrossTurnCompactMiddleware` 承接**（§6.5.2）。
+**定位**：本 spec 是 4.7.7 的续篇，复用其 `AgentRunState` 载体与瞬态注入模式，分五阶段补齐上述缺口。**不引入新 ExecutionMode、不新增前端组件、不违背 D11（TaskBoard 非 mini-DAG）**。阶段五全面启用 AS 2.0 原生 compaction 能力栈；与 [上下文压缩统一设计 §4.4](../2026-07-31-unified-context-compression-design.md) 的「三阶段一次原则」对齐——**原生能力承接 Phase 0/2（tail 裁剪/收缩），Phase 1 唯一一次跨轮激进压缩由 `CrossTurnCompactMiddleware` 承接**（§6.5.2）。
 
 ### 关键事实（代码核查结论）
 
@@ -47,7 +47,7 @@
 | **二** | 子 Agent 上下文经济学 | 4.7.6 `spawn_subagent` + `AgentRunRequest` | 子 Agent 分类（explore/execute）+ 结果摘要回传 |
 | **三** | ReAct 错误分类重试 | `ExecutionErrorClassifier` + `NodeRetryExecutor` 模式 | `ReactToolRetryer` 瞬态错误自动重试 |
 | **四** | 长任务参数调优 + 收口 | 全部上述能力 | `max-iters` 调高 + TaskBoard 强约束 + Live 验收 |
-| **五** | Compaction 能力栈全面启用 | AS 2.0 `CompactionConfig` + `ToolResultEvictionConfig` + `CrossTurnCompactMiddleware` | token 触发 + 引用化 offload + tool 结果驱逐 + overflow 恢复；对齐 [压缩 spec §4.4](./2026-07-31-unified-context-compression-design.md) 三阶段一次（Phase 1 跨轮压缩） |
+| **五** | Compaction 能力栈全面启用 | AS 2.0 `CompactionConfig` + `ToolResultEvictionConfig` + `CrossTurnCompactMiddleware` | token 触发 + 引用化 offload + tool 结果驱逐 + overflow 恢复；对齐 [压缩 spec §4.4](../2026-07-31-unified-context-compression-design.md) 三阶段一次（Phase 1 跨轮压缩） |
 
 **依赖关系**：阶段一无前置（可与 4.7.7 并行）；阶段二独立；阶段三独立；阶段五独立但阶段四依赖它；阶段四依赖一二三五全部落地。**建议执行顺序**：一 -> 三 -> 二 -> 五 -> 四（一三最轻、价值最高；二工程量最大；五是 compaction 基础设施；四是收口配置）。
 
@@ -334,11 +334,11 @@ agent:
 
 ### 6.5.2 设计：AS 2.0 原生 compaction 栈 + 三阶段一次对齐
 
-**核心原则**：压缩逻辑整体遵循 [上下文压缩统一设计 §4.4](./2026-07-31-unified-context-compression-design.md) 的「三阶段一次原则」——AS 2.0 原生 compaction 栈承接 **Phase 0（tail 裁剪）与 Phase 2（tail 收缩）**（`CompactionConfig` + `ToolResultEvictionConfig`，只改 messages 尾部，KV Cache 命中）；**Phase 1 唯一一次跨轮激进压缩**（L3 清 + Near 8→4 + Mid/Far 合并）由自研 `CrossTurnCompactMiddleware` 承接（注入在 CompactionMiddleware 之前，§4.4.2）。AS 原生 `CompactionConfig` 对所有 prefix 做单次 LLM 全量摘要，而逐类型分步压缩质量更高——取舍论证见 §4.4.2「为什么不触发 AgentScope 原生的 CompactionConfig LLM 摘要」。本阶段自研范围**仅限 Phase 1 跨轮压缩**；引用化 offload、tool 结果驱逐、overflow 恢复等能力仍全部复用 AS 2.0 原生。
+**核心原则**：压缩逻辑整体遵循 [上下文压缩统一设计 §4.4](../2026-07-31-unified-context-compression-design.md) 的「三阶段一次原则」——AS 2.0 原生 compaction 栈承接 **Phase 0（tail 裁剪）与 Phase 2（tail 收缩）**（`CompactionConfig` + `ToolResultEvictionConfig`，只改 messages 尾部，KV Cache 命中）；**Phase 1 唯一一次跨轮激进压缩**（L3 清 + Near 8→4 + Mid/Far 合并）由自研 `CrossTurnCompactMiddleware` 承接（注入在 CompactionMiddleware 之前，§4.4.2）。AS 原生 `CompactionConfig` 对所有 prefix 做单次 LLM 全量摘要，而逐类型分步压缩质量更高——取舍论证见 §4.4.2「为什么不触发 AgentScope 原生的 CompactionConfig LLM 摘要」。本阶段自研范围**仅限 Phase 1 跨轮压缩**；引用化 offload、tool 结果驱逐、overflow 恢复等能力仍全部复用 AS 2.0 原生。
 
 #### 改造 1：`buildCompactionConfig()` 全面配置
 
-> **参数口径对齐**：本段为配置能力全景；实际取值以 [压缩 spec §4.4.1/§4.4.3](./2026-07-31-unified-context-compression-design.md) 为准——Phase 0 `triggerTokens=0`（`modelWindow - 20k`）+ `PruneConfig.protectTokens=40k`；Phase 2 `protectTokens=20k` + `truncateArgs 500 chars`。
+> **参数口径对齐**：本段为配置能力全景；实际取值以 [压缩 spec §4.4.1/§4.4.3](../2026-07-31-unified-context-compression-design.md) 为准——Phase 0 `triggerTokens=0`（`modelWindow - 20k`）+ `PruneConfig.protectTokens=40k`；Phase 2 `protectTokens=20k` + `truncateArgs 500 chars`。
 
 ```java
 private CompactionConfig buildCompactionConfig() {
@@ -381,7 +381,7 @@ HarnessAgent harness = HarnessAgent.builder()
 
 当前 `disableMemoryTools()` 关闭了所有 memory 工具。改为**仅关闭 `memory_get`/`memory_search`**（Sunshine 有自己的 L2/L3 跨会话记忆体系，不依赖 AS 的 MEMORY.md），**保留 `session_search`**（本轮会话内已压缩消息的按需检索）。
 
-> **撞名区分（2026-08-07 · 对齐 [task-scene v7](./2026-08-01-task-scene-context-design.md)）**：此处的 `session_search` 是 **AS 2.0 原生工具**（检索本轮 run 内 offload 到 `*.log.jsonl` 的压缩前原始消息，作用域单次 run 内）。Sunshine 自研的 `session_search`（复用 L3 + `scene=task`，作用域跨轮/项目级）是**另一个工具**——见 [task-scene §6.4](./2026-08-01-task-scene-context-design.md#64-task-过程原文恢复session_searchv4-新增--v5-扩展双范围--v7-与-as-原生撞名区分)。实现时自研工具以 `sunshine_session_search` 暴露，两者作用域互补不冲突。
+> **撞名区分（2026-08-07 · 对齐 [task-scene v7](../2026-08-01-task-scene-context-design.md)）**：此处的 `session_search` 是 **AS 2.0 原生工具**（检索本轮 run 内 offload 到 `*.log.jsonl` 的压缩前原始消息，作用域单次 run 内）。Sunshine 自研的 `session_search`（复用 L3 + `scene=task`，作用域跨轮/项目级）是**另一个工具**——见 [task-scene §6.4](../2026-08-01-task-scene-context-design.md#64-task-过程原文恢复session_searchv4-新增--v5-扩展双范围--v7-与-as-原生撞名区分)。实现时自研工具以 `sunshine_session_search` 暴露，两者作用域互补不冲突。
 
 ```java
 // 改前
@@ -432,7 +432,7 @@ agent:
 | 层 | 作用域 | 触发 | 机制 | 与其他层关系 |
 |----|--------|------|------|-------------|
 | **L1 压缩** | 跨轮次（会话级） | token 达模型窗口 80% 或轮次超 40 | Near/Mid/Far 三段切分 + Mid 摘要 + Far 折叠 | 管对话轮次的总量，不碰单次 run 内 tool 消息 |
-| **Phase 1 跨轮压缩**（[压缩 spec §4.4](./2026-07-31-unified-context-compression-design.md)） | run 内跨轮 prefix | token 达 `modelWindow × 0.85`，且本次 run 未压缩过 | `CrossTurnCompactMiddleware`：L3 清 + Near 8→4 + Mid/Far 合并，**整个 run 仅一次** | 与 L1 的压缩点前移共用 Near/Mid/Far 语义；run 内不落库、不移动 `far_folded_msg_ids`（§5.5.4⑤）。**注记（2026-08-07 · 对齐五层 spec v14/v15）**：压缩后窗口构成随 [五层 spec v14/v15](./2026-07-31-unified-context-compression-design.md) 更新——chat 重组 4 原文+4 摘要+Far、task 重组 2 完整+2 骨架+Far≤10k，Phase 1 的「Near 8→4」指压缩触发前 Near 累积规模上限，压缩后保留按 v14/v15 语义重组（非固定 8→4 滑动窗） |
+| **Phase 1 跨轮压缩**（[压缩 spec §4.4](../2026-07-31-unified-context-compression-design.md)） | run 内跨轮 prefix | token 达 `modelWindow × 0.85`，且本次 run 未压缩过 | `CrossTurnCompactMiddleware`：L3 清 + Near 8→4 + Mid/Far 合并，**整个 run 仅一次** | 与 L1 的压缩点前移共用 Near/Mid/Far 语义；run 内不落库、不移动 `far_folded_msg_ids`（§5.5.4⑤）。**注记（2026-08-07 · 对齐五层 spec v14/v15）**：压缩后窗口构成随 [五层 spec v14/v15](../2026-07-31-unified-context-compression-design.md) 更新——chat 重组 4 原文+4 摘要+Far、task 重组 2 完整+2 骨架+Far≤10k，Phase 1 的「Near 8→4」指压缩触发前 Near 累积规模上限，压缩后保留按 v14/v15 语义重组（非固定 8→4 滑动窗） |
 | **AS compaction** | 单次 run 内（轮次内） | `triggerTokens` 或 `triggerMessages` | 结构化摘要（SESSION INTENT / SUMMARY / ARTIFACTS / NEXT STEPS） + offload 引用化 | 承接 Phase 0/2 的 tail 裁剪/收缩，只改 messages 尾部，KV Cache 命中 |
 | **ToolResultEviction** | 单条 tool 结果 | 结果超 80K chars | offload 到 workspace + head/tail 预览 + `read_file` 指针 | compaction 的前置防线，大结果先驱逐再决定是否压缩 |
 | **L2** | 跨会话 | 每轮 completed 后 | LLM 抽取结构化状态 + 置信门禁 | L1 压缩时 Far 折叠读 L2 为权威锚点 |
@@ -451,7 +451,7 @@ agent:
 | `session_search` 检索到已过期信息 | `session_search` 仅检索本轮会话的 `*.log.jsonl`，天然限定在本轮上下文，不跨会话 |
 | `ToolResultEviction` 的 workspace 目录膨胀 | AS 原生按 agentId+sessionId 隔离；Sunshine `HarnessAgentHolder` 按 fingerprint 缓存实例，workspace 生命周期跟随实例。沙箱 purge 机制（4.5）不覆盖 AS workspace，需确认是否需补清理 |
 | 压缩专用模型质量不足 | `compaction-model` 可配；默认 flash 模型已足够（摘要任务比推理简单）。可随时切回主模型 |
-| compaction + L1 压缩双重压缩导致信息损失叠加 | 作用域互补：AS compaction 承接 Phase 0/2（run 内 tail，管 tool 消息流）与 Phase 1 跨轮压缩（run 内 prefix，`CrossTurnCompactMiddleware`）均**不落库**；L1 压缩管跨轮对话轮次（落库压缩点）。Phase 1 与 L1 共享 Near/Mid/Far 语义但 run 内压缩不移动 `far_folded_msg_ids`（[压缩 spec §5.5.4⑤](./2026-07-31-unified-context-compression-design.md)）；L1 history 取法按 kind 分流（[task-scene §6.6](./2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)）——**chat 只取 `user`/`assistant` 正文（tool 摘要不进 L1）；task 经 kind 折叠 steps 进 `SessionTurn`（读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文）**，见 v15 |
+| compaction + L1 压缩双重压缩导致信息损失叠加 | 作用域互补：AS compaction 承接 Phase 0/2（run 内 tail，管 tool 消息流）与 Phase 1 跨轮压缩（run 内 prefix，`CrossTurnCompactMiddleware`）均**不落库**；L1 压缩管跨轮对话轮次（落库压缩点）。Phase 1 与 L1 共享 Near/Mid/Far 语义但 run 内压缩不移动 `far_folded_msg_ids`（[压缩 spec §5.5.4⑤](../2026-07-31-unified-context-compression-design.md)）；L1 history 取法按 kind 分流（[task-scene §6.6](../2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)）——**chat 只取 `user`/`assistant` 正文（tool 摘要不进 L1）；task 经 kind 折叠 steps 进 `SessionTurn`（读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文）**，见 v15 |
 
 ### 6.5.6 验收补充
 
@@ -583,7 +583,7 @@ mvn test -pl orchestrator -Dtest=CompletionGuardMiddlewareTest,ReactToolRetryerT
 | `session_search` 检索到过期信息 | 五 | `session_search` 仅检索本轮 `*.log.jsonl`，不跨会话 |
 | `ToolResultEviction` workspace 目录膨胀 | 五 | AS 按 agentId+sessionId 隔离；需确认沙箱 purge 是否覆盖 AS workspace，必要时补清理 |
 | 压缩专用模型（flash）质量不足 | 五 | `compaction-model` 可配；摘要任务比推理简单，flash 已足够；可随时切回主模型 |
-| compaction + L1 压缩双重信息损失叠加 | 五 | 作用域互补：AS compaction（Phase 0/2 tail）与 Phase 1 跨轮压缩（`CrossTurnCompactMiddleware`，run 内 prefix，不落库）均不碰 L1 落库压缩点；L1 压缩管跨轮轮次。Phase 1 与 L1 共享 Near/Mid/Far 语义，run 内压缩不移动 `far_folded_msg_ids`。AS compaction 产物经 `ContextWritePath` 按 kind 入 L1——chat 只取 user/assistant 正文、tool 摘要不进 L1；task 折叠 steps（读/执行摘要+refs、写/改原文）进 SessionTurn（[task-scene §6.6](./2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)） |
+| compaction + L1 压缩双重信息损失叠加 | 五 | 作用域互补：AS compaction（Phase 0/2 tail）与 Phase 1 跨轮压缩（`CrossTurnCompactMiddleware`，run 内 prefix，不落库）均不碰 L1 落库压缩点；L1 压缩管跨轮轮次。Phase 1 与 L1 共享 Near/Mid/Far 语义，run 内压缩不移动 `far_folded_msg_ids`。AS compaction 产物经 `ContextWritePath` 按 kind 入 L1——chat 只取 user/assistant 正文、tool 摘要不进 L1；task 折叠 steps（读/执行摘要+refs、写/改原文）进 SessionTurn（[task-scene §6.6](../2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)） |
 
 ---
 

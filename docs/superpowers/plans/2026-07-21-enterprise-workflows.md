@@ -8,7 +8,7 @@
 
 **Tech Stack:** MySQL `sunshine_workflow`、workflow-manager :8230、Gateway SSE、Python `scripts/*.py`、现有 Skills（`policy-review` / `compliance-check` / `finance-analysis`）
 
-**Spec:** [2026-07-21-enterprise-workflows-design.md](../specs/2026-07-21-enterprise-workflows-design.md)
+**Spec:** [2026-07-21-enterprise-workflows-design.md](../specs/archive/2026-07-21-enterprise-workflows-design.md)
 
 ---
 

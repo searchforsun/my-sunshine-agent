@@ -1,7 +1,7 @@
 # Workflow 编排架构 — 简化 Dify 设计方案
 
 > **⚠️ SUPERSEDED（2026-07-15）**：Workflow **DB 单轨** 见 [2026-06-25-workflow-studio-design.md](./2026-06-25-workflow-studio-design.md)；标杆 SSOT=`docker/mysql/init/13-sunshine-workflow-manager.sql`。下文仍写 `sunshine-workflows.yaml`，**勿再当 SSOT**。  
-> **⚠️ 已并入** [phase2-benchmark-design.md](./phase2-benchmark-design.md) **§2.9**。下文为历史详设。
+> **⚠️ 已并入** [phase2-benchmark-design.md](../phase2-benchmark-design.md) **§2.9**。下文为历史详设。
 
 > 日期：2026-06-18   · 状态：**历史归档**  
 > 前置：阶段二 MVP（ReActAgent、Timeline、Memory、Tool Manager 标杆）已落地  
@@ -241,7 +241,7 @@ return ctx.get("answer").asStreamTokens();
 
 ## 7. Agent 节点 — 子 Agent 函数
 
-> **实现目标 SSOT**：[2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)（2026-06-22）
+> **实现目标 SSOT**：[2026-06-19-multi-agent-architecture.md](../../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)（2026-06-22）
 
 ### 7.1 语义
 

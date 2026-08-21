@@ -41,7 +41,7 @@
 | I1 | PDF DashScope OCR + 异步解析 + 进度 | ✅ | 上传 PDF → 轮询 → 预览 |
 | I2 | Word `.docx` 段落解析 + 异步 + 发布 | ✅ | 纯段落 docx 端到端 |
 | I3 | 手动「发布生效」入库 Milvus/ES | ✅ | 草稿 ≠ active chunk |
-| I4 | 文档级多策略分块（markdown / fixed / recursive / semantic / parent_child） | ✅ | [2026-07-21-rag-chunk-strategies-design.md](../superpowers/specs/2026-07-21-rag-chunk-strategies-design.md)；`verify_chunk_strategies_live.py` |
+| I4 | 文档级多策略分块（markdown / fixed / recursive / semantic / parent_child） | ✅ | [2026-07-21-rag-chunk-strategies-design.md](../superpowers/specs/archive/2026-07-21-rag-chunk-strategies-design.md)；`verify_chunk_strategies_live.py` |
 | I5 | 无「第 N 页」等无业务标记 | ✅ | 重新上传发布后 chunk 无页码 |
 | I6 | Word **表格**正文抽取 | ✅ | POI `XWPFTable` → Markdown 表格 |
 | I7 | 入库前脱敏（desensitize :8600） | ✅ | `publishVersion` / `ingestText` 发布前 `DesensitizeClient` |

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vue3 + TypeScript（sunshine-ui）· vitest · Playwright e2e
 
-**Spec:** [2026-07-20-timeline-summary-duration-design.md](../specs/2026-07-20-timeline-summary-duration-design.md)
+**Spec:** [2026-07-20-timeline-summary-duration-design.md](../specs/archive/2026-07-20-timeline-summary-duration-design.md)
 
 ---
 
@@ -767,7 +767,7 @@ EOF
 
 在阶段「四」单元格末尾追加：
 
-`· **时间线总览** 见 [timeline-summary-duration-design.md](./2026-07-20-timeline-summary-duration-design.md) + [2026-07-20-timeline-summary-duration.md](../plans/2026-07-20-timeline-summary-duration.md)`
+`· **时间线总览** 见 [timeline-summary-duration-design.md](../specs/archive/2026-07-20-timeline-summary-duration-design.md) + [2026-07-20-timeline-summary-duration.md](../plans/2026-07-20-timeline-summary-duration.md)`
 
 Spec 头 `状态` 改为：`🟢 已实施`。
 

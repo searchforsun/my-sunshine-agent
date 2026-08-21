@@ -1,9 +1,9 @@
 # 多 Agent 架构与主子 Agent 设计方案
 
-> **⚠️ 任务卡已并入** [phase3-production-hardening-design.md](./phase3-production-hardening-design.md) **§3.9–3.10**；实施计划 [plans/2026-06-19-multi-agent-architecture.md](../plans/2026-06-19-multi-agent-architecture.md)（3.9.x / 3.10.x）。**第五模式 `PEER_COLLAB`** 见 [2026-06-24-peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · 阶段四 [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.7.3**。下文为历史详设。
+> **⚠️ 任务卡已并入** [phase3-production-hardening-design.md](../phase3-production-hardening-design.md) **§3.9–3.10**；实施计划 [plans/2026-06-19-multi-agent-architecture.md](../../plans/2026-06-19-multi-agent-architecture.md)（3.9.x / 3.10.x）。**第五模式 `PEER_COLLAB`** 见 [2026-06-24-peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · 阶段四 [phase4-platformization-design.md](../phase4-platformization-design.md) **§4.7.3**。下文为历史详设。
 
 > **日期**：2026-06-19（**2026-06-23** 对齐 3.10.1–3.10.7、3.11.1–3.11.6、3.12.1/1a；**`/skills` UI** 见 [skills-management-ui-design.md](./skills-management-ui-design.md)）  
-> **状态**：历史详设；**实现目标 SSOT** 见 [plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)  
+> **状态**：历史详设；**实现目标 SSOT** 见 [plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)  
 > **定位**：企业助手**可控多智能体**的核心架构 — 与动态 DAG、Skills、提示词改写协同  
 > **前置**：Workflow 2.9 已落地 `AgentNodeHandler`；3.10.1 起改调 `AgentRuntime`（`SunshineAgent` 已删除）  
 > **关联**：`2026-06-18-workflow-orchestration-design.md` §7、`2026-06-19-advanced-capabilities-design.md`、`CLAUDE.md` Timeline 约定
@@ -281,7 +281,7 @@ AgentScope MsgHub: [角色A 制度专家] [角色B 财务专家] [角色C 仲裁
 
 ## 7. 记忆与上下文隔离
 
-> **实现目标 SSOT**：[plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)
+> **实现目标 SSOT**：[plans/2026-06-19-multi-agent-architecture.md §子 Agent 实现目标](../../plans/2026-06-19-multi-agent-architecture.md#子-agent-实现目标ssot)
 
 | 数据 | 主 Agent | 子 Agent（目标态） | 当前代码（2026-06-22） |
 |------|----------|-------------------|------------------------|

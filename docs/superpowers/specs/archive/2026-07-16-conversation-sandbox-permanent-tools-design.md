@@ -81,7 +81,7 @@ flowchart LR
 | Nacos `mode-overlays.react` | sandbox__* 与 RAG 同级说明 |
 | Live `verify_sandbox_live` | G1：无 skill 亦可出现 sandbox__* |
 
-**后续增强（已另文）**：工作区 `writeHitlMode` · 时间线路径展示 · 见 [docs/sandbox/README.md](../../sandbox/README.md)。
+**后续增强（已另文）**：工作区 `writeHitlMode` · 时间线路径展示 · 见 [docs/sandbox/README.md](../../../sandbox/README.md)。
 
 **不改**：STM 形态、PathJail、`/skills/{id}` 多挂载、TTL Reaper。
 
@@ -110,9 +110,9 @@ flowchart LR
 
 ## 8. 文档索引
 
-- 总索引：[docs/sandbox/README.md](../../sandbox/README.md)
+- 总索引：[docs/sandbox/README.md](../../../sandbox/README.md)
 - [2026-07-15-skills-docker-sandbox-design.md](./2026-07-15-skills-docker-sandbox-design.md)
 - [2026-07-16-conversation-sandbox-multi-skill-design.md](./2026-07-16-conversation-sandbox-multi-skill-design.md)
 - [2026-07-16-sandbox-workspace-drawer-design.md](./2026-07-16-sandbox-workspace-drawer-design.md)
 - [2026-07-16-sandbox-write-hitl-skip-design.md](./2026-07-16-sandbox-write-hitl-skip-design.md)
-- [docs/skills/README.md](../../skills/README.md)
+- [docs/skills/README.md](../../../skills/README.md)

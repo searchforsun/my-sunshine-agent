@@ -3,7 +3,7 @@
 > **阶段**：4.5 沙箱 · 增量 · **状态**：✅ 已实现（2026-08-03 核对；实现见 §12 演进差异）
 > **日期**：2026-07-28 · **实现核对**：2026-08-03
 > **定位**：在「对话级轻量沙箱」（skills 脚本场景）之外，新增**工作区级完全体沙箱**——绑定 Git 项目、多会话共用、用户显式选择 checkout（主分支/worktree，无锁无自动隔离）、硬件档位可配，形成 Codex 式编码智能体产品形态
-> **关联**：[sandbox-repo-binding](./2026-07-28-sandbox-repo-binding-design.md)（已归档，粒度升级为本设计的子集）· [sub-agent-sandbox-default](../2026-07-17-sub-agent-sandbox-default-design.md) · [sandbox-container-lifecycle](../2026-07-17-sandbox-container-lifecycle-design.md) · [archive/4.7.8](./2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内见五层 §4.5）· 索引 [docs/sandbox/README.md](../../../sandbox/README.md)
+> **关联**：[sandbox-repo-binding](./2026-07-28-sandbox-repo-binding-design.md)（已归档，粒度升级为本设计的子集）· [sub-agent-sandbox-default](2026-07-17-sub-agent-sandbox-default-design.md) · [sandbox-container-lifecycle](2026-07-17-sandbox-container-lifecycle-design.md) · [archive/4.7.8](./2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内见五层 §4.5）· 索引 [docs/sandbox/README.md](../../../sandbox/README.md)
 
 ---
 

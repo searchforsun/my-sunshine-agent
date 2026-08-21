@@ -1,6 +1,6 @@
 # Agent 三层记忆方案（方案 C）
 
-> **⚠️ 已废止（2026-07-22）**：请改读 [../2026-07-22-context-optimization-design.md](../2026-07-22-context-optimization-design.md)（AssembledContext / L1 Near·Mid·Far / L2 / L3）。下文为历史详设，勿再实现。
+> **⚠️ 已废止（2026-07-22）**：请改读 [../2026-07-22-context-optimization-design.md](2026-07-22-context-optimization-design.md)（AssembledContext / L1 Near·Mid·Far / L2 / L3）。下文为历史详设，勿再实现。
 
 > **历史备注**：曾并入 [../phase2-benchmark-design.md](../phase2-benchmark-design.md) **§2.17**；租户过滤见 [../phase3-production-hardening-design.md](../phase3-production-hardening-design.md) **§3.2**。
 

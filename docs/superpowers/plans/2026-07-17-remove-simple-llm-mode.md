@@ -8,7 +8,7 @@
 
 **Tech Stack:** orchestrator (Java/Spring) · sunshine-ui (Vue3/TS) · Nacos YAML · `scripts/verify_execution_preference.py` · `scripts/clear_session_cache.py`
 
-**Spec:** [2026-07-17-remove-simple-llm-mode-design.md](../specs/2026-07-17-remove-simple-llm-mode-design.md)
+**Spec:** [2026-07-17-remove-simple-llm-mode-design.md](../specs/archive/2026-07-17-remove-simple-llm-mode-design.md)
 
 ---
 

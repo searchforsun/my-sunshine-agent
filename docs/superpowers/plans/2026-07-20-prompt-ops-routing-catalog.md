@@ -10,7 +10,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA · MySQL `sunshine_prompt` · WebClient · Vue3/Naive UI · Python Live
 
-**设计 SSOT:** [2026-07-20-prompt-ops-routing-catalog-design.md](../specs/2026-07-20-prompt-ops-routing-catalog-design.md)
+**设计 SSOT:** [2026-07-20-prompt-ops-routing-catalog-design.md](../specs/archive/2026-07-20-prompt-ops-routing-catalog-design.md)
 
 **前置:** MySQL / Nacos / 全链路可启；改前确认本计划与 spec 一致。
 

@@ -2,7 +2,7 @@
 
 > **阶段**：四 · **任务卡**：4.7.2 / 4.7.3 / 4.7.5  
 > **状态**：⬜ 按需（阶段三检查门通过后启动）  
-> **平台 SSOT**：[phase4-platformization-design.md](./phase4-platformization-design.md) §4.7  
+> **平台 SSOT**：[phase4-platformization-design.md](../phase4-platformization-design.md) §4.7  
 > **关联详设**：[peer-collab-routing-design.md](./2026-06-24-peer-collab-routing-design.md) · [react-taskboard-design.md](./2026-06-24-react-taskboard-design.md)
 
 ---

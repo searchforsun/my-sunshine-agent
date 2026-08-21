@@ -4,7 +4,7 @@
 
 > **运行时 SSOT**：`workflow-manager` DB（Studio 发布 / CRUD）。init SQL 仅用于**新环境初始化**；已部署库改标杆须跑 `python3 scripts/sync_enterprise_workflows.py`（UPSERT + `PUBLISH workflow-catalog-changed`）。
 >
-> **4.13 状态**：当前形态（线性 + 并行 + exclusive + loop）**已收口**；企业读写三条见 [enterprise-workflows 详设](../superpowers/specs/2026-07-21-enterprise-workflows-design.md)。
+> **4.13 状态**：当前形态（线性 + 并行 + exclusive + loop）**已收口**；企业读写三条见 [enterprise-workflows 详设](../superpowers/specs/archive/2026-07-21-enterprise-workflows-design.md)。
 
 ## 标杆清单
 
@@ -54,6 +54,6 @@
 
 ## 详设
 
-- [workflow-studio-design.md](../superpowers/specs/2026-06-25-workflow-studio-design.md)
-- [2026-07-21-enterprise-workflows-design.md](../superpowers/specs/2026-07-21-enterprise-workflows-design.md)
+- [workflow-studio-design.md](../superpowers/specs/archive/2026-06-25-workflow-studio-design.md)
+- [2026-07-21-enterprise-workflows-design.md](../superpowers/specs/archive/2026-07-21-enterprise-workflows-design.md)
 - [2026-07-11-workflow-studio.md](../superpowers/plans/2026-07-11-workflow-studio.md)

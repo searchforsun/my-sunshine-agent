@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 17 · Maven · Vue3/TS · highlight.js · vitest（`npx vitest run`）
 
-**Spec:** [2026-07-21-sandbox-diff-line-numbers-design.md](../specs/2026-07-21-sandbox-diff-line-numbers-design.md)
+**Spec:** [2026-07-21-sandbox-diff-line-numbers-design.md](../specs/archive/2026-07-21-sandbox-diff-line-numbers-design.md)
 
 ---
 

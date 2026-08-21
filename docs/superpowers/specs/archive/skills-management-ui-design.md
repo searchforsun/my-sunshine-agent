@@ -2,7 +2,7 @@
 
 > **状态**：3.12 已落地 + **live ✅**（2026-06-27；`verify_skills_ui_live.py` + UI 手验）  
 > **路由**：`/skills` · **后端**：skill-manager :8225 · **BFF 透传** · **上传/下载二进制** 直连 Gateway :8000  
-> **关联**： [multi-agent plan §3.11–3.12](../plans/2026-06-19-multi-agent-architecture.md) · [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
+> **关联**： [multi-agent plan §3.11–3.12](../../plans/2026-06-19-multi-agent-architecture.md) · [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
 
 ---
 

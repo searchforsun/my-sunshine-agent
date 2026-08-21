@@ -10,7 +10,7 @@
 
 **Tech Stack:** JDK 21 · Spring WebFlux · Spring Data Redis · JPA · Milvus · ES · Vue3/Naive UI · pytest 风格 Live 脚本（`scripts/*.py`）
 
-**设计 SSOT:** [2026-07-21-rag-chunk-strategies-design.md](../specs/2026-07-21-rag-chunk-strategies-design.md)
+**设计 SSOT:** [2026-07-21-rag-chunk-strategies-design.md](../specs/archive/2026-07-21-rag-chunk-strategies-design.md)
 
 **非目标:** 独立入库 Tab · 策略 A/B 自动评测 · 预览写向量库 · 保留 KB `rag-chunk` 回退
 

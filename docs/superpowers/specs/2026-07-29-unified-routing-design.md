@@ -45,7 +45,7 @@
 
 **禁止**四轴同名字段互写。L3 向量元数据里旧列 `scene=chat|task` → 迁为 `kind`（或过渡双读）。
 
-**资源 `kind` 过滤与默认工具集**（2026-08-13）：意图候选构建前，Skill/Agent/Workflow 仅保留 `kind ∈ {会话.kind, all}`；默认 Toolkit 按会话 `kind` 解析 `chat`/`task` 工具集，**不**按 `executionMode` 选集。细则与 React Prompt 退役见 [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)。
+**资源 `kind` 过滤与默认工具集**（2026-08-13）：意图候选构建前，Skill/Agent/Workflow 仅保留 `kind ∈ {会话.kind, all}`；默认 Toolkit 按会话 `kind` 解析 `chat`/`task` 工具集，**不**按 `executionMode` 选集。细则与 React Prompt 退役见 [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md)。
 
 ---
 

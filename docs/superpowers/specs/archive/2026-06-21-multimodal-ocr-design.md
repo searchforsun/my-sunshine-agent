@@ -1,6 +1,6 @@
 # 多模态与 OCR 文档理解 — 技术设计
 
-> **⚠️ 已并入** [phase4-platformization-design.md](./phase4-platformization-design.md) **§4.2–4.4**。下文为历史详设。
+> **⚠️ 已并入** [phase4-platformization-design.md](../phase4-platformization-design.md) **§4.2–4.4**。下文为历史详设。
 
 > **日期**：2026-06-21  
 > **状态**：方案评审（阶段四能力线）  

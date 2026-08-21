@@ -8,7 +8,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot Web + Data JPA · MySQL init（禁 Flyway）· Nacos · Vue3/Naive UI · Python 运维脚本
 
-**设计 SSOT:** [2026-07-21-biz-db-crud-design.md](../specs/2026-07-21-biz-db-crud-design.md)
+**设计 SSOT:** [2026-07-21-biz-db-crud-design.md](../specs/archive/2026-07-21-biz-db-crud-design.md)
 
 **硬约束:** 禁止 `/api/mock` alias、JSON 回退、`u-alice` 业务身份；配置键统一 `sunshine.biz.admin-token`（值仍 `sunshine-mock-admin-dev`）。
 

@@ -1,7 +1,7 @@
 # 阶段三：多 Agent / Skills — 实施计划
 
 > **SSOT 设计：** [phase3-production-hardening-design.md](../specs/phase3-production-hardening-design.md)  
-> **历史详设：** [2026-06-19-multi-agent-architecture-design.md](../specs/2026-06-19-multi-agent-architecture-design.md)  
+> **历史详设：** [2026-06-19-multi-agent-architecture-design.md](../specs/archive/2026-06-19-multi-agent-architecture-design.md)  
 > **总排期：** 见 [phase3-production-hardening.md](./2026-06-19-phase3-production-hardening.md)（与 3.4 RAG 周级并行）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans。  
@@ -15,7 +15,7 @@
 
 ## 子 Agent 实现目标（SSOT）
 
-> 详设 §7 / §13 决策 #7；与 [locked-architecture-decisions](../specs/2026-06-19-locked-architecture-decisions.md) 一致。  
+> 详设 §7 / §13 决策 #7；与 [locked-architecture-decisions](../specs/archive/2026-06-19-locked-architecture-decisions.md) 一致。  
 > **模式**：编排器-Worker（Orchestrator-Worker），非 MsgHub 自由对话式多 Agent。
 
 ### 定位
@@ -677,7 +677,7 @@ flowchart LR
 - [x] **3.9.1d** `PlanNormalizer`（缺 edges 推断）+ Planner 失败 plan 步可视化 + 降级 react 说明
 - [x] **3.9.1e** 重试与降级：`NodeRetryExecutor`、Replan、`completed_with_errors` / `degraded_react` · SSOT [plan-workflow-retry-degradation.md](../../routing/plan-workflow-retry-degradation.md)
 - [x] **3.9.1f** 静态 `WORKFLOW`：`StaticPlanAdapter` 物化 Plan + `execution_plan` 落库；Chat 复用 `PlanWorkflowPanel`（与 L1 Plan 同 UI）
-- [x] **3.9.1g** 动态 Plan **用户确认**：`PlanApprovalService` + `POST /api/chat/confirm-plan`；SSE `planApproval` / `planGraph`；前端 `PlanApprovalActions` + 重新生成仅图区 loading · [spec](../specs/2026-06-27-plan-user-approval-design.md)
+- [x] **3.9.1g** 动态 Plan **用户确认**：`PlanApprovalService` + `POST /api/chat/confirm-plan`；SSE `planApproval` / `planGraph`；前端 `PlanApprovalActions` + 重新生成仅图区 loading · [spec](../specs/archive/2026-06-27-plan-user-approval-design.md)
 
 **Files（3.9.1f）：** `StaticPlanAdapter.java`、`PlanRunFinalizer.java`；Modify `WorkflowExecutor.execute()`
 
@@ -726,14 +726,14 @@ flowchart LR
 - [x] **3.11.3** 种子 skill：`finance-analysis`、`policy-review`、`compliance-check`
 - [x] **3.11.4** orchestrator `SkillCatalogService` HTTP 拉取 + 缓存
 - [x] **3.11.5** 标准 SKILL.md（Cursor frontmatter：`name` + `description`）+ zip 上传 + 种子同步
-- [x] **3.12.1** `/skills` 列表 + 上传 + 预览 + 版本运营（详见 [skills-management-ui-design.md](../specs/skills-management-ui-design.md)）
+- [x] **3.12.1** `/skills` 列表 + 上传 + 预览 + 版本运营（详见 [skills-management-ui-design.md](../specs/archive/skills-management-ui-design.md)）
 - [x] **3.12.1a** 元数据修改（displayName/description）· 下载/删除版本 · 卡片级删除 Skill
 - [x] **3.11.6** Catalog 拆分：`GET /catalog/index`（无 overlay）+ `GET /skills/{id}/catalog`（含 overlay）
 - [x] **3.11.7** Skill 显式绑定：`SkillBindingParser`（P0 `@` + P1 强提示句）+ Chat `@` 补全 + Nacos `hint-patterns`
 - [x] **3.12.2** 在线编辑 overlay 正文（草稿版本 PUT file；SKILL.md 同步 overlay）；**版本 diff ✅**
 - [ ] **3.12.3** ~~工具绑定~~（已取消：工具由 workflow 节点 params 配置）
 - [x] **3.12.4** Timeline `plan` 步跳转 Plan 详情（`/plans/:planId`）
-- [x] **3.12.5** Plan **用户确认** UI：`CollapsibleConfirmPanel` + `PlanApprovalActions`；重新生成图区 loading / 放大钮 / 文案约定 · [spec](../specs/2026-06-27-plan-user-approval-design.md)
+- [x] **3.12.5** Plan **用户确认** UI：`CollapsibleConfirmPanel` + `PlanApprovalActions`；重新生成图区 loading / 放大钮 / 文案约定 · [spec](../specs/archive/2026-06-27-plan-user-approval-design.md)
 
 ---
 
@@ -748,9 +748,9 @@ flowchart LR
 | **4.7.4** | 前端子 Agent / Peer transcript 摘要展开 |
 
 详设：
-- 第五模式 SSOT：[2026-06-24-peer-collab-routing-design.md](../specs/2026-06-24-peer-collab-routing-design.md)
+- 第五模式 SSOT：[2026-06-24-peer-collab-routing-design.md](../specs/archive/2026-06-24-peer-collab-routing-design.md)
 - 平台任务卡：[phase4-platformization-design.md](../specs/phase4-platformization-design.md) §4.7
-- 锁定：[D10](../specs/2026-06-19-locked-architecture-decisions.md#d10-第五顶层模式--peer_collab阶段四)
+- 锁定：[D10](../specs/archive/2026-06-19-locked-architecture-decisions.md#d10-第五顶层模式--peer_collab阶段四)
 - 路由验收：[routing-golden-set.md](../../routing/routing-golden-set.md#e-peer_collab阶段四)
 
 ---

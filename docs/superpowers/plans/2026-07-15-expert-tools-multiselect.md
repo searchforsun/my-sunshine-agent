@@ -8,7 +8,7 @@
 
 **Tech Stack:** JDK 21 · Spring Boot 3.2 · JPA · Vue3/Naive UI · AgentScope Toolkit
 
-**设计 SSOT:** [2026-07-15-expert-tools-multiselect-design.md](../specs/2026-07-15-expert-tools-multiselect-design.md)
+**设计 SSOT:** [2026-07-15-expert-tools-multiselect-design.md](../specs/archive/2026-07-15-expert-tools-multiselect-design.md)
 
 ---
 

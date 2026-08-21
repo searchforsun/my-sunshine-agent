@@ -1,8 +1,8 @@
 # RAG 知识库工作台设计（SSOT）
 
-> **状态**：🟡 **4.1 核心已落地**（2026-07-03）；详索 [docs/rag/README.md](../../rag/README.md) · 缺口 [backlog.md](../../rag/backlog.md)  
+> **状态**：🟡 **4.1 核心已落地**（2026-07-03）；详索 [docs/rag/README.md](../../../rag/README.md) · 缺口 [backlog.md](../../../rag/backlog.md)  
 > **路由**：`/knowledge` · **后端**：rag-service :8400（**不新增微服务**）· **前端**：直连 Gateway :8000 或 `VITE_RAG_API_BASE`  
-> **关联**：[ADR-002-rag-pipeline-in-rag-service.md](../../architecture/ADR-002-rag-pipeline-in-rag-service.md) · [V2 扩展](./2026-07-01-rag-studio-v2-design.md) · [phase4 §4.1](./phase4-platformization-design.md) · 实施计划 [2026-06-27-rag-knowledge-studio.md](../plans/2026-06-27-rag-knowledge-studio.md)
+> **关联**：[ADR-002-rag-pipeline-in-rag-service.md](../../../architecture/ADR-002-rag-pipeline-in-rag-service.md) · [V2 扩展](./2026-07-01-rag-studio-v2-design.md) · [phase4 §4.1](../phase4-platformization-design.md) · 实施计划 [2026-06-27-rag-knowledge-studio.md](../../plans/2026-06-27-rag-knowledge-studio.md)
 
 ---
 
@@ -20,7 +20,7 @@
 | 8 | Chat 绑库 | 底栏 **会话级 kb 下拉**（B）；本阶段不做 `#kb` 语法 |
 | 9 | 权限 | **暂不 RBAC**（C）；`X-Admin-Token` + Gateway JWT |
 | 10 | Nacos 发布 | ~~Nacos Open API 直接 patch（方案 1）~~ → **2026-07-01 修订**：业务参数 **MySQL 版本化**；Nacos 仅基础设施（见 §12） |
-| 11 | **检索 pipeline 边界** | **改写 + hybrid + rerank + HyDE + empty-recall 全部内聚 rag-service**；orchestrator 只调干净检索 API（[ADR-002](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)） |
+| 11 | **检索 pipeline 边界** | **改写 + hybrid + rerank + HyDE + empty-recall 全部内聚 rag-service**；orchestrator 只调干净检索 API（[ADR-002](../../../architecture/ADR-002-rag-pipeline-in-rag-service.md)） |
 | 12 | **配置版本** | **bundle + version**；统一「保存草稿 / 发布 / 切换生效版」；**禁止** per-scope 多个发布按钮 |
 | 13 | **线上 vs 管理** | **线上**（`/api/rag/search`、Chat）仅读 `published` 生效版；**工作台** debug/评测可用 `draft` 或指定 `versionId` |
 | 14 | **工作台上下文** | 四 Tab **严格** `(tenantId, kbId)`；任一变化 **全量重载** + 取消在途请求 |
@@ -523,7 +523,7 @@ Response stages：`rewrite` | `hyde` | `vector` | `bm25` | `rrf` | `rerank` | `f
 | GET | `/api/rag/admin/eval/reports/{reportId}` | 指标 + MinIO 报告链接/内联 |
 | POST | `/api/rag/admin/eval/suggest` | 低分样本 + 配置/kb 上下文 → LLM 结构化建议 |
 
-> ~~`POST /eval/ab`（A/B）~~、~~评测周报 Cron~~ — **不做**，见 [docs/rag/backlog.md](../../rag/backlog.md)
+> ~~`POST /eval/ab`（A/B）~~、~~评测周报 Cron~~ — **不做**，见 [docs/rag/backlog.md](../../../rag/backlog.md)
 
 **指标**：Recall@3/5/10、MRR、rewrite Δ、HyDE Δ、pipeline Δ（与 pipeline 同源）。
 
@@ -634,8 +634,8 @@ Workflow/Plan RAG 节点 `params.kbId` 可选；未填继承会话 kbId 或 tena
 
 ## 11. 相关文档
 
-- [ADR-002-rag-pipeline-in-rag-service.md](../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
-- [phase4-platformization-design.md](./phase4-platformization-design.md) §4.0–4.2
+- [ADR-002-rag-pipeline-in-rag-service.md](../../../architecture/ADR-002-rag-pipeline-in-rag-service.md)
+- [phase4-platformization-design.md](../phase4-platformization-design.md) §4.0–4.2
 - [2026-06-21-multimodal-ocr-design.md](./2026-06-21-multimodal-ocr-design.md) §L1
 - [skills-management-ui-design.md](./skills-management-ui-design.md)
 - `docs/nacos/sunshine-rag.yaml`（**仅基础设施**；业务参数 seed 后迁 DB）
