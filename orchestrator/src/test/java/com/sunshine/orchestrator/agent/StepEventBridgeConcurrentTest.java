@@ -187,6 +187,24 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void mainBridge_auxiliaryFlushesImmediatelyWithoutHitl() {
+        String assistantId = "msg-spawn-main";
+        String mainBridge = "main-spawn-run";
+        ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
+        bind(mainBridge, queue);
+        StepEventBridge.registerMainRun(assistantId, mainBridge);
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
+
+        // 非 HITL：主 Agent 工具调用阻塞期间，auxiliary（spawn begin 卡）须直刷 Generation 而非入 queue
+        StepEventBridge.emit(mainBridge, session -> session.beginToolStep("tool-spawn", "tool"));
+
+        assertThat(flushed).hasSize(2);
+        assertThat(flushed).allMatch(t -> t.isStep() && t.step().id().startsWith("tool-spawn"));
+        assertThat(queue.poll()).isNull();
+    }
+
+    @Test
     void passThroughWrapper_withAssistantFlush_queuesContentForFlux() {
         String assistantId = "msg-spawn-main";
         String subBridge = "sub-spawn-run";

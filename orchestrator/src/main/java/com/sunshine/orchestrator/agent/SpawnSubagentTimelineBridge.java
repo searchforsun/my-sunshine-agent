@@ -13,12 +13,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** 子 Agent 步骤 → 挂到 subagent-{runId}.subSteps，主 Timeline 仅一张卡 */
 public final class SpawnSubagentTimelineBridge {
 
+    /**
+     * 父卡快照节流间隔：子 Agent 内部 think reasoning 等 step_delta 增量逐 token 到达，
+     * 若每次增量都下发一次「含完整 subSteps」的父卡快照，SSE 事件量将膨胀到每字符一次。
+     * 内容增量按本间隔合并；结构变化（step 事件）与终态快照（complete/cancel）不受节流。
+     */
+    private static final long SNAPSHOT_THROTTLE_MS = 200L;
+
     private final String parentStepId;
     private final String label;
     private final String spawnPrompt;
     private final SubStepsFold subSteps = new SubStepsFold();
     /** 用户取消后禁止再下发父卡 running，避免覆盖 paused */
     private final AtomicBoolean userCancelled = new AtomicBoolean(false);
+    private volatile long lastSnapshotAt;
 
     public SpawnSubagentTimelineBridge(String runId, String label, String spawnPrompt) {
         this.parentStepId = parentStepId(runId);
@@ -55,7 +63,7 @@ public final class SpawnSubagentTimelineBridge {
     }
 
     public List<StreamToken> wrap(StreamToken token) {
-        if (token == null || token.isReasoning()) {
+        if (token == null) {
             return List.of();
         }
         if (userCancelled.get()) {
@@ -68,6 +76,16 @@ public final class SpawnSubagentTimelineBridge {
             return routed.get();
         }
         if (subSteps.ingest(token)) {
+            return snapshotIfDue(token);
+        }
+        return List.of();
+    }
+
+    /** 快照时机：结构变化（step）立即下发；内容增量（step_delta）按节流合并（见 {@link #SNAPSHOT_THROTTLE_MS}）。 */
+    private List<StreamToken> snapshotIfDue(StreamToken token) {
+        long now = System.currentTimeMillis();
+        if (token.isStep() || now - lastSnapshotAt >= SNAPSHOT_THROTTLE_MS) {
+            lastSnapshotAt = now;
             return List.of(parentStepUpdate(runningLifecycle(), SpawnSubagentLabels.active(label), null, null));
         }
         return List.of();

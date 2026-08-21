@@ -32,6 +32,38 @@ const state = reactive({
   graph: null as PlanGraph | null,
 })
 
+/**
+ * 层级栈：抽屉内嵌套卡（worker 抽屉 → 子 agent 卡）open 时入栈，
+ * 右上角关闭按钮逐层返回，最顶层才真正关闭抽屉。
+ */
+const history = [] as PlanNodeDrawerPayload[]
+/** 层级深度：>1 时右上角「返回上级」，=1 时「收起」（history 为普通数组，显式维护响应式深度） */
+const depth = ref(0)
+
+function syncDepth() {
+  depth.value = history.length
+}
+
+function applyHistoryEntry(payload: PlanNodeDrawerPayload) {
+  state.activePlanId = payload.planId
+  state.userQuery = payload.userQuery?.trim() ?? ''
+  state.node = payload.node
+  state.step = payload.step
+  state.graph = payload.graph ?? null
+  state.open = true
+}
+
+function close() {
+  history.splice(0, history.length)
+  syncDepth()
+  state.open = false
+  state.activePlanId = null
+  state.userQuery = ''
+  state.node = null
+  state.step = undefined
+  state.graph = null
+}
+
 const savedWidth = ref(loadSavedWidth())
 const chatBodyWidth = ref(0)
 let chatBodyEl: HTMLElement | null = null
@@ -157,22 +189,36 @@ function onResizePointerDown(e: PointerEvent) {
 }
 
 export function usePlanNodeDrawer() {
-  function open(payload: PlanNodeDrawerPayload) {
-    state.activePlanId = payload.planId
-    state.userQuery = payload.userQuery?.trim() ?? ''
-    state.node = payload.node
-    state.step = payload.step
-    state.graph = payload.graph ?? null
-    state.open = true
+  /**
+   * @param options.push 抽屉内嵌套卡下钻（worker 抽屉 → 子 agent 卡）入栈；
+   * 主时间线 / DAG 画布平级打开重置为单层（新浏览上下文）。
+   */
+  function open(payload: PlanNodeDrawerPayload, options: { push?: boolean } = {}) {
+    if (!state.open) {
+      history.splice(0, history.length, payload)
+    } else if (options.push) {
+      const top = history[history.length - 1]
+      if (top?.planId === payload.planId) {
+        history[history.length - 1] = payload
+      } else {
+        history.push(payload)
+      }
+    } else {
+      history.splice(0, history.length, payload)
+    }
+    syncDepth()
+    applyHistoryEntry(payload)
   }
 
-  function close() {
-    state.open = false
-    state.activePlanId = null
-    state.userQuery = ''
-    state.node = null
-    state.step = undefined
-    state.graph = null
+  /** 有父层则返回上一层；最顶层直接关闭抽屉 */
+  function goBack() {
+    if (history.length > 1) {
+      history.pop()
+      syncDepth()
+      applyHistoryEntry(history[history.length - 1])
+    } else {
+      close()
+    }
   }
 
   function isActivePlan(planId: string | undefined) {
@@ -192,6 +238,8 @@ export function usePlanNodeDrawer() {
     state,
     open,
     close,
+    goBack,
+    depth,
     isActivePlan,
     drawerWidth,
     drawerMaxWidth,

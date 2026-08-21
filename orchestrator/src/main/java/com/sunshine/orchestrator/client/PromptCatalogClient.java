@@ -24,6 +24,22 @@ public class PromptCatalogClient {
     }
 
     /**
+     * 轻量版本探测：GET /api/prompts/catalog/version，仅返回 catalogVersion。
+     * 供定时刷新先比对版本，无变化时跳过全量拉取（避免每 5 秒传输 159 条 prompt 正文）。
+     */
+    public long fetchVersion() {
+        R<Long> body = webClient.get()
+                .uri("/api/prompts/catalog/version")
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<R<Long>>() {})
+                .block();
+        if (body == null || body.getData() == null) {
+            throw new IllegalStateException("Prompt catalog version empty response from resource-manager");
+        }
+        return body.getData();
+    }
+
+    /**
      * GET /api/prompts/catalog → Snapshot。失败抛异常（供启动 fail-fast / 调用方自行捕获）。
      */
     public PromptCatalogSnapshot fetchSnapshot() {

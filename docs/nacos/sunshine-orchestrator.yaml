@@ -77,8 +77,13 @@ agent:
         spawn-await-default-sec: 120
         spawn-await-max-sec: 200
         spawn-await-max-waits: 3
+        # worker 观察窗口（6×600：pro 复杂任务允许多轮观测，适配长 Worker 与墙钟 1h）
+        worker-await-default-sec: 120
+        worker-await-max-sec: 600
+        worker-await-max-waits: 6
         exec-wall-timeout-sec: 600
-        max-concurrent-per-message: 3
+        # 同消息并发派发上限：worker/spawn/exec 共享槽位，10 满足 pro 多路并发调研
+        max-concurrent-per-message: 10
     harness:
       # true：pro → PlannerHarnessExecutor
       # false：专业模式不可用（显式失败）；禁止静默改 fast，禁止回落旧动态规划
@@ -86,25 +91,19 @@ agent:
       max-rounds: 12
       max-total-tasks: 24
       max-duration-ms: 14400000
-      stale-rounds-threshold: 3
       fallback-react:
         enabled: true
-      task:
-        max-retries: 2
       planner:
         timeout-ms: 300000
-        max-attempts: 3
-        max-replans: 6
+        # v17：Planner 一次性 ReAct run，maxIters 兜底；60 轮 ≈ plan_submit(1) + dispatch×10 + await/task_status×多轮 + self_assess(1) + 综合回答
+        max-iters: 60
       worker:
         timeout-ms: 3600000
-        max-sub-agents: 5
       notebook:
         redis-ttl-seconds: 604800
         key-prefix: "sunshine:plan:notebook:"
         compression:
           near-keep-rounds: 10
-      session:
-        idle-timeout-ms: 14400000
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 / 由 SkillBindingParser 硬编码（与前端 / 补全对齐）
     hint-patterns:
@@ -123,7 +122,6 @@ agent:
       - sandbox__exec
       - sandbox__grep
       - sandbox__glob
-    cancel-max-followups: 3
     cancel-after: 已取消
     # cancel-result → Catalog id=sandbox.cancel-result
     # budget-exhausted → Catalog id=sandbox.budget-exhausted
@@ -284,6 +282,7 @@ agent:
     reconnect-block-ms: 5000
     flush-interval-ms: 500
     max-chunk-chars: 32
+    max-stream-len: 20000
     lock:
       enabled: true
       ttl-sec: 30

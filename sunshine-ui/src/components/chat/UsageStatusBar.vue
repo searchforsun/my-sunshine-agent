@@ -12,14 +12,16 @@ const props = defineProps<{
   mode?: 'ring' | 'card'
 }>()
 
+// 色卡用饱和度中-高的色阶，亮/暗双主题均能与底色（白/黑）形成明显对比；
+// 顺序与 UsageJsonSupport.GROUP_ORDER 一致：系统/工具/规则/技能/上下文层/对话/其他。
 const GROUP_DEFS: { key: string; label: string; color: string }[] = [
-  { key: 'system', label: '系统提示词', color: '#9ca3af' },
-  { key: 'rules', label: '用户规则', color: '#86efac' },
-  { key: 'skills', label: '技能·模式', color: '#eab308' },
-  { key: 'tools', label: '工具定义', color: '#a78bfa' },
-  { key: 'contextLayers', label: '上下文层', color: '#3b82f6' },
-  { key: 'messages', label: '对话消息', color: '#fb923c' },
-  { key: 'other', label: '其他', color: '#f87171' },
+  { key: 'system', label: '系统提示词', color: '#64748b' },
+  { key: 'tools', label: '工具定义', color: '#8b5cf6' },
+  { key: 'rules', label: '用户规则', color: '#16a34a' },
+  { key: 'skills', label: '技能·模式', color: '#d97706' },
+  { key: 'contextLayers', label: '上下文层', color: '#2563eb' },
+  { key: 'messages', label: '对话消息', color: '#ea580c' },
+  { key: 'other', label: '其他', color: '#dc2626' },
 ]
 
 function fmtK(n: number): string {
@@ -65,7 +67,7 @@ const barSegments = computed(() => {
   if (window <= 0) return []
   return groupRows.value.map(r => ({
     color: r.color,
-    width: `${Math.max(0.4, (r.tokens / window) * 100)}%`,
+    width: `${Math.max(0.6, (r.tokens / window) * 100)}%`,
   }))
 })
 </script>
@@ -176,7 +178,8 @@ const barSegments = computed(() => {
   height: 6px;
   border-radius: 3px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--sun-border);
+  border: 1px solid var(--sun-border);
 }
 .usage-bar span { display: block; height: 100%; }
 .usage-rows { display: flex; flex-direction: column; gap: 6px; }
@@ -192,6 +195,8 @@ const barSegments = computed(() => {
   height: 10px;
   border-radius: 2px;
   flex-shrink: 0;
+  /* 1px 主题边框双主题兜底，避免亮色下浅色色块与白底融在一起 */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sun-border) 70%, transparent);
 }
 .usage-row-label { flex: 1; min-width: 0; }
 .usage-row-val { font-variant-numeric: tabular-nums; }

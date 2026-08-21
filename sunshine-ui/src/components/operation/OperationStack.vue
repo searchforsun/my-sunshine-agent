@@ -13,7 +13,6 @@ import {
 } from '../../api/processingSteps'
 import { isHarnessTimelineMessage, isPlanDagMessage } from '../../api/harnessTimeline'
 import {
-  buildHarnessTimelineEntries,
   isHarnessPlanStep,
   isWorkerStep,
 } from '../../api/harnessHierarchy'
@@ -51,6 +50,7 @@ import {
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
 import SubagentCard from './SubagentCard.vue'
+import WorkerCard from './WorkerCard.vue'
 import DecisionCard from './DecisionCard.vue'
 import ToolGroupCard from './ToolGroupCard.vue'
 import HitlStepActions from './HitlStepActions.vue'
@@ -152,11 +152,21 @@ function lifecycleOf(step: ProcessingStep) {
   return step.lifecycle ?? 'pending'
 }
 
+/**
+ * 悬浮 taskboard 观测锚点：Chat MAIN（todo_write running）或 pro/harness
+ * （emitTaskBoardSnapshot 快照步 lifecycle 恒为 done）有真实任务项时都参与悬浮。
+ */
+function isLiveTaskboardAnchor(step: ProcessingStep | undefined): boolean {
+  if (!props.live || !step) return false
+  if (lifecycleOf(step) === 'running') return true
+  return isHarnessTimeline.value && hasRealTaskBoardItems(step)
+}
+
 function isCardExpanded(step: ProcessingStep): boolean {
   if (cardUserToggled.has(step.id)) {
     return cardExpanded.get(step.id) ?? false
   }
-  // loop / worker 内过程：运行中默认展开，便于看流式 think/正文；结束后默认收起
+  // loop 内过程：运行中默认展开，便于看流式 think/正文；结束后默认收起
   if (hasNestedBodyTimeline(step)) {
     return lifecycleOf(step) === 'running'
   }
@@ -168,14 +178,9 @@ function hasNestedLoopBodyTimeline(step: ProcessingStep): boolean {
     && !!(step.subSteps?.length || step.contentBlocks?.length)
 }
 
-/** harness worker 内 ReAct 过程：subSteps / contentBlocks 嵌套时间线 */
-function hasNestedWorkerBodyTimeline(step: ProcessingStep): boolean {
-  return isWorkerStep(step)
-    && !!(step.subSteps?.length || step.contentBlocks?.length)
-}
-
+/** OperationCard 兜底分支内嵌展开仅服务 loop（worker 已迁移 WorkerCard → PlanNodeDrawer） */
 function hasNestedBodyTimeline(step: ProcessingStep): boolean {
-  return hasNestedLoopBodyTimeline(step) || hasNestedWorkerBodyTimeline(step)
+  return hasNestedLoopBodyTimeline(step)
 }
 
 function toggleCard(step: ProcessingStep): void {
@@ -361,7 +366,9 @@ const displaySteps = computed(() => {
       return true
     })
   }
-  // harness / ReAct：保留 worker-*；正文已 inline 穿插，隐藏 generate；无 items 的 tasks 占位不展示
+  // harness / ReAct：保留 worker-* 与 Planner 元工具调用（plan_submit / self_assess / dispatch_worker
+  // 由 ProcessingStepMiddleware 已映射为对应 step，不再单独成行）；
+  // 正文已 inline 穿插，隐藏 generate；无 items 的 tasks 占位不展示。
   return props.steps.filter(s => {
     if (isHiddenReactTimelineStep(s)) return false
     if (s.phase === 'tasks' && !hasRealTaskBoardItems(s)) return false
@@ -369,19 +376,6 @@ const displaySteps = computed(() => {
   })
 })
 
-/** harness：stepId -> handoff（仅 harness 消息有值；worker 行不缩进，与工具折叠一致平铺） */
-const harnessEntryByStepId = computed(() => {
-  const map = new Map<string, { handoffText?: string }>()
-  if (!isHarnessTimeline.value) return map
-  for (const entry of buildHarnessTimelineEntries(displaySteps.value)) {
-    map.set(entry.step.id, { handoffText: entry.handoffText })
-  }
-  return map
-})
-
-function harnessHandoffOf(step: ProcessingStep): string | undefined {
-  return harnessEntryByStepId.value.get(step.id)?.handoffText
-}
 /** 显示行：普通步骤或工具/检索组（连续的同类步折叠为一组） */
 type DisplayRow =
   | { kind: 'step'; step: ProcessingStep }
@@ -994,6 +988,12 @@ watch(
                       :live="false"
                     />
                   </template>
+                  <template v-else-if="inner.kind === 'step' && isWorkerStep(inner.step)">
+                    <WorkerCard
+                      :step="inner.step"
+                      :live="false"
+                    />
+                  </template>
                   <template v-else-if="inner.kind === 'step' && isDecisionStep(inner.step)">
                     <DecisionCard
                       :step="inner.step"
@@ -1062,12 +1062,17 @@ watch(
         />
         <TaskBoardPanel
           v-else-if="step.phase === 'tasks'"
-          :data-live-taskboard="live && lifecycleOf(step) === 'running' ? '1' : undefined"
+          :data-live-taskboard="isLiveTaskboardAnchor(step) ? '1' : undefined"
           :step="step"
-          :live="live && lifecycleOf(step) === 'running'"
+          :live="isLiveTaskboardAnchor(step)"
         />
         <SubagentCard
           v-else-if="isSubagentStep(step)"
+          :step="step"
+          :live="live && lifecycleOf(step) === 'running'"
+        />
+        <WorkerCard
+          v-else-if="isWorkerStep(step)"
           :step="step"
           :live="live && lifecycleOf(step) === 'running'"
         />
@@ -1085,7 +1090,6 @@ watch(
             :execution-plan-id="executionPlanId"
             :embed-hitl="false"
             :round-summary="thinkSummaryByStepId.get(step.id)"
-            :hide-header-preview="!!harnessHandoffOf(step)"
             @toggle="toggleCard(step)"
           />
           <div v-if="shouldShowInlineHitl(step)" class="op-line-hitl">
@@ -1096,7 +1100,7 @@ watch(
               @decided="(token, approved) => emit('hitlDecided', token, approved)"
             />
           </div>
-          <!-- loop / harness worker：过程（subSteps）在前，handoff 收束在后 -->
+          <!-- 展开态：worker/sub-agent 的嵌套时间线（subSteps） -->
           <div
             v-if="isCardExpanded(step) && hasNestedBodyTimeline(step)"
             class="op-nested-stack"
@@ -1111,10 +1115,6 @@ watch(
               @hitl-decided="(token, approved) => emit('hitlDecided', token, approved)"
             />
           </div>
-          <div
-            v-if="harnessHandoffOf(step)"
-            class="op-harness-handoff"
-          >{{ harnessHandoffOf(step) }}</div>
         </template>
         <!-- Plan DAG 下 node-answer 正文锚定到 plan，须在 PlanDagPanel 之后渲染 -->
         <template v-for="crow in rowsAfterStep(step.id)" :key="crow.key">
@@ -1150,9 +1150,9 @@ watch(
     <!-- 折叠态常驻 taskboard：生成 todolist 后折叠时间线仍可见（进行中/终态均露出） -->
     <TaskBoardPanel
       v-if="!timelineBodyExpanded && collapsedTaskBoardStep"
-      :data-live-taskboard="live && lifecycleOf(collapsedTaskBoardStep) === 'running' ? '1' : undefined"
+      :data-live-taskboard="isLiveTaskboardAnchor(collapsedTaskBoardStep) ? '1' : undefined"
       :step="collapsedTaskBoardStep"
-      :live="live && lifecycleOf(collapsedTaskBoardStep) === 'running'"
+      :live="isLiveTaskboardAnchor(collapsedTaskBoardStep)"
     />
     <!-- 正在处理折叠：最后一步概要（无 chevron）+ 最后一段正文 -->
     <template v-if="!timelineBodyExpanded && collapsedPreviewStep">
@@ -1167,6 +1167,11 @@ watch(
       />
       <SubagentCard
         v-else-if="isSubagentStep(collapsedPreviewStep)"
+        :step="collapsedPreviewStep"
+        :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
+      />
+      <WorkerCard
+        v-else-if="isWorkerStep(collapsedPreviewStep)"
         :step="collapsedPreviewStep"
         :live="live && lifecycleOf(collapsedPreviewStep) === 'running'"
       />
@@ -1358,16 +1363,6 @@ watch(
 /* 内部时间线不缩进（与工具折叠一致平铺）；仅保留与主行的间距 */
 .op-nested-stack {
   margin: 2px 0 8px 0;
-}
-
-/* harness：worker 结束 handoff 收束子行（非卡片，不缩进） */
-.op-harness-handoff {
-  margin: 2px 0 0 0;
-  font-size: var(--sun-font-sm);
-  line-height: 1.45;
-  color: var(--sun-text-muted);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .op-inline-body {

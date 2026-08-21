@@ -1,12 +1,17 @@
 package com.sunshine.orchestrator.agent.runtime;
 
 import com.sunshine.common.model.ModelSceneKey;
+import com.sunshine.orchestrator.agent.DecisionOption;
+import com.sunshine.orchestrator.agent.DecisionQuestion;
+import com.sunshine.orchestrator.agent.DecisionResumeOutcome;
 import com.sunshine.orchestrator.agent.DecisionResumeSupport;
 import com.sunshine.orchestrator.agent.HarnessAgentHolder;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
+import com.sunshine.orchestrator.execution.DecisionResumeSteps;
 import com.sunshine.orchestrator.grounding.AnswerGroundingChecker;
 import com.sunshine.orchestrator.taskboard.TaskBoardService;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -18,6 +23,8 @@ import com.sunshine.orchestrator.context.ModelWindowCache;
 import com.sunshine.orchestrator.prompt.ComposedReactInputs;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
+import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
 import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
@@ -45,7 +52,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -148,6 +157,39 @@ class ReActAgentRuntimeTest {
         assertThat(composeCaptor.getValue().harnessPromptId()).isEqualTo("planner.harness");
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
+    }
+
+    @Test
+    void runPlannerReAct_withBoundDecisionResumeSteps_injectsResolvedBlocks() {
+        // D12：PLANNER 续跑 decision re-await——HarnessPlanner bind DecisionResumeSteps →
+        // runtime bridge bind 后 take → DecisionResumeSupport 注入【用户决策】再 compose（不依赖二次 tool_call）。
+        Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
+        AgentRunRequest req = AgentRunRequest.planner("继续处理", "u1", "default", "msg-d12");
+        when(agentHolder.get(req)).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class)))
+                .thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        DecisionResumeSupport support = mock(DecisionResumeSupport.class);
+        when(decisionResumeSupport.getIfAvailable()).thenReturn(support);
+        when(support.prepareOnReactResume(eq("msg-d12"), any(), any()))
+                .thenReturn(DecisionResumeOutcome.resolved(List.of("【用户决策】已选择方案 A")));
+
+        ProcessingStep decisionStep = ProcessingStep.running("decision-d12", "decision", "执行方案确认")
+                .withMetadata(StepMetadata.withDecision(null, new DecisionStepMeta(
+                        "token-d12", "执行方案确认",
+                        List.of(new DecisionQuestion("q1", "选择执行方案", List.of(
+                                new DecisionOption("a", "方案A"),
+                                new DecisionOption("b", "方案B")), false)),
+                        System.currentTimeMillis() + 60_000L, null, null)));
+        DecisionResumeSteps.bind("msg-d12", List.of(decisionStep));
+
+        runtime.runPlannerReAct(req).collectList().block();
+
+        ArgumentCaptor<PromptComposeRequest> composeCaptor = ArgumentCaptor.forClass(PromptComposeRequest.class);
+        verify(promptComposer).composeReactInputs(composeCaptor.capture(), any());
+        assertThat(composeCaptor.getValue().injectedUserContexts()).contains("【用户决策】已选择方案 A");
+        verify(support).prepareOnReactResume(eq("msg-d12"), any(), eq(List.of(decisionStep)));
     }
 
     @Test

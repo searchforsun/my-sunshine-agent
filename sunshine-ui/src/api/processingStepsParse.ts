@@ -285,6 +285,9 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const spawnPrompt = typeof obj.spawnPrompt === 'string' && obj.spawnPrompt.trim()
     ? obj.spawnPrompt.trim()
     : undefined
+  const workerRunId = typeof obj.workerRunId === 'string' && obj.workerRunId.trim()
+    ? obj.workerRunId.trim()
+    : undefined
   const cancellable = obj.cancellable === true ? true : undefined
   const editDiff = parseEditDiff(obj.editDiff)
   const decision = parseDecision(obj.decision)
@@ -308,6 +311,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !sandboxPath
     && !sandboxSearchRoot
     && !spawnPrompt
+    && !workerRunId
     && !cancellable
     && !editDiff
     && !decision
@@ -346,6 +350,7 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     sandboxPath,
     sandboxSearchRoot,
     spawnPrompt,
+    workerRunId,
     cancellable,
     editDiff,
     decision,
@@ -442,7 +447,8 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
   ) as StepLifecycle
   const label = typeof raw.label === 'string' ? raw.label : undefined
   const summary = parseSummary(raw.summary)
-  if (!summary) return null
+  // 无 summary 不丢弃：worker/subagent 骨架步仅有 label+phase，由 WorkerTimelineBridge.begin() 下发，
+  // 丢弃会导致整卡不渲染（subSteps 随父步一并丢失）
   return {
     id: raw.id,
     phase,

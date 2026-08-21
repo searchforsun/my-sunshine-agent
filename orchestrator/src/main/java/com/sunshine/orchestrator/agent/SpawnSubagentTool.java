@@ -157,6 +157,11 @@ public class SpawnSubagentTool implements AgentTool {
         if (StringUtils.hasText(activeBridge) && activeBridge.startsWith("sub-")) {
             return errorJson("禁止嵌套委派：子 Agent 不可再调用 spawn_subagent");
         }
+        // Worker 内 spawn：子 Agent 卡 emit 到 Worker 桥，经 WorkerTimelineBridge 折叠进
+        // worker-{taskId}.subSteps —— worker 抽屉内嵌套显示；否则才落主时间线顶层。
+        String emitTarget = StringUtils.hasText(activeBridge) && activeBridge.startsWith("worker-")
+                ? activeBridge
+                : mainBridge;
 
         String promptText = prompt.strip();
         String displayLabel = StringUtils.hasText(label) ? label.strip() : SpawnSubagentLabels.label();
@@ -227,14 +232,14 @@ public class SpawnSubagentTool implements AgentTool {
         SpawnSubagentTimelineBridge subTimeline =
                 new SpawnSubagentTimelineBridge(runId, displayLabel, promptText);
 
-        timelineSupport.begin(mainBridge, runId, displayLabel, promptText);
+        timelineSupport.begin(emitTarget, runId, displayLabel, promptText);
         if (StringUtils.hasText(resolvedSkillId)) {
-            timelineSupport.fold(mainBridge, subTimeline, skillLoadToken(resolvedSkillId));
+            timelineSupport.fold(emitTarget, subTimeline, skillLoadToken(resolvedSkillId));
         }
-        spawnRunRegistry.register(runId, messageId, promptText, mainBridge, subTimeline);
+        spawnRunRegistry.register(runId, messageId, promptText, emitTarget, subTimeline);
         // PASS_THROUGH：wrapper 只 fold；原 token 入队供 Flux（禁止 Flux 再 fold，否则 reasoning 翻倍）
         StepEventBridge.bindTokenWrapper(subBridgeId, token -> {
-            foldStepToken(mainBridge, subTimeline, token);
+            foldStepToken(emitTarget, subTimeline, token);
             return List.of();
         }, TokenWrapperMode.PASS_THROUGH);
         StepEventBridge.bindHitlBridge(subBridgeId, messageId, true);
@@ -245,7 +250,7 @@ public class SpawnSubagentTool implements AgentTool {
         if (runInBackground) {
             return startBackgroundSpawn(
                     agentEntry, request, promptText, runId, messageId, audit.conversationId(),
-                    mainBridge, subTimeline, answer, failure, timeoutMs);
+                    emitTarget, subTimeline, answer, failure, timeoutMs);
         }
         try {
             agentExecutorRouter.dispatch(agentEntry, request, promptText, List.of())
@@ -262,7 +267,7 @@ public class SpawnSubagentTool implements AgentTool {
                 return failAndReturn(mainBridge, subTimeline, failure.get());
             }
             String result = answer.toString();
-            timelineSupport.complete(mainBridge, subTimeline, result);
+            timelineSupport.complete(emitTarget, subTimeline, result);
             if (!StringUtils.hasText(result)) {
                 log.warn("[SpawnSubagentTool] 子 Agent 未产出正文 content runId={}", runId);
             }
@@ -274,10 +279,10 @@ public class SpawnSubagentTool implements AgentTool {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (isTimeout(cause) || isTimeout(e)) {
                 String msg = "子 Agent 执行超时（" + timeoutMs + "ms）";
-                timelineSupport.fail(mainBridge, subTimeline, msg);
+                timelineSupport.fail(emitTarget, subTimeline, msg);
                 return msg;
             }
-            return failAndReturn(mainBridge, subTimeline, cause != null ? cause : e);
+            return failAndReturn(emitTarget, subTimeline, cause != null ? cause : e);
         } finally {
             spawnRunRegistry.unregister(runId);
         }
@@ -293,14 +298,14 @@ public class SpawnSubagentTool implements AgentTool {
             String runId,
             String messageId,
             String conversationId,
-            String mainBridge,
+            String emitTarget,
             SpawnSubagentTimelineBridge subTimeline,
             StringBuilder answer,
             AtomicReference<Throwable> failure,
             long timeoutMs) {
         if (!asyncToolRunRegistry.tryAcquireSlot(messageId)) {
             spawnRunRegistry.unregister(runId);
-            timelineSupport.fail(mainBridge, subTimeline, "本消息后台工具并发已达上限");
+            timelineSupport.fail(emitTarget, subTimeline, "本消息后台工具并发已达上限");
             return errorJson("本消息后台工具并发已达上限");
         }
         asyncToolRunRegistry.registerWithId(
@@ -328,16 +333,16 @@ public class SpawnSubagentTool implements AgentTool {
                 .subscribe(
                         token -> { },
                         err -> finishBackgroundSpawn(
-                                runId, promptText, mainBridge, subTimeline, answer, failure, timeoutMs, err),
+                                runId, promptText, emitTarget, subTimeline, answer, failure, timeoutMs, err),
                         () -> finishBackgroundSpawn(
-                                runId, promptText, mainBridge, subTimeline, answer, failure, timeoutMs, null));
+                                runId, promptText, emitTarget, subTimeline, answer, failure, timeoutMs, null));
         return "{\"ok\":true,\"runId\":\"" + escape(runId) + "\",\"status\":\"running\"}";
     }
 
     private void finishBackgroundSpawn(
             String runId,
             String promptText,
-            String mainBridge,
+            String emitTarget,
             SpawnSubagentTimelineBridge subTimeline,
             StringBuilder answer,
             AtomicReference<Throwable> failure,
@@ -369,7 +374,7 @@ public class SpawnSubagentTool implements AgentTool {
                 asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.ERROR, msg);
                 // 仅 ERROR 胜者写 fail 时间线
                 if (isAsyncStatus(runId, AsyncToolRunRegistry.Status.ERROR)) {
-                    timelineSupport.fail(mainBridge, subTimeline, msg);
+                    timelineSupport.fail(emitTarget, subTimeline, msg);
                 }
                 return;
             }
@@ -382,7 +387,7 @@ public class SpawnSubagentTool implements AgentTool {
             if (!isAsyncStatus(runId, AsyncToolRunRegistry.Status.DONE)) {
                 return;
             }
-            timelineSupport.complete(mainBridge, subTimeline, result);
+            timelineSupport.complete(emitTarget, subTimeline, result);
             if (!StringUtils.hasText(result)) {
                 log.warn("[SpawnSubagentTool] 子 Agent 未产出正文 content runId={}", runId);
             }
@@ -467,14 +472,14 @@ public class SpawnSubagentTool implements AgentTool {
     }
 
     private void foldStepToken(
-            String mainBridge, SpawnSubagentTimelineBridge subTimeline, StreamToken token) {
+            String emitTarget, SpawnSubagentTimelineBridge subTimeline, StreamToken token) {
         if (token == null) {
             return;
         }
         // step / step_delta → subSteps；content → 父卡 result 流式（见 Bridge.wrap）
         if (token.isStep() || token.isStepDelta()
                 || token.isContent() || token.isContentStart() || token.isContentEnd()) {
-            timelineSupport.fold(mainBridge, subTimeline, token);
+            timelineSupport.fold(emitTarget, subTimeline, token);
         }
     }
 
@@ -493,12 +498,12 @@ public class SpawnSubagentTool implements AgentTool {
     }
 
     private String failAndReturn(
-            String mainBridge, SpawnSubagentTimelineBridge subTimeline, Throwable error) {
+            String emitTarget, SpawnSubagentTimelineBridge subTimeline, Throwable error) {
         String msg = error != null && StringUtils.hasText(error.getMessage())
                 ? error.getMessage().strip()
                 : "子 Agent 执行失败";
         log.warn("[SpawnSubagentTool] 子 Agent 失败: {}", msg);
-        timelineSupport.fail(mainBridge, subTimeline, msg);
+        timelineSupport.fail(emitTarget, subTimeline, msg);
         return msg;
     }
 

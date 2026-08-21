@@ -70,6 +70,8 @@ class SandboxAgentToolsBackgroundTest {
     void setUp() {
         sandboxProperties = new AgentSandboxProperties();
         executionProperties = new AgentExecutionProperties();
+        // 槽位测试固定 3（生产默认已调至 10）
+        executionProperties.getReact().getAsyncTool().setMaxConcurrentPerMessage(3);
         asyncToolRunRegistry = new AsyncToolRunRegistry(executionProperties);
         cancellableToolRunRegistry = new CancellableToolRunRegistry(sandboxClient, sandboxProperties);
         tools = new SandboxAgentTools(

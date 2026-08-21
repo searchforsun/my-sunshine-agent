@@ -42,10 +42,11 @@ export function pauseRunningWorkflowNodes(steps: ProcessingStep[] | undefined): 
     const phase = next.phase ?? ''
     if (shouldPauseStepOnStop(next)
         && !next.id.startsWith('node-')
-        && (phase === 'think' || phase === 'agent' || phase === 'subagent' || phase === 'generate'
+        && (phase === 'think' || phase === 'agent' || phase === 'subagent' || phase === 'worker'
+            || phase === 'generate'
             || phase === 'rag' || phase === 'intent' || phase === 'skill' || phase === 'tasks'
             || phase.startsWith('think') || phase.startsWith('tool')
-            || next.id.startsWith('subagent-'))) {
+            || next.id.startsWith('subagent-') || next.id.startsWith('worker-'))) {
       next = toPausedStep(next)
     }
     return next
@@ -66,8 +67,9 @@ function isAwaitingInteractionStep(step: ProcessingStep): boolean {
 
 function toPausedStep(step: ProcessingStep): ProcessingStep {
   const now = Date.now()
-  // subagent 整轮停止时无单独 cancel SSE，乐观填「已取消」与后端 SpawnSubagentLabels.afterCancel 一致
-  const defaultAfter = step.phase === 'subagent' || step.id.startsWith('subagent-')
+  // subagent/worker 整轮停止时无单独 cancel SSE，乐观填「已取消」与后端取消终态一致
+  const defaultAfter = step.phase === 'subagent' || step.phase === 'worker'
+    || step.id.startsWith('subagent-') || step.id.startsWith('worker-')
     ? (step.summary?.after?.trim() || '已取消')
     : (step.summary?.after?.trim() || undefined)
   return {
@@ -213,13 +215,14 @@ function isThinkStep(step: ProcessingStep): boolean {
     || step.id === 'think' || step.id.startsWith('think-')
 }
 
-/** 会被后端续跑重放（复用同 id）的 ReAct 步；intent 由 SSE 覆盖、不在此重置 */
+/** 会被后端续跑重放（复用同 id）的 ReAct 步；intent 由 SSE 覆盖、不在此重置。
+ *  subagent/worker 不在内：spawn/worker runId 每次新建，续跑不重放旧卡；
+ *  全局取消后已标「已取消」的卡保持终态，不重置为等待中。 */
 function isResumableReactStep(step: ProcessingStep): boolean {
   const phase = step.phase ?? ''
-  return phase === 'think' || phase === 'agent' || phase === 'subagent' || phase === 'generate'
+  return phase === 'think' || phase === 'agent' || phase === 'generate'
     || phase === 'rag' || phase === 'tasks'
     || phase.startsWith('think') || phase.startsWith('tool')
-    || step.id.startsWith('subagent-')
 }
 
 /** 续跑执行中：上游节点重新 pending/running 时，其余 paused 节点改为等待中 */

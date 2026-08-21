@@ -1,7 +1,7 @@
 import { computed, onUnmounted, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { ChatMessage } from '../api/chat'
 import { ensurePlanTimelineSteps, hasPlanTimeline } from '../api/planHydrate'
-import { sortSteps, hasActiveStep, type ProcessingStep } from '../api/processingSteps'
+import { isDecisionStep, sortSteps, hasActiveStep, type ProcessingStep } from '../api/processingSteps'
 import { applySyncedPendingHitl, resolveHitlUiKey, getPendingHitlConfirmations, type HitlConfirmationPayload } from '../api/hitlSteps'
 
 /** 底部三点：流式空档持续多久才显示（与 OperationStack 空档三点一致） */
@@ -89,7 +89,10 @@ export function useChatTimelineView(messages: Ref<ChatMessage[]>, loading: Ref<b
 
   function isTimelineLive(msg: ChatMessage, idx: number): boolean {
     if (!loading.value || idx !== messages.value.length - 1) return false
-    return hasActiveStep(resolveTimelineSteps(msg))
+    const steps = resolveTimelineSteps(msg)
+    // awaiting 的 decision 卡也视为 live：需要 generationId 才能 resolve/skip（跳过/提交按钮）
+    return hasActiveStep(steps)
+      || steps.some(s => isDecisionStep(s) && s.lifecycle === 'awaiting')
   }
 
   /** 无正文/时间线时的即时空档条件（尚未施加 2s 静默）。

@@ -1,7 +1,7 @@
 # 上下文压缩统一设计（五层渐进管道）
 
 > 日期：2026-07-31
-> 状态：**基线管道 ✅**（Layer 1–5 骨架已落地）· **§5.5 / v2–v15 增强 ⬜ 设计稿未落地**（压缩点模式、Tier 0/1/2、scene 隔离、4+4+Far / 2+2+Far、Budget「退役并入」等，见 §13.3）· **v25 收敛**：CrossTurnCompact/T0 已删项、L2+W0→KV Memory、语义 merge 二期、L3 语义提取延后
+> 状态：**基线管道 ✅**（Layer 1–5 骨架已落地）· **§5.5 / v2–v15 增强 ⬜ 设计稿未落地**（压缩点模式、Tier 0/1/2、scene 隔离、4+4+Far / 2+2+Far、Budget「退役并入」等，见 §13.3）· **v25 收敛**：CrossTurnCompact/T0 已删项、L2+W0→KV Memory、语义 merge 二期、L3 语义提取延后 · **v26 L3 增强重启**：语义提取层 / 相似度去重 / 定期维护 / task process 层向量化 升级为要做（落点见 §7.4 / §9.2 / §13.4）
 > **基线对照（2026-08-10 代码核实）**：Layer 1 = `HarnessAgentFactory` → AgentScope `CompactionConfig`（token 动态触发 + Catalog 摘要保留思考，§4.5）；Layer 2 = `L1Compressor` **滑动窗** Near/Mid/Far + `far_folded_msg_ids` 仅作 Far 增量折叠去重（**非**压缩点边界）；Layer 3/4 = `L2ExtractService` / `L3IngestService`+`L3RecallService`；Layer 5 = `applyBudget` **静默丢弃** L3→Far→Mid。读路径 `ContextAssembler`，写路径 `ContextWritePath`。
 > **v2/v3 优化（2026-08-01 · 设计稿）**：§5.5 压缩点模式（L1 压缩点前移、L3 尾部动态段、Budget「丢」改「退役并入」）；§5.5.3 起 v3 分层修正——**按变化频率 Tier 0/1/2 分层**、幂等 upsert、T0 降频、意图尾部注入（业界调研见 §5.5.5）· 关联 [task-scene-context-design](./2026-08-01-task-scene-context-design.md)
 > **v8（2026-08-02 · 历史）**：曾设想 HIERARCHICAL 下 H1 拆 Tier——**已由 v10/S3 + rebuild S5 v4 作废**；原详设见 [archive/planner-harness](./archive/2026-07-31-planner-harness-loop-design.md)
@@ -29,7 +29,15 @@
 > 2. **会话级任务状态由 fast `react_task_board` 跨轮恢复 / pro H1 承接**：§5.5.3 Tier 1 的「T0 状态块」与 §5.5.7/§13.3 的 T0 相关条目**作废**（task-scene §6.1 T0 全套已废）；失败路径由任务 item `fail_reason` 承接。
 > 3. **`CrossTurnCompactMiddleware`（§4.4/§4.6/§13.1）明确不做**：run 内压缩 SSOT = §4.5 AS `CompactionMiddleware` + tail 裁剪；跨轮走压缩点（§5.5）与 Budget 退役并入（§8.2），不再叠第三套。
 > 4. **§6.4 L2 语义 merge / §7.4 L3 语义提取层标注二期可选/延后**：一期字面 + key 规范化门禁与现有分块召回已覆盖主路径。
-> 整合：`2026-07-17-autocontext-memory-design.md` + `2026-07-22-context-optimization-design.md` + `2026-07-24-dynamic-context-compression-design.md`（三者均已归档）
+> **整合**：`2026-07-17-autocontext-memory-design.md` + `2026-07-22-context-optimization-design.md` + `2026-07-24-dynamic-context-compression-design.md`（三者均已归档）
+
+|> **v26（2026-08-18 · L3 增强升级 · 重新启用）**：原 v25 §7.4 标注「延后」的 L3 增强项升级为要做——
+> 1. **L3 语义提取层**（§7.4.1）：对用户画像、历史任务结果、重要实时三类信息做 LLM 抽取并独立向量化，保证重要内容不被 L1/L5 压缩丢弃
+> 2. **L3 相似度去重**（§7.4.3）：embedding 前 cosine 去重（>0.95 跳过、>0.85 合并），防同质化噪音
+> 3. **L3 定期维护**（§9.2）：`ContextMaintenanceJob` 扩展 L3 维度——冲突向量打标 + 过期向量清理 + 与 L2 协同仲裁
+> 4. **task process 层向量化**（§7.4.4）：恢复 task-scene §6.4 v5 设计——`ProcessingStep.result` 截断 200 chars 入库（`scene=task`、`layer=process`），扩 `session_search` 召回面
+>
+> §6.4 L2 语义 merge 仍维持 v25「二期可选」不动。
 > 行业参考：Claude Code 五层渐进压缩 · Cursor 单层摘要 · Oracle 双层模式 · Mem0 LLM 记忆管理
 
 ---
@@ -1057,62 +1065,120 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 | `ChatHistoryMilvusService.java` | rag-service | Milvus CRUD |
 | `ContextProperties.java` | orchestrator | topK/minScore/decayHalfLifeDays |
 
-### 7.4 优化方向
+### 7.4 L3 增强（v26 · 重新启用）
 
-> **v25（2026-08-14 · 延后）**：本节 L3 语义提取层 / 攒批触发 / 相似度去重**整体延后**（一期沿用「原文分块 + 引用化」既有召回；task 侧 session_search 仅 body+scope=session，见 [task-scene v14](./2026-08-01-task-scene-context-design.md)）。
+> **v26（2026-08-18 · 重启）**：原 v25 整体延后的 L3 增强项升级为要做——语义提取层、相似度去重、定期维护、task process 层向量化。本节为设计定稿，落点见 §13.4。
 
-**7.4.1 嵌入前增加语义提取层**
+**7.4.1 嵌入前语义提取层（v26 · 升级为要做）**
 
-当前 L3 直接对原始消息全量分块嵌入，未经任何语义过滤。这与 2026 年业界最佳实践有差距：
+**动机**：当前 L3 直接对原始消息全量分块嵌入，未经任何语义过滤。确认语、寒暄、长答案多个 chunk 争抢 topK、用户反复相似问题产生多份近似向量——向量空间被噪音污染，关键信息召回率低。
 
-| 方案 | 做法 | 与我们的差距 |
-|------|------|------------|
-| **Oracle 双层模式** | raw event stream 不直接嵌入，异步计算 sparse semantic cache | L3 反之——全量嵌入 |
-| **Mem0** | LLM 提取稳定事实 → 向量检索已有记忆 → ADD/UPDATE/DELETE/NOOP | L3 无提取步骤 |
-| **Letta/MemGPT** | Chat History 超限后 LLM 摘要，原始归档到 Recall Memory | L3 无摘要步骤 |
-| **当前 L3** | 原始消息 → FIXED 分块 → embedding → Milvus | **2024 年初水平** |
-
-**具体问题**：
-- "好的"、"谢谢"、"明白了" 等确认语与实质性内容同等嵌入——噪音污染向量空间
-- 长回答切成多个 800 字 chunk，同一消息的多个 chunk 争抢 topK 位，检索结果同质化
-- 用户反复问类似问题，每次回答独立嵌入（如"K8s Pod 重启怎么办"被问 5 次 → 5 份近似向量）
-
-**建议方案**：在 `ChatHistoryRetrievalService.upsert` 的 `FixedLengthChunker` 之前增加一步 **LLM 语义提取**，将原始消息对转换为精炼的"可检索记忆片段"：
+**方案**：
 
 ```
-user + assistant 消息对
-  → LLM 提取 Prompt:
-    "从以下对话轮次中提取值得跨会话检索的关键信息：
-     1. 用户做出的决策/偏好
-     2. 达成的结论/方案
-     3. 重要的上下文约定
-     忽略确认语、寒暄、重复解释"
-  → 多个精炼记忆片段 → 每个独立 embedding
-  → 空提取结果 → 跳过（不浪费向量存储）
+写路径升级（v26）：
+  assistant completed
+    → L3IngestService.ingestAsync
+    → 【新增】LLMSemanticExtractor（异步，独立于原文 chunk 路径）
+      · 输入：本轮 user+assistant 消息对
+      · Catalog: context.l3.semantic-extract
+      · 抽取维度（v26 定稿）：
+        ① 用户画像信号：用户表达的身份/角色/习惯（与 L2 scope=user 解耦，不重复抽取）
+        ② 历史任务关键结果：达成结论、决策、方案、关键 ID（仅"关键"，不抽全部）
+        ③ 重要实时事件：订单/工单/审批类外部 ID、时间敏感事件（不可被 L1 压缩丢的硬证据）
+      · 抽取默认策略：abstain 默认（与 L2 同口径）
+      · 空抽取结果 → 跳过（不浪费向量存储）
+    → FixedLengthChunker（body 原文保留，scene=chat/task）
+    → 【新增】SemanticChunkIngest（语义提取结果独立入库，scene 沿用，layer=semantic）
+    → EmbeddingService（两路并存：原文 chunk + 语义提取结果）
+    → Milvus sunshine_chat_history
 ```
 
-**收益**：
-- 过滤 30-50% 低价值消息（寒暄/确认/衔接）
-- 长回答压缩为要点（减少 chunk 数，降低同消息 chunk 争抢）
-- 跨轮上下文更完整（提供对话对而非孤立消息给 LLM）
+**与 L2 的边界**：
 
-**与 L2 的关系**：不冲突。L2 抽取**结构化键值对**（`preference: "用户偏好 Java 17"`），L3 应保留**语义连续的细节段落**（如"上次讨论了 K8s Pod 重启的三种原因：OOMKilled、Liveness probe 失败、节点资源不足，最终确认是第三种..."）。
+| 维度 | L2（KV Memory） | L3 语义提取（v26） |
+|------|-----------------|---------------------|
+| 形式 | 结构化键值（key/value/background） | 自然语言短文本（精炼片段） |
+| 注入位置 | Tier 1 system 块 | Tier 2 L3 召回块 |
+| 过滤方式 | 业务规则 + 白名单 | 语义相似度 |
+| 持久性 | 跨会话长留 | 按时间衰减（与 L3 一致） |
+| 写入约束 | 宁缺毋滥（v20） | 同样宁缺毋滥（abstain 默认） |
 
-**7.4.2 触发时机优化**
+**两类并存不冲突**：L2 抽取结构化事实（如"`preference: 用户偏好 Java 17`"）；L3 语义提取保留语义连续段落（如"上次讨论 K8s Pod 重启三种原因：OOMKilled、Liveness probe 失败、节点资源不足，最终确认是第三种…"）。
 
-| 当前 | 建议 | 理由 |
-|------|------|------|
-| 每轮即时 upsert | **攒批触发**：累积 N 轮或 M 分钟后批量提取+嵌入 | 降低 Milvus 写入频率，LLM 提取可一次处理多轮 |
+**Milvus schema 扩展**：
+
+```
+sunshine_chat_history 增加字段：
+  layer: VARCHAR(16)  默认 'body'
+         取值：'body' | 'semantic' | 'process'
+         （v26 同时启用 semantic 和 process，body 为原文 chunk）
+```
+
+**7.4.2 触发时机（v26 · 攒批触发 + turn-pair 合并）**
+
+| 当前 | v26 升级 | 理由 |
+|------|---------|------|
+| 每轮即时 upsert | **攒批触发**：累积 N 轮（默认 3）或 M 分钟（默认 5）后批量提取+嵌入 | 降低 Milvus 写入频率；LLM 提取可一次处理多轮 |
 | user + assistant 独立嵌入 | **轮次对（turn-pair）合并提取** | 保留上下文关系，提取质量更高 |
-| 无去重 | 嵌入前检查与已有向量的余弦相似度，> 0.95 跳过 | 减少同质化重复 |
 
-**7.4.3 优先级**
+**实现**：`L3IngestService` 维护内存缓冲（按 conversation_id 分组），到达阈值或定时器触发批处理；不阻塞 assistant 完成路径（依然异步）。
 
-| 改进 | 优先级 | 说明 |
-|------|--------|------|
-| LLM 语义提取层 | **P1** | 投入 1 次 LLM 调用/轮次对，换取向量质量显著提升 |
-| 攒批触发 | P2 | 需改动异步链路，先做语义提取再优化触发 |
-| 相似度去重 | P3 | 锦上添花，需评估 Milvus 查询开销 |
+**7.4.3 相似度去重（v26 · 升级为要做）**
+
+**目标**：减少同质化噪音，节省向量存储与召回开销。
+
+**去重规则**（embedding 前 cosine 比对）：
+
+```
+for each new chunk (待写入):
+  对比窗口：同 tenant + 同 scene + 最近 24h 内 Top-50 已有向量
+  cosine 相似度判定：
+    > 0.95 → 跳过（完全重复，不写）
+    0.85 ~ 0.95 → 合并：保留较早一条 + 更新 timestamp；当前条丢弃
+    ≤ 0.85 → 正常写入
+```
+
+**实现**：Milvus `search` expr 限定 `created_at > NOW() - 24h`，取 Top-50（按时间倒序），本地 cosine 计算。批量写入前一次性比对，减少单条 round-trip。
+
+**与 L1 压缩点不冲突**：去重只发生在 L3 ingest 路径；L1 Near/Mid/Far 仍按原文保留原文（`chat_message` 原文不删）。
+
+**7.4.4 task process 层向量化（v26 · 重新启用）**
+
+> 原 [task-scene §6.4 v14](./2026-08-01-task-scene-context-design.md) 标注延后，本节重新启用。
+
+**数据源**：
+
+| 层 | 内容 | 来源 |
+|----|------|------|
+| `layer=body` | task 会话 user+assistant 消息对（已有） | L3 ingest 现有路径 |
+| `layer=process`（v26 新增） | `ProcessingStep.result` 截断 200 chars + `refs` | `chat_message.steps` 每步 |
+
+**边界（与代码引用化原则一致）**：
+
+- ✅ **存**：工具调用结果摘要（≤200 chars）、`refs`（path:line/path#symbol）、status/exitCode
+- ❌ **不存**：`reasoning`、完整 `output`、文件内容（agent 按 refs 读实时代码）
+
+**Milvus schema**：
+
+```
+scene=task
+layer IN ('body', 'process')
+scope=session（一期）：expr `conversation_id == X`
+scope=workspace（二期）：expr `workspace_id == Y`
+```
+
+**session_search 升级**（v26）：
+
+| 维度 | v14（一期） | v26（升级） |
+|------|------------|-------------|
+| 数据层 | body only | body + process |
+| scope | session only | session（一期）+ workspace（二期） |
+| 召回面 | 对话正文 | 对话正文 + 工具调用结果 |
+
+**触发**：task 写路径 ingest 时，`ProcessingStep` 数量 > 0 → 抽取每步 `result` 截断 200 chars → 入库带 `layer=process`。
+
+**与 §7.4.3 去重的协作**：process 层向量同样过 cosine 去重，避免重复工具调用产生同质化向量。
 
 ### 7.5 渲染位置约束（v2 优化）
 
@@ -1155,6 +1221,9 @@ user + assistant 消息对
 ## 9. 治理与防腐败
 
 > ✅ **已实现**。`ContextMaintenanceJob`
+> **v26 扩展**：L3 维度纳入定期维护，新增冲突向量打标 + 过期向量清理 + 与 L2 协同仲裁。
+
+### 9.1 L2 维护（原 Job）
 
 | 机制 | 说明 |
 |------|------|
@@ -1164,6 +1233,39 @@ user + assistant 消息对
 | GC | `gcL3Vectors()` 清理 MySQL 中不存在消息的孤儿向量 |
 | 腐败审计 | 明确冲突自动 void；暧昧打标 `conflict`（不注入）；与写路径语义判定互补（增量防新增 / 批量清遗留） |
 | 清理 | superseded 180 天 / void 30 天物理删除 |
+
+### 9.2 L3 维护（v26 · 升级为要做）
+
+**触发**：`ContextMaintenanceJob` 每小时运行（与既有对齐）。
+
+**核心动作**：
+
+```
+L3 维度维护（v26）：
+  ① 冲突向量打标：
+     · 与 L2 同口径——语义判定复用 context.l2.merge（同 Catalog 分支）
+     · 判定结果 NOOP / MERGE / UPDATE / CONFLICT
+     · CONFLICT → 打标 conflict（不注入）
+     · MERGE → 合并向量（旧条 supersede，新条继承 freq/recency）
+  ② 过期向量清理：
+     · 对应原消息已被 GC（chat_message 物理删除）→ 同步删除向量
+     · decay TTL：scene=chat 默认 30 天 / scene=task process 层 7 天 / scene=task body 90 天
+     · 召回冷数据自动降权（decayHalfLifeDays 默认 14）
+  ③ 与 L2 协同仲裁：
+     · L2 已存的结构化事实（如 preference）— L3 同主题向量降权（0.5x）
+     · L3 与 L2 冲突 → 以 L2 为准（L2 是显式抽取，置信度更高）
+  ④ 相似度合并（与 §7.4.3 互补）：
+     · 维护阶段对 24h 内 Top-100 重做 cosine 扫描（与 ingest 去重阈值一致）
+     · 高相似对合并，避免存量噪音累积
+```
+
+**判定复用**：
+
+| 维护动作 | 复用 Catalog | 备注 |
+|----------|--------------|------|
+| L3 冲突判定 | `context.l2.merge` | L2/L3 同判定口径 |
+| L3 过期清理 | `context.l3.recall.ttl` | 按 scene 分层 |
+| L3 降权仲裁 | `context.l3.conflict.policy` | 默认 L2 优先 |
 
 ---
 
@@ -1347,6 +1449,33 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 | ⑳ | **skill 动态工具 sticky 化（v24）** | §5.5.3 v6/v24 注记 · [skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md) | 主 agent 工具并集基于路由 **triggered 集**单调合并（默认 ∪ 各 triggered skill 工具）；triggered 不变 → `tools` 字节不变（Tier 0 稳定）；L0 整表替换 / 退出清空仅当轮重建一次；SUB/Worker 即时并集不受限 |
 
 **验收**：`verify_context_compression_live.py` — 非压缩期连续 3 轮 prefix 一致（对比 Gateway 请求体）；压缩后 prefix 重建仅 1 次；Near 尾部随轮次只增不减；KV Memory（scope=user|workspace）未变化时请求体字节级一致（幂等验证）。
+
+### 13.4 L3 增强落地清单（v26 · ⬜ 设计稿 · 待代码实现）
+
+> v26 把原 v25 §7.4 延后的 L3 增强升级为要做。本节为落地验收清单，**待代码实现**。
+
+| # | 建议 | 落点 | 改动 |
+|---|------|------|------|
+| ㉑ | **L3 语义提取层**（§7.4.1） | `L3IngestService` 新增 `LLMSemanticExtractor` | Catalog `context.l3.semantic-extract`；抽取维度（用户画像/历史任务/重要实时）；与 L2 解耦；abstain 默认；空抽取跳过 |
+| ㉒ | **L3 攒批触发 + turn-pair 合并**（§7.4.2） | `L3IngestService` 缓冲逻辑 | 累积 N=3 轮 / M=5 分钟触发；user+assistant 成对提交抽取器 |
+| ㉓ | **L3 相似度去重**（§7.4.3） | `L3IngestService` 入库前 | cosine 阈值 0.95 跳过 / 0.85-0.95 合并 / ≤0.85 写入；24h 窗口 + Top-50 比对 |
+| ㉔ | **L3 Milvus schema 扩展** | `sunshine_chat_history` schema | 新增 `layer` 字段（`body`/`semantic`/`process`，默认 `body`） |
+| ㉕ | **task process 层向量化**（§7.4.4） | `L3IngestService` task 写路径 | `ProcessingStep.result` 截断 200 chars + `refs` → 入库 `layer=process`；`scope=session` 一期 / `scope=workspace` 二期 |
+| ㉖ | **L3 session_search 召回面扩展** | `L3RecallService` | 召回面从 body 扩展到 body+process；expr 加 `layer IN ('body','process')` |
+| ㉗ | **L3 定期维护**（§9.2） | `ContextMaintenanceJob` 扩展 L3 维度 | 冲突向量打标（复用 `context.l2.merge`）；过期向量清理（按 scene 分层 TTL）；与 L2 协同仲裁（L2 优先降权 0.5x） |
+| ㉘ | **Milvus 索引更新** | Milvus 部署 | `layer` 字段加索引；`scene+layer` 复合索引优化 task 召回 |
+
+**v26 验收脚本扩展**：
+
+```
+verify_context_compression_live.py 增补：
+  · V-L3-1：LLMSemanticExtractor 对噪音消息（"好的"/"谢谢"）abstain 不写
+  · V-L3-2：抽取"用户偏好 Java 17"等结构化事实 → 不与 L2 重复入库（L2 已存）
+  · V-L3-3：同语义 user query 在 24h 内重复 5 次 → 入库向量数 ≤ 2（去重生效）
+  · V-L3-4：task 写 50 条消息含 200 个 ProcessingStep → Milvus `layer=process` 数与 step 数匹配
+  · V-L3-5：`ContextMaintenanceJob` 跑后冲突向量打 `conflict` 标
+  · V-L3-6：手动 delete 一条 chat_message → 下次维护 Job 同步删向量
+```
 
 ---
 

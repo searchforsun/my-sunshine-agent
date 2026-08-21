@@ -13,6 +13,7 @@ import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -39,20 +40,24 @@ public class AwaitToolRunTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "等待 background 工具或子任务结束，或在观察窗口到期后返回当前状态快照。";
+        return "等待 background 工具 / 子任务 / Worker 派发的 run 结束，或在观察窗口到期后返回当前状态快照；"
+                + "runIds 数组一次批量等待同轮多个 run（共享观察窗口）。已派发的 run 先查 async_status 再决定是否等待。";
     }
 
     @Override
     public Map<String, Object> getParameters() {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("runId", Map.of("type", "string", "description", "异步 run 句柄（必填）"));
+        props.put("runId", Map.of("type", "string", "description", "异步 run 句柄（单值，与 runIds 二选一）"));
+        props.put("runIds", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "待等待的异步 run 句柄列表（同轮派发的多个 runId 一次批量等待，共享观察窗口；与 runId 二选一）"));
         props.put("timeout_sec", Map.of(
                 "type", "number",
-                "description", "可选观察窗口秒数；exec 默认 30/上限 120，spawn 默认 120/上限 200（按 run 类型夹紧）"));
+                "description", "可选观察窗口秒数；exec 默认 30/上限 120，spawn 默认 120/上限 200，worker 默认 120/上限 600（按 run 类型夹紧）"));
         return Map.of(
                 "type", "object",
-                "properties", props,
-                "required", List.of("runId"));
+                "properties", props);
     }
 
     @Override
@@ -61,12 +66,10 @@ public class AwaitToolRunTool implements AgentTool {
                     String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
                     Map<String, Object> input = param.getInput() != null ? param.getInput() : Map.of();
                     Object runId = input.get("runId");
+                    Object runIds = input.get("runIds");
                     Object timeoutSec = input.get("timeout_sec");
                     Integer timeout = timeoutSec instanceof Number n ? n.intValue() : null;
-                    String text = awaitToolRun(
-                            runId != null ? String.valueOf(runId) : null,
-                            timeout,
-                            toolUseId);
+                    String text = awaitToolRuns(resolveRunIds(runId, runIds), timeout, toolUseId);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
                 .subscribeOn(VirtualThreadExecutors.scheduler());
@@ -78,35 +81,50 @@ public class AwaitToolRunTool implements AgentTool {
     }
 
     String awaitToolRun(String runId, Integer timeoutSec, String toolUseId) {
+        return awaitToolRuns(runId == null ? List.of() : List.of(runId.strip()), timeoutSec, toolUseId);
+    }
+
+    /** runIds 数组 + runId 单值合并去重；均空返回空列表（上层报「runId 不能为空」）。 */
+    private static List<String> resolveRunIds(Object runId, Object runIds) {
+        List<String> ids = new ArrayList<>();
+        if (runIds instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if (item != null && StringUtils.hasText(item.toString())) {
+                    ids.add(item.toString().strip());
+                }
+            }
+        }
+        if (runId != null && StringUtils.hasText(runId.toString())) {
+            ids.add(runId.toString().strip());
+        }
+        return ids.stream().distinct().toList();
+    }
+
+    String awaitToolRuns(List<String> runIds, Integer timeoutSec, String toolUseId) {
         AgentExecutionProperties.React.AsyncTool cfg = asyncToolConfig();
         if (cfg == null || !cfg.isEnabled()) {
             return errorJson("await_tool_run 未启用");
         }
-        if (!StringUtils.hasText(runId)) {
+        if (runIds == null || runIds.isEmpty()) {
             return errorJson("runId 不能为空");
         }
-        String messageId = StepEventBridge.resolveMessageIdForToolUse(toolUseId);
-        if (!StringUtils.hasText(messageId)) {
-            return errorJson("无法定位当前会话消息");
-        }
-        String mainBridge = StepEventBridge.activeMainBridge(messageId);
-        if (!StringUtils.hasText(mainBridge)) {
-            return errorJson("await_tool_run 仅可从主 Agent 调用");
-        }
-        String activeBridge = StepEventBridge.bridgeIdForToolUse(toolUseId);
-        if (!StringUtils.hasText(activeBridge)) {
-            activeBridge = StepEventBridge.activeBridgeId();
-        }
-        if (StringUtils.hasText(activeBridge) && activeBridge.startsWith("sub-")) {
-            return errorJson("子 Agent 不可调用 await_tool_run");
-        }
-
+        // v17.12：await 资格 = runId 作用域。runId 为 UUID 随机句柄（派发方上下文才可见），
+        // MAIN / WORKER / PLANNER 均可 await 自己派发的 exec / spawn / worker run；
+        // 不再要求「仅主 Agent」——Worker 场景（await 自己派发的 exec/spawn）此前被误拒，
+        // 也不按 bridge 前缀拒绝 sub（普通 SUB 未注册该工具，天然不会调用）。
         int timeout = resolveTimeoutSec(timeoutSec);
-        AsyncToolRunRegistry.Snapshot snapshot = asyncRegistry.await(runId.strip(), timeout);
-        if (snapshot == null) {
+        if (runIds.size() == 1) {
+            AsyncToolRunRegistry.Snapshot snapshot = asyncRegistry.await(runIds.get(0), timeout);
+            if (snapshot == null) {
+                return errorJson("未知 runId");
+            }
+            return formatSnapshot(snapshot);
+        }
+        List<AsyncToolRunRegistry.Snapshot> snapshots = asyncRegistry.awaitMany(runIds, timeout);
+        if (snapshots.isEmpty()) {
             return errorJson("未知 runId");
         }
-        return formatSnapshot(snapshot);
+        return formatSnapshots(snapshots);
     }
 
     private AgentExecutionProperties.React.AsyncTool asyncToolConfig() {
@@ -139,9 +157,32 @@ public class AwaitToolRunTool implements AgentTool {
         if (StringUtils.hasText(snapshot.partial())) {
             map.put("partial", snapshot.partial());
         }
-        if (StringUtils.hasText(snapshot.error())) {
-            map.put("error", snapshot.error());
+        try {
+            return MAPPER.writeValueAsString(map);
+        } catch (JsonProcessingException e) {
+            return errorJson("序列化失败");
         }
+    }
+
+    /** 批量等待结果：runs[] 数组，顺序与入参一致；未终态含 status=running 无 result。 */
+    static String formatSnapshots(List<AsyncToolRunRegistry.Snapshot> snapshots) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("ok", true);
+        map.put("runs", snapshots.stream().map(snapshot -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("runId", snapshot.runId());
+            item.put("status", statusToJson(snapshot.status()));
+            item.put("waitCount", snapshot.waitCount());
+            item.put("waitBudget", snapshot.waitBudget());
+            item.put("elapsedMs", snapshot.elapsedMs());
+            if (StringUtils.hasText(snapshot.result())) {
+                item.put("result", snapshot.result());
+            }
+            if (StringUtils.hasText(snapshot.partial())) {
+                item.put("partial", snapshot.partial());
+            }
+            return item;
+        }).toList());
         try {
             return MAPPER.writeValueAsString(map);
         } catch (JsonProcessingException e) {

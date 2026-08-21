@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 可取消沙箱工具 in-flight 句柄 + 用户取消后同族再调用预算。
@@ -25,8 +25,8 @@ public class CancellableToolRunRegistry {
     private final AgentSandboxProperties sandboxProperties;
     private final ConcurrentHashMap<String, Handle> byToolUseId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> toolUseIdByStepId = new ConcurrentHashMap<>();
-    /** messageId → 取消后剩余可发起次数（未激活则无条目） */
-    private final ConcurrentHashMap<String, AtomicInteger> followupBudget = new ConcurrentHashMap<>();
+    /** messageId → 已取消命令签名集合（同命令重试禁绝；换命令/换工具放行） */
+    private final ConcurrentHashMap<String, Set<String>> cancelledByMessage = new ConcurrentHashMap<>();
     private final Set<String> recentlyCancelled = ConcurrentHashMap.newKeySet();
     /** PreActing 已出卡、execute 尚未 register：stepId → messageId */
     private final ConcurrentHashMap<String, String> pendingCancelStepIds = new ConcurrentHashMap<>();
@@ -169,53 +169,33 @@ public class CancellableToolRunRegistry {
     }
 
     /**
-     * 激活预算后：同族再调用前消费 1 次；未激活则放行。
-     * @return false 表示预算耗尽应拒调
+     * 同命令重试禁绝：messageId 下已取消的命令签名命中则拒调；换命令/换参数/换工具放行。
+     * @return false 表示该命令此前已被取消应拒调
      */
-    public boolean tryConsumeFollowup(String messageId, String toolName) {
+    public boolean tryConsumeFollowup(String messageId, String toolName, Map<String, Object> body) {
         if (!StringUtils.hasText(messageId) || !isCancellableTool(toolName)) {
             return true;
         }
-        AtomicInteger budget = followupBudget.get(messageId.strip());
-        if (budget == null) {
+        Set<String> blocked = cancelledByMessage.get(messageId.strip());
+        if (blocked == null || blocked.isEmpty()) {
             return true;
         }
-        while (true) {
-            int cur = budget.get();
-            if (cur <= 0) {
-                return false;
-            }
-            if (budget.compareAndSet(cur, cur - 1)) {
-                return true;
-            }
+        String detail = SandboxCancelExpand.detail(toolName, body);
+        if (!StringUtils.hasText(detail)) {
+            return true;
         }
+        return !blocked.contains(signatureOf(toolName, detail));
     }
 
-    /** 取消成功后激活预算；返回取消前剩余（供文案），激活后为 maxFollowups */
-    public int activateBudgetAndRemaining(String messageId) {
-        if (!StringUtils.hasText(messageId)) {
-            return maxFollowups();
+    /** 记录已取消的命令签名（同命令原样重试禁绝） */
+    public void recordCancelled(String messageId, String toolName, String signature) {
+        if (!StringUtils.hasText(messageId) || !StringUtils.hasText(toolName)
+                || !StringUtils.hasText(signature)) {
+            return;
         }
-        String mid = messageId.strip();
-        int max = maxFollowups();
-        followupBudget.putIfAbsent(mid, new AtomicInteger(max));
-        AtomicInteger b = followupBudget.get(mid);
-        return b != null ? Math.max(0, b.get()) : max;
-    }
-
-    public int remainingFollowups(String messageId) {
-        if (!StringUtils.hasText(messageId)) {
-            return maxFollowups();
-        }
-        AtomicInteger b = followupBudget.get(messageId.strip());
-        if (b == null) {
-            return maxFollowups();
-        }
-        return Math.max(0, b.get());
-    }
-
-    public boolean budgetActive(String messageId) {
-        return StringUtils.hasText(messageId) && followupBudget.containsKey(messageId.strip());
+        cancelledByMessage
+                .computeIfAbsent(messageId.strip(), k -> ConcurrentHashMap.newKeySet())
+                .add(signatureOf(toolName, signature));
     }
 
     public Handle get(String toolUseId) {
@@ -296,7 +276,7 @@ public class CancellableToolRunRegistry {
                 log.warn("[CancellableTool] sandbox cancel failed toolUseId={}: {}", id, e.getMessage());
             }
         }
-        activateBudgetAndRemaining(handle.messageId);
+        recordCancelled(handle.messageId, handle.toolName, handle.expandDetail);
         log.info("[CancellableTool] cancel toolUseId={} tool={} messageId={}",
                 id, handle.toolName, handle.messageId);
         return true;
@@ -313,9 +293,8 @@ public class CancellableToolRunRegistry {
         }
     }
 
-    private int maxFollowups() {
-        int n = sandboxProperties.getCancelMaxFollowups();
-        return n > 0 ? n : 3;
+    private static String signatureOf(String toolName, String signature) {
+        return toolName + ":" + signature.strip();
     }
 
     public static final class Handle {

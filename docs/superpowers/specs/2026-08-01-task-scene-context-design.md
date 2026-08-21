@@ -10,6 +10,10 @@
 > 1. **T0 全套作废**（§6.1 双块 + processTrail + `context.t0.extract/condense`）——会话级任务状态真相源 = `AgentState.tasksContext` + `react_task_board` 终态快照（fast 跨轮恢复，见 task-list-memory M0）；失败路径由任务 item `fail_reason` 承接。正文 §6.1 保留仅作历史参考。
 > 2. **W0 与 L2 统一为一张 `KV Memory`**（`scope=user|workspace` 列；同一模型/抽取服务/注入渲染）——本 spec §5 独立 `workspace_context_state` DDL 作废，改为 `user_context_state` 扩展 scope 列。
 > 3. **session_search 一期收缩**：仅 `body 层 + scope=session`；`scope=workspace` 延后；process 层（工具摘要向量化）延后（工具结果在 `chat_message.steps` 直接可查）。
+> **v15（2026-08-18 · 重启 process 层 / workspace scope · 联合五层 v26）**：v14 延后项重新启用——
+> 1. **process 层向量化**（§6.4 + 五层 §7.4.4）：`ProcessingStep.result` 截断 200 chars + refs 入向量库；`sunshine_chat_history` 加 `layer=process` 字段
+> 2. **session_search scope=workspace**（v15 二期）：跨工作区 task 会话工具摘要检索；与 KV Memory `todo` 互补
+> 3. **L3 相似度去重**（五层 §7.4.3）：task 写路径同样过 cosine 去重，避免重复工具调用产生同质化向量
 > **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 kind 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
 > **v3–v7**：T0 双块 / 压缩点 / 引用化 / Near 场景差异 / `sunshine_session_search` 撞名区分等（正文除 **T0 作废（v14）** 外仍有效，启用面以 v8 §2.2 为准）
 > **定位**：为 `kind=task` 编码会话建立区别于 chat 的上下文治理体系——对齐 Cursor Dynamic Context Discovery 与 KV Cache 经济学；压缩主目标为**续跑状态保真**（§2.0）；「项目规范」已先行落地 ✅；**执行模式轴**见 routing v6（与 `kind` 正交）
@@ -429,9 +433,12 @@ task_progress（JSON · v5 引用化 · v10 状态保真）：
 
 **防御性隔离**：`scene` 字段是双保险。即使未来写路径遗漏 kind 门禁误 ingest 了 task 消息，search 的 `scene == "chat"` 过滤仍保证其不被 chat 召回；task 侧如需向量能力，再以独立 `scene=task`（或独立 collection）扩展，不复用 chat 通道。
 
-### 6.4 task 过程原文恢复：`session_search`（v4 新增 · v5 扩展双范围 · v7 与 AS 原生撞名区分 · **v14 收缩**）
+### 6.4 task 过程原文恢复：`session_search`（v4 新增 · v5 扩展双范围 · v7 与 AS 原生撞名区分 · **v14 收缩 → v15 重启**）
 
-> **v14 收缩（2026-08-14）**：一期仅实现 **`body 层 + scope=session`**（本会话正文原文恢复）；**process 层（工具摘要向量化）延后**——工具结果在 `chat_message.steps` 直接可查，向量化性价比低；**`scope=workspace`（项目级）延后**——跨会话原文检索噪音大，且 KV Memory `todo` 已承接跨会话任务续接。下方 v5 双范围/process 层正文保留作历史参考。
+> **v15 重启（2026-08-18 · 联合 [unified-context-compression §7.4.4 v26](../2026-07-31-unified-context-compression-design.md)）**：v14 延后的 process 层与 workspace scope 重新启用——
+> - **process 层**（v15 启用）：工具调用结果摘要（`ProcessingStep.result` 截断 200 chars + refs）入向量库；`sunshine_chat_history` 加 `layer=process` 字段；`session_search` 召回面扩展
+> - **scope=workspace**（v15 二期启用）：跨工作区 task 会话工具摘要检索；与 KV Memory `todo` 互补（KV 存结构化事实，`session_search workspace` 存原文摘要）
+> - 详见五层 spec §7.4.4 / §13.4。
 
 > **决策（2026-08-07）**：task 会话的压缩后原文恢复通道，**复用 L3 基建 + `scene=task` 独立过滤**——落实 §6.3 预留的「task 侧向量能力以 `scene=task` 扩展」方向，与 chat 共用同一套 ingest/检索代码，不新建独立通道。
 >

@@ -164,15 +164,16 @@ class ReActAgentFactoryTest {
     }
 
     @Test
-    void resolveToolkit_workerUsesWhitelistLikeSub() {
+    void resolveToolkit_workerUsesDedicatedWorkerBuild() {
+        // v17.13：Worker 独立构建（SUB 基础 + await_tool_run/async_status/spawn_subagent）
         AgentRunRequest req = AgentRunRequest.worker(
                 AssembledContext.forWorker("STABLE", ""),
                 "do task", List.of("sandbox__exec"), "u1", "default", "a1", "c1", 100, "parent");
-        when(dynamicToolkitFactory.buildForSubAgent(
+        when(dynamicToolkitFactory.buildForWorker(
                 List.of("sandbox__exec"), "default", null, "u1"))
                 .thenReturn(subToolkit);
         assertThat(factory.resolveToolkit(req)).isSameAs(subToolkit);
-        verify(dynamicToolkitFactory).buildForSubAgent(
+        verify(dynamicToolkitFactory).buildForWorker(
                 List.of("sandbox__exec"), "default", null, "u1");
     }
 

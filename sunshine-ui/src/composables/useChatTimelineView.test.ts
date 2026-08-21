@@ -65,6 +65,44 @@ describe('useChatTimelineView 历史消息时间线缓存', () => {
   })
 })
 
+describe('useChatTimelineView isTimelineLive（awaiting decision 卡视为 live）', () => {
+  function makeDecisionStep(lifecycle: ProcessingStep['lifecycle']): ProcessingStep {
+    return {
+      id: 'decision-token-1',
+      phase: 'decision',
+      lifecycle,
+      ts: 1,
+      metadata: { decision: { token: 'token-1', questions: [] } },
+    } as ProcessingStep
+  }
+
+  it('存在 awaiting decision 卡时返回 true（D12 Planner request_decision 等待用户）', () => {
+    const messages = ref<ChatMessage[]>([
+      makeMsg({ status: 'streaming', steps: [makeDecisionStep('awaiting')] }),
+    ])
+    const loading = ref(true)
+    const view = useChatTimelineView(messages, loading)
+    expect(view.isTimelineLive(messages.value[0], 0)).toBe(true)
+  })
+
+  it('decision 卡已 done 时不再视为 live', () => {
+    const messages = ref<ChatMessage[]>([
+      makeMsg({ status: 'completed', steps: [makeDecisionStep('done')] }),
+    ])
+    const loading = ref(true)
+    const view = useChatTimelineView(messages, loading)
+    expect(view.isTimelineLive(messages.value[0], 0)).toBe(false)
+  })
+
+  it('loading=false 时即使有 awaiting decision 也返回 false', () => {
+    const messages = ref<ChatMessage[]>([
+      makeMsg({ status: 'streaming', steps: [makeDecisionStep('awaiting')] }),
+    ])
+    const view = useChatTimelineView(messages, ref(false))
+    expect(view.isTimelineLive(messages.value[0], 0)).toBe(false)
+  })
+})
+
 describe('useChatTimelineView showStreamWaiting', () => {
   it('已有时间线步骤时不挂底部三点（避免与 OperationStack 空档三点叠两行）', async () => {
     const messages = ref<ChatMessage[]>([

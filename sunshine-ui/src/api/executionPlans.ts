@@ -122,6 +122,7 @@ export function formatPlanNodeType(type: string): string {
     tool: '工具调用',
     llm: '综合分析',
     agent: '子 Agent',
+    worker: '执行单元',
     join: '并行汇总',
     'parallel-gateway': '并行分叉',
     'exclusive-gateway': '条件分支',

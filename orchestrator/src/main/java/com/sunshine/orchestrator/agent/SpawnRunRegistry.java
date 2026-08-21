@@ -144,7 +144,7 @@ public class SpawnRunRegistry {
         if (bridge != null) {
             List<StreamToken> tokens = bridge.cancel(SpawnSubagentLabels.afterCancel(), result);
             // 禁止回落 Hook 队列：MAIN 在 spawn tool.block 期间不 drain，会导致 UI 仍 running
-            if (!flushCancelToGeneration(handle.messageId, tokens)) {
+            if (!flushCancelTokens(handle, tokens)) {
                 log.warn("[SpawnRunRegistry] cancel SSE 未直达 GenerationJob runId={} messageId={}",
                         id, handle.messageId);
             }
@@ -183,11 +183,28 @@ public class SpawnRunRegistry {
             handle.cancelled.set(true);
         }
         List<StreamToken> tokens = bridge.cancel(SpawnSubagentLabels.afterCancel(), result);
-        String messageId = handle != null ? handle.messageId : null;
-        if (!flushCancelToGeneration(messageId, tokens)) {
+        if (!flushCancelTokens(handle, tokens)) {
             log.warn("[SpawnRunRegistry] flushCancelTerminal miss job runId={} messageId={}",
-                    runId, messageId);
+                    runId, handle != null ? handle.messageId : null);
         }
+    }
+
+    /**
+     * 取消终态下发：Worker 内 spawn 时经 worker 桥折叠进 {@code worker-{taskId}.subSteps}
+     * （WorkerTimelineBridge.wrap 直刷父步快照，抽屉内子 Agent 卡更新为已取消，而非主时间线顶层）；
+     * 主 Agent spawn 直写 GenerationJob（tool.block 期间 Hook 队列不 drain，保证 UI 立即终态）。
+     */
+    private boolean flushCancelTokens(Handle handle, List<StreamToken> tokens) {
+        if (handle != null && tokens != null && !tokens.isEmpty()) {
+            String bridgeId = handle.mainBridgeId();
+            if (StringUtils.hasText(bridgeId) && bridgeId.startsWith("worker-")
+                    && StepEventBridge.hasSession(bridgeId)) {
+                StepEventBridge.emit(bridgeId, s -> tokens.forEach(s::enqueueAuxiliary));
+                return true;
+            }
+        }
+        String messageId = handle != null ? handle.messageId() : null;
+        return flushCancelToGeneration(messageId, tokens);
     }
 
     /** @return true 若已直写 GenerationJob */

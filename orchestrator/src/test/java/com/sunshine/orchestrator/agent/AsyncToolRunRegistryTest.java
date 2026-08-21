@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.agent;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,6 +14,8 @@ class AsyncToolRunRegistryTest {
     @BeforeEach
     void setUp() {
         AgentExecutionProperties props = new AgentExecutionProperties();
+        // 槽位测试固定 3（生产默认已调至 10）
+        props.getReact().getAsyncTool().setMaxConcurrentPerMessage(3);
         registry = new AsyncToolRunRegistry(props);
     }
 
@@ -200,6 +203,82 @@ class AsyncToolRunRegistryTest {
         assertThat(kindAware.await(runId, 1).waitBudget()).isEqualTo(2);
         assertThat(kindAware.await(runId, 1).waitCount()).isEqualTo(2);
         assertThat(kindAware.await(runId, 1).status()).isEqualTo(AsyncToolRunRegistry.Status.BUDGET_EXHAUSTED);
+    }
+
+    @Test
+    void await_worker_usesWorkerMaxDefaultAndWaitBudget() throws Exception {
+        AgentExecutionProperties props = new AgentExecutionProperties();
+        props.getReact().getAsyncTool().setWorkerAwaitDefaultSec(2);
+        props.getReact().getAsyncTool().setWorkerAwaitMaxSec(3);
+        props.getReact().getAsyncTool().setWorkerAwaitMaxWaits(2);
+        AsyncToolRunRegistry kindAware = new AsyncToolRunRegistry(props);
+
+        // worker 默认观察窗口按 worker-await-default-sec（2s）
+        String workerDefault = kindAware.register(
+                AsyncToolRunRegistry.Kind.WORKER_DISPATCH, "msg-w", "c1", 600_000L);
+        long t0 = System.currentTimeMillis();
+        assertThat(kindAware.await(workerDefault, 0).status()).isEqualTo(AsyncToolRunRegistry.Status.RUNNING);
+        assertThat(System.currentTimeMillis() - t0).isGreaterThanOrEqualTo(1_500L);
+        assertThat(System.currentTimeMillis() - t0).isLessThan(5_000L);
+
+        // worker 预算按 worker-await-max-waits（2 次），超限 BUDGET_EXHAUSTED
+        String runId = kindAware.register(
+                AsyncToolRunRegistry.Kind.WORKER_DISPATCH, "msg-w2", "c1", 600_000L);
+        assertThat(kindAware.await(runId, 1).waitBudget()).isEqualTo(2);
+        assertThat(kindAware.await(runId, 1).waitCount()).isEqualTo(2);
+        assertThat(kindAware.await(runId, 1).status()).isEqualTo(AsyncToolRunRegistry.Status.BUDGET_EXHAUSTED);
+    }
+
+    @Test
+    void awaitMany_allTerminal_returnsAllSnapshotsInOrder() {
+        String a = registry.registerWithId(
+                "m-a", AsyncToolRunRegistry.Kind.WORKER_DISPATCH, "msg-m", "c1", 600_000L);
+        String b = registry.registerWithId(
+                "m-b", AsyncToolRunRegistry.Kind.WORKER_DISPATCH, "msg-m", "c1", 600_000L);
+        registry.complete(a, AsyncToolRunRegistry.Status.DONE, "handoff-a");
+        registry.complete(b, AsyncToolRunRegistry.Status.ERROR, "boom");
+
+        List<AsyncToolRunRegistry.Snapshot> snaps =
+                registry.awaitMany(List.of(b, a, "nope", " "), 1);
+
+        assertThat(snaps).hasSize(2);
+        assertThat(snaps.get(0).runId()).isEqualTo("m-b");
+        assertThat(snaps.get(0).status()).isEqualTo(AsyncToolRunRegistry.Status.ERROR);
+        assertThat(snaps.get(0).result()).isEqualTo("boom");
+        assertThat(snaps.get(1).runId()).isEqualTo("m-a");
+        assertThat(snaps.get(1).status()).isEqualTo(AsyncToolRunRegistry.Status.DONE);
+        assertThat(snaps.get(1).result()).isEqualTo("handoff-a");
+        // 已终态不消耗 waitCount（语义同单 run await）
+        assertThat(snaps.get(0).waitCount()).isZero();
+        assertThat(snaps.get(1).waitCount()).isZero();
+    }
+
+    @Test
+    void awaitMany_mixedDoneAndRunning_wakesOnCompleteSharedWindow() throws Exception {
+        String a = registry.registerWithId(
+                "m-a", AsyncToolRunRegistry.Kind.WORKER_DISPATCH, "msg-m", "c1", 600_000L);
+        String b = registry.registerWithId(
+                "m-b", AsyncToolRunRegistry.Kind.WORKER_DISPATCH, "msg-m", "c1", 600_000L);
+        registry.complete(a, AsyncToolRunRegistry.Status.DONE, "done-a");
+        Executors.newSingleThreadScheduledExecutor().schedule(
+                () -> registry.complete(b, AsyncToolRunRegistry.Status.DONE, "done-b"),
+                200, TimeUnit.MILLISECONDS);
+
+        List<AsyncToolRunRegistry.Snapshot> snaps = registry.awaitMany(List.of(a, b), 5);
+
+        assertThat(snaps).hasSize(2);
+        assertThat(snaps.get(0).status()).isEqualTo(AsyncToolRunRegistry.Status.DONE);
+        assertThat(snaps.get(1).status()).isEqualTo(AsyncToolRunRegistry.Status.DONE);
+        assertThat(snaps.get(1).result()).isEqualTo("done-b");
+        assertThat(snaps.get(1).waitCount()).isEqualTo(1);
+    }
+
+    @Test
+    void awaitMany_nullOrEmptyOrBlank_returnsEmpty() {
+        assertThat(registry.awaitMany(null, 1)).isEmpty();
+        assertThat(registry.awaitMany(List.of(), 1)).isEmpty();
+        assertThat(registry.awaitMany(List.of("  ", ""), 1)).isEmpty();
+        assertThat(registry.awaitMany(List.of("unknown-1", "unknown-2"), 1)).isEmpty();
     }
 
     private boolean awaitStatus(String runId, AsyncToolRunRegistry.Status expected, long timeoutMs)

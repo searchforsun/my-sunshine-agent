@@ -3,9 +3,9 @@
 > **状态**：✅ 已实现  
 
 > **日期**：2026-08-11  
-> **父文档**：[2026-07-28-react-request-decision-design.md](./2026-07-28-react-request-decision-design.md)（Chat MAIN ✅ 已归档；本修订为工具/UI/回传契约 SSOT）· D12 延后见 [../2026-08-12-react-request-decision-planner-d12.md](../2026-08-12-react-request-decision-planner-d12.md)  
+> **父文档**：[2026-07-28-react-request-decision-design.md](./2026-07-28-react-request-decision-design.md)（Chat MAIN ✅ 已归档；本修订为工具/UI/回传契约 SSOT）· Planner D12 ✅ 见 [./2026-08-12-react-request-decision-planner-d12.md](./2026-08-12-react-request-decision-planner-d12.md)  
 > **参考**：[Cursor ACP `cursor/ask_question`](https://cursor.com/docs/cli/acp.md)  
-> **范围**：Chat ReAct MAIN only（Planner / D12 仍延后）  
+> **范围**：Chat ReAct MAIN ✅ + Planner MAIN（D12 ✅）；Worker / SUB 不注册  
 > **灰度**：`agent.execution.react.decision.enabled` 默认 **false**（D21 不变）
 
 ---

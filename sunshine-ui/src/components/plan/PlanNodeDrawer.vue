@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onUnmounted, ref, watch, type ComputedRef } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, watch, type ComputedRef } from 'vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import type { ContentBlock } from '../../api/contentInterleave'
 import type { HitlConfirmationPayload } from '../../api/hitlSteps'
@@ -26,13 +26,21 @@ import StaticMarkdown from '../StaticMarkdown.vue'
 import PlanNodeRecoveryActions from './PlanNodeRecoveryActions.vue'
 import OperationStack from '../operation/OperationStack.vue'
 import { usePlanNodeDrawer } from '../../composables/usePlanNodeDrawer'
+import {
+  CHAT_UNPIN_THRESHOLD_PX,
+  CHAT_REPIN_THRESHOLD_PX,
+  distanceFromChatBottom,
+  resolveChatScrollPinned,
+} from '../../composables/chatScrollPin'
 import { usePlanDagExpand } from '../../composables/usePlanDagExpand'
 import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
 import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
 import { groupLoopBodySubStepsByRound } from '../../utils/loopBodyRoundGroups'
 
-const { state, close, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
+const { state, close, goBack, depth, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
 const { isAnyExpanded: planDagExpanded } = usePlanDagExpand()
+/** 抽屉内嵌套卡（worker 抽屉 → 子 agent 卡）点击时 open 走 { push: true } 入栈，右上角逐层返回 */
+provide('planNodeDrawerNested', true)
 const applyHitlDecision = inject<(token: string, approved: boolean) => void>('applyHitlDecision', () => {})
 const applyRecoveryDecision = inject<(token: string, action: 'retry' | 'terminate' | 'skip') => void>('applyRecoveryDecision', () => {})
 const resolveLiveNodeStep = inject<(nodeId: string) => ProcessingStep | undefined>('planDrawerLiveNodeStep', () => undefined)
@@ -133,8 +141,17 @@ watch(
   { immediate: true },
 )
 
+onMounted(() => {
+  window.addEventListener('pointerup', onDrawerPointerEnd)
+  window.addEventListener('pointercancel', onDrawerPointerEnd)
+})
+
 onUnmounted(() => {
   clearElapsedTimer()
+  teardownDrawerObserver()
+  cancelFollowRaf()
+  window.removeEventListener('pointerup', onDrawerPointerEnd)
+  window.removeEventListener('pointercancel', onDrawerPointerEnd)
 })
 
 const durationText = computed(() => {
@@ -166,6 +183,15 @@ const isSpawnSubagent = computed(() => {
   return s.phase === 'subagent'
     || s.id.startsWith('subagent-')
     || !!s.metadata?.spawnPrompt
+})
+
+/** Planner-Executor worker：任务契约经 metadata.spawnPrompt 下发；正文/子步骤与 subagent 抽屉同构 */
+const isWorkerNode = computed(() => {
+  const t = node.value?.type === 'worker'
+  const s = step.value
+  return t
+    || s?.phase === 'worker'
+    || s?.id.startsWith('worker-')
 })
 
 const finalOutput = computed(() => {
@@ -203,8 +229,8 @@ const showAnalysisSection = computed(() =>
 )
 
 const showSummary = computed(() => {
-  // agent 子 Timeline 已在「执行过程」展示，勿重复执行摘要
-  if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm' || node.value?.type === 'agent') return false
+  // agent / worker 子 Timeline 已在「执行过程」展示，勿重复执行摘要
+  if (node.value?.type === 'start' || node.value?.type === 'answer' || node.value?.type === 'llm' || node.value?.type === 'agent' || isWorkerNode.value) return false
   const bodyText = bodyDisplay.value
   if (bodyText) return false
   return !!summary.value.trim()
@@ -238,8 +264,8 @@ const showLoopContinue = computed(() => loopContinueRows.value.length > 0)
 
 const showBodySection = computed(() => {
   if (node.value?.type === 'start') return false
-  // agent（含 spawn）：正文已并入执行时间线（contentBlocks 穿插 + 终稿补段），无独立「详细输出」
-  if (node.value?.type === 'agent') return false
+  // agent（含 spawn）/ worker：正文已并入执行时间线（contentBlocks 穿插 + 终稿补段），无独立「详细输出」
+  if (node.value?.type === 'agent' || isWorkerNode.value) return false
   return !!bodyDisplay.value
 })
 const showReasoningSection = computed(() =>
@@ -283,18 +309,22 @@ const skillLineText = computed(() => {
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
 const showSubTimeline = computed(() =>
-  (node.value?.type === 'agent' || node.value?.type === 'loop') && subSteps.value.length > 0)
-/** agent（含 spawn）抽屉时间线正文：contentBlocks 穿插 + 未承载的 result 终稿补段。
+  (node.value?.type === 'agent' || isWorkerNode.value || node.value?.type === 'loop') && subSteps.value.length > 0)
+/** agent / worker 抽屉时间线正文：contentBlocks 穿插 + 未承载的 result 终稿补段。
  * 终稿走 step_delta(result) 而未分段下发时（无 contentBlocks），补段到时间线末尾展示，
- * 使抽屉执行时间线与主 agent 一致；contentBlocks 已完整承载终稿时不重复。 */
+ * 使抽屉执行时间线与主 agent 一致；contentBlocks 已完整承载终稿时不重复。
+ * worker 经 SubAgentContentTokens.route 双通道（contentBlocks 分段 + step_delta(result) 增量），
+ * 前端 applyDeltaChannel(result) 用 concatText 累积，result 已与 contentBlocks 全等（joined === result），
+ * joined.includes(result) 命中即拦截补段，避免 drawerContentBlocks 与 subSteps 渲染双份正文。 */
 const drawerContentBlocks = computed(() => {
   const s = step.value
-  if (!s || node.value?.type !== 'agent') return s?.contentBlocks
+  if (!s || (node.value?.type !== 'agent' && !isWorkerNode.value)) return s?.contentBlocks
   const blocks = s.contentBlocks ?? []
   const result = s.result?.trim()
   if (!result) return blocks
   const joined = blocks.map(b => b.text).join('').trim()
-  if (joined && joined.includes(result)) return blocks
+  // contentBlocks 已承载正文（worker 双通道下 result 是冗余），不再追加补段
+  if (blocks.length > 0 || (joined && joined.includes(result))) return blocks
   const lastSubId = subSteps.value[subSteps.value.length - 1]?.id
   return [...blocks, { segmentId: 'tail:final', afterStepId: lastSubId ?? s.id, text: result }]
 })
@@ -319,17 +349,17 @@ const displayAttempts = computed((): PlanNodeAttempt[] | undefined => {
 const displayAttemptCount = computed(() =>
   node.value?.attemptCount ?? displayAttempts.value?.length ?? 0,
 )
-/** agent 用 subSteps；loop 走分轮组，不在此扁平列表 */
+/** agent / worker 用 subSteps；loop 走分轮组，不在此扁平列表 */
 const drawerStackSteps = computed(() => {
-  if (node.value?.type === 'agent' && showSubTimeline.value) return subSteps.value
+  if ((node.value?.type === 'agent' || isWorkerNode.value) && showSubTimeline.value) return subSteps.value
   return []
 })
 const showDrawerOperationStack = computed(() =>
   drawerStackSteps.value.length > 0 || showLoopRoundTimeline.value,
 )
-/** agent 无 subSteps 时正文无步骤可锚定，OperationStack 无法穿插，兜底直接渲染 */
+/** agent / worker 无 subSteps 时正文无步骤可锚定，OperationStack 无法穿插，兜底直接渲染 */
 const agentBareFinalText = computed(() => {
-  if (node.value?.type !== 'agent' || subSteps.value.length > 0) return ''
+  if ((node.value?.type !== 'agent' && !isWorkerNode.value) || subSteps.value.length > 0) return ''
   return (drawerContentBlocks.value ?? []).map(b => b.text).join('').trim()
 })
 const showAgentBareFinal = computed(() => !!agentBareFinalText.value)
@@ -362,8 +392,36 @@ const drawerTimelineEndedAt = computed(() => {
 })
 
 const bodyRef = ref<HTMLElement | null>(null)
-const drawerScrollTop = ref(0)
+/** 贴底跟随：贴底时随流式输出下滑；用户上滑离开底部后闩锁停止跟随，回到真正贴底才恢复 */
+const followBottom = ref(true)
+/** 打开/切换节点时「内容不足一屏视为贴底」的判定阈值 */
+const FOLLOW_BOTTOM_THRESHOLD = 60
 const spawnPromptExpanded = ref(false)
+
+let drawerObserver: MutationObserver | null = null
+
+// —— 流式贴底状态机：与 useChatScroll 同构（项目内已测模式）——
+/** 程序化贴底产生的 scroll 事件勿改写 followBottom（双 rAF 窗口后复位） */
+let pinSyncSuppressed = false
+let pinSyncSettleRaf = 0
+/** 流式跟随合并到每帧最多一次，避免正文/步骤洪水抢滚轮 */
+let followRaf = 0
+let lastScrollTop = 0
+/** 用户手动离开底部后置位：流式跟随立即停止，直到重新贴底。解决拖拽滚动条/触控上滑被拉回抢回的抖动 */
+let userTakenOver = false
+/** 持续贴底循环内上次观测的 scrollHeight：连续稳定 N 帧即视为跟随完成 */
+let lastFollowHeight = 0
+let stableFollowFrames = 0
+/** 表格/大块 markdown 布局可滞后 DOM mutation 多帧，稳定帧数与正文 settleScrollToBottom 对齐 */
+const STABLE_FOLLOW_FRAMES = 10
+/** 用户在滚动条上按下：拖动期间的 scroll 方向才视为用户操作 */
+let userScrolling = false
+/** 触摸起点：手指下移（内容上滑）立即暂停跟随 */
+let touchStartY: number | null = null
+
+function isNearBottom(el: HTMLElement): boolean {
+  return distanceFromChatBottom(el) <= FOLLOW_BOTTOM_THRESHOLD
+}
 
 function toggleSpawnPrompt() {
   // 拖选复制时不切换展开
@@ -372,33 +430,193 @@ function toggleSpawnPrompt() {
   spawnPromptExpanded.value = !spawnPromptExpanded.value
 }
 
-function onDrawerBodyScroll() {
-  drawerScrollTop.value = bodyRef.value?.scrollTop ?? 0
+function cancelFollowRaf(): void {
+  if (!followRaf) return
+  cancelAnimationFrame(followRaf)
+  followRaf = 0
 }
 
-async function restoreDrawerScroll() {
-  const top = drawerScrollTop.value
-  await nextTick()
-  if (bodyRef.value) bodyRef.value.scrollTop = top
+/** 用户上滑/接管滚动：立即硬性打断跟随（不等跨帧 ref/watch/rAF） */
+function unpinFromUser(): void {
+  followBottom.value = false
+  userTakenOver = true
+  cancelFollowRaf()
+  pinSyncSuppressed = false
+  if (pinSyncSettleRaf) {
+    cancelAnimationFrame(pinSyncSettleRaf)
+    pinSyncSettleRaf = 0
+  }
+}
+
+function suppressPinSyncBriefly(): void {
+  pinSyncSuppressed = true
+  if (pinSyncSettleRaf) cancelAnimationFrame(pinSyncSettleRaf)
+  pinSyncSettleRaf = requestAnimationFrame(() => {
+    pinSyncSettleRaf = requestAnimationFrame(() => {
+      pinSyncSettleRaf = 0
+      pinSyncSuppressed = false
+    })
+  })
+}
+
+/** scroll 事件：仅同步位置；接管判定只在「滚动条拖动」（userScrolling）期间生效。
+ * 表格流式渲染高度波动时浏览器会 clamp scrollTop（最大可滚位置变小），
+ * 程序性 scroll 方向不可信，用户上滑由 wheel/touch 输入事件同步接管。 */
+function syncScrollPinned(): void {
+  const el = bodyRef.value
+  if (!el) return
+  const top = el.scrollTop
+  const dist = distanceFromChatBottom(el)
+  const scrolledUp = top < lastScrollTop - 0.5
+  lastScrollTop = top
+  // 非拖动滚动条产生的 scroll（程序化贴底/表格 clamp/浏览器补发）：不参与接管判定，
+  // 仅允许「滚回底部」恢复跟随
+  if (!userScrolling) {
+    if (dist <= 1 && !scrolledUp) {
+      followBottom.value = true
+      userTakenOver = false
+    }
+    return
+  }
+  // 拖动滚动条上滑离开底部：立即接管并硬性打断跟随
+  if (scrolledUp && dist > 1) {
+    unpinFromUser()
+    return
+  }
+  if (dist <= 1) {
+    if (!scrolledUp) {
+      followBottom.value = true
+      userTakenOver = false
+    }
+    return
+  }
+  if (pinSyncSuppressed && followBottom.value) return
+  const pinned = resolveChatScrollPinned({
+    distanceFromBottom: dist,
+    suppressed: pinSyncSuppressed,
+    currentlyPinned: followBottom.value,
+    scrolledUp,
+  })
+  followBottom.value = pinned
+  if (pinned) {
+    userTakenOver = false
+  } else {
+    pinSyncSuppressed = false
+    cancelFollowRaf()
+  }
+}
+
+function onDrawerBodyScroll() {
+  syncScrollPinned()
+}
+
+/** 捕获阶段：滚轮/触控板上滑立即取消贴底（滚动发生前同步生效，免疫程序性 clamp 污染） */
+function onDrawerWheel(e: WheelEvent): void {
+  if (!state.open) return
+  if (e.deltaY < 0) unpinFromUser()
+}
+
+function onDrawerTouchStart(e: TouchEvent) {
+  touchStartY = e.touches[0]?.clientY ?? null
+}
+
+function onDrawerTouchMove(e: TouchEvent) {
+  if (!state.open) return
+  const y = e.touches[0]?.clientY
+  if (touchStartY == null || y == null) return
+  if (y > touchStartY) unpinFromUser()
+  touchStartY = y
+}
+
+function onDrawerTouchEnd() {
+  touchStartY = null
+}
+
+/** 滚动条拖动接管：拖动期间 scroll 方向才视为用户操作（window pointerup 兜底复位） */
+function onDrawerPointerDown() {
+  userScrolling = true
+}
+
+function onDrawerPointerEnd() {
+  userScrolling = false
+}
+
+/** 程序化贴底：同步 lastScrollTop，避免下一帧被误判为用户上滑 */
+function applyScrollBottom(): void {
+  const el = bodyRef.value
+  if (!el) return
+  suppressPinSyncBriefly()
+  const nextTop = Math.max(0, el.scrollHeight - el.clientHeight)
+  el.scrollTop = nextTop
+  lastScrollTop = nextTop
+}
+
+/** 抽屉内容变化（流式输出/步骤追加）：跟随态启动持续贴底循环，直到高度稳定或用户接管。
+ * 表格/大块 markdown 布局可滞后 DOM mutation 多帧，须持续贴底至高度连续稳定（与正文 settle 一致）；
+ * 用户上滑由 wheel/touch/滚动条拖动输入事件同步接管，循环内无需再判 scrollTop 方向。 */
+function onDrawerContentMutated(): void {
+  const el = bodyRef.value
+  if (!el || !state.open || !followBottom.value || userTakenOver) return
+  if (followRaf) return
+  const tick = () => {
+    followRaf = 0
+    const target = bodyRef.value
+    if (!target || !state.open || !followBottom.value || userTakenOver) return
+    applyScrollBottom()
+    if (target.scrollHeight === lastFollowHeight) {
+      stableFollowFrames += 1
+      if (stableFollowFrames >= STABLE_FOLLOW_FRAMES) {
+        stableFollowFrames = 0
+        lastFollowHeight = 0
+        return
+      }
+    } else {
+      stableFollowFrames = 0
+      lastFollowHeight = target.scrollHeight
+    }
+    followRaf = requestAnimationFrame(tick)
+  }
+  followRaf = requestAnimationFrame(tick)
+}
+
+/** contentBlocks/reasoning 为原地增量更新（对象引用不变），watch 覆盖不全，统一用 MutationObserver 监听 DOM 变化 */
+function ensureDrawerObserver(): void {
+  const el = bodyRef.value
+  if (!el || drawerObserver) return
+  drawerObserver = new MutationObserver(onDrawerContentMutated)
+  drawerObserver.observe(el, { childList: true, subtree: true, characterData: true })
+}
+
+function teardownDrawerObserver(): void {
+  drawerObserver?.disconnect()
+  drawerObserver = null
 }
 
 watch(
   () => [state.open, state.node?.id] as const,
   ([open, nodeId], [, prevId]) => {
-    if (!open) return
-    if (nodeId !== prevId) {
-      spawnPromptExpanded.value = false
-      drawerScrollTop.value = 0
-      void nextTick(() => bodyRef.value?.scrollTo(0, 0))
+    if (!open) {
+      teardownDrawerObserver()
+      return
     }
-  },
-)
-
-watch(
-  () => [bodyDisplay.value, analysisDisplay.value, summary.value, reasoning.value, output.value, subSteps.value],
-  () => {
-    if (!state.open) return
-    void restoreDrawerScroll()
+    const isNewNode = nodeId !== prevId
+    if (isNewNode) spawnPromptExpanded.value = false
+    followBottom.value = true
+    userTakenOver = false
+    cancelFollowRaf()
+    pinSyncSuppressed = false
+    lastScrollTop = 0
+    lastFollowHeight = 0
+    stableFollowFrames = 0
+    void nextTick(() => {
+      const el = bodyRef.value
+      if (!el) return
+      if (isNewNode) el.scrollTo(0, 0)
+      lastScrollTop = el.scrollTop
+      // 历史内容不足一屏视为贴底（跟随流式）；超一屏则停在顶部供回读
+      followBottom.value = isNearBottom(el)
+    })
+    void nextTick(ensureDrawerObserver)
   },
 )
 </script>
@@ -428,8 +646,29 @@ watch(
           </span>
           <h3 class="drawer-title">{{ title }}</h3>
         </div>
-        <button type="button" class="drawer-close" title="收起" aria-label="收起" @click="close">
-          <DrawerCollapseIcon :size="16" />
+        <button
+          type="button"
+          class="drawer-close"
+          :title="depth > 1 ? '返回上级' : '收起'"
+          :aria-label="depth > 1 ? '返回上级' : '收起'"
+          @click="depth > 1 ? goBack() : close()"
+        >
+          <svg
+            v-if="depth > 1"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M19 12H5" />
+            <path d="m12 19-7-7 7-7" />
+          </svg>
+          <DrawerCollapseIcon v-else :size="16" />
         </button>
       </div>
 
@@ -454,7 +693,16 @@ watch(
         <span class="meta-line-detail">{{ skillDetailText }}</span>
       </p>
     </header>
-    <div ref="bodyRef" class="drawer-body" @scroll="onDrawerBodyScroll">
+    <div
+      ref="bodyRef"
+      class="drawer-body"
+      @scroll="onDrawerBodyScroll"
+      @wheel.capture.passive="onDrawerWheel"
+      @touchstart.passive="onDrawerTouchStart"
+      @touchmove.passive="onDrawerTouchMove"
+      @touchend.passive="onDrawerTouchEnd"
+      @pointerdown="onDrawerPointerDown"
+    >
       <section v-if="showExclusiveBranches" class="drawer-section">
         <h4>分支条件</h4>
         <ul class="exclusive-branch-list">
@@ -497,7 +745,7 @@ watch(
         <PlanNodeRecoveryActions :step="step" @decided="applyRecoveryDecision" />
       </section>
       <section v-if="showSpawnPrompt" class="drawer-section">
-        <h4>传入提示词</h4>
+        <h4>{{ isWorkerNode ? '任务契约' : '传入提示词' }}</h4>
         <div
           class="spawn-prompt"
           :class="{ 'is-expanded': spawnPromptExpanded }"

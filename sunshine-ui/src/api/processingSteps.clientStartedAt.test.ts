@@ -78,6 +78,11 @@ describe('applyStepDelta clientStartedAt 稳定性', () => {
       expect(s.clientStartedAt).toBe(anchor)
       expect(s.reasoning).toBe('第一段')
       expect(s.summary?.active).toBe('正在综合分析「查询财务待办详情」返回结果')
+
+      // 复用后后端继续下发新内容增量（不回放旧段）：在前段基础上累加，不覆盖不清空
+      vi.setSystemTime(3_009_250)
+      steps = applyStepDelta(steps, { stepId: 'think-3', channel: 'reasoning', text: '，第二段' })
+      expect(steps[0].reasoning).toBe('第一段，第二段')
     } finally {
       vi.useRealTimers()
     }

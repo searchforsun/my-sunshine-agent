@@ -38,6 +38,8 @@ final class GenerationJobChunkEmitter {
     private final GenerationStreamService streamService;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties properties;
+    /** mysqlBuffer 已 flush 至的位置：flush 时只提交新增 delta，避免全量重写大字段 */
+    private final AtomicLong mysqlFlushedLen = new AtomicLong(0);
 
     GenerationJobChunkEmitter(
             String generationId,
@@ -276,8 +278,13 @@ final class GenerationJobChunkEmitter {
     private void throttlePartialFlush(StringBuilder mysqlBuffer, Consumer<String> flushPartial, AtomicLong lastFlush) {
         long now = System.currentTimeMillis();
         if (now - lastFlush.get() >= properties.flushIntervalMs()) {
-            lastFlush.set(now);
-            flushPartial.accept(mysqlBuffer.toString());
+            long flushed = mysqlFlushedLen.get();
+            int len = mysqlBuffer.length();
+            if (len > flushed) {
+                lastFlush.set(now);
+                mysqlFlushedLen.set(len);
+                flushPartial.accept(mysqlBuffer.substring((int) flushed));
+            }
         }
     }
 

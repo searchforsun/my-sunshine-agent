@@ -174,17 +174,19 @@ public class ReActAgentRuntime implements AgentRuntime {
                     StepEventBridge.bindWriteHitlMode(request.assistantMessageId(), writeMode);
                 }
                 StepEventBridge.setUserQuery(request.assistantMessageId(), query);
-                if (request.role() == AgentRole.MAIN) {
+                if (request.role() == AgentRole.MAIN || request.role() == AgentRole.PLANNER) {
+                    // PLANNER 亦注册 main run：await_tool_run 依赖 activeMainBridge 判定「仅主 Agent 可调用」，
+                    // Planner 是 pro 模式的执行主链，须经 await_tool_run 收集 Worker handoff。
                     StepEventBridge.registerMainRun(request.assistantMessageId(), bridgeId);
                 }
             } else if (assistantMessageId != null) {
                 StepEventBridge.setUserQuery(assistantMessageId, query);
             }
-            // 续跑 decision：bridge 就绪后同步 re-await；成功则并入【用户决策】再 compose（不依赖二次 tool_call）
+            // 续跑 decision：bridge 就绪后同步 re-await；成功则并入【用户决策】再 compose（不依赖二次 tool_call）。
+            // MAIN 经 ReactExecutor reactRestart 时 bind DecisionResumeSteps；PLANNER 经 HarnessPlanner bind（resume 为新的 Planner run）
             List<String> injectedBlocks = new ArrayList<>(request.injectedBlocks());
-            if (request.reactRestart()
-                    && request.role() == AgentRole.MAIN
-                    && StringUtils.hasText(request.assistantMessageId())) {
+            if (StringUtils.hasText(request.assistantMessageId())
+                    && (request.role() == AgentRole.MAIN || request.role() == AgentRole.PLANNER)) {
                 List<ProcessingStep> resumeSteps = DecisionResumeSteps.take(request.assistantMessageId());
                 DecisionResumeSupport resumeSupport = decisionResumeSupport.getIfAvailable();
                 if (resumeSupport != null && !resumeSteps.isEmpty()) {
@@ -213,8 +215,9 @@ public class ReActAgentRuntime implements AgentRuntime {
             StringBuilder answerContent = new StringBuilder();
             // P2-1（E5）：指纹缓存取实例。SUB 的 spawn 单独取消句柄绑定本轮实例；
             // 缓存复用下旧 run 已 cancel 的句柄不迁移——新 run 会经 register+bindAgent 覆盖
+            // WORKER 同构绑定（v17.7 用户单独取消 worker 卡）
             HarnessAgent agent = agentHolder.get(request);
-            if (request.role() == AgentRole.SUB) {
+            if (request.role() == AgentRole.SUB || request.role() == AgentRole.WORKER) {
                 SpawnRunRegistry registry = spawnRunRegistry.getIfAvailable();
                 if (registry != null) {
                     registry.bindAgent(request.runId(), agent);
@@ -223,9 +226,18 @@ public class ReActAgentRuntime implements AgentRuntime {
             UsageAccumulator seed = seedUsageFromPersisted(assistantMessageId);
             AtomicReference<UsageAccumulator> usageAcc = new AtomicReference<>(seed);
             String resolvedModel = resolveModelName(request);
+            // WORKER/SUB 独立 sessionId：同消息多个 Worker/子 Agent 复用同一 HarnessAgent 实例
+            // （fingerprint 缓存），若沿用 assistantMessageId 会落入 AgentScope per-instance
+            // callGates 的 (userId, sessionId) 串行槽——同一时刻仅一个实例的 LLM 流式输出
+            // （前端呈现"一个一个输出"）。改用 runId 槽解除，各自独立并行流式。
+            String agentSessionId = request.role() == AgentRole.WORKER
+                    ? "worker-" + request.runId()
+                    : request.role() == AgentRole.SUB
+                            ? "subagent-" + request.runId()
+                            : assistantMessageId;
             RuntimeContext rt = RuntimeContext.builder()
                     .userId(request.userId())
-                    .sessionId(assistantMessageId)
+                    .sessionId(agentSessionId)
                     .put(ProcessingStepMiddleware.CTX_BRIDGE_ID, bridgeId)
                     .put(ProcessingStepMiddleware.CTX_REACT_MAX_ITERS, resolveMaxIters(request))
                     .put(ProcessingStepMiddleware.CTX_CONTEXT_GROUPS, contextGroups)
@@ -276,7 +288,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                         } catch (Exception e) {
                             log.warn("[AgentRuntime] closeSandbox failed: {}", e.getMessage());
                         }
-                        if (request.role() == AgentRole.MAIN
+                        if ((request.role() == AgentRole.MAIN || request.role() == AgentRole.PLANNER)
                                 && request.assistantMessageId() != null
                                 && !request.assistantMessageId().isBlank()) {
                             StepEventBridge.unregisterMainRun(request.assistantMessageId(), bridgeId);

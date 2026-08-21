@@ -15,11 +15,11 @@ import lombok.Getter;
 import lombok.Setter;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * H1 跨轮共享工作记忆（rebuild §5.0）。
@@ -36,8 +36,7 @@ public class PlanNotebook {
     @Setter
     private String kind;
     private final Deque<TaskItem> taskQueue;
-    private final List<RoundRecord> rounds;
-    @Setter
+    private final List<RoundRecord> rounds;    @Setter
     private double goalCompletion;
     @Setter
     private String nextDirection;
@@ -82,7 +81,7 @@ public class PlanNotebook {
         this.originalGoal = originalGoal;
         this.userQuery = userQuery;
         this.kind = kind;
-        this.taskQueue = taskQueue != null ? new ArrayDeque<>(taskQueue) : new ArrayDeque<>();
+        this.taskQueue = taskQueue != null ? new ConcurrentLinkedDeque<>(taskQueue) : new ConcurrentLinkedDeque<>();
         this.rounds = rounds != null ? new ArrayList<>(rounds) : new ArrayList<>();
         this.goalCompletion = goalCompletion;
         this.nextDirection = nextDirection;
@@ -102,6 +101,83 @@ public class PlanNotebook {
 
     public void appendRound(RoundRecord round) {
         rounds.add(round);
+    }
+
+    /**
+     * 一致快照：与写侧同锁，保证读到替换前/后完整态（绝不中间态），
+     * 供只读遍历（TaskBoard 投影 / merge / 摘要）。
+     */
+    public List<TaskItem> snapshotQueue() {
+        synchronized (taskQueue) {
+            return List.copyOf(taskQueue);
+        }
+    }
+
+    public TaskItem findTask(String taskId) {
+        synchronized (taskQueue) {
+            for (TaskItem item : taskQueue) {
+                if (taskId.equals(item.taskId())) {
+                    return item;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 新任务入队（同 taskId 覆盖；否则追加队尾）。结构修改与并发读隔离。 */
+    public void upsertTask(TaskItem task) {
+        synchronized (taskQueue) {
+            boolean replaced = false;
+            List<TaskItem> rebuilt = new ArrayList<>(taskQueue.size() + 1);
+            for (TaskItem item : taskQueue) {
+                if (task.taskId().equals(item.taskId())) {
+                    rebuilt.add(task);
+                    replaced = true;
+                } else {
+                    rebuilt.add(item);
+                }
+            }
+            if (!replaced) {
+                rebuilt.add(task);
+            }
+            replaceAllLocked(rebuilt);
+        }
+    }
+
+    /** 原地替换同 taskId 条目（保留其余顺序）。 */
+    public void replaceTask(TaskItem updated) {
+        synchronized (taskQueue) {
+            if (taskQueue.isEmpty()) {
+                return;
+            }
+            List<TaskItem> rebuilt = new ArrayList<>(taskQueue.size());
+            for (TaskItem item : taskQueue) {
+                rebuilt.add(updated.taskId().equals(item.taskId()) ? updated : item);
+            }
+            replaceAllLocked(rebuilt);
+        }
+    }
+
+    /** 仅改状态（保留 failReason；缺省不动）。 */
+    public void replaceTaskStatus(String taskId, String status) {
+        synchronized (taskQueue) {
+            TaskItem task = findTask(taskId);
+            if (task != null) {
+                replaceTask(task.withStatus(status, task.failReason()));
+            }
+        }
+    }
+
+    /** 全量替换（merge / 中断修复）。调用方须在锁内完成"快照→构建"，避免基于旧状态的覆盖丢任务。 */
+    public void replaceQueue(List<TaskItem> rebuilt) {
+        synchronized (taskQueue) {
+            replaceAllLocked(rebuilt);
+        }
+    }
+
+    private void replaceAllLocked(List<TaskItem> rebuilt) {
+        taskQueue.clear();
+        taskQueue.addAll(rebuilt);
     }
 
     /** goal + taskQueue 摘要 + 近 N 轮 rounds；超阈时最老轮折叠为单行摘要（确定性截断，LLM 折叠留 H-4）。 */

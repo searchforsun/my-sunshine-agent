@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,8 +91,7 @@ class AwaitToolRunToolTest {
                 3,
                 12_345L,
                 null,
-                "partial-output",
-                null);
+                "partial-output");
         when(asyncRegistry.await(eq(RUN_ID), eq(999))).thenReturn(snapshot);
 
         String out = tool.awaitToolRun(RUN_ID, 999, "tu-1");
@@ -117,7 +117,6 @@ class AwaitToolRunToolTest {
                 3,
                 100L,
                 null,
-                null,
                 null);
         when(asyncRegistry.await(eq(RUN_ID), eq(0))).thenReturn(snapshot);
 
@@ -137,7 +136,6 @@ class AwaitToolRunToolTest {
                 3,
                 100L,
                 null,
-                null,
                 null);
         when(asyncRegistry.await(eq(RUN_ID), eq(1))).thenReturn(snapshot);
 
@@ -148,18 +146,70 @@ class AwaitToolRunToolTest {
     }
 
     @Test
-    void subBridge_returnsErrorJson() {
-        bindMainContext();
-        ProcessingTimelineSession sub = new ProcessingTimelineSession();
-        registry.bind("sub-agent-1", sub, new ConcurrentLinkedQueue<>());
-        StepEventBridge.bindHitlBridge("sub-agent-1", MSG, true);
-        String toolUseId = "tu-from-sub";
-        StepEventBridge.bindToolUseBridge(toolUseId, "sub-agent-1");
+    void workerBridge_canAwaitOwnRuns() {
+        // v17.12：await 资格 = runId 作用域（UUID 随机句柄仅派发方可见）；worker bridge 可 await 自己派发的 run
+        ProcessingTimelineSession worker = new ProcessingTimelineSession();
+        registry.bind("worker-1", worker, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge("worker-1", MSG, true);
+        String toolUseId = "tu-from-worker";
+        StepEventBridge.bindToolUseBridge(toolUseId, "worker-1");
+        var snapshot = new AsyncToolRunRegistry.Snapshot(
+                RUN_ID,
+                AsyncToolRunRegistry.Kind.SANDBOX_EXEC,
+                AsyncToolRunRegistry.Status.RUNNING,
+                1,
+                3,
+                100L,
+                null,
+                null);
+        when(asyncRegistry.await(eq(RUN_ID), eq(30))).thenReturn(snapshot);
 
         String out = tool.awaitToolRun(RUN_ID, 30, toolUseId);
 
+        assertThat(out).contains("\"ok\":true");
+        verify(asyncRegistry).await(eq(RUN_ID), eq(30));
+    }
+
+    @Test
+    void batch_runIds_callsAwaitMany_andFormatsRuns() {
+        bindMainContext();
+        var s1 = new AsyncToolRunRegistry.Snapshot(
+                "r1", AsyncToolRunRegistry.Kind.WORKER_DISPATCH,
+                AsyncToolRunRegistry.Status.DONE, 1, 6, 100L, "handoff-1", null);
+        var s2 = new AsyncToolRunRegistry.Snapshot(
+                "r2", AsyncToolRunRegistry.Kind.WORKER_DISPATCH,
+                AsyncToolRunRegistry.Status.RUNNING, 1, 6, 50L, null, "partial-2");
+        when(asyncRegistry.awaitMany(eq(List.of("r1", "r2")), eq(30))).thenReturn(List.of(s1, s2));
+
+        String out = tool.awaitToolRuns(List.of("r1", "r2"), 30, "tu-batch");
+
+        assertThat(out).contains("\"ok\":true");
+        assertThat(out).contains("\"runs\"");
+        assertThat(out).contains("\"runId\":\"r1\"");
+        assertThat(out).contains("\"status\":\"done\"");
+        assertThat(out).contains("\"result\":\"handoff-1\"");
+        assertThat(out).contains("\"runId\":\"r2\"");
+        assertThat(out).contains("\"status\":\"running\"");
+        assertThat(out).contains("\"partial\":\"partial-2\"");
+        verify(asyncRegistry).awaitMany(eq(List.of("r1", "r2")), eq(30));
+    }
+
+    @Test
+    void batch_withUnknownAll_returnsErrorJson() {
+        bindMainContext();
+        when(asyncRegistry.awaitMany(eq(List.of("r1", "r2")), anyInt())).thenReturn(List.of());
+
+        String out = tool.awaitToolRuns(List.of("r1", "r2"), 30, "tu-batch");
+
         assertThat(out).contains("\"ok\":false");
-        assertThat(out).contains("子 Agent");
+        assertThat(out).contains("未知 runId");
+    }
+
+    @Test
+    void emptyRunIds_returnsErrorJson() {
+        String out = tool.awaitToolRuns(List.of(), 30, "tu-1");
+        assertThat(out).contains("\"ok\":false");
+        assertThat(out).contains("runId 不能为空");
     }
 
     private void bindMainContext() {

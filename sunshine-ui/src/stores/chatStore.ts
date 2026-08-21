@@ -155,6 +155,7 @@ function parseMessageUsage(raw: string | undefined): MessageUsage | undefined {
       contextTokens: typeof obj.contextTokens === 'number' ? obj.contextTokens : undefined,
       contextWindowTokens: typeof obj.contextWindowTokens === 'number' ? obj.contextWindowTokens : undefined,
       contextPercent: typeof obj.contextPercent === 'number' ? obj.contextPercent : undefined,
+      cachedPercent: typeof obj.cachedPercent === 'number' ? obj.cachedPercent : undefined,
       groups: typeof obj.groups === 'object' && obj.groups ? (obj.groups as Record<string, number>) : undefined,
     }
   } catch {
@@ -573,13 +574,22 @@ export const useChatStore = defineStore('chat', () => {
     return blanks.sort((a, b) => b.updatedAt - a.updatedAt)[0]
   }
 
-  async function create(params?: { kind?: string; workspaceId?: string; checkoutPath?: string }): Promise<string> {
+  async function create(params?: {
+    kind?: string
+    workspaceId?: string
+    checkoutPath?: string
+    executionPreference?: ExecutionPreference
+  }): Promise<string> {
     const kind = params?.kind ?? 'chat'
     // 点「新对话」：已有空白会话则直接定位，避免侧栏堆多个空会话。
     // chat 会话工作区由后端在首次执行脚本时懒绑定，空白复用不判断工作区
     if (kind === 'chat' && !params?.workspaceId) {
       const blank = findBlankChat()
       if (blank) {
+        // 空白复用也播种当前 preference：currentId 变化触发 watch 回退全局默认会覆盖用户刚选值
+        if (params?.executionPreference && !blank.executionPreference) {
+          blank.executionPreference = params.executionPreference
+        }
         if (currentId.value !== blank.id) {
           await switchTo(blank.id)
         }
@@ -594,7 +604,8 @@ export const useChatStore = defineStore('chat', () => {
         createdAt: created.createdAt,
         updatedAt: created.updatedAt,
         messages: [],
-        executionPreference: created.executionPreference,
+        // 后端创建默认空；用户已在底栏选定 preference 时播种，避免 watch 回退覆盖
+        executionPreference: created.executionPreference ?? params?.executionPreference,
         kbId: created.kbId ?? null,
         modelName: created.modelName ?? null,
         kind: created.kind ?? params?.kind,
@@ -835,10 +846,10 @@ export const useChatStore = defineStore('chat', () => {
     await switchTo(id)
   }
 
-  async function ensureCurrent(): Promise<string> {
+  async function ensureCurrent(params?: { executionPreference?: ExecutionPreference }): Promise<string> {
     await init()
     if (!isValidConversationId(currentId.value) || !conversations.value.some(c => c.id === currentId.value)) {
-      return create()
+      return create(params)
     }
     return currentId.value
   }

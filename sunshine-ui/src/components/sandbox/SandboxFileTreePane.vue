@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { h, ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { NIcon, NInput, NTree, type TreeDragInfo, type TreeOption } from 'naive-ui'
-import { ChevronForwardOutline, SearchOutline, CloseOutline, DocumentTextOutline } from '@vicons/ionicons5'
+import { SearchOutline, CloseOutline, DocumentTextOutline } from '@vicons/ionicons5'
 
 const props = defineProps<{
   treeWidth: number
@@ -176,7 +176,6 @@ function onLoad(option: TreeOption) {
         :selected-keys="selectedKeys"
         :on-load="onLoad"
         :node-props="treeNodeProps"
-        :render-switcher-icon="() => h(NIcon, { component: ChevronForwardOutline, size: 12 })"
         @dragstart="emit('dragstart', $event)"
         @update:expanded-keys="emit('update:expanded-keys', $event)"
         @update:selected-keys="(keys, option) => emit('update:selected-keys', keys, option)"
@@ -362,9 +361,40 @@ function onLoad(option: TreeOption) {
 }
 
 .file-tree-pane :deep(.tree-icon-dir),
-.file-tree-pane :deep(.tree-icon-file) {
+.file-tree-pane :deep(.tree-icon-file),
+.file-tree-pane :deep(.tree-icon-arrow) {
   color: var(--sun-text-muted);
   margin-right: 2px;
+}
+
+/* 目录图标槽：默认显示文件夹图标，hover 时箭头替代 */
+.file-tree-pane :deep(.tree-dir-slot) {
+  display: inline-flex;
+  align-items: center;
+}
+
+.file-tree-pane :deep(.tree-icon-arrow) {
+  display: none;
+  transition: transform 0.15s ease;
+}
+
+.file-tree-pane :deep(.n-tree-node:hover .tree-icon-dir) {
+  display: none;
+}
+
+.file-tree-pane :deep(.n-tree-node:hover .tree-icon-arrow) {
+  display: inline-flex;
+}
+
+/* 展开状态由 switcher 的 --expanded 类传达：hover 箭头旋转 90°（> → v） */
+.file-tree-pane :deep(.n-tree-node-switcher--expanded ~ .n-tree-node-content .tree-icon-arrow) {
+  transform: rotate(90deg);
+}
+
+/* 默认隐藏 switcher 箭头占位，目录图标作为行首锚点（缩进仍由 tree-node-indent 保证） */
+.file-tree-pane :deep(.n-tree-node-switcher) {
+  width: 0 !important;
+  visibility: hidden;
 }
 
 .file-tree-pane :deep(.tree-size) {

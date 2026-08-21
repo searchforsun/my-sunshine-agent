@@ -9,8 +9,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -69,21 +69,21 @@ public class PlanNotebookStoreImpl implements PlanNotebookStore {
     }
 
     static void repairInProgressTasks(PlanNotebook notebook) {
-        Deque<TaskItem> queue = notebook.getTaskQueue();
-        if (queue.isEmpty()) return;
-        Deque<TaskItem> repaired = new ArrayDeque<>(queue.size());
-        for (TaskItem item : queue) {
+        if (notebook.getTaskQueue().isEmpty()) return;
+        List<TaskItem> repaired = new ArrayList<>(notebook.snapshotQueue().size());
+        for (TaskItem item : notebook.snapshotQueue()) {
             if ("in_progress".equals(item.status())) {
+                // 中断恢复：in_progress 标 fail（failReason=interrupted），保留版本化字段供重派
                 repaired.add(new TaskItem(
                         item.taskId(), item.label(), "fail",
                         item.dependsOn(), item.constraints(),
-                        item.expectedOutput(), item.successCriteria()));
+                        item.expectedOutput(), item.successCriteria(),
+                        item.baseTaskId(), item.retryIndex(), item.parentTaskId(), "interrupted"));
             } else {
                 repaired.add(item);
             }
         }
-        queue.clear();
-        queue.addAll(repaired);
+        notebook.replaceQueue(repaired);
     }
 
     private String key(String sessionId) {

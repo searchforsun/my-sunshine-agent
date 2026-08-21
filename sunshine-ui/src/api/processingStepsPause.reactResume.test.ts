@@ -22,20 +22,14 @@ describe('resetStepsForReactResume（ReAct 续跑同 id 重放）', () => {
     expect(steps[0].reasoning).not.toContain('OK so I have')
   })
 
-  it('paused+after（乐观已取消）的 subagent 重置为 pending，重放 running→done 不被终态保护挡住', () => {
+  it('已取消的 subagent 卡续跑保持「已取消」：旧 runId 不重放，不复活为等待中', () => {
     const cancelled: ProcessingStep = {
       id: 'subagent-abc', phase: 'subagent', lifecycle: 'paused',
       summary: { active: undefined, after: '已取消' },
     }
     const reset = resetStepsForReactResume([cancelled])
-    expect(reset[0].lifecycle).toBe('pending')
-    expect(reset[0].summary?.after).toBeUndefined()
-
-    // 后端重放 running → done
-    let steps = upsertStep(reset, { id: 'subagent-abc', phase: 'subagent', lifecycle: 'running', summary: { active: '正在执行' } })
-    expect(steps[0].lifecycle).toBe('running')
-    steps = upsertStep(steps, { id: 'subagent-abc', phase: 'subagent', lifecycle: 'done', summary: { after: '完成' } })
-    expect(steps[0].lifecycle).toBe('done')
+    expect(reset[0].lifecycle).toBe('paused')
+    expect(reset[0].summary?.after).toBe('已取消')
   })
 
   it('真 done 的历史步不重置（reasoning/lifecycle 保留）', () => {

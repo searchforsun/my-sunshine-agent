@@ -2,7 +2,9 @@
 
 > **日期**：2026-08-13  
 > **v2（2026-08-15）**：对齐 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) 与 [task-scene v14](./2026-08-01-task-scene-context-design.md)——会话级执行态 / KV Memory `todo` 与 `business_task` **边界隔离**；装配时序 P3′ 补位；`user_context_state` 表演进随 KV Memory 统一（§2.2 / §2.3 / §3 / §4.3 / §5.1 / §10 / §11）  
-> **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`）  
+> **v3（2026-08-18）**：**biz_scene 解析补 embedding 回退路径**（§2.1b/§2.2/§4.4/§5.5）——当资源召回未命中时，用 query embedding 检索 `biz_scene_definition` 码表（零 LLM 延迟），使场景偏好/任务板在无 skill/agent 召回时仍可达；写路径同步回退。  
+> **v4（2026-08-18）**：**场景来源双轨**（§2.1c/§4.4/§5.5/§9）——`biz_scene_definition` 增 `source` 列（`manual` 预定义 / `auto` 大模型自动发现）；`auto` 场景初始 `pending_review`，**不可**用于 Policy/任务板装载，仅嵌入检索过渡使用；运营审核后升 `active` 方可正式启用。前端 Lab 拆双 Tab：预定义 / 自动发现。**防污染机制**：`auto` 场景 TTL 自动清理 + 同 tenant 上限 + 相似度去重。  
+> **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`；embedding 场景回退 + 场景双轨方案已并入）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
 > **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
 
@@ -74,18 +76,139 @@
 
 **装配时序**：结构化业务块必须在**资源召回之后**组装（或召回后补注入）；禁止在未知 skill/agent 时空想 `biz_scene`。细则见 §2.2。
 
+### 2.1b `biz_scene` embedding 回退路径（v3 · 资源召回未命中时）
+
+> **动机**：§2.1 的解析算法完全依赖 skill/agent 召回。无召回 → `biz_scene = null` → 整层跳过 → 即使该用户在该场景下有大量历史偏好和任务板，也全部不可达。典型场景：用户输入"帮我查下上次那笔退款"——没召回任何 skill，但"退款"场景的偏好和任务板应该加载。
+
+**原则**：
+
+1. **不做 LLM 分类器**（不违反 D7）：仅 embedding 匹配码表，零 LLM 延迟，与 L2 同层。
+2. **资源召回优先**：skill/agent 带出的 `biz_scene` 精确度最高，优先级始终高于 embedding 回退。
+3. **阈值保守**：`minScore` 默认高（0.7），宁可漏场景也不误灌。
+
+**解析算法（v3 扩展）**：
+
+```
+1. IntentRouter / 资源召回得到 skillIds[]、agentIds[]（既有链路）
+2. 取 biz_scene：
+   a) 若命中 agent 且 agent.biz_scene 非空 → 用该值（多 agent 取排序第一非空）
+   b) 否则扫 skillIds：第一个非空 skill.biz_scene
+   c) 均无 → embedding 回退：
+      · 输入：用户 query → embedding（DashScope text-embedding-v4）
+      · 检索：biz_scene_definition 码表（仅 `status=active`，`tenant_id = 当前租户 OR *`）
+      · 匹配：query embedding 与每条 scene 的 `description_vector` 做余弦相似度
+      · 若最高分 ≥ minScore（默认 0.7）→ 采纳该 scene；否则 biz_scene = null
+3. 分支：
+   - biz_scene != null → 装载结构化权威层
+   - biz_scene == null → 跳过
+```
+
+**写路径同步回退**（§5.5）：
+
+```
+assistant 完成 → 从本轮 RoutingResult 取 biz_scene（优先）
+  → 若为空 → 从 assistant 终态正文 + user query 做 embedding 召回场景
+  → 有 scene → 偏好抽取时带上 biz_scene_scope
+  → 无 scene → 偏好落 scope=*（全局）或仅取通用 key
+```
+
+**与 D7 的兼容性**：
+
+| D7 约束 | v3 回退 |
+|----------|---------|
+| 不做独立场景分类器 | ✅ embedding 匹配，非 LLM 分类 |
+| 不做选场景 HITL | ✅ 自动匹配，无用户介入 |
+| 不让模型自由生成 scene 码 | ✅ 码表闭集，仅匹配已有 active 码 |
+| 场景随 Catalog 资源召回附带 | ✅ 资源召回仍为优先路径，embedding 仅回退 |
+
+**码表向量化**（§4.4）：`biz_scene_definition` 新增 `description_vector` 列（1024 维 FLOAT 数组），运营维护 `description` 时异步更新向量。`description` 字段应写成**可检索的语义说明**（如"退款场景：用户咨询退款进度、退款原因、退款金额相关"），而非仅展示文案。
+
+### 2.1c 场景来源双轨：预定义 + 自动发现（v4）
+
+> **动机**：v3 的 embedding 回退解决了"无召回时场景不可达"的问题，但依赖于码表中已有对应场景。若企业未预定义某场景，该场景下的偏好和任务板仍无法归位。**必须给大模型留一个自动创建场景的出口**，同时防止滥用导致场景污染。
+
+**双轨模型**：
+
+```
+场景来源
+  ├── 预定义（source=manual）    运营/管理员在 Lab 手动创建
+  │   · status 直接为 active
+  │   · 可挂 Policy、可参与任务板装载
+  │   · 可绑定到 Skill/Agent
+  │
+  └── 自动发现（source=auto）    大模型在写路径自动创建
+      · status 初始为 pending_review
+      · 不可挂 Policy、不可参与任务板装载
+      · 仅 embedding 检索可用（过渡期）
+      · 运营审核后升 active → 同预定义
+```
+
+**状态流转**：
+
+```
+auto 场景创建 → pending_review（仅嵌入检索可用）
+  → 运营审核通过 → active（正式启用，可挂 Policy/任务板）
+  → 运营驳回 → rejected（软删除，向量移除）
+  → 30 天无人审核/无使用 → 自动清理（TTL）
+```
+
+**解析算法（v4 扩展，在 v3 基础上增加步骤 d）**：
+
+```
+1. IntentRouter / 资源召回得到 skillIds[]、agentIds[]
+2. 取 biz_scene：
+   a) 若命中 agent 且 agent.biz_scene 非空 → 用该值
+   b) 否则扫 skillIds：第一个非空 skill.biz_scene
+   c) 均无 → embedding 回退（检索所有 status=active 的场景，含 manual 与已审核 auto）
+   d) 均无 → 写路径创建（见 §5.5b）：
+      · 若读路径仍为空 → biz_scene = null（跳过结构化层）
+      · 读路径不创建场景，仅写路径创建
+3. 分支：
+   - biz_scene != null → 装载结构化权威层
+   - biz_scene == null → 跳过
+```
+
+**关键约束**：
+
+| 约束 | 说明 |
+|------|------|
+| **读路径不创建** | 仅写路径（assistant 完成后）创建 `auto` 场景；读路径不行——读路径创建场景会导致 prefix 不稳定 |
+| **pending_review 仅嵌入检索** | `auto` 场景在 `pending_review` 状态时，embedding 检索可命中，但**不可**用于 Policy 装载、任务板装载、Skill/Agent 绑定 |
+| **审核升 active 即正式** | 运营审核通过后，`source` 仍为 `auto`，但 `status=active`，与 `manual` 场景完全等同 |
+| **防污染机制** | 见下方 |
+
+**防污染机制（硬约束）**：
+
+```
+① 同 tenant 上限：auto 场景总数 ≤ N（默认 20），超限 → 暂停创建 + 前端告警
+② 相似度去重：新建 auto 场景前，与现有 active/pending 场景 description 做 cosine 相似度
+   - 若相似度 > 0.85 → 复用已有场景，不重复创建
+   - 若相似度 ≤ 0.85 → 允许创建
+③ TTL 自动清理：pending_review 场景 30 天无人审核 → 自动软删除（status=auto_cleaned）
+④ 创建频率限制：同一 tenant 10 分钟内最多创建 M 个 auto 场景（默认 3）
+⑤ 名称规范：auto 场景 `biz_scene` 码由 LLM 生成，强制 `[a-z][a-z0-9_-]{2,48}` 正则
+```
+
+**前端 Lab 双 Tab（§9）**：
+
+| Tab | 内容 | 操作 |
+|-----|------|------|
+| **预定义** | `source=manual` 的场景 | 新建/编辑/禁用/挂 Policy |
+| **自动发现** | `source=auto` 的场景（含 pending_review / active / rejected） | 审核（通过/驳回）/ 手动删除 / 查看来源会话 |
+
 ### 2.2 装配时序与并行（目标态）
 
 > **现状缺口**：`ChatStreamContextFactory` 在路由**之前**同步跑完 `ContextAssembler`（L1+L2+L3+guide），预召回几乎全串行。本层要求 **先 Skill/Agent，再结构化业务记忆**，必须改时序；并行组用于降延迟，不改变依赖边。
 
 **命名勿混**：意图链 L0–L3（收资源）≠ 记忆 L1–L5（装上下文）≠ 产品 `kind` ≠ `biz_scene` ≠ `callSite`。
 
-**目标顺序**（含 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8 补位）：
+**目标顺序**（含 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8 补位 · v3 embedding 回退）：
 
 ```
 ① 轻量会话底座
 ② 意图收集 → skillIds / agentIds（L0→规则→L2 embedding→必要时 Intent LLM）
 ③ 从命中资源读 biz_scene（§2.1）
+   ③b 若资源未命中 → embedding 回退检索 biz_scene（§2.1b，与 ② 的 L2 可复用同一 embedding 管道）
 ④ 会话级任务清单 + KV Memory `todo`（task-list-memory §8，与 ⑤ 可并行；不依赖 scene）
    fast → `react_task_board` 最近快照 →【任务清单】块（Tier 2 尾部）
    pro  → H1 renderForPlanner（既有）
@@ -104,6 +227,7 @@
 | **P0** | `loadHistory` ∥ 脱敏（若契约允许） | 均需先于主装配 |
 | **P1** | `L2`（全局极少项）∥ `projectGuide` ∥（L1 partition 完成后）可预热；**L3 建议延后到 ⑥** | 不依赖 biz_scene |
 | **P2** | 轨 A：`agent` embedding ∥ `skill` embedding | L0/规则仍短路串行 |
+| **P2b** | **③b embedding 场景回退**：query embedding 检索 `biz_scene_definition` 码表 | 可与 P2 复用同一 embedding 管道（同 embedding 模型），仅在 ③ 资源未命中时触发 |
 | **P3′** | 会话级任务清单 ∥ KV Memory `todo`（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8 ③④） | **在 ② 之后即可**；不依赖 `biz_scene` |
 | **P3** | 有 `biz_scene` 时：`Policy` ∥ `业务任务板` ∥ `场景偏好` | **必须在 ②③ 之后** |
 | **P4** | `Toolkit` ∥ Prompt 静态层（skill overlay HTTP 除外） | 主 LLM 前合并 |
@@ -257,7 +381,74 @@
 
 若扩展 L2 成本高，可二期独立 `user_preference` 表，同一装载契约，迁移后删双写。
 
-### 4.4 证据与审计
+### 4.4 场景码表向量化 `biz_scene_definition`（v3 新增 · v4 双轨扩展）
+
+> **用途**：支撑 §2.1b 的 embedding 回退路径与 §2.1c 的场景双轨。`biz_scene_definition` 已存在（`19-sunshine-resource.sql`），本节补向量列、来源列、状态扩展。
+
+**DDL（增量）**：
+
+```sql
+-- v3：向量列
+ALTER TABLE biz_scene_definition
+  ADD COLUMN description_vector JSON NULL
+  COMMENT 'description 的 embedding 向量（1024 维 float[]，DashScope text-embedding-v4）';
+
+-- v4：场景来源双轨
+ALTER TABLE biz_scene_definition
+  ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'manual'
+  COMMENT 'manual=运营预定义 | auto=大模型自动发现',
+  ADD COLUMN source_conversation_id VARCHAR(64) NULL
+  COMMENT 'auto 场景的首次触发会话（溯源）',
+  ADD COLUMN approved_by VARCHAR(64) NULL
+  COMMENT '审核人（auto 场景升 active 时记录）',
+  ADD COLUMN approved_at TIMESTAMP NULL
+  COMMENT '审核时间',
+  MODIFY COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'
+  COMMENT 'active|disabled|pending_review|rejected|auto_cleaned（v4 扩展）';
+```
+
+**索引**：`(tenant_id, source, status)`；`(status, created_at)` 用于 TTL 清理。
+
+**维护规则**：
+
+| 时机 | 操作 |
+|------|------|
+| 运营新建/修改 manual 场景 | 异步触发 embedding → 更新 `description_vector`；status 直接 `active` |
+| 写路径自动创建 auto 场景（§5.5b） | status = `pending_review`；`source_conversation_id` 记录首次触发会话 |
+| 运营审核通过 | status → `active`；`approved_by` / `approved_at` 记录；此时可挂 Policy |
+| 运营驳回 | status → `rejected`；Milvus 删除向量；45 天后物理删除 |
+| 30 天 TTL 清理 | `status=pending_review AND created_at < NOW() - 30d` → `auto_cleaned` |
+| 运营禁用手动场景 | status → `disabled`（不可再绑到新资源；已绑资源解析时跳过） |
+
+**`description` 字段写法规约**（与展示文案不同，需可检索）：
+
+| 场景码 | 展示用 `display_name` | 可检索 `description`（须含语义关键词） |
+|--------|----------------------|--------------------------------------|
+| `compliance-review` | 费用合规审查 | 报销合规对照场景：用户上传或查询报销单据、费用合规性检查、审批流程相关 |
+| `expense-assist` | 报销助手 | 报销查询/提交辅助场景：用户咨询报销进度、提交报销申请、查看报销历史 |
+| `policy-qa` | 制度问答 | 企业制度/流程知识问答场景：用户询问公司制度、考勤政策、财务流程、HR规定 |
+| `travel-budget` | 差旅预算 | 差旅额度与预算管控场景：用户查询差旅标准、申请差旅预算、报销差旅费用 |
+
+**auto 场景的 `description` 生成**（§5.5b）：由 LLM 从触发对话中提取，格式要求与 manual 一致——必须包含"用户可能使用的自然语言关键词 + 动词/名词组合"。`biz_scene` 码由 LLM 生成，格式 `[a-z][a-z0-9_-]{2,48}`（如 `refund-inquiry`）。
+
+**检索参数**（Nacos `agent.business-context.scene-embedding`）：
+
+```yaml
+agent:
+  business-context:
+    scene-embedding:
+      min-score: 0.7          # 余弦相似度阈值
+      top-k: 1                # 仅取最高分（单场景）
+      model: text-embedding-v4
+      dimension: 1024
+    scene-auto:
+      max-pending: 20         # 同 tenant auto 场景上限
+      create-rate-limit: 3    # 每 10 分钟最多创建 M 个
+      ttl-days: 30            # pending_review 自动清理
+      similarity-threshold: 0.85  # 去重阈值
+```
+
+### 4.5 证据与审计
 
 - 大原文 / 工具大返回 → 对象存储；Prompt 与 `evidence_refs_json` 只存指针  
 - 装载审计（可落现有 audit 或薄表）：`biz_scene`、目录 `task_id[]`、详情焦点 `focus_task_id`、`policy_id+version`、偏好 key 列表、与 L3 冲突标记、assemble hash  
@@ -301,7 +492,8 @@
 ChatStreamContextFactory / 编排入口
   → [P0/P1] 历史·脱敏·L1·（可选全局 L2）·guide
   → 意图收集 skillIds / agentIds（[P2] agent∥skill 召回）
-  → §2.1 解析 biz_scene（可空）
+  → [P2b] 若资源未命中 → embedding 回退检索 biz_scene 码表（§2.1b）
+  → §2.1 解析 biz_scene（资源优先，回退补位）
   → [P3′] 会话级任务清单 ∥ KV Memory `todo`（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md) §8；不依赖 scene）
   → [P3] 有 scene：Policy ∥ 任务板 ∥ 场景偏好；无则 skip
   → [与 P3/P3′ 可并行] L3 语义（方案 A，§2.2）
@@ -327,6 +519,69 @@ ChatStreamContextFactory / 编排入口
 | 推断偏好 | 仅 `inferred`，默认不装载 |
 | 运营改规则 | Policy 新 `version`，旧版 `retired` |
 | 轮次结束 | 既有 `ContextWritePath`（L1/L2/L3）；不把 Policy 写入 L3 |
+
+### 5.5 写路径场景回退（v3 新增 · v4 双轨扩展）
+
+> **动机**：写路径同样需要场景锚定，否则偏好抽取时不知道该打哪个 `biz_scene_scope`。与读路径对称，资源召回优先，未命中时 embedding 回退。v4 新增：回退均未命中时，**LLM 自动创建 `auto` 场景**（`pending_review` 状态），保留扩展出口。
+
+```
+ContextWritePath.runAsync 执行 KV Memory 偏好抽取前：
+  ① 从本轮 RoutingResult 取 biz_scene（优先）
+  ② 若为空 → embedding 回退：
+     · 输入：assistant 终态正文（截断 500 chars）+ user query
+     · 检索：biz_scene_definition 码表（status=active，同 §2.1b）
+     · 若最高分 ≥ minScore → 采纳该 scene
+  ③ 若仍为空 → LLM 场景创建（v4 新增 · §5.5b）：
+     · 触发条件：本会话已 ≥ 2 轮对话（避免单轮闲聊创建）
+     · 输入：本会话 user+assistant 摘要（最近 3 轮）
+     · 动作：LLM 判断是否为新业务场景，若是则生成 biz_scene + display_name + description
+     · 若创建 → 该 scene 作为本轮 biz_scene 使用
+  ④ 有 scene → 偏好抽取 prompt 注入 `biz_scene_scope = {scene}`
+     · 抽取结果中的偏好条目自动带 `biz_scene_scope`
+  ⑤ 无 scene → 偏好落 `scope=*`（全局）或仅允许通用 key
+```
+
+### 5.5b LLM 自动场景创建（v4 新增）
+
+> **原则**：仅写路径创建，读路径不创建。创建为 `pending_review` 状态，**不可**用于 Policy/任务板装载——仅嵌入检索可用，运营审核后才能正式启用。
+
+**触发条件**（全部满足）：
+
+1. 读路径 ② embedding 回退未命中（所有 active 场景 cosine < 0.7）
+2. 本会话已 ≥ 2 轮对话（排除单轮闲聊）
+3. 同 tenant 的 `auto` 场景总数 < `max-pending`（默认 20）
+4. 10 分钟内同 tenant 创建次数 < `create-rate-limit`（默认 3）
+
+**LLM 输入**（Catalog `context.biz-scene.auto-create`，**仅写路径调用，不阻塞读路径**）：
+
+```
+输入：本会话最近 3 轮 user+assistant 摘要
+任务：判断是否形成了一个新的、区别于所有已有场景的业务场景
+已有场景（仅 active）：{场景码表 JSON}
+若确为新场景，生成：
+  - biz_scene: [a-z][a-z0-9_-]{2,48}（小写英文码）
+  - display_name: ≤16 字中文名
+  - description: 50-200 字，包含该场景下用户可能使用的自然语言关键词
+  - 若不确定，输出 skip
+```
+
+**创建后**：
+
+- `status = pending_review`，`source = auto`
+- 异步 embedding → 更新 `description_vector`
+- 该场景立即进入 embedding 检索（后续读路径可命中）
+- **不**装载 Policy / 任务板（pending_review 无此权限）
+- 前端 Lab「自动发现」Tab 出现新条目，运营可审核
+
+**与读路径差异**：
+
+| 维度 | 读路径 | 写路径 |
+|------|--------|--------|
+| 输入 | 用户 query | assistant 终态正文 + user query |
+| 触发时机 | 装配时（§2.2 ③b） | ContextWritePath 异步（assistant 完成后） |
+| 误判代价 | 灌错场景偏好 → 本会话污染 | 偏好落错 scope → 下次读时可能漏/误 |
+| 场景创建 | **不创建** | 可创建 auto 场景（§5.5b） |
+| 优先级 | 资源召回 > embedding | 同上 |
 
 ---
 
@@ -381,6 +636,7 @@ Policy 与任务数据在 DB；白名单在 Nacos（改完 `sync_nacos.py` + 重
 | **M2** | 偏好白名单装载 | 仅随 scene 过滤；无 scene 不灌场景偏好 |
 | **M3** | `business_task` + 同 scene 最近 1 条详情 | 无用户选任务；无 scene 不灌任务板 |
 | **M4** | 有 scene 时 L3 vs Policy/任务冲突过滤 + 审计 | 无 scene 时仅 L3 语义路径 |
+| **M5（v3/v4）** | embedding 场景回退 + 场景双轨：`biz_scene_definition` 向量化 + 读/写路径回退逻辑 + LLM 自动创建场景 + 防污染机制 + 前端双 Tab | 资源未命中时 query 可召回场景；写路径偏好带对 `biz_scene_scope`；auto 场景 pending_review 不装载 Policy/任务板；前端可审核 |
 | **并行** | task-scene 读写闸门、L2 语义 merge、Budget 退役并入 | 见五层 §13.3 / task-scene P1–P2；**不阻塞**本层 M0/M1 |
 
 > 与 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) M0–M3 并行落地；装配时序统一见 §2.2（P3′ 为其块，不阻塞本层 M0/M1）。
@@ -401,6 +657,10 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 8. 独立场景分类器 / 选场景·选任务 HITL（本层明确不做）  
 9. 在资源召回前空想 scene 并装载 Policy  
 10. 路由前一次性 assemble 含 L3+业务块，导致无法按 skill 字段装结构化记忆  
+11. 场景码表 `description` 写成展示文案而非检索锚点，导致 embedding 回退命中率低  
+12. auto 场景未经审核直接用于 Policy/任务板装载（必须 pending_review 隔离）  
+13. 读路径创建 auto 场景（破坏 prefix 稳定；仅写路径可创建）  
+14. auto 场景无限增长不设上限/不清理（污染码表）  
 
 ---
 
@@ -433,3 +693,46 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 | D9 | 本层一期 = chat；与压缩点正交；挂载遵守 prefix/Tier/L3 尾部纪律（§2.3）；task 默认不启用 | 2026-08-13 |
 | D10 | `biz_scene` 码表 = 独立业务场景 Lab（非 Prompt 子页）；与 kind-biz-scene-catalog 对齐 | 2026-08-13 |
 | D11 | 对齐 task-list-memory v2 / task-scene v14：KV `todo`、会话级恢复块与 `business_task` 边界隔离；§2.2 P3′ 补位；§4.3 表演进随 KV Memory 统一 | 2026-08-15 |
+| D12 | **biz_scene embedding 回退（v3）**：当资源召回未命中时，用 query embedding 检索 `biz_scene_definition` 码表（零 LLM 延迟，阈值保守）；资源召回优先，embedding 仅回退。读/写路径对称。**不违反 D7**（非 LLM 分类、非 HITL、非 AI 自由生成） | 2026-08-18 |
+| D13 | **场景来源双轨（v4）**：`biz_scene_definition` 增 `source` 列（manual/auto）；`auto` 场景初始 `pending_review`，仅嵌入检索可用，不可装载 Policy/任务板；防污染机制（上限+去重+TTL+频率限制）；前端 Lab 双 Tab；仅写路径创建，读路径不创建 | 2026-08-18 |
+
+---
+
+## 12. v3 embedding 回退：风险与验收
+
+### 12.1 风险
+
+| 风险 | 对策 |
+|------|------|
+| 场景码表 `description` 质量差，embedding 命中率低 | 运营侧写法规约（§4.4）：`description` 必须包含该场景下用户可能使用的自然语言关键词；可提供"检索预览"工具验证 |
+| embedding 误召回场景（query 模糊跨域） | `minScore` 默认 0.7 保守，且仅取 Top-1；误召回代价可控（偏好白名单过滤 + 任务板无匹配则空） |
+| 码表场景数膨胀（>50），全量 embedding 检索延迟 | 码表数量有限（业务场景闭集），全量 cosine 计算毫秒级；若未来超百可迁 Milvus |
+| 写路径误判场景 → 偏好落错 `biz_scene_scope` | 容忍度高于读路径：偏好落错 scope → 下次读时场景不匹配 → 白名单过滤不加载；实际影响有限 |
+| 与 D7「场景随资源召回」表面冲突 | D12 已裁定不冲突：embedding 匹配非 LLM 分类，非 HITL，非 AI 自由生成，资源召回仍优先 |
+| LLM 自动创建场景质量差（名称/描述不准确） | `pending_review` 隔离 + 运营审核兜底；去重防重复；相似度 > 0.85 复用已有场景 |
+| auto 场景泛滥，码表膨胀 | 硬上限（20）+ TTL 30 天自动清理 + 创建频率限制（10 分钟 3 个） |
+| auto 场景误用于 Policy 装载 | `pending_review` 状态不可挂 Policy/任务板；仅 `active` 可正式使用 |
+| 读路径意外创建场景 | 硬约束：仅写路径 `ContextWritePath` 可创建；读路径代码路径不含创建逻辑 |
+
+### 12.2 验收（v3 补充）
+
+| # | 场景 | 预期 |
+|---|------|------|
+| V10 | 用户输入"帮我查下上次那笔退款"，无 skill/agent 召回 | embedding 回退命中 `compliance-review` → 加载该场景的 Policy + 任务板 + 偏好 |
+| V11 | 用户输入"今天天气怎么样"，无 skill/agent 召回 | embedding 回退所有场景得分均 < 0.7 → `biz_scene = null` → 跳过结构化层 |
+| V12 | 用户输入"审批一下"，同时命中 `compliance-review` agent 且 embedding 回退最高分是 `expense-assist` | agent 带出的 `compliance-review` 优先（资源召回 > embedding 回退） |
+| V13 | 写路径：assistant 完成一轮报销咨询，无资源召回 | embedding 回退命中 `expense-assist` → 偏好抽取带 `biz_scene_scope = expense-assist` |
+| V14 | 码表 `description` 修改后，向量更新 | 运营修改 `description` → 异步触发 re-embedding → 下次检索命中新向量 |
+| V15 | 码表 `status=disabled`（旧 `retired`） | embedding 检索过滤 disabled 码；已绑资源解析时视为无效跳过 |
+| V16 | 读路径 embedding 回退延迟 | 与 P2（agent/skill embedding）复用同一管道，无额外 embedding 调用；仅多一次码表 cosine 计算（毫秒级） |
+| **v4 场景双轨** | | |
+| V17 | 写路径：用户连续 3 轮咨询"设备采购"流程，无任何 skill/agent 召回，embedding 回退也未命中 | LLM 自动创建 `auto` 场景（`status=pending_review`），偏好抽取带 `biz_scene_scope`；后续读路径 embedding 可命中该 pending_review 场景 |
+| V18 | 用户单轮闲聊"今天天气不错" | 不满足 ≥2 轮对话条件，不触发 auto 场景创建 |
+| V19 | 同 tenant 已有 20 个 auto 场景（达上限） | 新 auto 场景创建被拒绝，前端告警；现有场景正常检索 |
+| V20 | LLM 生成的 auto 场景与已有 active 场景相似度 > 0.85 | 去重命中，复用已有场景，不重复创建 |
+| V21 | auto 场景 pending_review 期间，用户发起相关对话 | embedding 检索可命中该场景（pending_review 可嵌入检索），但**不装载 Policy/任务板**；仅偏好带 scope |
+| V22 | 运营审核通过 auto 场景 | status → `active`，此后可挂 Policy，任务板/偏好装载等同于 manual 场景 |
+| V23 | 运营驳回 auto 场景 | status → `rejected`，Milvus 向量移除，45 天后物理删除 |
+| V24 | auto 场景 30 天无人审核 | 自动清理 → `auto_cleaned`，向量移除 |
+| V25 | 前端 Lab「自动发现」Tab | 显示所有 `source=auto` 场景（含 pending_review/active/rejected），可审核/删除；`source_conversation_id` 可溯源 |
+| V26 | 读路径不存在 auto 场景创建 | 请求体对比：读路径前后 messages 无新增场景写入；仅写路径异步创建 |

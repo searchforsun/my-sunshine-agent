@@ -201,6 +201,10 @@ public class PromptComposer {
         if (mode == null) {
             return "";
         }
+        // Planner 走独立角色：不叠 react/workflow 叠加层，仅由 harnessPromptId 提供角色定位。
+        if (mode == PromptMode.PLANNER) {
+            return "";
+        }
         if (mode == PromptMode.REACT) {
             return ReactOverlayAssembler.assemble(catalogHolder.snapshot());
         }

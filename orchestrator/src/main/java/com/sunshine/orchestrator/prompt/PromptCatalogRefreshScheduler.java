@@ -32,6 +32,15 @@ public class PromptCatalogRefreshScheduler {
 
     @Scheduled(fixedDelayString = "${prompt-catalog.refresh-ms:5000}")
     void scheduledRefresh() {
+        // 先轻量比对版本，未变化直接跳过全量拉取；版本探测失败保留旧视图
+        try {
+            if (promptCatalogClient.fetchVersion() == promptCatalogHolder.snapshot().catalogVersion()) {
+                return;
+            }
+        } catch (Exception e) {
+            log.debug("[PromptCatalog] version check failed, keep previous: {}", e.getMessage());
+            return;
+        }
         boolean replaced = promptCatalogHolder.refreshSafely(promptCatalogClient::fetchSnapshot);
         if (replaced) {
             PromptCatalogSnapshot snap = promptCatalogHolder.snapshot();

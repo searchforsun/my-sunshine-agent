@@ -1,6 +1,8 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.TokenWrapperMode;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
@@ -17,13 +19,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
-import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +32,11 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Planner 元工具 — 按 taskId 调度 Worker（{@code AgentRole.WORKER}）。
+ * <p>
+ * v17.7：dispatch 强制异步（background fire-and-forget），立即返回 {runId, taskId}；
+ * Planner 经 await_tool_run 收集 handoff。同波多 Worker 并发流式输出。
+ * 失败/取消不原地重试：Planner 重派同任务生成新版本 taskId（t1-2/t1-3，上限 3 次），
+ * 历史记录保留；failReason 分类 timeout|error|cancelled。
  * <p>
  * 注册钩子（Task 8）：在组装 PLANNER toolkit 时调用
  * {@link #registerIntoPlannerToolkit(Toolkit)}；勿注入 MAIN/SUB。
@@ -55,6 +59,9 @@ public class WorkerDispatchTool implements AgentTool {
     private final AgentRuntime agentRuntime;
     private final WorkerContextFactory contextFactory;
     private final AgentExecutionProperties executionProperties;
+    private final PlannerActionTool plannerActionTool;
+    private final AsyncToolRunRegistry asyncToolRunRegistry;
+    private final SpawnRunRegistry spawnRunRegistry;
 
     /** Planner 运行态：notebook + 审计字段；对齐 SpawnSubagent 的 bridge 上下文模式。 */
     public record DispatchSession(
@@ -66,19 +73,7 @@ public class WorkerDispatchTool implements AgentTool {
             String conversationId,
             String parentRunId,
             int maxIters,
-            String conversationKind,
-            ActionSignals signals) {
-
-        /** 引擎侧动作接收标记：plan_submit / self_assess 工具调用后置位，供 planNext/selfAssess 判定。 */
-        public record ActionSignals(
-                java.util.concurrent.atomic.AtomicBoolean planReceived,
-                java.util.concurrent.atomic.AtomicBoolean assessReceived) {
-            public static ActionSignals fresh() {
-                return new ActionSignals(
-                        new java.util.concurrent.atomic.AtomicBoolean(false),
-                        new java.util.concurrent.atomic.AtomicBoolean(false));
-            }
-        }
+            String conversationKind) {
 
         String plannerBridgeId() {
             return StringUtils.hasText(parentRunId) ? "planner-" + parentRunId.strip() : null;
@@ -122,10 +117,6 @@ public class WorkerDispatchTool implements AgentTool {
         BY_MESSAGE_ID.clear();
         BY_RUN_ID.clear();
         BY_BRIDGE_ID.clear();
-    }
-
-    public static DispatchSession currentSession(String lookupKey) {
-        return lookupSession(lookupKey);
     }
 
     static DispatchSession lookupSession(String lookupKey) {
@@ -183,9 +174,14 @@ public class WorkerDispatchTool implements AgentTool {
         return NAME;
     }
 
+    /** 运行中 Worker 订阅句柄：用户取消 / 整体取消时 dispose，从源头终止流式输出 */
+    private static final ConcurrentHashMap<String, Disposable> RUN_SUBSCRIPTIONS = new ConcurrentHashMap<>();
+
     @Override
     public String getDescription() {
-        return "调度 Worker 执行 taskQueue 中指定 taskId 的粗单元；返回 handoff 摘要文本。";
+        return "异步调度 Worker 执行 taskQueue 中指定 taskId 的粗单元：立即返回 runId 不阻塞，"
+                + "同消息可并发派发多个 Worker（上限 10，可再调 task_status 查状态），"
+                + "后续用 await_tool_run(runIds[]) 批量收集任务摘要；失败/取消后重派同任务生成新版本 taskId。";
     }
 
     @Override
@@ -218,6 +214,10 @@ public class WorkerDispatchTool implements AgentTool {
         return dispatchWorker(taskId, lookupSession(sessionLookupKey));
     }
 
+    /**
+     * v17.7 强制异步：立即返回 {ok, runId, taskId}；Worker run 在虚拟线程 fire-and-forget。
+     * 同波多 dispatch_worker 并发流式；Planner 后续 await_tool_run 收集。
+     */
     String dispatchWorker(String taskId, DispatchSession session) {
         if (session == null || session.notebook() == null) {
             return errorJson("未绑定 WorkerDispatch 会话（须先 bindSession）");
@@ -225,16 +225,27 @@ public class WorkerDispatchTool implements AgentTool {
         if (!StringUtils.hasText(taskId)) {
             return errorJson("taskId 不能为空");
         }
-        String id = taskId.strip();
+        String requestedId = taskId.strip();
         PlanNotebook nb = session.notebook();
-        TaskItem task = findTask(nb, id);
-        if (task == null) {
-            return errorJson("未找到任务: " + id);
+        // 版本化重试：同 baseTask 已有失败/取消记录时自动版本 +1；超上限拒绝
+        RetryAllocation alloc = allocateRetryVersion(nb, requestedId);
+        if (alloc == null) {
+            return errorJson("任务 " + TaskItem.stripRetrySuffix(requestedId)
+                    + " 已执行 " + TaskItem.MAX_RETRY_INDEX + " 次（重试上限），须改派新任务或收束");
         }
+        final String id = alloc.taskId;
+        final TaskItem task = alloc.task;
         AgentExecutionProperties.Harness harness = executionProperties.getHarness();
         List<String> whitelist = session.toolWhitelist() != null ? session.toolWhitelist() : List.of();
+        if (alloc.parentTaskId != null) {
+            replaceTaskStatus(nb, alloc.parentTaskId, keepParentStatus(nb, alloc.parentTaskId));
+        }
+        // 重派任务进队列（保留父执行历史）；新执行置 in_progress
+        upsertTask(nb, task);
         replaceTaskStatus(nb, id, "in_progress");
-        AssembledContext memory = contextFactory.build(nb, task, harness, whitelist);
+        // 立即下发 taskBoard 快照：前端 TaskBoard 在 Worker 执行期间显示 → 箭头（in_progress）
+        plannerActionTool.emitTaskBoardSnapshot(session, "worker-start");
+        AssembledContext memory = contextFactory.build(task);
         String query = contextFactory.buildDynamicQuery(nb, task);
         int maxIters = session.maxIters() > 0
                 ? session.maxIters()
@@ -250,72 +261,229 @@ public class WorkerDispatchTool implements AgentTool {
                 maxIters,
                 session.parentRunId())
                 .withConversationKind(session.conversationKind());
-        long timeoutMs = harness.getWorker().getTimeoutMs() > 0
+        final String runId = request.runId();
+        final long timeoutMs = harness.getWorker().getTimeoutMs() > 0
                 ? harness.getWorker().getTimeoutMs()
                 : 3_600_000L;
         // Planner 直接 dispatch：mainBridge（planner-{parentRunId}）session 存活时 fold Worker 内部
         // 步骤为 worker-{taskId} 一级行 subSteps；Loop 兜底（planner-{loopRunId} 无 session）时不 fold，
         // 骨架由 Loop 自身 emit，避免双写。
         String workerBridgeId = request.resolveBridgeId();
-        String mainBridge = session.plannerBridgeId();
+        final String mainBridge = session.plannerBridgeId();
         boolean foldActive = StringUtils.hasText(mainBridge) && StepEventBridge.hasSession(mainBridge);
-        WorkerTimelineBridge workerTimeline = null;
-        if (foldActive) {
-            final WorkerTimelineBridge timeline = new WorkerTimelineBridge(task.taskId(), task.label());
-            workerTimeline = timeline;
-            StepEventBridge.emit(mainBridge, s -> timeline.begin().forEach(s::enqueueAuxiliary));
-            // PASS_THROUGH：wrapper 只 fold；原 token 入队供 Flux（正文收集，步骤不进主时间线平铺）
-            StepEventBridge.bindTokenWrapper(workerBridgeId, token -> {
-                foldStepToken(mainBridge, timeline, token);
-                return List.of();
-            }, TokenWrapperMode.PASS_THROUGH);
-        }
-        StringBuilder answer = new StringBuilder();
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        try {
-            agentRuntime.run(request)
-                    .doOnNext(token -> appendAnswerContent(answer, token))
-                    .doOnError(failure::set)
-                    .blockLast(Duration.ofMillis(timeoutMs));
-            if (failure.get() != null) {
-                String msg = failTask(nb, task, failure.get());
-                emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
-                return msg;
-            }
-            String handoff = answer.toString().strip();
-            if (!StringUtils.hasText(handoff)) {
-                handoff = "（Worker 未产出正文）";
-            }
-            completeTask(nb, task, handoff);
-            emitWorkerTerminal(mainBridge, workerTimeline, handoff, true);
-            return handoff;
-        } catch (Exception e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            if (isTimeout(cause) || isTimeout(e)) {
-                String msg = "Worker 执行超时（" + timeoutMs + "ms）";
-                failTask(nb, task, new TimeoutException(msg));
-                emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
-                return msg;
-            }
-            String msg = failTask(nb, task, cause != null ? cause : e);
-            emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
-            return msg;
-        } finally {
+        final WorkerTimelineBridge workerTimeline = foldActive ? bindTimeline(mainBridge, workerBridgeId, task, runId) : null;
+        // 异步 run 注册：await_tool_run 可收集；墙钟超时/用户取消经 onCancel 委托
+        if (!asyncToolRunRegistry.tryAcquireSlot(session.assistantMessageId())) {
             if (foldActive) {
                 StepEventBridge.unbindTokenWrapper(workerBridgeId);
             }
+            replaceTaskStatus(nb, id, "pending");
+            return errorJson("本消息 Worker 并发已达上限，请先 await_tool_run 收集已派发任务");
         }
+        asyncToolRunRegistry.registerWithId(
+                runId,
+                AsyncToolRunRegistry.Kind.WORKER_DISPATCH,
+                session.assistantMessageId(),
+                session.conversationId(),
+                timeoutMs,
+                () -> spawnRunRegistry.cancel(runId));
+        // 用户单独取消 worker 卡：复用 SpawnRunRegistry（AgentScope 2.0 interrupt 为协作式空操作，
+        // 不能依赖 agent.interrupt 触发终态；取消时经 onUserCancel 直写 paused + TaskBoard + async 终态）
+        spawnRunRegistry.register(runId, session.assistantMessageId(), task.label(), mainBridge, null);
+        spawnRunRegistry.bindOnUserCancel(runId, () -> {
+            // 用户取消：先 dispose 订阅终止流式，再写终态（防取消后仍持续折叠输出）
+            stopRunSubscription(runId);
+            if (workerTimeline != null) {
+                emitWorkerStep(mainBridge, workerTimeline.cancel("用户取消"));
+            }
+            cancelTask(nb, id, "cancelled");
+            plannerActionTool.emitTaskBoardSnapshot(session, "worker-cancelled");
+            asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.CANCELLED, "用户取消");
+        });
+        StringBuilder answer = new StringBuilder();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Disposable subscription = agentRuntime.run(request)
+                .doOnNext(token -> {
+                    appendAnswerContent(answer, token);
+                    asyncToolRunRegistry.updatePartial(runId, answer.toString());
+                })
+                .doOnError(failure::set)
+                .subscribeOn(VirtualThreadExecutors.scheduler())
+                .subscribe(
+                        token -> { },
+                        err -> finishWorkerRun(runId, id, session, mainBridge, workerTimeline,
+                                answer, failure, timeoutMs, err),
+                        () -> finishWorkerRun(runId, id, session, mainBridge, workerTimeline,
+                                answer, failure, timeoutMs, null));
+        RUN_SUBSCRIPTIONS.put(runId, subscription);
+        return "{\"ok\":true,\"runId\":\"" + escape(runId) + "\",\"taskId\":\"" + escape(id)
+                + "\",\"status\":\"running\"}";
+    }
+
+    /** dispose 订阅：终止 Worker 流式输出（取消后不再向主时间线折叠新内容）。 */
+    private static void stopRunSubscription(String runId) {
+        Disposable subscription = RUN_SUBSCRIPTIONS.remove(runId);
+        if (subscription != null && !subscription.isDisposed()) {
+            subscription.dispose();
+        }
+    }
+
+    /**
+     * 版本化重试分配：requestedId 直查 taskQueue；未命中且同 baseTask 存在失败/取消历史时
+     * 生成下一版本（t1 → t1-2 → t1-3）；retryIndex 超 {@link TaskItem#MAX_RETRY_INDEX} 返回 null（拒绝派发）。
+     */
+    static final class RetryAllocation {
+        final String taskId;
+        final TaskItem task;
+        final String parentTaskId;
+
+        RetryAllocation(String taskId, TaskItem task, String parentTaskId) {
+            this.taskId = taskId;
+            this.task = task;
+            this.parentTaskId = parentTaskId;
+        }
+    }
+
+    static RetryAllocation allocateRetryVersion(PlanNotebook nb, String requestedId) {
+        TaskItem direct = findTask(nb, requestedId);
+        if (direct != null) {
+            // 直接命中：pending/done 直接执行；fail/cancelled 生成下一版本（不原地重试）
+            String status = direct.status();
+            if ("pending".equals(status) || "in_progress".equals(status)) {
+                return new RetryAllocation(direct.taskId(), ensureVersioned(direct), null);
+            }
+            if ("done".equals(status) || "obsolete".equals(status)) {
+                return new RetryAllocation(direct.taskId(), ensureVersioned(direct), null);
+            }
+            return nextRetryOf(nb, direct);
+        }
+        // 未直接命中：可能 Planner 重派时传的是 base id（t1），找同 base 最新失败/取消执行
+        String base = TaskItem.stripRetrySuffix(requestedId);
+        TaskItem latestTerminal = null;
+        for (TaskItem item : nb.snapshotQueue()) {
+            String itemBase = StringUtils.hasText(item.baseTaskId())
+                    ? item.baseTaskId()
+                    : TaskItem.stripRetrySuffix(item.taskId());
+            if (base.equals(itemBase) && isTerminalFailed(item.status())) {
+                if (latestTerminal == null || retryIndexOf(item) >= retryIndexOf(latestTerminal)) {
+                    latestTerminal = item;
+                }
+            }
+        }
+        if (latestTerminal == null) {
+            return null;
+        }
+        return nextRetryOf(nb, latestTerminal);
+    }
+
+    private static RetryAllocation nextRetryOf(PlanNotebook nb, TaskItem failed) {
+        int nextIndex = retryIndexOf(failed) + 1;
+        if (nextIndex > TaskItem.MAX_RETRY_INDEX) {
+            return null;
+        }
+        String nextId = TaskItem.nextRetryTaskId(failed.taskId());
+        if (findTask(nb, nextId) != null) {
+            return null;
+        }
+        TaskItem retry = new TaskItem(
+                nextId,
+                failed.label(),
+                "pending",
+                failed.dependsOn() != null ? failed.dependsOn() : List.of(),
+                failed.constraints(),
+                failed.expectedOutput(),
+                failed.successCriteria(),
+                baseOf(failed),
+                nextIndex,
+                failed.taskId(),
+                null);
+        return new RetryAllocation(nextId, retry, failed.taskId());
+    }
+
+    private static TaskItem ensureVersioned(TaskItem task) {
+        if (task.retryIndex() > 0 && StringUtils.hasText(task.baseTaskId())) {
+            return task;
+        }
+        return new TaskItem(
+                task.taskId(), task.label(), task.status(),
+                task.dependsOn() != null ? task.dependsOn() : List.of(),
+                task.constraints(), task.expectedOutput(), task.successCriteria(),
+                TaskItem.stripRetrySuffix(task.taskId()), 1, null, null);
+    }
+
+    private static String baseOf(TaskItem task) {
+        return StringUtils.hasText(task.baseTaskId())
+                ? task.baseTaskId()
+                : TaskItem.stripRetrySuffix(task.taskId());
+    }
+
+    private static int retryIndexOf(TaskItem task) {
+        if (task.retryIndex() > 0) {
+            return task.retryIndex();
+        }
+        String id = task.taskId();
+        int dash = id.lastIndexOf('-');
+        if (dash <= 0) {
+            return 1;
+        }
+        try {
+            int parsed = Integer.parseInt(id.substring(dash + 1));
+            return parsed > 0 ? parsed : 1;
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    private static boolean isTerminalFailed(String status) {
+        return "fail".equals(status) || "cancelled".equals(status);
+    }
+
+    /** 保留父执行终态（fail/cancelled 原样，不清除历史） */
+    private static String keepParentStatus(PlanNotebook nb, String parentTaskId) {
+        TaskItem parent = findTask(nb, parentTaskId);
+        return parent != null ? parent.status() : "fail";
+    }
+
+    /** 新任务进队列（同 taskId 覆盖；否则 append 到队尾） */
+    static void upsertTask(PlanNotebook nb, TaskItem task) {
+        nb.upsertTask(task);
+    }
+
+    /** Worker 时间线绑定：begin 骨架 + PASS_THROUGH wrapper 折叠内部步骤/正文到父卡。 */
+    private WorkerTimelineBridge bindTimeline(String mainBridge, String workerBridgeId, TaskItem task, String runId) {
+        // 任务契约 = 稳定前缀 prompt（taskGoal/constraints/expectedOutput/successCriteria 填充 harness.worker 模板），
+        // 经 metadata.spawnPrompt 下发，前端 worker 抽屉「传入提示词」展示。
+        String taskContract = contextFactory.buildStablePrefix(task);
+        // parentStepId 用版本化 id（t1-1/t1-2…）：首次执行 worker-t1-1、重派 worker-t1-2，天然不覆盖历史卡
+        final WorkerTimelineBridge timeline = new WorkerTimelineBridge(task.versionedId(), task.label(), taskContract, runId);
+        // begin 骨架走主桥 emit（与原 PASS_THROUGH 路径行为一致）
+        StepEventBridge.emit(mainBridge, s -> timeline.begin().forEach(s::enqueueAuxiliary));
+        // PASS_THROUGH：原 worker 内部 step / step_delta token 入 hookQueue 供 Flux 消费，
+        // 同时 wrapper 在每次 fold 时通过 mainBridge emit 把父步 token 直刷 GenerationJob，
+        // 前端可实时看到 worker 内部 subSteps 累积（与 spawn_subagent 流式输出同构）。
+        StepEventBridge.bindTokenWrapper(workerBridgeId, token -> {
+            // 取消/终态后不再折叠：用户取消卡后停止继续流式输出（p9），
+            // 避免「状态已 cancelled 但正文仍在流」的观感不一致。
+            if (!spawnRunRegistry.isCancelled(runId) && !isAsyncAlreadyTerminal(runId)) {
+                foldStepToken(mainBridge, timeline, token);
+            }
+            return List.of();
+        }, TokenWrapperMode.PASS_THROUGH);
+        return timeline;
     }
 
     private void foldStepToken(String mainBridge, WorkerTimelineBridge bridge, StreamToken token) {
         if (token == null || bridge == null) {
             return;
         }
-        if (token.isStep() || token.isStepDelta()) {
+        // step / step_delta -> subSteps；content -> 父步 result 流式（见 Bridge.wrap）
+        if (token.isStep() || token.isStepDelta()
+                || token.isContent() || token.isContentStart() || token.isContentEnd()) {
             emitWorkerStep(mainBridge, bridge.wrap(token));
         }
     }
 
+    /** 折叠后的父步 token 直刷 GenerationJob，前端实时看到 worker 内部 subSteps 累积。 */
     private void emitWorkerStep(String mainBridge, List<StreamToken> tokens) {
         if (!StringUtils.hasText(mainBridge) || tokens == null || tokens.isEmpty()) {
             return;
@@ -327,27 +495,124 @@ public class WorkerDispatchTool implements AgentTool {
         if (bridge == null || !StringUtils.hasText(mainBridge)) {
             return;
         }
-        emitWorkerStep(mainBridge, bridge.complete(ok ? "完成" : "执行失败", result, ok));
+        emitWorkerStep(mainBridge, bridge.complete(result, ok));
     }
 
-    private String failTask(PlanNotebook nb, TaskItem task, Throwable error) {
-        String msg = error != null && StringUtils.hasText(error.getMessage())
-                ? error.getMessage().strip()
-                : "Worker 执行失败";
-        log.warn("[WorkerDispatchTool] taskId={} 失败: {}", task.taskId(), msg);
-        replaceTaskStatus(nb, task.taskId(), "fail");
-        appendRound(nb, withStatus(task, "fail"), "fail", msg);
-        return msg;
+    /**
+     * 异步 run 终态回调：完成/失败/超时/取消统一收束。
+     * claim 语义与 SpawnSubagentTool.finishBackgroundSpawn 同构——仅胜者写时间线。
+     */
+    private void finishWorkerRun(
+            String runId,
+            String taskId,
+            DispatchSession session,
+            String mainBridge,
+            WorkerTimelineBridge workerTimeline,
+            StringBuilder answer,
+            AtomicReference<Throwable> failure,
+            long timeoutMs,
+            Throwable subscribeError) {
+        try {
+            PlanNotebook nb = session.notebook();
+            // 墙钟/用户取消已终态：禁止再写 success/fail 时间线
+            if (isAsyncAlreadyTerminal(runId)) {
+                return;
+            }
+            Throwable err = subscribeError != null ? subscribeError : failure.get();
+            if (spawnRunRegistry.isCancelled(runId) || isInterrupted(err)) {
+                String msg = "用户取消";
+                cancelTask(nb, taskId, "cancelled");
+                // 与 subagent 取消同构：paused + summary.after=已取消（勿走 complete(false) 落 error）
+                if (workerTimeline != null) {
+                    emitWorkerStep(mainBridge, workerTimeline.cancel(msg));
+                }
+                asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.CANCELLED, msg);
+                plannerActionTool.emitTaskBoardSnapshot(session, "worker-cancelled");
+                return;
+            }
+            if (err != null) {
+                Throwable cause = err.getCause() != null ? err.getCause() : err;
+                if (isTimeout(cause) || isTimeout(err)) {
+                    String msg = "Worker 执行超时（" + timeoutMs + "ms）";
+                    failTaskWithReason(nb, taskId, "timeout", msg);
+                    if (workerTimeline != null) {
+                        emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
+                    }
+                    asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.WALL_TIMEOUT, msg);
+                    plannerActionTool.emitTaskBoardSnapshot(session, "worker-fail");
+                    return;
+                }
+                String msg = err != null && StringUtils.hasText(err.getMessage())
+                        ? err.getMessage().strip()
+                        : "Worker 执行失败";
+                failTaskWithReason(nb, taskId, "error", msg);
+                if (workerTimeline != null) {
+                    emitWorkerTerminal(mainBridge, workerTimeline, msg, false);
+                }
+                asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.ERROR, msg);
+                plannerActionTool.emitTaskBoardSnapshot(session, "worker-fail");
+                return;
+            }
+            if (spawnRunRegistry.isCancelled(runId) || isAsyncAlreadyTerminal(runId)) {
+                return;
+            }
+            String handoff = answer.toString().strip();
+            if (!StringUtils.hasText(handoff)) {
+                handoff = "（Worker 未产出正文）";
+            }
+            completeTask(nb, taskId, handoff);
+            if (workerTimeline != null) {
+                emitWorkerTerminal(mainBridge, workerTimeline, handoff, true);
+            }
+            // 先 claim DONE；仅胜者写 TaskBoard 终态快照
+            asyncToolRunRegistry.complete(runId, AsyncToolRunRegistry.Status.DONE, handoff);
+            plannerActionTool.emitTaskBoardSnapshot(session, "worker-done");
+        } finally {
+            stopRunSubscription(runId);
+            StepEventBridge.unbindTokenWrapper("worker-" + runId);
+            spawnRunRegistry.unregister(runId);
+        }
     }
 
-    private void completeTask(PlanNotebook nb, TaskItem task, String handoff) {
-        replaceTaskStatus(nb, task.taskId(), "done");
-        appendRound(nb, withStatus(task, "done"), "done", handoff);
+    private boolean isAsyncAlreadyTerminal(String runId) {
+        AsyncToolRunRegistry.Snapshot snap = asyncToolRunRegistry.peek(runId);
+        return snap != null && snap.status() != AsyncToolRunRegistry.Status.RUNNING;
+    }
+
+    private void failTaskWithReason(PlanNotebook nb, String taskId, String failReason, String message) {
+        TaskItem task = findTask(nb, taskId);
+        if (task == null) {
+            return;
+        }
+        log.warn("[WorkerDispatchTool] taskId={} 失败({}): {}", taskId, failReason, message);
+        TaskItem failed = task.withStatus("fail", failReason);
+        replaceTask(nb, failed);
+        appendRound(nb, failed, "fail", message);
+    }
+
+    private void cancelTask(PlanNotebook nb, String taskId, String reason) {
+        TaskItem task = findTask(nb, taskId);
+        if (task == null) {
+            return;
+        }
+        TaskItem cancelled = task.withStatus("cancelled", reason);
+        replaceTask(nb, cancelled);
+        appendRound(nb, cancelled, "cancelled", reason);
+    }
+
+    private void completeTask(PlanNotebook nb, String taskId, String handoff) {
+        TaskItem task = findTask(nb, taskId);
+        if (task == null) {
+            return;
+        }
+        TaskItem done = task.withStatus("done", null);
+        replaceTask(nb, done);
+        appendRound(nb, done, "done", handoff);
         nb.setTotalTasksCompleted(nb.getTotalTasksCompleted() + 1);
     }
 
     private static void appendRound(PlanNotebook nb, TaskItem task, String status, String summary) {
-        // Round 所有权：仅本工具在 Worker 完成/失败时追加。HarnessPlanner / Loop 禁止再 appendRound。
+        // Round 所有权：仅本工具在 Worker 完成/失败/取消时追加。HarnessPlanner / Loop 禁止再 appendRound。
         int roundIndex = nb.getCurrentRound();
         nb.appendRound(new RoundRecord(
                 roundIndex,
@@ -358,41 +623,16 @@ public class WorkerDispatchTool implements AgentTool {
         nb.setCurrentRound(roundIndex + 1);
     }
 
-    private static TaskItem withStatus(TaskItem task, String status) {
-        return new TaskItem(
-                task.taskId(),
-                task.label(),
-                status,
-                task.dependsOn() != null ? task.dependsOn() : List.of(),
-                task.constraints(),
-                task.expectedOutput(),
-                task.successCriteria());
+    private static void replaceTask(PlanNotebook nb, TaskItem updated) {
+        nb.replaceTask(updated);
     }
 
     static void replaceTaskStatus(PlanNotebook nb, String taskId, String status) {
-        Deque<TaskItem> queue = nb.getTaskQueue();
-        if (queue.isEmpty()) {
-            return;
-        }
-        List<TaskItem> rebuilt = new ArrayList<>(queue.size());
-        for (TaskItem item : queue) {
-            if (taskId.equals(item.taskId())) {
-                rebuilt.add(withStatus(item, status));
-            } else {
-                rebuilt.add(item);
-            }
-        }
-        queue.clear();
-        queue.addAll(new ArrayDeque<>(rebuilt));
+        nb.replaceTaskStatus(taskId, status);
     }
 
     private static TaskItem findTask(PlanNotebook nb, String taskId) {
-        for (TaskItem item : nb.getTaskQueue()) {
-            if (taskId.equals(item.taskId())) {
-                return item;
-            }
-        }
-        return null;
+        return nb.findTask(taskId);
     }
 
     static void appendAnswerContent(StringBuilder answer, StreamToken token) {
@@ -422,6 +662,25 @@ public class WorkerDispatchTool implements AgentTool {
         String name = t.getClass().getName();
         return name.contains("Timeout")
                 || (t.getMessage() != null && t.getMessage().contains("Did not observe"));
+    }
+
+    private static boolean isInterrupted(Throwable t) {
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur instanceof InterruptedException) {
+                return true;
+            }
+            String name = cur.getClass().getSimpleName();
+            if (name.contains("Interrupt")) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null && msg.toLowerCase().contains("interrupt")) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
     }
 
     private static String errorJson(String message) {

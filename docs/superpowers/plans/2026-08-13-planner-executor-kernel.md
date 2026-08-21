@@ -368,8 +368,8 @@ void stuckWhenStaleRoundsReachThreshold() {
 - Test: `WorkerContextFactoryTest.java`
 
 **Interfaces:**
-- `AssembledContext WorkerContextFactory.build(PlanNotebook nb, TaskItem task, AgentExecutionProperties.Harness harness)`
-  - 稳定前缀：`harness.worker` 模板占位替换后的 taskGoal/constraints/expectedOutput/successCriteria + tool 白名单说明（同一 plan run 内不变）
+- `AssembledContext WorkerContextFactory.build(TaskItem task)`
+  - 稳定前缀：`harness.worker` 模板占位替换后的 taskGoal/constraints/expectedOutput/successCriteria（同一 plan run 内不变；工具白名单由 `AgentRunRequest.toolWhitelist` 运行时控制注册，不写入 prompt）
   - 动态：按 `dependsOn` 从 `rounds`/已完成 task 取 handoff `summary`，拼进 query 段
 - `WorkerDispatchTool`：参数 `taskId`；由 Loop/Planner 调用 → `AgentRuntime.run(workerRequest)`；结果写回 notebook（status/done + NodeResult.summary）
 
@@ -377,8 +377,8 @@ void stuckWhenStaleRoundsReachThreshold() {
 
 ```java
 @Test
-void stablePrefixIgnoresUpstreamChanges() {
-    // 同一 task 契约，两次 upstream 不同 → projectGuideBlock 相等
+void stablePrefixListsTaskContractAndWhitelistToolIds() {
+    // 同一 task 契约 + whitelist → projectGuideBlock 含契约字段与工具 ID，不含 upstream handoff
 }
 ```
 
@@ -391,7 +391,7 @@ void stablePrefixIgnoresUpstreamChanges() {
 **Files:**
 - Create: `HarnessPlanner.java`
 - Modify: `PlannerAgentRuntime.java`（改为 ReAct + Catalog `planner.harness` + H1 `injectedBlocks`；**删除**对 `WorkflowPlanner` 的依赖）
-- Modify: `AgentRuntimeFacade` / `ReActAgentFactory`（PLANNER scene=`plan`；注册 WorkerDispatchTool；**不**注册 request_decision——D12 延后）
+- Modify: `AgentRuntimeFacade` / `ReActAgentFactory`（PLANNER scene=`plan`；注册 WorkerDispatchTool；`request_decision` 依 `react.decision.enabled` 注册——D12 ✅，见 [specs/archive/2026-08-12-react-request-decision-planner-d12.md](../specs/archive/2026-08-12-react-request-decision-planner-d12.md)）
 - Test: `HarnessPlannerTest.java`（mock `AgentRuntime`）
 
 **Interfaces:**

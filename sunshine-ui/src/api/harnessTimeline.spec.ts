@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProcessingStep } from './processingSteps'
-import { isHarnessTimelineMessage, isPlanDagMessage } from './harnessTimeline'
+import { formatTaskUnitId, isHarnessTimelineMessage, isPlanDagMessage } from './harnessTimeline'
 
 function step(
   partial: Pick<ProcessingStep, 'id' | 'phase'> & Partial<ProcessingStep>,
@@ -10,6 +10,34 @@ function step(
     ...partial,
   }
 }
+
+describe('formatTaskUnitId · 执行单元记号', () => {
+  it('r5-quality-2 → T5-2（序号取首个数字，版本取末尾 -N）', () => {
+    expect(formatTaskUnitId('r5-quality-2')).toBe('T5-2')
+  })
+
+  it('t1-1 → T1-1', () => {
+    expect(formatTaskUnitId('t1-1')).toBe('T1-1')
+  })
+
+  it('t1-arch → T1（描述后缀非版本，不显示）', () => {
+    expect(formatTaskUnitId('t1-arch')).toBe('T1')
+  })
+
+  it('t1 → T1', () => {
+    expect(formatTaskUnitId('t1')).toBe('T1')
+  })
+
+  it('空/空白 → 空', () => {
+    expect(formatTaskUnitId('')).toBe('')
+    expect(formatTaskUnitId('   ')).toBe('')
+  })
+
+  it('无数字序号：保留版本后缀', () => {
+    expect(formatTaskUnitId('research-codebase-2')).toBe('T-2')
+    expect(formatTaskUnitId('research-codebase')).toBe('T')
+  })
+})
 
 describe('harnessTimeline · DAG vs harness', () => {
   it('classic planId + node-* → DAG', () => {

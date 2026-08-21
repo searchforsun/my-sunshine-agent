@@ -34,7 +34,8 @@ public class AsyncToolRunRegistry {
 
     public enum Kind {
         SANDBOX_EXEC,
-        SPAWN_SUBAGENT
+        SPAWN_SUBAGENT,
+        WORKER_DISPATCH
     }
 
     public enum Status {
@@ -54,8 +55,7 @@ public class AsyncToolRunRegistry {
             int waitBudget,
             long elapsedMs,
             String result,
-            String partial,
-            String error) {
+            String partial) {
     }
 
     public String register(Kind kind, String messageId, String conversationId, long wallTimeoutMs) {
@@ -207,6 +207,34 @@ public class AsyncToolRunRegistry {
         return toSnapshot(handle, handle.status.get());
     }
 
+    /**
+     * 批量等待同一轮派发的多个 run：各 run 并行进入各自观察窗口（起点几乎同时，等价共享窗口），
+     * 窗口内全部进入终态立即返回全部快照；到期仍未终态的返回 running 快照。
+     * 返回顺序与入参一致；空/未知 runId 跳过；已终态不消耗 waitCount（语义同单 run await）。
+     */
+    public List<Snapshot> awaitMany(List<String> runIds, int timeoutSec) {
+        if (runIds == null || runIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> ids = runIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::strip)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<CompletableFuture<Snapshot>> futures = ids.stream()
+                .map(id -> CompletableFuture.supplyAsync(
+                        () -> await(id, timeoutSec), VirtualThreadExecutors.executor()))
+                .toList();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
     public Snapshot peek(String runId) {
         if (!StringUtils.hasText(runId)) {
             return null;
@@ -300,8 +328,7 @@ public class AsyncToolRunRegistry {
                 awaitMaxWaits(handle.kind),
                 System.currentTimeMillis() - handle.startedAtMs,
                 handle.result,
-                handle.partial,
-                handle.error);
+                handle.partial);
     }
 
     /** timeoutSec≤0 → 该 kind 默认；再夹到 kind 上限；结果至少 1s。 */
@@ -320,6 +347,10 @@ public class AsyncToolRunRegistry {
             int n = cfg.getSpawnAwaitDefaultSec();
             return n > 0 ? n : 120;
         }
+        if (kind == Kind.WORKER_DISPATCH) {
+            int n = cfg.getWorkerAwaitDefaultSec();
+            return n > 0 ? n : 120;
+        }
         int n = cfg.getAwaitDefaultSec();
         return n > 0 ? n : 30;
     }
@@ -328,6 +359,10 @@ public class AsyncToolRunRegistry {
         if (kind == Kind.SPAWN_SUBAGENT) {
             int n = cfg.getSpawnAwaitMaxSec();
             return n > 0 ? n : 200;
+        }
+        if (kind == Kind.WORKER_DISPATCH) {
+            int n = cfg.getWorkerAwaitMaxSec();
+            return n > 0 ? n : 600;
         }
         int n = cfg.getAwaitMaxSec();
         return n > 0 ? n : 120;
@@ -338,6 +373,10 @@ public class AsyncToolRunRegistry {
         if (kind == Kind.SPAWN_SUBAGENT) {
             int n = cfg.getSpawnAwaitMaxWaits();
             return n > 0 ? n : 3;
+        }
+        if (kind == Kind.WORKER_DISPATCH) {
+            int n = cfg.getWorkerAwaitMaxWaits();
+            return n > 0 ? n : 6;
         }
         int n = cfg.getAwaitMaxWaits();
         return n > 0 ? n : 3;
@@ -363,7 +402,6 @@ public class AsyncToolRunRegistry {
         private final long deadlineAtMs;
         private volatile String result;
         private volatile String partial;
-        private volatile String error;
         private volatile Runnable cancelRequest;
         private final AtomicBoolean cancelRequestFired = new AtomicBoolean(false);
         private final CompletableFuture<Void> terminalSignal = new CompletableFuture<>();

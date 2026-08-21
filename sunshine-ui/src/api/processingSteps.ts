@@ -60,6 +60,7 @@ export {
   summarizeSteps,
   isWorkflowAnswerStep,
   formatElapsedClock,
+  resolveRunningChildStepBody,
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
   formatTimelineSummaryText,
@@ -219,6 +220,8 @@ export interface StepMetadata {
   sandboxSearchRoot?: string
   /** ReAct spawn_subagent：传入子 Agent 的 prompt */
   spawnPrompt?: string
+  /** Planner-Executor worker：异步 runId（单独取消 worker 卡） */
+  workerRunId?: string
   /** 沙箱可单工具取消（后端 Nacos cancellable-tools） */
   cancellable?: boolean
   /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
@@ -380,8 +383,9 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
     // 后端 step 事件从不携带增量 reasoning（aggregator 不落 reasoning，reasoning 仅经 step_delta 下发），
     // 故 running 快照 incoming.reasoning 恒为 null，无法据此区分「中断续传」与「同 id 复用」。
     // 中断恢复的清理由 resetStepsForReactResume（resume 时重置 pending + 清 reasoning）保证；
-    // 此处统一 longerText：复用（如建板后再推理）prev 非空、incoming null → 保留 prev，
-    // 后续 step_delta 经 concatText 续写 → 累加，不覆盖。
+    // 此处统一 longerText：复用（如 planner 连续推理 resume running）prev 非空、incoming null →
+    // 保留 prev，后续 step_delta 经 concatText 续写累加，不覆盖。禁止对复用 think 清空 reasoning——
+    // 后端 resume 后只下发新内容增量（不回放旧段），清空会把 think 前半段思考内容永久丢失。
     const merged: ProcessingStep = {
 
       ...prev,

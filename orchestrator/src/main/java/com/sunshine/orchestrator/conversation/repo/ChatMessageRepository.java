@@ -2,9 +2,11 @@ package com.sunshine.orchestrator.conversation.repo;
 
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +41,17 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessageEntity, 
             @Param("limit") int limit);
 
     void deleteByConversationId(String conversationId);
+
+    /**
+     * 流式 partial 增量追加：只更新 content 列，避免每次 flush 全字段重写大字段（content/steps/contentBlocks）。
+     * 仅命中 streaming 状态，终态/不存在影响行数 0。
+     */
+    @Modifying
+    @Query("UPDATE ChatMessageEntity m SET m.content = CONCAT(m.content, :delta), m.updatedAt = :now " +
+            "WHERE m.id = :messageId AND m.status = 'streaming'")
+    int appendStreamingContent(@Param("messageId") String messageId,
+                               @Param("delta") String delta,
+                               @Param("now") Instant now);
 
     /** 会话搜索：返回命中关键词的最新消息正文（content 升序 seq 排列后取首条即最新） */
     @Query(value = """

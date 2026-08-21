@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
@@ -116,6 +117,22 @@ class PlannerHarnessExecutorTest {
         assertThat(findStatus(existing, "t1")).isEqualTo("done");
         assertThat(findStatus(existing, "t2")).isEqualTo("obsolete");
         assertThat(existing.getReplanCount()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void execute_bindsToolAuditContextForSpawn() {
+        when(store.load("conv-1")).thenReturn(Optional.empty());
+        when(loop.run(any(), any())).thenReturn(Flux.just(StreamToken.content("ok")));
+
+        executor.execute(ctx("conv-1", "msg-1")).collectList().block();
+
+        // PRO 路径缺审计绑定会直接拒绝 worker/planner 的 spawn_subagent（平台拦截「缺少会话审计上下文」）
+        StepEventBridge.ToolAuditContext audit = StepEventBridge.toolAuditContext("msg-1");
+        assertThat(audit).isNotNull();
+        assertThat(audit.conversationId()).isEqualTo("conv-1");
+        assertThat(audit.messageId()).isEqualTo("msg-1");
+        assertThat(audit.userId()).isEqualTo("u1");
+        assertThat(audit.tenantId()).isEqualTo("default");
     }
 
     @Test

@@ -27,10 +27,17 @@ public class PromptCatalogService {
     private final PromptVersionRepository versionRepository;
     private final PromptCatalogMetaRepository catalogMetaRepository;
 
-    public PromptCatalogResponse catalog() {
-        long catalogVersion = catalogMetaRepository.findById(CATALOG_META_ID)
+    /**
+     * 轻量版本探测：仅查 prompt_catalog_meta 单行，供 orchestrator 定期比对后决定是否拉全量。
+     */
+    public long catalogVersion() {
+        return catalogMetaRepository.findById(CATALOG_META_ID)
                 .map(PromptCatalogMetaEntity::getCatalogVersion)
                 .orElse(1L);
+    }
+
+    public PromptCatalogResponse catalog() {
+        long catalogVersion = catalogVersion();
         List<PromptDefinitionEntity> defs = definitionRepository.findByEnabled(true).stream()
                 .sorted(Comparator.comparingInt(PromptDefinitionEntity::getPriority).reversed()
                         .thenComparing(PromptDefinitionEntity::getId))

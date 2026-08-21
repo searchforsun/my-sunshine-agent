@@ -4,8 +4,8 @@ import type { ProcessingStep } from '../../api/processingSteps'
 import {
   formatDuration,
   formatStepLabel,
+  resolveRunningChildStepBody,
   resolveStepDurationMs,
-  resolveStepHeaderText,
   stepLifecycle,
 } from '../../api/processingSteps'
 import { stepHasHitlAwaiting } from '../../api/recoverySteps'
@@ -21,6 +21,8 @@ const props = withDefaults(defineProps<{
 })
 
 const { open, isActivePlan, state: drawerState } = usePlanNodeDrawer()
+/** 渲染在 PlanNodeDrawer 内的嵌套卡（worker 抽屉 → 子 agent 卡）：点击入栈，右上角逐层返回 */
+const nestedInDrawer = inject<boolean>('planNodeDrawerNested', false)
 const cancelSpawnSubagent = inject<(runId: string) => void | Promise<void>>(
   'cancelSpawnSubagent',
   async () => {},
@@ -44,12 +46,12 @@ const isError = computed(() => lifecycle.value === 'error')
 const isPaused = computed(() => lifecycle.value === 'paused' || lifecycle.value === 'terminated')
 const awaitingConfirm = computed(() => stepHasHitlAwaiting(props.step))
 const label = computed(() => formatStepLabel(props.step) || '子任务')
-const headerText = computed(() => {
-  // paused：after 已在 status 黄标展示，主行不再重复
-  if (isPaused.value) return ''
-  return resolveStepHeaderText(props.step)
-})
 const showShimmer = computed(() => isRunning.value && props.live && !awaitingConfirm.value)
+/** 运行中当前子步正文（思考文本/工具输出等；generate 阶段显示「正在收尾回复」），任务名后跟随展示 */
+const childStepBody = computed(() => {
+  if (!showShimmer.value) return ''
+  return resolveRunningChildStepBody(props.step)
+})
 const canStop = computed(() => props.live && (isRunning.value || awaitingConfirm.value))
 
 const statusKey = computed(() => {
@@ -99,11 +101,14 @@ function toAgentNode(step: ProcessingStep): DagNodeView {
 }
 
 function onOpen(): void {
-  open({
-    planId: props.step.id,
-    node: toAgentNode(props.step),
-    step: props.step,
-  })
+  open(
+    {
+      planId: props.step.id,
+      node: toAgentNode(props.step),
+      step: props.step,
+    },
+    { push: nestedInDrawer },
+  )
 }
 
 function parseSubagentRunId(stepId: string): string | null {
@@ -149,11 +154,11 @@ async function onStop(e: Event): Promise<void> {
       <span class="subagent-main">
         <span class="subagent-label" :class="{ 'op-shimmer': showShimmer }">{{ label }}</span>
         <span
-          v-if="headerText"
-          class="subagent-summary"
+          v-if="childStepBody"
+          class="subagent-child-label"
           :class="{ 'op-shimmer': showShimmer }"
         >
-          {{ headerText }}
+          {{ childStepBody }}
         </span>
       </span>
       <span class="subagent-trailing">
@@ -285,7 +290,8 @@ async function onStop(e: Event): Promise<void> {
   color: var(--sun-text);
 }
 
-.subagent-summary {
+/* 运行中当前子步正文（思考文本/工具输出等）：样式同原 summary 行，无圆点 */
+.subagent-child-label {
   flex: 1 1 0;
   min-width: 0;
   color: var(--sun-text-muted);

@@ -275,7 +275,12 @@ export function useChatSessions(
   }
 
   /** 单独取消一次 spawn_subagent（非整轮停止） */
-  async function cancelSpawnSubagent(runId: string): Promise<void> {
+  /**
+   * 单独取消一次运行中 run（spawn_subagent 或 worker，统一走 subagents/{id}/cancel）。
+   * @param runId 后端注册的 runId（subagent-* 前缀会被剥离）
+   * @param stepId 可选：时间线 step.id（worker-{taskId}），用于乐观更新匹配；缺省按 subagent-{runId}
+   */
+  async function cancelSpawnSubagent(runId: string, stepId?: string): Promise<void> {
     const s = activeSession.value
     if (!s || !runId?.trim()) return
     const stored = loadActiveGeneration()
@@ -285,11 +290,11 @@ export function useChatSessions(
     const id = runId.trim().startsWith('subagent-')
       ? runId.trim().slice('subagent-'.length)
       : runId.trim()
-    const stepId = `subagent-${id}`
+    const targetStepId = stepId?.trim() || `subagent-${id}`
     // 乐观：切 lifecycle + after 文案（与后端 SpawnSubagentLabels.afterCancel 一致）；SSE 终态会覆盖
     for (const msg of s.messages) {
       if (!msg.steps?.length) continue
-      const idx = msg.steps.findIndex(st => st.id === stepId)
+      const idx = msg.steps.findIndex(st => st.id === targetStepId)
       if (idx < 0) continue
       const prev = msg.steps[idx]
       msg.steps[idx] = {

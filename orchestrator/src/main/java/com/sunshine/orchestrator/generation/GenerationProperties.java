@@ -9,6 +9,7 @@ public record GenerationProperties(
         int maxBufferChunks,
         long reconnectBlockMs,
         long flushIntervalMs,
-        int maxChunkChars
+        int maxChunkChars,
+        long maxStreamLen
 ) {
 }

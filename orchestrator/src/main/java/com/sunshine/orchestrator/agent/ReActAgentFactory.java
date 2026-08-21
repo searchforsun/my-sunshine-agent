@@ -183,7 +183,12 @@ public class ReActAgentFactory {
 
     Toolkit resolveToolkit(AgentRunRequest request) {
         String conversationKind = resolveConversationKind(request);
-        if (request.role() == AgentRole.SUB || request.role() == AgentRole.WORKER) {
+        if (request.role() == AgentRole.WORKER) {
+            // v17.12：Worker 独立构建——SUB 基础 + await_tool_run / async_status / spawn_subagent
+            return dynamicToolkitFactory.buildForWorker(
+                    request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
+        }
+        if (request.role() == AgentRole.SUB) {
             return dynamicToolkitFactory.buildForSubAgent(
                     request.toolWhitelist(), request.tenantId(), request.skillId(), request.userId());
         }

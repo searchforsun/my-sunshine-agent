@@ -62,6 +62,22 @@ class SpawnSubagentTimelineBridgeTest {
     }
 
     @Test
+    void wrap_preservesAlreadyScopedContentFromDeeperRun() {
+        SpawnSubagentTimelineBridge bridge = new SpawnSubagentTimelineBridge("r7", "子任务", "prompt");
+        // 更深层 run 的正文已带 scope（如 workflow agent 节点正文 node-{id}）：
+        // 透传保持原 scope，禁止覆盖重定向到本子 agent 父步。
+        StreamToken foreign = StreamToken.contentInSegment("content-1", "深层正文")
+                .withScopeNodeStepId("node-abc");
+
+        List<StreamToken> routed = bridge.wrap(foreign);
+
+        assertThat(routed).hasSize(1);
+        assertThat(routed.get(0).scopeNodeStepId()).isEqualTo("node-abc");
+        assertThat(routed.get(0).text()).isEqualTo("深层正文");
+        assertThat(bridge.subSteps()).isEmpty();
+    }
+
+    @Test
     void cancel_emitsPausedTerminalStep() {
         SpawnSubagentTimelineBridge bridge = new SpawnSubagentTimelineBridge("r5", "子任务", "prompt");
         List<StreamToken> out = bridge.cancel(SpawnSubagentLabels.afterCancel(), "用户已取消");

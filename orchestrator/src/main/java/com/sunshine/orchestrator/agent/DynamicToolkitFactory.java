@@ -36,6 +36,7 @@ public class DynamicToolkitFactory {
     private final SpawnSubagentTool spawnSubagentTool;
     private final RequestDecisionTool requestDecisionTool;
     private final AwaitToolRunTool awaitToolRunTool;
+    private final AsyncStatusTool asyncStatusTool;
     private final ThinkSummaryTool thinkSummaryTool;
     private final GenericRemoteToolFactory remoteToolFactory;
     private final ToolCatalogService toolCatalogService;
@@ -83,22 +84,48 @@ public class DynamicToolkitFactory {
     }
 
     /**
-     * Planner-Executor：业务工具 + RAG/沙箱/await；<b>不</b>注册 spawn_subagent（Worker 内 spawn）
-     * 与 request_decision（D12 延后）。{@code dispatch_worker} 由 {@link ReActAgentFactory} 注册。
-     * 按会话 kind 装集（缺省 chat）。
+     * Planner-Executor Worker：SUB 基础（RAG + 业务白名单 + think_summary + 沙箱）之上，
+     * 额外注册异步元工具——await_tool_run（等待自己派发的 background exec / spawn run）、
+     * async_status（run 级状态回查）、spawn_subagent（完整 fast ReAct，可隔离子工作）。
+     * 不注册 request_decision（用户决策仍归主链）。
+     */
+    public Toolkit buildForWorker(List<String> toolWhitelist, String tenantId, String skillId, String userId) {
+        List<String> whitelist = toolWhitelist == null || toolWhitelist.isEmpty()
+                ? List.of()
+                : toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId);
+        return buildFromWhitelist(whitelist, ToolkitScope.WORKER, skillId, userId, tenantId);
+    }
+
+    /**
+     * Planner-Executor：动作工具（plan_submit / self_assess）+ dispatch_worker + think_summary + await_tool_run；
+     * <b>不</b>注册 RAG、沙箱、业务工具（Planner 只做规划调度，不执行内容）。
+     * await_tool_run 必须注册：dispatch_worker 强制异步，Planner 经 await_tool_run 收集 Worker handoff；
+     * 缺注册时模型调用失败会空转（曾出现幻觉工具名 wait_async_results）。
+     * 动作/调度工具由 {@link ReActAgentFactory} 注册。
      */
     public Toolkit buildForPlanner(String tenantId, String skillId, String userId) {
         return buildForPlanner(tenantId, skillId, userId, null);
     }
 
     public Toolkit buildForPlanner(String tenantId, String skillId, String userId, String conversationKind) {
-        return buildFromWhitelist(
-                toolSetResolver.resolveDefaultTools(tenantId, conversationKind),
-                ToolkitScope.PLANNER, skillId, userId, tenantId);
+        // Planner 仅需 think_summary + await_tool_run + async_status + request_decision；业务工具/RAG/沙箱均不注入
+        Toolkit tk = new Toolkit(ToolkitConfig.builder().parallel(true).build());
+        tk.registerTool(thinkSummaryTool);
+        AgentExecutionProperties.React react = executionProperties.getReact();
+        // D12：Planner MAIN 与 Chat MAIN 同契约——decision.enabled 下注册 request_decision（需求歧义/方案抉择）
+        if (react != null && react.getDecision() != null && react.getDecision().isEnabled()) {
+            tk.registerAgentTool(requestDecisionTool);
+        }
+        if (react != null && react.getAsyncTool() != null && react.getAsyncTool().isEnabled()) {
+            tk.registerAgentTool(awaitToolRunTool);
+            tk.registerAgentTool(asyncStatusTool);
+        }
+        log.info("[Orchestrator] DynamicToolkit PLANNER 已注册工具: think_summary, request_decision, await_tool_run, async_status（动作/调度工具由 ReActAgentFactory 注册）");
+        return tk;
     }
 
     private enum ToolkitScope {
-        MAIN, SUB, PLANNER
+        MAIN, SUB, WORKER, PLANNER
     }
 
     /**
@@ -135,7 +162,10 @@ public class DynamicToolkitFactory {
         Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();
 
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB || scope == ToolkitScope.PLANNER) {
+        if (scope == ToolkitScope.MAIN
+                || scope == ToolkitScope.SUB
+                || scope == ToolkitScope.WORKER
+                || scope == ToolkitScope.PLANNER) {
             tk.registerAgentTool(ragTool);
             registered.add(RagTool.NAME);
         }
@@ -171,19 +201,26 @@ public class DynamicToolkitFactory {
             }, () -> missing.add(toolName));
         }
 
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB || scope == ToolkitScope.PLANNER) {
+        if (scope == ToolkitScope.MAIN
+                || scope == ToolkitScope.SUB
+                || scope == ToolkitScope.WORKER
+                || scope == ToolkitScope.PLANNER) {
             tk.registerTool(thinkSummaryTool);
             registered.add(ThinkSummaryTool.NAME);
         }
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.PLANNER) {
+        if (scope == ToolkitScope.MAIN
+                || scope == ToolkitScope.WORKER
+                || scope == ToolkitScope.PLANNER) {
             AgentExecutionProperties.React react = executionProperties.getReact();
-            // spawn_subagent 仅 MAIN：Planner 经 dispatch_worker → Worker，Worker/MAIN 内再 spawn
-            if (scope == ToolkitScope.MAIN
+            // spawn_subagent：MAIN（fast ReAct 主链）与 WORKER（v17.12 完整 fast ReAct，可隔离子工作）；
+            // SUB（workflow 子节点 / spawn 临时子 agent）不注册防递归；PLANNER 经 dispatch_worker → Worker
+            if ((scope == ToolkitScope.MAIN || scope == ToolkitScope.WORKER)
                     && react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
                 tk.registerAgentTool(spawnSubagentTool);
                 registered.add(SpawnSubagentTool.NAME);
             }
-            // D12：PLANNER 即使 decision.enabled 也不注册 request_decision
+            // D12：request_decision 用户决策归主链——MAIN 在此注册；PLANNER 走 buildForPlanner 单独注册；
+            // WORKER / SUB 不注册（决策不派发子 Agent）
             if (react != null && react.getDecision() != null && react.getDecision().isEnabled()
                     && scope == ToolkitScope.MAIN) {
                 tk.registerAgentTool(requestDecisionTool);
@@ -192,9 +229,14 @@ public class DynamicToolkitFactory {
             if (react != null && react.getAsyncTool() != null && react.getAsyncTool().isEnabled()) {
                 tk.registerAgentTool(awaitToolRunTool);
                 registered.add(AwaitToolRunTool.NAME);
+                tk.registerAgentTool(asyncStatusTool);
+                registered.add(AsyncStatusTool.NAME);
             }
         }
-        if (scope == ToolkitScope.MAIN || scope == ToolkitScope.SUB || scope == ToolkitScope.PLANNER) {
+        if (scope == ToolkitScope.MAIN
+                || scope == ToolkitScope.SUB
+                || scope == ToolkitScope.WORKER
+                || scope == ToolkitScope.PLANNER) {
             for (AgentTool t : sandboxAgentTools.all()) {
                 tk.registerAgentTool(t);
                 registered.add(t.getName());

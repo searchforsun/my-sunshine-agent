@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
@@ -33,6 +34,19 @@ public class PlannerHarnessExecutor {
     private final AgentExecutionProperties executionProperties;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
+        // PRO 路径须与 ReactExecutor 一致绑定工具审计上下文：worker/planner 内 spawn_subagent、
+        // request_decision 等工具经 toolAuditContext(assistantMsgId) 校验，缺绑定时直接拒绝派发。
+        if (ctx.assistantMsgId() != null) {
+            StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
+                    ctx.conversationId(),
+                    ctx.assistantMsgId(),
+                    ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.persistedPlanId(),
+                    ctx.kbId(),
+                    null, null, null,
+                    ctx.conversationKind()));
+        }
         String sessionId = resolveSessionId(ctx);
         PlanNotebook notebook = store.load(sessionId).orElseGet(() -> createNotebook(ctx, sessionId));
         if (!StringUtils.hasText(notebook.getSessionId())) {
@@ -60,7 +74,7 @@ public class PlannerHarnessExecutor {
         }
         notebook.setOriginalGoal(next);
         notebook.setUserQuery(next);
-        for (TaskItem item : List.copyOf(notebook.getTaskQueue())) {
+        for (TaskItem item : notebook.snapshotQueue()) {
             if (item == null || "done".equals(item.status())) {
                 continue;
             }

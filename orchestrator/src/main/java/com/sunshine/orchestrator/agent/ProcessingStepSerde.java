@@ -272,6 +272,20 @@ public final class ProcessingStepSerde {
         if (hasText(metadata.taskProgress())) {
             map.put("taskProgress", metadata.taskProgress());
         }
+        if (metadata.taskQueue() != null && !metadata.taskQueue().isEmpty()) {
+            List<Map<String, Object>> queue = new ArrayList<>();
+            for (TaskBoardItemView item : metadata.taskQueue()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", item.id());
+                row.put("content", item.content());
+                row.put("status", item.status());
+                if (item.dependsOn() != null && !item.dependsOn().isEmpty()) {
+                    row.put("dependsOn", item.dependsOn());
+                }
+                queue.add(row);
+            }
+            map.put("taskQueue", queue);
+        }
         if (hasText(metadata.sandboxPath())) {
             map.put("sandboxPath", metadata.sandboxPath());
         }
@@ -283,6 +297,9 @@ public final class ProcessingStepSerde {
         }
         if (Boolean.TRUE.equals(metadata.cancellable())) {
             map.put("cancellable", true);
+        }
+        if (hasText(metadata.workerRunId())) {
+            map.put("workerRunId", metadata.workerRunId());
         }
         if (metadata.editDiff() != null) {
             map.put("editDiff", editDiffToMap(metadata.editDiff()));

@@ -20,8 +20,10 @@ public class ThinkSummaryTool {
     public static final String NAME = "think_summary";
 
     @Tool(name = NAME, description = "在每轮推理阶段输出本轮摘要，供时间线展示。"
-            + "每轮发起任何业务工具调用前，必须先调用本工具，summary 填写本轮要做的简述（20 字以内）；"
-            + "最后一轮不再调用业务工具、直接作答时，summary 填写「完整回答用户问题」。")
+            + "每轮发起任何业务工具调用前，**必须**先调用本工具，summary 填写本轮要做的简述（20 字以内），"
+            + "如实表达本轮目的（如：调用工具=「查询待办清单」/ 终态作答=「综合回答用户」、"
+            + "自判进展=「评估进展 · 继续下一波」/ 收束=「确认完成」等），"
+            + "不要硬编码任何固定模板，按本轮实际意图填写。")
     public String thinkSummary(
             @ToolParam(name = "summary", description = "本轮思考摘要（20 字以内）") String summary) {
         if (!StringUtils.hasText(summary)) {

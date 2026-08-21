@@ -372,16 +372,14 @@ public class ConversationService {
     }
 
     /**
-     * 流式 partial 落库 — 若消息已终态则跳过，避免异步 flush 覆盖 completed 状态。
+     * 流式 partial 增量落库 — 若消息已终态则跳过，避免异步 flush 覆盖 completed 状态。
      */
     @Transactional
-    public ChatMessageEntity updateMessageContentIfStreaming(String messageId, String content) {
-        ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
-        if (!MessageStatus.STREAMING.equals(msg.getStatus())) {
-            return msg;
+    public void appendStreamingDelta(String messageId, String delta) {
+        if (delta == null || delta.isEmpty()) {
+            return;
         }
-        return updateMessageContent(messageId, content, MessageStatus.STREAMING);
+        messageRepo.appendStreamingContent(messageId, delta, Instant.now());
     }
 
     /** HITL/Recovery 待确认：续跑阻塞期间增量落库 steps，避免刷新仍见暂停快照 */

@@ -11,6 +11,7 @@ import jakarta.annotation.PostConstruct;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
@@ -50,6 +51,8 @@ public class StepEventBridgeRegistry {
     private final Map<String, FlushBinding> generationFlush = new ConcurrentHashMap<>();
     /** assistantMsgId → 续跑预填的 content_blocks JSON（抬高 segment seq + accumulator 种子） */
     private final Map<String, String> resumeContentBlocksJson = new ConcurrentHashMap<>();
+    /** Planner 内部调用（planNext/selfAssess）期间抑制 content flush 的消息 ID 集合 */
+    private final Set<String> suppressedContentMessageIds = ConcurrentHashMap.newKeySet();
     private final Map<String, Long> streamEpoch = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionStreamEpoch = new ConcurrentHashMap<>();
     /** 专家 Hub Sub-Agent：Hook 增量直出，不经主 Timeline think 锚点 */
@@ -280,6 +283,25 @@ public class StepEventBridgeRegistry {
         }
     }
 
+    /** Planner 内部调用（planNext/selfAssess）期间抑制 content 令牌 flush 到 GenerationJob */
+    public void suppressContentFlush(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            suppressedContentMessageIds.add(messageId.strip());
+        }
+    }
+
+    /** 解除 content 抑制 */
+    public void unsuppressContentFlush(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            suppressedContentMessageIds.remove(messageId.strip());
+        }
+    }
+
+    /** 查询当前消息是否 content flush 被抑制 */
+    public boolean isContentFlushSuppressed(String messageId) {
+        return messageId != null && suppressedContentMessageIds.contains(messageId.strip());
+    }
+
     public boolean hitlEnabled() {
         return hitlEnabledForBridge(resolveHitlBridgeId());
     }
@@ -502,6 +524,7 @@ public class StepEventBridgeRegistry {
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
             resumeContentBlocksJson.remove(messageId);
+            suppressedContentMessageIds.remove(messageId.strip());
             toolUseBridge.entrySet().removeIf(e -> messageId.equals(e.getValue()));
             // 清 bridge 时同步摘掉指向该 bridge 的 mainRun，避免多会话残留导致 activeBridgeId 误判
             mainRunByMessage.entrySet().removeIf(e -> messageId.equals(e.getValue()));
@@ -731,9 +754,15 @@ public class StepEventBridgeRegistry {
         if (sink == null || tokens == null || tokens.isEmpty()) {
             return;
         }
+        boolean suppressContent = isContentFlushSuppressed(flushKey);
         Function<StreamToken, List<StreamToken>> fold =
                 flushKey != null ? loopBodyFolds.get(flushKey) : null;
         for (StreamToken t : tokens) {
+            // planNext/selfAssess 期间仅抑制 Planner 正文产生的 content 令牌；
+            // step 令牌（Worker 步骤、工具步等）照常放行，前端仍须展示中间过程。
+            if (suppressContent && t.isContent()) {
+                continue;
+            }
             if (fold != null) {
                 List<StreamToken> folded = fold.apply(t);
                 if (folded != null) {
@@ -764,7 +793,19 @@ public class StepEventBridgeRegistry {
             return null;
         }
         String assistantId = hitlAssistantMessageId(bridgeId);
-        return assistantId != null ? assistantId : bridgeId;
+        if (assistantId != null) {
+            return assistantId;
+        }
+        // 非 HITL：main bridge 经 mainRunByMessage 反查 assistantMessageId，
+        // 使 spawn_subagent/worker 的 auxiliary（begin 卡、折叠快照）能直刷 GenerationJob。
+        // 否则主 Agent 工具调用阻塞（spawn blockLast 等待子 Agent 完成）期间主 Flux 无事件，
+        // hookQueue 不 drain → begin 卡堆积到 spawn 返回后才 emit（前端刷新才显示卡片）。
+        for (Map.Entry<String, String> e : mainRunByMessage.entrySet()) {
+            if (bridgeId.equals(e.getValue())) {
+                return e.getKey();
+            }
+        }
+        return bridgeId;
     }
 
     private boolean isHookFlushAllowed(String bridgeId, String flushKey, long bindingEpoch) {

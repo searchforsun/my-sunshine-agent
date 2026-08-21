@@ -22,6 +22,13 @@ public final class SubAgentContentTokens {
         if (token == null || !StringUtils.hasText(parentStepId)) {
             return Optional.empty();
         }
+        // 已归属其它父步（Worker 内 spawn 的子 agent 正文：scope=subagent-{runId}）：
+        // 透传保持原 scope，由前端 updateNodeStepContent 递归挂到对应卡 contentBlocks；
+        // 禁止重定向到当前父步——否则子 agent 正文并发流式全部混入 worker 抽屉正文。
+        if (StringUtils.hasText(token.scopeNodeStepId())
+                && !parentStepId.equals(token.scopeNodeStepId())) {
+            return Optional.of(List.of(token));
+        }
         if (token.isContentLifecycle() || (token.isContent() && token.segmentId() != null)) {
             return Optional.of(List.of(token.withScopeNodeStepId(parentStepId)));
         }

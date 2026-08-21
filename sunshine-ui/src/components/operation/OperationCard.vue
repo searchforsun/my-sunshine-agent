@@ -50,14 +50,11 @@ const props = withDefaults(defineProps<{
   roundSummary?: string
   /** 折叠区内不显示 ✓ */
   hideCheckmark?: boolean
-  /** harness worker：handoff 改子行展示，主行不重复 summary 预览 */
-  hideHeaderPreview?: boolean
 }>(), {
   embedHitl: true,
   hideChevron: false,
   hitlUiKey: '',
   roundSummary: undefined,
-  hideHeaderPreview: false,
 })
 
 const router = useRouter()
@@ -179,8 +176,7 @@ const shiftSummary = computed(() => shouldShiftSummaryOnExpand(props.step))
 const { isSandboxTool, editDiffSummary } = useSandboxToolExpand(() => props.step)
 
 const showHeaderPreview = computed(
-  () => !props.hideHeaderPreview
-    && !!headerText.value
+  () => !!headerText.value
     && (!props.expanded || !shiftSummary.value),
 )
 
@@ -234,6 +230,10 @@ watch(
 
 onUnmounted(() => {
   clearElapsedTimer()
+  if (detailFollowRaf) {
+    cancelAnimationFrame(detailFollowRaf)
+    detailFollowRaf = 0
+  }
 })
 
 const durationText = computed(() => {
@@ -248,6 +248,42 @@ const durationText = computed(() => {
 })
 
 const showShimmer = computed(() => isRunning.value && !!props.live)
+
+/** 展开区贴底跟随（与正文流式一致）：think 运行中展开自动定位到底部，reasoning 增长持续跟随；
+ * 用户上滑离开底部即停跟，滚回底部恢复跟随 */
+const detailRef = ref<HTMLElement | null>(null)
+const detailPinned = ref(true)
+let detailFollowRaf = 0
+
+function onDetailScroll(): void {
+  const el = detailRef.value
+  if (!el) return
+  detailPinned.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 8
+}
+
+function followDetailBottom(): void {
+  // rAF 合帧：reasoning 逐 token 触发 watch，勿每个 delta 都强排一次滚动
+  if (detailFollowRaf) return
+  detailFollowRaf = requestAnimationFrame(() => {
+    detailFollowRaf = 0
+    const el = detailRef.value
+    if (!el || !detailPinned.value) return
+    el.scrollTop = el.scrollHeight
+  })
+}
+
+watch(
+  () => [props.expanded, isRunning.value, props.live, props.step.reasoning?.length ?? 0] as const,
+  ([expanded, running, live]) => {
+    // 折叠时复位贴底，下次展开重新从底部跟随
+    if (!expanded) {
+      detailPinned.value = true
+      return
+    }
+    if (!running || !live || !isThinkStepId(props.step.id)) return
+    followDetailBottom()
+  },
+)
 </script>
 
 <template>
@@ -365,7 +401,7 @@ const showShimmer = computed(() => isRunning.value && !!props.live)
       @decided="(token, approved) => emit('hitlDecided', token, approved)"
     />
 
-    <div v-if="expanded && canExpand" class="op-detail">
+    <div v-if="expanded && canExpand" ref="detailRef" class="op-detail" @scroll.passive="onDetailScroll">
       <!-- intent 步：路由过程（方案 B；普通 meta-line 样式，对齐 RAG「检索过程」先例） -->
       <div v-if="routingTraces.length" class="op-routing-block">
         <p

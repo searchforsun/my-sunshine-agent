@@ -399,7 +399,9 @@ export async function consumeChatSseStream(
         // resume 续连会回放已完成/积压的历史事件（量大），逐 chunk 等 rAF 会拖慢 catch-up，
         // 使任务已终态时 UI 仍长时间停在「正在处理」；bump 已有 80ms 节流兜底 UI 刷新，
         // 故 resume 场景跳过 rAF（实时流式仍在跑时也只是消费更快，不影响正确性）
-        if (!options.resume) {
+        // 页面隐藏时 rAF 被浏览器挂起：仍逐 chunk 等 rAF 会卡住消费循环 → 停止读网络 →
+        // TCP 背压使服务端 SSE 写阻塞，表现为后台标签页流式停滞；隐藏时无渲染节奏需求，直接消费
+        if (!options.resume && document.visibilityState === 'visible') {
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
         }
         continue

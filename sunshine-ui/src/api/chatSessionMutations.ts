@@ -22,24 +22,30 @@ export function updateNodeStepContent(
   mutate: (step: ProcessingStep) => void,
 ): ProcessingStep[] {
   let changed = false
-  const walk = (list: ProcessingStep[]): ProcessingStep[] =>
-    list.map(st => {
+  const walk = (list: ProcessingStep[]): ProcessingStep[] => {
+    let listChanged = false
+    const next = list.map(st => {
       if (st.id === nodeStepId) {
+        // 仅复制正文载体：subSteps 子步骤对象保持原引用，避免正文每 token 增量
+        // 重建子步骤数组，导致抽屉时间线（OperationStack）全量 patch 所有子卡片。
         const copy: ProcessingStep = {
           ...st,
           contentBlocks: st.contentBlocks?.map(b => ({ ...b })),
-          subSteps: st.subSteps?.map(sub => ({ ...sub })),
         }
         mutate(copy)
         changed = true
+        listChanged = true
         return copy
       }
       if (!st.subSteps?.length) return st
       const subs = walk(st.subSteps)
       if (subs === st.subSteps) return st
       changed = true
+      listChanged = true
       return { ...st, subSteps: subs }
     })
+    return listChanged ? next : list
+  }
   const next = walk(steps)
   return changed ? next : steps
 }

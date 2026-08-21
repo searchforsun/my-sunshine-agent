@@ -67,8 +67,12 @@ public class AgentExecutionProperties {
             private int spawnAwaitDefaultSec = 120;
             private int spawnAwaitMaxSec = 200;
             private int spawnAwaitMaxWaits = 3;
+            /** worker dispatch 单次 await（pro 复杂任务：6×600 观测窗口，允许等待长 Worker） */
+            private int workerAwaitDefaultSec = 120;
+            private int workerAwaitMaxSec = 600;
+            private int workerAwaitMaxWaits = 6;
             private int execWallTimeoutSec = 600;
-            private int maxConcurrentPerMessage = 3;
+            private int maxConcurrentPerMessage = 10;
         }
     }
 
@@ -84,14 +88,11 @@ public class AgentExecutionProperties {
         private int maxRounds = 12;
         private int maxTotalTasks = 24;
         private long maxDurationMs = 14_400_000L;
-        private int staleRoundsThreshold = 3;
         /** 终态错误降级 ReAct（对齐 workflow 节点 fallbackReact 语义） */
         private FallbackReact fallbackReact = new FallbackReact();
-        private Task task = new Task();
         private Planner planner = new Planner();
         private Worker worker = new Worker();
         private Notebook notebook = new Notebook();
-        private Session session = new Session();
 
         @Data
         public static class FallbackReact {
@@ -99,21 +100,15 @@ public class AgentExecutionProperties {
         }
 
         @Data
-        public static class Task {
-            private int maxRetries = 2;
-        }
-
-        @Data
         public static class Planner {
             private long timeoutMs = 300_000L;
-            private int maxAttempts = 3;
-            private int maxReplans = 6;
+            /** Planner 自身 ReAct 轮数上限（v17：Planner 一次性 run，maxIters 兜底；SSOT：Nacos agent.execution.harness.planner.max-iters） */
+            private int maxIters = 30;
         }
 
         @Data
         public static class Worker {
             private long timeoutMs = 3_600_000L;
-            private int maxSubAgents = 5;
         }
 
         @Data
@@ -126,11 +121,6 @@ public class AgentExecutionProperties {
             public static class Compression {
                 private int nearKeepRounds = 10;
             }
-        }
-
-        @Data
-        public static class Session {
-            private long idleTimeoutMs = 14_400_000L;
         }
     }
 

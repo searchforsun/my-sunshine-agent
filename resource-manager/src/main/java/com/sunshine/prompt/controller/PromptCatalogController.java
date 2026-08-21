@@ -21,4 +21,10 @@ public class PromptCatalogController {
     public R<PromptCatalogResponse> catalog() {
         return R.ok(promptCatalogService.catalog());
     }
+
+    /** 轻量版本接口：不携带 prompt 正文，供消费方先比对版本再拉全量 catalog */
+    @GetMapping("/catalog/version")
+    public R<Long> catalogVersion() {
+        return R.ok(promptCatalogService.catalogVersion());
+    }
 }

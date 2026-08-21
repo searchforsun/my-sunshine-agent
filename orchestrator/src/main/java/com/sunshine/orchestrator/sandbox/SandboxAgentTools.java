@@ -203,13 +203,13 @@ public class SandboxAgentTools {
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
             }
             if (cancellableToolRunRegistry.isCancellableTool(name)
-                    && !cancellableToolRunRegistry.tryConsumeFollowup(messageId, name)) {
+                    && !cancellableToolRunRegistry.tryConsumeFollowup(messageId, name, body)) {
                 if (trackCancel) {
                     cancellableToolRunRegistry.unregister(invocationId);
                 }
                 String exhausted = promptCatalogHolder.requireText("sandbox.budget-exhausted").strip();
                 if (!StringUtils.hasText(exhausted)) {
-                    exhausted = "本轮用户取消后同族沙箱工具调用次数已用尽，请直接作答或改用其它能力。";
+                    exhausted = "该命令此前已被取消，禁止原样重复调用；请换命令、换参数或改用其它能力。";
                 }
                 auditIfBound(name, auditParams(body, null, null, null), exhausted, "fail");
                 return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(exhausted).build());
@@ -375,14 +375,14 @@ public class SandboxAgentTools {
                 String messageId,
                 String sessionId,
                 long startMs) {
-            int remaining = cancellableToolRunRegistry.activateBudgetAndRemaining(messageId);
+            cancellableToolRunRegistry.recordCancelled(
+                    messageId, name, SandboxCancelExpand.detail(name, body));
             String params = summarizeParams(body);
             String tpl = promptCatalogHolder.requireText("sandbox.cancel-result").strip();
             if (!StringUtils.hasText(tpl)) {
-                tpl = "用户已取消该沙箱工具调用。请换方案继续（勿重复同一命令）。原参数：{params}。本轮同族还可再调用 {remaining} 次。";
+                tpl = "该命令已被取消，原样重试将被拒绝。请换命令、换参数或改用其它能力继续。原参数：{params}。";
             }
-            String text = tpl.replace("{params}", params)
-                    .replace("{remaining}", String.valueOf(remaining));
+            String text = tpl.replace("{params}", params);
             // 时间线 paused 由 GenerationController.cancelTool 单写；此处只回 ToolResult
             Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
             auditIfBound(toolName, auditParams, text, "cancelled");

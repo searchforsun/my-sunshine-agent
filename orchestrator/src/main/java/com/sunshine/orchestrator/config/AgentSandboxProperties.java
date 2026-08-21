@@ -43,9 +43,6 @@ public class AgentSandboxProperties {
     private List<String> cancellableTools = new ArrayList<>(List.of(
             SandboxIds.EXEC, SandboxIds.GREP, SandboxIds.GLOB));
 
-    /** 用户取消后同族最多再执行次数 */
-    private int cancelMaxFollowups = 3;
-
     /** 时间线工具步取消 after */
     private String cancelAfter = "已取消";
 

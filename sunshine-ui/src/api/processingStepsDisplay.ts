@@ -381,6 +381,11 @@ export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
 export function resolveStepSummaryFull(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   const title = formatStepLabel(step)
+  // harness worker 行：折叠主行只显示任务名（label），勿回退 result 透露正文
+  //（正文由嵌套 stack contentBlocks 承载，result 仅数据层兜底，见 v17.4）
+  if (step.phase === 'worker' || step.id.startsWith('worker-')) {
+    return ''
+  }
   let header = ''
   if (lifecycle === 'running') {
     header = step.summary?.active?.trim() || ''
@@ -402,7 +407,13 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
   } else {
     header = step.summary?.before?.trim() || ''
   }
-  if (!header || header === title) {
+  // 去重：header 与展示 label 相同时不重复出摘要行。
+  // tool 步的 step.label 带「调用工具」前缀，OperationCard 显示时剥掉前缀；
+  // 去重判断须用剥前缀后的 label，否则 after=工具中文名 时永远判不等 -> 两行重复。
+  const displayTitle = step.id.startsWith('tool-')
+    ? title.replace(/^调用工具\s*/, '').trim()
+    : title
+  if (!header || header === displayTitle) {
     return ''
   }
   return header
@@ -419,6 +430,10 @@ export function resolveStepHeaderText(step: ProcessingStep): string {
 
 /** 展开区 lead：保留换行，供 StaticMarkdown 渲染（主行预览仍用 resolveStepHeaderText 单行截断） */
 export function resolveStepExpandLead(step: ProcessingStep): string {
+  // harness worker 行：正文由嵌套 OperationStack 的 contentBlocks 承载，lead 不再回退 result
+  if (step.phase === 'worker' || step.id.startsWith('worker-')) {
+    return ''
+  }
   const lifecycle = stepLifecycle(step)
   if (
     lifecycle === 'done'
@@ -459,6 +474,11 @@ export function resolveStepExpandSummary(step: ProcessingStep): string {
 /** 展开区内层正文（detail / rewrite / result），与 summary.after 分列 */
 export function resolveStepExpandInner(step: ProcessingStep): string {
   if (isWorkflowAnswerStep(step)) {
+    return ''
+  }
+  // harness worker 行：正文由嵌套 OperationStack 的 contentBlocks 承载（与 spawn subagent 抽屉同构），
+  // 勿把 result 当 inner，避免展开内部与嵌套 stack 正文双份
+  if (step.phase === 'worker' || step.id.startsWith('worker-')) {
     return ''
   }
   if (isSandboxToolStep(step)) {
@@ -673,4 +693,35 @@ export function resolveTimelineSummaryPrefix(opts: {
 export function formatTimelineSummaryText(prefix: string, clock: string): string {
   const c = clock.trim()
   return c ? `${prefix} ${c}` : prefix
+}
+
+/** 卡片运行中「当前子步正文」：subagent/worker 卡 running 时，任务名后跟内部正在执行步骤的正文内容。
+ * think/rag→reasoning 思考正文、tool→detail 输出；generate（最后正文）阶段固定显示「正在收尾回复」，
+ * 不再滚动最终答复；跳过 tasks/intent/skill/decision/plan 脚手架步（其 label 如「任务清单」非实时活动）；
+ * 正文为空回退子步 label / 阶段标题。卡片未运行或暂无 running 子步返回空。 */
+const SCAFFOLD_CHILD_PHASES = new Set(['tasks', 'intent', 'skill', 'decision', 'plan'])
+const CHILD_BODY_PREVIEW_MAX = 90
+
+export function resolveRunningChildStepBody(step: ProcessingStep): string {
+  if (!step.subSteps?.length) return ''
+  const running = step.subSteps.find(
+    s => stepLifecycle(s) === 'running' && !SCAFFOLD_CHILD_PHASES.has((s.phase ?? '').split('-')[0]),
+  )
+  if (!running) return ''
+  const phase = (running.phase ?? '').split('-')[0]
+  if (phase === 'generate' || phase.startsWith('generate')) return '正在收尾回复'
+  const body = childStepBodyText(running)
+  if (body) return body
+  const label = formatStepLabel(running).trim()
+  if (label && label !== running.id) return label
+  if (phase === 'think' || phase.startsWith('think')) return '深度思考'
+  if (phase === 'tool' || phase.startsWith('tool')) return '执行命令'
+  if (phase === 'rag') return '知识检索'
+  return ''
+}
+
+function childStepBodyText(step: ProcessingStep): string {
+  const raw = step.reasoning?.trim() || step.output?.trim() || step.detail?.trim() || ''
+  if (!raw) return ''
+  return truncateStepPreview(raw.replace(/\s+/g, ' ').trim(), CHILD_BODY_PREVIEW_MAX)
 }

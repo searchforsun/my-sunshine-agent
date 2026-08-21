@@ -48,6 +48,16 @@ class ProcessingStepSerdeTest {
     }
 
     @Test
+    void metadataToMap_includesWorkerRunId() {
+        StepMetadata metadata = StepMetadata.withWorkerRunId(
+                StepMetadata.withSpawnPrompt(null, "检索制度"), "run-abc");
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);
+
+        assertThat(map.get("workerRunId")).isEqualTo("run-abc");
+        assertThat(map.get("spawnPrompt")).isEqualTo("检索制度");
+    }
+
+    @Test
     void metadataToMap_includesTaskBoardFields() {
         StepMetadata metadata = StepMetadata.withTasks(
                 List.of(

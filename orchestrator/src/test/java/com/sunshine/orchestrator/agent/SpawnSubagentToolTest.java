@@ -77,6 +77,8 @@ class SpawnSubagentToolTest {
                         null))));
         spawnRunRegistry = SpawnRunRegistry.forTest(catalogHolder);
         realExecutionProperties = new AgentExecutionProperties();
+        // 槽位测试固定 3（生产默认已调至 10）
+        realExecutionProperties.getReact().getAsyncTool().setMaxConcurrentPerMessage(3);
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
         sub.setEnabled(true);
         sub.setMaxIters(8);
@@ -138,6 +140,37 @@ class SpawnSubagentToolTest {
                 eq("请完成子任务"));
         assertThat(runIdCaptor.getValue()).isNotBlank();
         verify(timelineSupport).complete(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("hello"));
+    }
+
+    @Test
+    void spawnInsideWorker_emitsSubagentCardToWorkerBridge() {
+        // Worker 桥（worker-run-9）绑定 session；toolUse 归属 worker 桥
+        String workerBridge = "worker-run-9";
+        ProcessingTimelineSession workerSession = new ProcessingTimelineSession();
+        registry.bind(workerBridge, workerSession, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge(workerBridge, MSG, true);
+        StepEventBridge.bindToolUseBridge("tu-worker-1", workerBridge);
+        // Planner 注册 main run（判定「仅主 Agent 可调用」依旧成立）
+        StepEventBridge.registerMainRun(MSG, "planner-run-1");
+        StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, null));
+
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("hello")));
+
+        String out = tool.spawnSubagent("请完成子任务", null, "子代理A", "tu-worker-1");
+
+        assertThat(out).isEqualTo("hello");
+        // Worker 内 spawn：时间线卡 emit 到 worker 桥（抽屉嵌套），不再落主时间线顶层
+        ArgumentCaptor<String> runIdCaptor = ArgumentCaptor.forClass(String.class);
+        verify(timelineSupport).begin(
+                eq(workerBridge),
+                runIdCaptor.capture(),
+                eq("子代理A"),
+                eq("请完成子任务"));
+        assertThat(runIdCaptor.getValue()).isNotBlank();
+        verify(timelineSupport).complete(eq(workerBridge), any(SpawnSubagentTimelineBridge.class), eq("hello"));
+        verify(timelineSupport, never()).begin(eq("planner-run-1"), any(), any(), any());
     }
 
     @Test

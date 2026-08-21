@@ -67,12 +67,12 @@ public record PromptComposeRequest(
                 reactRestart, null, personalRules, kind, workspaceCheckout);
     }
 
-    /** Planner-Executor — ReAct + {@code harnessPromptId}（mechanism overlay，仅 kind=planner） */
+    /** Planner-Executor — Planner 独立角色（不叠 react/workflow 叠加层），仅由 harnessPromptId 提供角色定位。 */
     public static PromptComposeRequest forPlannerHarness(
             AssembledContext context, String userMessage, List<String> injectedUserContexts,
             boolean reactRestart, String harnessPromptId, String kind, String workspaceCheckout) {
         return new PromptComposeRequest(
-                PromptMode.REACT, context, userMessage, null, null, null, injectedUserContexts, null,
+                PromptMode.PLANNER, context, userMessage, null, null, null, injectedUserContexts, null,
                 reactRestart, harnessPromptId, null, kind, workspaceCheckout);
     }
 

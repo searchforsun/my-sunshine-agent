@@ -4,7 +4,10 @@ import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import java.util.ArrayList;
 import java.util.List;
 
-/** H1 taskQueue → TaskBoard 视图投影（status 枚举映射；不改写 label）。 */
+/**
+ * H1 taskQueue -> TaskBoard 视图投影（status 枚举映射；不改写 label）。
+ * v17.7：fail/cancelled 统一映射 cancelled（前端显示 ⊗）；保留历史执行记录。
+ */
 public final class HarnessTaskBoardProjector {
     private HarnessTaskBoardProjector() {
     }
@@ -14,13 +17,13 @@ public final class HarnessTaskBoardProjector {
         if (notebook == null || notebook.getTaskQueue() == null) {
             return views;
         }
-        for (TaskItem item : notebook.getTaskQueue()) {
+        for (TaskItem item : notebook.snapshotQueue()) {
             List<String> dependsOn = item.dependsOn();
             if (dependsOn == null || dependsOn.isEmpty()) {
                 dependsOn = null;
             }
             views.add(new TaskBoardItemView(
-                    item.taskId(),
+                    item.versionedId(),
                     item.label(),
                     mapStatus(item.status()),
                     dependsOn));
@@ -36,7 +39,8 @@ public final class HarnessTaskBoardProjector {
             case "pending" -> "pending";
             case "in_progress" -> "in_progress";
             case "done" -> "completed";
-            case "fail", "obsolete" -> "cancelled";
+            // fail + cancelled 统一 cancelled：前端 TaskBoard 显示 ⊗（圆圈内 ×）
+            case "fail", "cancelled", "obsolete" -> "cancelled";
             default -> status;
         };
     }

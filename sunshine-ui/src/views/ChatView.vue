@@ -53,6 +53,7 @@ import { formatConversationTime } from '../utils/conversationTime'
 import { loadCachedMessages } from '../api/conversationCache'
 import {
   isContentFullyInterleaved,
+  resolveCollapsedAnswerText,
   resolveStreamingContentText,
   shouldShowAssistantBottomContent,
 } from '../api/contentInterleave'
@@ -1054,8 +1055,10 @@ const sessionUsage = computed(() => {
   return { calls, inputTokens, outputTokens, steps }
 })
 
-async function copyAssistantMessage(text: string, idx: number) {
-  if (!text.trim()) return
+/** 复制正文：仅最终回答，不含穿插在步骤之间的阶段正文（与折叠态正文展示同一取数口径） */
+async function copyAssistantMessage(msg: ChatMessage, idx: number) {
+  const text = resolveCollapsedAnswerText(msg)
+  if (!text) return
   try {
     await navigator.clipboard.writeText(text)
   } catch {
@@ -1132,12 +1135,13 @@ async function handleSend() {
         kind: 'task',
         workspaceId: wsId,
         checkoutPath: '/workspace/' + checkoutId,
+        executionPreference: preference.value,
       })
       chatStore.pendingWorkspace = null
       chatStore.newTaskMode = false
     } else {
       // 新对话/已有对话：chat 会话创建时不绑定工作区，由后端在首次调用沙箱工具（执行脚本）时懒绑定，前端不传 workspaceId
-      convId = await chatStore.ensureCurrent()
+      convId = await chatStore.ensureCurrent({ executionPreference: preference.value })
       // 已有任务会话：发送前若切换了分支，先统一走「改动检测 → 提交 → 切换 checkout」流程；
       // 当前 checkout 有未提交改动时挂起发送，等待用户在提交框内决定（取消则放弃本次发送）
       if (isCurrentTask.value && currentWorkspaceId.value && taskBranch.value && taskBranch.value !== taskActiveBranch.value) {
@@ -1776,7 +1780,7 @@ watch(
                   type="button"
                   class="msg-copy-btn smd-toolbtn"
                   :title="copiedIndex === idx ? '已复制' : '复制'"
-                  @click="copyAssistantMessage(msg.content, idx)"
+                  @click="copyAssistantMessage(msg, idx)"
                 >
                   <CopyToggleIcon :copied="copiedIndex === idx" />
                 </button>

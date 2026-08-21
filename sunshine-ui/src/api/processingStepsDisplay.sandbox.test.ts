@@ -12,6 +12,7 @@ import {
   isSandboxReadStep,
   isSandboxToolStep,
   parseSandboxPathList,
+  resolveRunningChildStepBody,
   resolveSandboxFocusPath,
   resolveSandboxReadLineRange,
   resolveStepExpandInner,
@@ -356,5 +357,88 @@ describe('sandboxToolKind 按用途细分（组文案决定）', () => {
   it('非 sandbox 工具返回 null', () => {
     expect(sandboxToolKind('sdk__sunshine-oa__list_oa_tasks')).toBeNull()
     expect(sandboxToolKind(undefined)).toBeNull()
+  })
+})
+
+describe('resolveRunningChildStepBody · 运行中当前子步正文', () => {
+  function child(partial: Partial<ProcessingStep> & { id: string; phase: string }): ProcessingStep {
+    return {
+      lifecycle: 'done',
+      ...partial,
+    }
+  }
+
+  it('无 subSteps 返回空', () => {
+    const step: ProcessingStep = { id: 'worker-t1-1', phase: 'worker', lifecycle: 'running' }
+    expect(resolveRunningChildStepBody(step)).toBe('')
+  })
+
+  it('running think 子步有 reasoning 时返回思考正文（单行截断）', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'think-2', phase: 'think', lifecycle: 'running', reasoning: '先核对文档\n再比对配置项' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('先核对文档 再比对配置项')
+  })
+
+  it('running think 无正文回退「深度思考」', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'running',
+      subSteps: [child({ id: 'think-2', phase: 'think', lifecycle: 'running' })],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('深度思考')
+  })
+
+  it('running sandbox exec 无正文回退「执行命令」', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'tool-sandbox__exec@1', phase: 'tool', label: '执行命令', lifecycle: 'running' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('执行命令')
+  })
+
+  it('generate（最后正文）阶段固定显示「正在收尾回复」', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'think-3', phase: 'think', lifecycle: 'done', reasoning: '已完成调研' }),
+        child({ id: 'generate', phase: 'generate', lifecycle: 'running', reasoning: '正在撰写最终答复…' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('正在收尾回复')
+  })
+
+  it('跳过 tasks/intent/skill 脚手架步，取首个动态子步正文', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'running' }),
+        child({ id: 'think-1', phase: 'think', lifecycle: 'running', reasoning: '分析问题要点' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('分析问题要点')
+  })
+
+  it('仅脚手架步 running 时返回空（不再显示「任务清单」）', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'running' }),
+        child({ id: 'intent', phase: 'intent', label: '意图理解', lifecycle: 'done' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('')
+  })
+
+  it('卡非 running（pending/done）返回空', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'done',
+      subSteps: [child({ id: 'think', phase: 'think', label: '深度思考', lifecycle: 'done' })],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('')
   })
 })

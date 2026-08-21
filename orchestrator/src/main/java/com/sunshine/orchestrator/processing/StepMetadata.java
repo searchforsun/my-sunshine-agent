@@ -53,11 +53,19 @@ public record StepMetadata(
         /** ReAct request_decision：选择题载荷（勿截断 question/options） */
         DecisionStepMeta decision,
         /** 路由链路可观测：模式 → 轨 → L0 → 规则 → L3 → 最终绑定（intent 步抽屉） */
-        List<RoutingTrace> routingTraces
+        List<RoutingTrace> routingTraces,
+        /** Planner-Executor worker：异步 runId（前端单独取消 worker 卡） */
+        String workerRunId,
+        /** harness H1 taskQueue 投影（执行单元 versionedId，如 t1-1/t1-2；与 tasks 同形，前端优先展示并加 T1-1 记号） */
+        List<TaskBoardItemView> taskQueue
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
         return StepMetadataAssembler.withTasks(tasks, revision, progress);
+    }
+
+    public static StepMetadata withTaskQueue(List<TaskBoardItemView> tasks, Integer revision, String progress) {
+        return StepMetadataAssembler.withTaskQueue(tasks, revision, progress);
     }
 
     public static StepMetadata fromRagToolOutput(String text) {
@@ -136,6 +144,10 @@ public record StepMetadata(
         return StepMetadataAssembler.withEditDiff(base, editDiff);
     }
 
+    public static StepMetadata withWorkerRunId(StepMetadata base, String runId) {
+        return StepMetadataAssembler.withWorkerRunId(base, runId);
+    }
+
     @JsonIgnore
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
@@ -158,12 +170,14 @@ public record StepMetadata(
                 && (tasks == null || tasks.isEmpty())
                 && taskRevision == null
                 && !StringUtils.hasText(taskProgress)
+                && (taskQueue == null || taskQueue.isEmpty())
                 && !StringUtils.hasText(sandboxPath)
                 && !StringUtils.hasText(sandboxSearchRoot)
                 && !StringUtils.hasText(spawnPrompt)
                 && (cancellable == null || !cancellable)
                 && editDiff == null
                 && decision == null
-                && (routingTraces == null || routingTraces.isEmpty());
+                && (routingTraces == null || routingTraces.isEmpty())
+                && !StringUtils.hasText(workerRunId);
     }
 }

@@ -1,6 +1,7 @@
 import { h, ref, watch } from 'vue'
 import { NIcon, type TreeDragInfo, type TreeOption } from 'naive-ui'
 import {
+  ChevronForwardOutline,
   DocumentTextOutline,
   FolderOpenOutline,
   FolderOutline,
@@ -35,12 +36,12 @@ export function useSandboxFileTree(options: UseSandboxFileTreeOptions) {
   /** 加载超时标记：由抽屉层触发「自动返回」（关闭抽屉） */
   const timedOut = ref(false)
 
+  /** 目录图标槽：默认文件夹图标，hover 时替换为展开箭头（样式切换见 SandboxFileTreePane） */
   function dirIcon(expanded: boolean) {
-    return () => h(NIcon, {
-      component: expanded ? FolderOpenOutline : FolderOutline,
-      size: 14,
-      class: 'tree-icon-dir',
-    })
+    return () => h('span', { class: 'tree-dir-slot' }, [
+      h(NIcon, { component: expanded ? FolderOpenOutline : FolderOutline, size: 14, class: 'tree-icon-dir' }),
+      h(NIcon, { component: ChevronForwardOutline, size: 14, class: 'tree-icon-arrow' }),
+    ])
   }
 
   function fileIcon() {

@@ -4,6 +4,8 @@ import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.hitl.HitlParamSupport;
+import com.sunshine.orchestrator.plan.harness.PlannerActionTool;
+import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.DecisionLabels;
@@ -167,7 +169,16 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         if (groups == null) {
             return;
         }
-        int staticSum = groups.values().stream().mapToInt(Integer::intValue).sum();
+        // staticSum 只算 PromptComposer 注入的静态层（system/rules/skills/contextLayers）；
+        // messages 与 tools 是每轮动态算的，不能混入基线，否则多轮累计时会被重复计入。
+        int staticSum = 0;
+        for (Map.Entry<String, Integer> e : groups.entrySet()) {
+            String k = e.getKey();
+            if ("messages".equals(k) || "tools".equals(k) || "other".equals(k)) {
+                continue;
+            }
+            staticSum += e.getValue() == null ? 0 : e.getValue();
+        }
         int all = contextGroupEstimator.estimateMessages(messages);
         groups.put("messages", Math.max(0, all - staticSum));
         groups.put("tools", contextGroupEstimator.estimateTools(tools));
@@ -337,6 +348,7 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             }
             if (RequestDecisionTool.NAME.equals(toolName)
                     || SpawnSubagentTool.NAME.equals(toolName)
+                    || WorkerDispatchTool.NAME.equals(toolName)
                     || TodoTasksBridge.isTodoWrite(toolName)) {
                 // 元工具不上 tool-* 步，但仍须绑定 toolUse→bridge，供 AgentTool 多会话定位 messageId
                 StepEventBridge.bindToolUseBridge(tu.getId(), bridgeId);
@@ -582,6 +594,30 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             summaryLine = AwaitToolRunLabels.after();
             expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
             meta = null;
+        } else if (PlannerActionTool.ASSESS_TOOL.equals(toolName)) {
+            // Planner 元工具 self_assess：主行直接用工具中文名「评估进展」，避免回退到 timeline.steps.tool 的「{displayName}完成」模板造成冗余后缀
+            summaryLine = toolCatalogService.displayName(toolName);
+            Map<String, Object> input = toolInput(toolUse);
+            String detail = buildSelfAssessDetail(input);
+            expandDetail = StringUtils.hasText(detail) ? detail : ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            meta = null;
+        } else if (PlannerActionTool.PLAN_TOOL.equals(toolName)) {
+            // Planner 元工具 plan_submit：主行直接用工具中文名「提交调度计划」，避免回退到 timeline.steps.tool 的「{displayName}完成」模板造成冗余后缀
+            summaryLine = toolCatalogService.displayName(toolName);
+            Map<String, Object> input = toolInput(toolUse);
+            String detail = buildPlanSubmitDetail(input);
+            expandDetail = StringUtils.hasText(detail) ? detail : ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            meta = null;
+        } else if (PlannerActionTool.STATUS_TOOL.equals(toolName)) {
+            // Planner 元工具 task_status：主行中文名，展开显示任务状态元数据 JSON
+            summaryLine = toolCatalogService.displayName(toolName);
+            expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            meta = null;
+        } else if (AsyncStatusTool.NAME.equals(toolName)) {
+            // 通用元工具 async_status：主行中文名，展开显示异步 run 状态元数据 JSON
+            summaryLine = toolCatalogService.displayName(toolName);
+            expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            meta = null;
         } else {
             summaryLine = toolCatalogService.timelineSummary(toolName, rawText);
             expandDetail = ToolExpandDetailSupport.resolveExpandDetail(summaryLine, rawText);
@@ -603,6 +639,68 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         StepEventBridge.unbindToolUseBridge(toolUseId);
     }
 
+    /**
+     * self_assess 详情：评估说明 = 进度 + 决策方向 + reason。
+     * 让用户一眼看清「评估进展」背后是「直接回答」/「继续下一波」/「需要重规划」
+     * 以及关键依据 reason（≤240 字）。主行走工具中文名（「评估进展」）。
+     */
+    private String buildSelfAssessDetail(Map<String, Object> input) {
+        if (input == null || input.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        String direction = stringInput(input, "nextDirection");
+        Object completion = input.get("goalCompletion");
+        if (completion instanceof Number n) {
+            double pct = Math.max(0.0, Math.min(1.0, n.doubleValue())) * 100;
+            sb.append(String.format("进度 %.0f%%", pct));
+        }
+        if (StringUtils.hasText(direction)) {
+            String dir = direction.strip();
+            String dirLabel;
+            switch (dir) {
+                case "continue" -> dirLabel = "继续下一波";
+                case "replan" -> dirLabel = "需要重规划";
+                case "answer" -> dirLabel = "直接回答";
+                default -> dirLabel = dir;
+            }
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append("决策 ").append(dirLabel);
+        }
+        String reason = stringInput(input, "reason");
+        if (StringUtils.hasText(reason)) {
+            String text = reason.strip();
+            if (text.length() > 240) {
+                text = text.substring(0, 240) + "…";
+            }
+            if (sb.length() > 0) sb.append("\n");
+            sb.append("评估说明：").append(text);
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * plan_submit 详情：列出本波任务 taskId + label 前 8 条。
+     */
+    private String buildPlanSubmitDetail(Map<String, Object> input) {
+        if (input == null) return null;
+        Object tasks = input.get("tasks");
+        if (!(tasks instanceof List<?> list) || list.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        int max = Math.min(list.size(), 8);
+        for (int i = 0; i < max; i++) {
+            if (sb.length() > 0) sb.append('\n');
+            Object item = list.get(i);
+            if (item instanceof Map<?, ?> m) {
+                String id = m.get("taskId") != null ? m.get("taskId").toString() : "";
+                String label = m.get("label") != null ? m.get("label").toString() : "";
+                sb.append("· ").append(id).append(" · ").append(label);
+            }
+        }
+        if (list.size() > max) {
+            sb.append("\n…（共 ").append(list.size()).append(" 项，已展示前 ").append(max).append("）");
+        }
+        return sb.toString();
+    }
+
     private void registerCancellable(String bridgeId, String toolName, String toolUseId, Map<String, Object> input) {
         String messageId = StepEventBridge.hitlAssistantMessageId(bridgeId);
         if (!StringUtils.hasText(messageId)) {
@@ -619,6 +717,16 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             return null;
         }
         return sandboxTimelineLabels.active(toolName, toolCatalogService.displayName(toolName), input);
+    }
+
+    /** 兼容 Map / JsonNode 嵌值；返回纯文本或 null */
+    private static String stringInput(Map<String, Object> input, String key) {
+        if (input == null) return null;
+        Object v = input.get(key);
+        if (v == null) return null;
+        if (v instanceof String s) return s;
+        if (v instanceof com.fasterxml.jackson.databind.JsonNode node) return node.asText();
+        return v.toString();
     }
 
     private static Map<String, Object> toolInput(ToolUseBlock toolUse) {

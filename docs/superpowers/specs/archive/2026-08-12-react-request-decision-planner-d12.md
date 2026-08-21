@@ -1,7 +1,7 @@
-# 4.7.9 D12 — Planner MAIN 注册 `request_decision`（延后）
+# 4.7.9 D12 — Planner MAIN 注册 `request_decision`
 
-> **状态**：⬜ 未实施（open）  
-> **日期**：2026-08-12  
+> **状态**：✅ 已实现（Planner MAIN 注册 / 续跑 / 时间线；Chat MAIN 不重开）  
+> **日期**：2026-08-12 · **落地**：2026-08-21  
 > **父文档**：[archive/2026-07-28-react-request-decision-design.md](./archive/2026-07-28-react-request-decision-design.md) · 契约 SSOT：[archive/2026-08-11-request-decision-cursor-align-design.md](./archive/2026-08-11-request-decision-cursor-align-design.md)  
 > **范围**：仅 **Planner-Executor MAIN** 注册 / 续跑 / 时间线；Chat ReAct MAIN 已 ✅，不在此重开
 

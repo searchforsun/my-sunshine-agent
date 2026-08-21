@@ -8,6 +8,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
@@ -22,36 +24,48 @@ class CancellableToolRunRegistryTest {
     @BeforeEach
     void setUp() {
         AgentSandboxProperties props = new AgentSandboxProperties();
-        props.setCancelMaxFollowups(3);
         registry = new CancellableToolRunRegistry(sandboxClient, props);
     }
 
     @Test
     void cancel_marksAndCallsSandbox() {
-        registry.register("tu-1", "msg-1", SandboxIds.EXEC, "sess-1", "tu-1");
+        registry.register("tu-1", "msg-1", SandboxIds.EXEC, "sess-1", "tu-1", "sleep 9");
         assertThat(registry.cancel("tu-1")).isTrue();
         assertThat(registry.isCancelled("tu-1")).isTrue();
         verify(sandboxClient).cancelInvocation("sess-1", "tu-1");
-        assertThat(registry.remainingFollowups("msg-1")).isEqualTo(3);
     }
 
     @Test
-    void followupBudget_allowsThreeThenRejects() {
-        registry.register("tu-0", "msg-1", SandboxIds.EXEC, "sess-1", "tu-0");
+    void sameCommand_afterCancel_rejected() {
+        // v17.13 方案 A：取消后同命令原样重试禁绝
+        registry.register("tu-0", "msg-1", SandboxIds.EXEC, "sess-1", "tu-0", "sleep 9");
         registry.cancel("tu-0");
         registry.unregister("tu-0");
 
-        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.EXEC)).isTrue();
-        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.GREP)).isTrue();
-        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.GLOB)).isTrue();
-        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.EXEC)).isFalse();
-        assertThat(registry.remainingFollowups("msg-1")).isEqualTo(0);
+        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.EXEC, Map.of("command", "sleep 9")))
+                .isFalse();
     }
 
     @Test
-    void withoutCancel_budgetNotActive() {
-        assertThat(registry.tryConsumeFollowup("msg-x", SandboxIds.EXEC)).isTrue();
-        assertThat(registry.tryConsumeFollowup("msg-x", SandboxIds.EXEC)).isTrue();
+    void differentCommandOrTool_afterCancel_allowed() {
+        registry.register("tu-0", "msg-1", SandboxIds.EXEC, "sess-1", "tu-0", "sleep 9");
+        registry.cancel("tu-0");
+        registry.unregister("tu-0");
+
+        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.EXEC, Map.of("command", "ls -la")))
+                .isTrue();
+        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.GREP, Map.of("pattern", "TODO")))
+                .isTrue();
+        assertThat(registry.tryConsumeFollowup("msg-1", SandboxIds.GLOB, Map.of("pattern", "*.java")))
+                .isTrue();
+    }
+
+    @Test
+    void withoutCancel_notBlocked() {
+        assertThat(registry.tryConsumeFollowup("msg-x", SandboxIds.EXEC, Map.of("command", "sleep 9")))
+                .isTrue();
+        assertThat(registry.tryConsumeFollowup("msg-x", SandboxIds.EXEC, Map.of("command", "sleep 9")))
+                .isTrue();
     }
 
     @Test

@@ -63,7 +63,22 @@ public class GenerationStreamService {
 
         redis.opsForStream().add(record);
         redis.opsForHash().put(metaKey(generationId), "lastSeq", String.valueOf(seq));
+        trimStreamIfNeeded(eventsKey, seq);
         refreshTtl(generationId);
+    }
+
+    /**
+     * 近似裁剪事件流：长任务（pro/Planner-Executor）单 generation 可达数万条大 chunk
+     * （spawnPrompt/content 每条约 KB），无界增长会撑爆 Redis maxmemory 触发 LRU 逐出
+     * （曾逐出 meta hash 导致续连 SSE 500）。订阅方始终从 lastSeq 之后增量读、DB 有
+     * steps 兜底，裁剪旧条目不影响续连。仅周期执行降低写放大。
+     */
+    private void trimStreamIfNeeded(String eventsKey, long seq) {
+        long maxStreamLen = properties.maxStreamLen();
+        if (maxStreamLen <= 0 || seq % 128 != 0) {
+            return;
+        }
+        redis.opsForStream().trim(eventsKey, maxStreamLen, true);
     }
 
     public void updateStatus(String generationId, GenerationStatus status) {
@@ -76,7 +91,12 @@ public class GenerationStreamService {
         if (raw.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(toMeta(generationId, raw));
+        GenerationMeta meta = toMeta(generationId, raw);
+        // status 解析失败（meta 被逐出/残缺）视为不存在：续连 SSE 走 empty 分支正常收尾
+        if (meta.status() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(meta);
     }
 
     public List<StreamEvent> readFrom(String generationId, long afterSeq, int count) {
@@ -184,10 +204,23 @@ public class GenerationStreamService {
                 stringField(raw, "messageId"),
                 stringField(raw, "userId"),
                 stringField(raw, "tenantId"),
-                GenerationStatus.valueOf(stringField(raw, "status")),
+                parseStatus(raw),
                 longField(raw, "lastSeq"),
                 stringField(raw, "intent")
         );
+    }
+
+    /**
+     * Redis 内存逐出等异常下 meta hash 可能残缺（仅剩 lastSeq），status 缺失或非法时
+     * 整体视为不存在——由 {@link #getMeta} 返回 empty，续连 SSE 正常收尾而非 500 崩溃。
+     */
+    private GenerationStatus parseStatus(Map<Object, Object> raw) {
+        String status = stringField(raw, "status");
+        try {
+            return GenerationStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static StreamEvent toStreamEvent(MapRecord<String, Object, Object> record) {

@@ -304,4 +304,14 @@ public final class StepEventBridge {
             java.util.function.Consumer<StreamToken> tokenConsumer) {
         registry.drainHookQueueToGeneration(messageId, tokenConsumer);
     }
+
+    /** Planner 内部调用（planNext/selfAssess）期间抑制 content flush 到 GenerationJob */
+    public static void suppressContentFlush(String messageId) {
+        registry.suppressContentFlush(messageId);
+    }
+
+    /** 解除 content 抑制 */
+    public static void unsuppressContentFlush(String messageId) {
+        registry.unsuppressContentFlush(messageId);
+    }
 }

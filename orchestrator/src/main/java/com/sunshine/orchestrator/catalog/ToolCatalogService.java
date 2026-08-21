@@ -89,7 +89,10 @@ public class ToolCatalogService {
     private static final Map<String, String> BUILTIN_TOOL_DISPLAY_NAMES = Map.of(
             "dispatch_worker", "调度执行单元",
             "plan_submit", "提交调度计划",
-            "self_assess", "评估进展"
+            "self_assess", "评估进展",
+            "task_status", "查询任务状态",
+            "async_status", "查询异步任务状态",
+            "await_tool_run", "等待结果"
     );
 
     public String displayName(String toolId) {

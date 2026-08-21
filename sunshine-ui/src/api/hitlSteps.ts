@@ -673,6 +673,10 @@ function findAgentNodeStep(
   if (nodeId.startsWith('subagent-')) {
     return steps?.find(s => s.id === nodeId)
   }
+  // Planner-Executor worker：抽屉用 step.id（worker-{taskId}）作 node.id
+  if (nodeId.startsWith('worker-')) {
+    return steps?.find(s => s.id === nodeId)
+  }
   const top = steps?.find(s => s.id === `node-${nodeId}`)
   if (top) return top
   const suffix = `node-${nodeId}`

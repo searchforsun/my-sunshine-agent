@@ -27,7 +27,8 @@
   R5      opt ：stop→paused 后 resume 同问卷 re-await → resolve（模型/时序敏感）
   D7      opt ：timeout-sec≤10 时才 hard；断言 outcome=timeout；否则 soft-skip
   D8/D9   soft：单测覆盖（SUB 硬拒 / options 校验）
-  D12     skip：Planner MAIN 延后
+  D12     hard：pro/Planner MAIN 调 request_decision → resolve → 继续 dispatch_worker → completed
+  D12R    opt ：Planner stop→paused 后 resume 同问卷 re-await（HarnessPlanner bind 路径）
 """
 from __future__ import annotations
 
@@ -102,6 +103,19 @@ R4_QUERY = (
     "第二次若工具返回错误 JSON 则停止，用一句话说明即可，不要再调第三次。"
 )
 R5_QUERY = R1_QUERY
+
+D12_QUESTIONS = (
+    '[{"id":"q1","prompt":"本次任务执行到什么深度？",'
+    '"options":[{"id":"quick","label":"快速：仅结构梳理"},'
+    '{"id":"deep","label":"深入：代码级分析"}],'
+    '"allowMultiple":false}]'
+)
+D12_QUERY = (
+    "请**先**调用 request_decision（仅此工具，不要先 plan_submit）："
+    "title=执行深度确认；"
+    f"questions={D12_QUESTIONS}。"
+    "等待用户选择后，再按所选深度 plan_submit 拆解任务并 dispatch_worker 执行，最后综合回答。"
+)
 
 
 def auth_json(method: str, path: str, body: dict | None, token: str | None) -> dict:
@@ -734,12 +748,144 @@ def run_d7(token: str, conv_id: str, query: str) -> dict:
     return {"pass": ok, "soft": True, "paused_count": len(paused), "outcome": outcome}
 
 
+def run_d12_planner(token: str, conv_id: str) -> dict:
+    """D12: pro/Planner MAIN 调 request_decision → resolve → 继续 dispatch_worker → completed。"""
+    print(f"\n[D12] Planner MAIN request_decision → resolve → worker → completed")
+    coll = chat_sse_live(token, conv_id, D12_QUERY, preference="pro", wait=False)
+    try:
+        coll.wait_until(
+            lambda c: bool(c.generation_id) and len(awaiting_decisions(c.steps)) >= 1,
+            timeout=min(TIMEOUT_SEC, 150),
+        )
+    except TimeoutError as e:
+        hint_enabled()
+        return {"pass": False, "error": f"Planner 未出 decision 卡: {e}",
+                "steps_sample": [s.get("id") for s in coll.steps[:16]]}
+    step = awaiting_decisions(coll.steps)[0]
+    qs = decision_questions(step)
+    d_token = extract_token(step)
+    gen_id = coll.generation_id
+    print(f"  awaiting questions={len(qs)} gen={gen_id}")
+    if not d_token or not gen_id or not qs:
+        cancel_generation(token, gen_id) if gen_id else None
+        coll.wait_done(10)
+        return {"pass": False, "error": "missing questions/token/generationId"}
+
+    qid = str(qs[0].get("id") or "q1")
+    opts = [str(o.get("id")) for o in (qs[0].get("options") or []) if o.get("id")]
+    if not opts:
+        cancel_generation(token, gen_id)
+        coll.wait_done(10)
+        return {"pass": False, "error": "no options on decision card"}
+    resp = resolve_decision(
+        token, gen_id, d_token,
+        [{"questionId": qid, "selectedOptionIds": [opts[0]]}],
+    )
+    print(f"  resolve status={resp.status_code} chosen={opts[0]}")
+    if resp.status_code >= 400:
+        coll.wait_done(10)
+        return {"pass": False, "resolve_status": resp.status_code}
+
+    coll.wait_done(TIMEOUT_SEC + 60)
+    assistant = wait_assistant(token, conv_id, min(TIMEOUT_SEC, 260))
+    worker_cards = [s for s in coll.steps if str(s.get("id") or "").startswith("worker-")]
+    done_cards = [s for s in collect_decision_steps(coll.steps)
+                  if str(s.get("lifecycle") or "") == "done"]
+    meta = decision_meta(done_cards[-1]) if done_cards else {}
+    hard_ok = (
+        str(assistant.get("status")) == "completed"
+        and meta.get("outcome") == "answered"
+        and len(worker_cards) >= 1
+    )
+    print(f"  outcome={meta.get('outcome')} msg={assistant.get('status')} worker_cards={len(worker_cards)}")
+    return {
+        "pass": hard_ok,
+        "outcome": meta.get("outcome"),
+        "message_status": assistant.get("status"),
+        "worker_cards": len(worker_cards),
+        "decision_cards": len(collect_decision_steps(coll.steps)),
+    }
+
+
+def run_d12_planner_resume(token: str, conv_id: str) -> dict:
+    """D12 opt: Planner stop→paused 后 resume 同问卷 re-await（HarnessPlanner bind DecisionResumeSteps 路径）。"""
+    print(f"\n[D12R opt] Planner stop → resume re-await same questionnaire")
+    coll = chat_sse_live(token, conv_id, D12_QUERY, preference="pro", wait=False)
+    try:
+        coll.wait_until(
+            lambda c: bool(c.generation_id) and len(awaiting_decisions(c.steps)) >= 1,
+            timeout=min(TIMEOUT_SEC, 150),
+        )
+    except TimeoutError as e:
+        return {"pass": False, "soft": True, "error": f"Planner 未出 decision 卡: {e}"}
+    step = awaiting_decisions(coll.steps)[0]
+    q1 = decision_questions(step)
+    title1 = decision_meta(step).get("title")
+    gen_id = coll.generation_id
+    assert gen_id
+    cancel_generation(token, gen_id)
+    try:
+        msg = wait_assistant_status(token, conv_id, {"interrupted", "paused"}, max_wait=45)
+    except TimeoutError as e:
+        return {"pass": False, "soft": True, "error": f"stop: {e}"}
+
+    msg_id = msg.get("id")
+    print(f"  stopped status={msg.get('status')} msgId={msg_id} title={title1} qcount={len(q1)}")
+
+    resume = chat_sse_live(
+        token, conv_id, "", wait=False, preference="pro", resume_message_id=str(msg_id)
+    )
+    try:
+        resume.wait_until(
+            lambda c: len(awaiting_decisions(c.steps)) >= 1,
+            timeout=min(TIMEOUT_SEC, 150),
+        )
+    except TimeoutError as e:
+        return {"pass": False, "soft": True, "error": f"resume await: {e}"}
+
+    awaiting = awaiting_decisions(resume.steps)
+    q2 = decision_questions(awaiting[0])
+    same_q = (
+        [x.get("id") for x in q1] == [x.get("id") for x in q2]
+        and [x.get("prompt") for x in q1] == [x.get("prompt") for x in q2]
+    ) if q1 and q2 else True
+    d_token = extract_token(awaiting[0])
+    gen2 = resume.generation_id
+    print(f"  re-await same_questions={same_q} gen={gen2}")
+    if not d_token or not gen2:
+        return {"pass": False, "soft": True, "same_questions": same_q}
+
+    qid = str((q2[0] if q2 else {}).get("id") or "q1")
+    opts = [str(o.get("id")) for o in ((q2[0] if q2 else {}).get("options") or []) if o.get("id")]
+    resp = resolve_decision(
+        token, gen2, d_token,
+        [{"questionId": qid, "selectedOptionIds": [opts[0] if opts else "quick"]}],
+    )
+    resume.wait_done(TIMEOUT_SEC + 60)
+    assistant = wait_assistant(token, conv_id, min(TIMEOUT_SEC, 260))
+    meta = final_done_meta(resume.steps)
+    hard_ok = (
+        same_q
+        and resp.status_code < 400
+        and str(assistant.get("status")) == "completed"
+        and meta.get("outcome") == "answered"
+    )
+    return {
+        "pass": hard_ok,
+        "soft": True,
+        "same_questions": same_q,
+        "outcome": meta.get("outcome"),
+        "message_status": assistant.get("status"),
+        "resolve_status": resp.status_code,
+    }
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="4.7.9-r1 request_decision Live 验收（Cursor 对齐）")
     p.add_argument(
         "--suite",
         default="all",
-        help="用例：all | r1,r2,r3,r4,r5,d7（逗号分隔；兼容旧别名 d1/d3/d4/d11/d5d6）",
+        help="用例：all | r1,r2,r3,r4,r5,d7,d12,d12r（逗号分隔；兼容旧别名 d1/d3/d4/d11/d5d6）",
     )
     p.add_argument("--print-prompts", action="store_true", help="只打印提示词后退出")
     return p.parse_args()
@@ -770,6 +916,7 @@ def main() -> int:
         print("[R2]\n" + R2_QUERY + "\n")
         print("[R3]\n" + R3_QUERY + "\n")
         print("[R4]\n" + R4_QUERY + "\n")
+        print("[D12/D12R]\n" + D12_QUERY + "\n")
         return 0
 
     suite = parse_suite(args.suite)
@@ -777,7 +924,7 @@ def main() -> int:
     print("前置: decision.enabled=true + sync_nacos + restart orchestrator/bff")
     print("仓库默认 decision.enabled=false（D21）；验收后务必改回 false")
     print("[D8/D9] soft-skip: unit-tested (SUB 硬拒 / options 校验)")
-    print("[D12] SKIP: Planner MAIN deferred")
+    print("[D12] pro/Planner MAIN：request_decision → resolve → dispatch_worker → completed")
 
     try:
         r = requests.get(f"{GATEWAY_URL}/api/auth/login", timeout=5)
@@ -790,12 +937,13 @@ def main() -> int:
 
     report: dict = {
         "steps": {},
-        "skipped": ["D8", "D9", "D12"],
+        "skipped": ["D8", "D9"],
         "prompts": {
             "R1": R1_QUERY,
             "R2": R2_QUERY,
             "R3": R3_QUERY,
             "R4": R4_QUERY,
+            "D12": D12_QUERY,
         },
         "nacos_note": (
             "Live 前临时 decision.enabled=true → sync_nacos → restart；"
@@ -820,6 +968,12 @@ def main() -> int:
 
     if "d7" in suite:
         report["steps"]["D7"] = run_d7(token, new_conversation(token), R1_QUERY)
+
+    if "d12" in suite:
+        report["steps"]["D12"] = run_d12_planner(token, new_conversation(token))
+
+    if "d12r" in suite:
+        report["steps"]["D12R"] = run_d12_planner_resume(token, new_conversation(token))
 
     hard_failed = [
         k for k, v in report["steps"].items()

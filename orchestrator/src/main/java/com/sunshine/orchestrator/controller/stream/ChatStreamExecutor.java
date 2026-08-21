@@ -4,7 +4,6 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
 import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
-import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.client.StreamTokenCoalescer;
@@ -57,7 +56,6 @@ public class ChatStreamExecutor {
     private final ConversationService conversationService;
     private final ConversationTitleService titleService;
     private final GenerationFlushScheduler flushScheduler;
-    private final DesensitizeClient desensitizeClient;
     private final ContextLifecycle contextLifecycle;
 
     @Value("${agent.generation.flush-interval-ms:500}")
@@ -96,7 +94,8 @@ public class ChatStreamExecutor {
         }
         QueryRewriteTrace.bind(ctx.assistantMsgId());
         ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent(), executionMode);
-        var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
+        var appender = flushScheduler.createChunkAppender(
+                buffer, ctx.assistantMsgId(), flushIntervalMs, buffer.length());
 
         Flux<ServerSentEvent<String>> meta = Flux.just(
                 sse(flushScheduler.metaConversation(ctx.conversationId())),
@@ -122,7 +121,8 @@ public class ChatStreamExecutor {
                         return;
                     }
                     if (token.isContent()) {
-                        appender.accept(desensitizeClient.scrub(token.text()));
+                        // 脱敏由 flush 批量执行（间隔级），避免每 token 一次远程 scrub
+                        appender.accept(token.text());
                     } else if (token.isReasoning()) {
                         reasoningBuffer.append(token.text());
                     }

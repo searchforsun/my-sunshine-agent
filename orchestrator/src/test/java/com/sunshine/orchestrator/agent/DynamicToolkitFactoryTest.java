@@ -39,6 +39,8 @@ class DynamicToolkitFactoryTest {
     @Mock
     private AwaitToolRunTool awaitToolRunTool;
     @Mock
+    private AsyncStatusTool asyncStatusTool;
+    @Mock
     private ThinkSummaryTool thinkSummaryTool;
     @Mock
     private GenericRemoteToolFactory remoteToolFactory;
@@ -152,20 +154,76 @@ class DynamicToolkitFactoryTest {
     }
 
     @Test
-    void buildForPlanner_doesNotRegisterRequestDecisionOrSpawn() {
-        when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
+    void buildForWorker_registersAsyncMetaTools_andSubagent() {
+        // v17.12：Worker = SUB 基础（RAG/沙箱/think_summary）+ await_tool_run + async_status + spawn_subagent；
+        // 不注册 request_decision（用户决策归主链）。
+        List<AgentTool> sandboxTools = stubSandboxTools();
         when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(awaitToolRunTool.getName()).thenReturn(AwaitToolRunTool.NAME);
+        when(asyncStatusTool.getName()).thenReturn(AsyncStatusTool.NAME);
+        when(sandboxAgentTools.all()).thenReturn(sandboxTools);
         when(executionProperties.getReact()).thenReturn(reactProps);
-        when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent() {{
             setEnabled(true);
         }});
-        when(sandboxAgentTools.all()).thenReturn(List.of());
+        when(reactProps.getAsyncTool()).thenReturn(new AgentExecutionProperties.React.AsyncTool());
+
+        var toolkit = factory.buildForWorker(List.of("ghost_tool"), "default", null, "u1");
+
+        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
+        assertThat(toolkit.getToolNames()).contains(AwaitToolRunTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(AsyncStatusTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(SpawnSubagentTool.NAME);
+        assertThat(toolkit.getToolNames()).doesNotContain(RequestDecisionTool.NAME);
+    }
+
+    @Test
+    void buildForPlanner_withDecisionEnabled_registersRequestDecision() {
+        // D12：Planner MAIN 与 Chat MAIN 同契约——decision.enabled 下注册 request_decision；
+        // spawn_subagent 仍不注入（用户决策归主链，不派发子 Agent）。
+        org.mockito.Mockito.lenient().when(toolSetResolver.resolveDefaultTools("default", null)).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(requestDecisionTool.getName()).thenReturn(RequestDecisionTool.NAME);
+        org.mockito.Mockito.lenient().when(executionProperties.getReact()).thenReturn(reactProps);
+        org.mockito.Mockito.lenient().when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
+            setEnabled(true);
+        }});
+        org.mockito.Mockito.lenient().when(reactProps.getAsyncTool())
+                .thenReturn(new AgentExecutionProperties.React.AsyncTool());
+        org.mockito.Mockito.lenient().when(awaitToolRunTool.getName()).thenReturn(AwaitToolRunTool.NAME);
+        org.mockito.Mockito.lenient().when(asyncStatusTool.getName()).thenReturn(AsyncStatusTool.NAME);
+
+        var toolkit = factory.buildForPlanner("default", null, "u1");
+
+        assertThat(toolkit.getToolNames()).contains(RequestDecisionTool.NAME);
+        assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
+        // Planner 只持有动作元工具（plan_submit / self_assess / dispatch_worker / think_summary / request_decision / await_tool_run / async_status）；
+        // await_tool_run 用于收集 Worker handoff（dispatch_worker 强制异步），缺失会导致 Planner 空转幻构工具名。
+        assertThat(toolkit.getToolNames()).contains(AwaitToolRunTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(AsyncStatusTool.NAME);
+        // 不暴露业务工具（沙箱 / search_knowledge / 财务 / OA 等）以保持「纯规划」边界。
+        assertThat(toolkit.getToolNames()).doesNotContain(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).doesNotContain("sandbox__exec");
+    }
+
+    @Test
+    void buildForPlanner_withDecisionDisabled_doesNotRegisterRequestDecision() {
+        // D12：decision.enabled=false 时 Planner 不注册 request_decision（与 Chat MAIN 同契约）。
+        org.mockito.Mockito.lenient().when(executionProperties.getReact()).thenReturn(reactProps);
+        org.mockito.Mockito.lenient().when(reactProps.getDecision()).thenReturn(new AgentExecutionProperties.React.Decision() {{
+            setEnabled(false);
+        }});
+        org.mockito.Mockito.lenient().when(reactProps.getAsyncTool())
+                .thenReturn(new AgentExecutionProperties.React.AsyncTool());
+        org.mockito.Mockito.lenient().when(awaitToolRunTool.getName()).thenReturn(AwaitToolRunTool.NAME);
+        org.mockito.Mockito.lenient().when(asyncStatusTool.getName()).thenReturn(AsyncStatusTool.NAME);
 
         var toolkit = factory.buildForPlanner("default", null, "u1");
 
         assertThat(toolkit.getToolNames()).doesNotContain(RequestDecisionTool.NAME);
-        assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
-        assertThat(toolkit.getToolNames()).contains(RagTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(AwaitToolRunTool.NAME);
+        assertThat(toolkit.getToolNames()).contains(AsyncStatusTool.NAME);
     }
 
     @Test

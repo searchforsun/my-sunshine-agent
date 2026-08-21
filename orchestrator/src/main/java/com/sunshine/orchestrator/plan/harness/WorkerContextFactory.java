@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.plan.harness;
 
-import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
@@ -24,21 +23,8 @@ public class WorkerContextFactory {
 
     private final PromptCatalogHolder catalogHolder;
 
-    /** brief 三参契约；白名单说明为空列表时的固定 note。 */
-    public AssembledContext build(PlanNotebook nb, TaskItem task, AgentExecutionProperties.Harness harness) {
-        return build(nb, task, harness, List.of());
-    }
-
-    /**
-     * @param toolWhitelist 写入稳定前缀的白名单说明（同一 plan run 内应固定；upstream 变化不得影响本块）
-     */
-    public AssembledContext build(
-            PlanNotebook nb,
-            TaskItem task,
-            AgentExecutionProperties.Harness harness,
-            List<String> toolWhitelist) {
-        // nb/harness 保留签名供 Loop 接线；稳定前缀仅依赖 task 契约 + whitelist + Catalog 模板
-        String stable = buildStablePrefix(task, toolWhitelist != null ? toolWhitelist : List.of());
+    public AssembledContext build(TaskItem task) {
+        String stable = buildStablePrefix(task);
         return AssembledContext.forWorker(stable, "");
     }
 
@@ -68,31 +54,17 @@ public class WorkerContextFactory {
         return sb.toString().strip();
     }
 
-    String buildStablePrefix(TaskItem task, List<String> toolWhitelist) {
+    String buildStablePrefix(TaskItem task) {
         String template = catalogHolder.requireText(CATALOG_ID);
         String taskGoal = task != null && task.label() != null ? task.label() : "";
         String constraints = task != null && task.constraints() != null ? task.constraints() : "";
         String expectedOutput = task != null && task.expectedOutput() != null ? task.expectedOutput() : "";
         String successCriteria = task != null && task.successCriteria() != null ? task.successCriteria() : "";
-        String filled = template
+        return template
                 .replace("{{taskGoal}}", taskGoal)
                 .replace("{{constraints}}", constraints)
                 .replace("{{expectedOutput}}", expectedOutput)
                 .replace("{{successCriteria}}", successCriteria);
-        return filled.strip() + "\n\n## 工具白名单\n" + formatWhitelistNote(toolWhitelist);
-    }
-
-    private static String formatWhitelistNote(List<String> toolWhitelist) {
-        if (toolWhitelist == null || toolWhitelist.isEmpty()) {
-            return "仅允许使用平台下发白名单中的工具（本单元未枚举具体 ID）。";
-        }
-        StringBuilder sb = new StringBuilder("仅允许使用以下工具：\n");
-        for (String id : toolWhitelist) {
-            if (StringUtils.hasText(id)) {
-                sb.append("- ").append(id.strip()).append('\n');
-            }
-        }
-        return sb.toString().strip();
     }
 
     /** dependsOn 顺序；同一 taskId 取 rounds 中最新一条非空 summary。 */

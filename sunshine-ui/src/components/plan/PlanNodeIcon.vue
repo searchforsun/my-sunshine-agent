@@ -61,6 +61,12 @@ const kind = computed(() => {
       />
     </template>
 
+    <!-- worker：执行单元（播放环） -->
+    <template v-else-if="kind === 'worker'">
+      <circle cx="8" cy="8" r="5.25" stroke="currentColor" stroke-width="1.25" />
+      <path d="M6.8 5.6v4.8l4-2.4-4-2.4z" fill="currentColor" stroke="none" />
+    </template>
+
     <!-- agent：子 Agent -->
     <template v-else-if="kind === 'agent'">
       <path
@@ -244,6 +250,10 @@ const kind = computed(() => {
 
 .is-agent {
   color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-gold, #dbb84a));
+}
+
+.is-worker {
+  color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-blue, #58a6ff));
 }
 
 .is-llm {
