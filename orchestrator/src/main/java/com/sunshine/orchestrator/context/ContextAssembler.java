@@ -86,7 +86,8 @@ public class ContextAssembler {
                 mid,
                 near,
                 l3Block != null ? l3Block : "",
-                resolveProjectGuide(request.conversationId()));
+                resolveProjectGuide(request.conversationId()),
+                "");
         AssembledContext trimmed = applyBudget(assembled, budgetTokens, tokenEstimator);
 
         log.debug("[Context] assemble conv={} l2={} far={} mid={} near={} l3={} guide={}",
@@ -141,7 +142,8 @@ public class ContextAssembler {
                 ctx.midTurns(),
                 ctx.nearTurns(),
                 "",
-                ctx.projectGuideBlock());
+                ctx.projectGuideBlock(),
+                "");
         if (estimator.countAssembled(dropL3) <= maxTokens) {
             return dropL3;
         }
@@ -151,7 +153,8 @@ public class ContextAssembler {
                 ctx.midTurns(),
                 ctx.nearTurns(),
                 "",
-                ctx.projectGuideBlock());
+                ctx.projectGuideBlock(),
+                "");
         if (estimator.countAssembled(dropFar) <= maxTokens) {
             return dropFar;
         }
@@ -159,7 +162,7 @@ public class ContextAssembler {
                 ? new ArrayList<>(ctx.midTurns())
                 : new ArrayList<>();
         while (!mid.isEmpty() && estimator.countAssembled(new AssembledContext(
-                ctx.l2SystemBlock(), "", mid, ctx.nearTurns(), "", ctx.projectGuideBlock())) > maxTokens) {
+                ctx.l2SystemBlock(), "", mid, ctx.nearTurns(), "", ctx.projectGuideBlock(), "")) > maxTokens) {
             mid.remove(0);
         }
         return new AssembledContext(
@@ -168,7 +171,8 @@ public class ContextAssembler {
                 List.copyOf(mid),
                 ctx.nearTurns(),
                 "",
-                ctx.projectGuideBlock());
+                ctx.projectGuideBlock(),
+                "");
     }
 
     @SafeVarargs

@@ -3,17 +3,18 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.conversation.ChatTurn;
 import java.util.List;
 
-/** L1 Mid/Near 轮次 + L2/Far/L3 system 块。SUB 用 empty/forSubAgent；PLANNER 复用 assemble + H1 injectedBlocks；WORKER 用 forWorker。 */
+/** L1 Mid/Near 轮次 + L2/Far/L3 system 块 + 任务板恢复块。SUB 用 empty/forSubAgent；PLANNER 复用 assemble + H1 injectedBlocks；WORKER 用 forWorker。 */
 public record AssembledContext(
         String l2SystemBlock,
         String farSummaryBlock,
         List<ChatTurn> midTurns,
         List<ChatTurn> nearTurns,
         String l3MaterialBlock,
-        String projectGuideBlock
+        String projectGuideBlock,
+        String taskListRestoreBlock
 ) {
     public static AssembledContext empty() {
-        return new AssembledContext("", "", List.of(), List.of(), "", "");
+        return new AssembledContext("", "", List.of(), List.of(), "", "", "");
     }
 
     public static AssembledContext forSubAgent() {
@@ -26,22 +27,28 @@ public record AssembledContext(
      */
     public static AssembledContext forWorker(String stablePrefixBlock, String dynamicQueryBlock) {
         String guide = stablePrefixBlock != null ? stablePrefixBlock : "";
-        return new AssembledContext("", "", List.of(), List.of(), "", guide);
+        return new AssembledContext("", "", List.of(), List.of(), "", guide, "");
     }
 
-    /** 5 参便捷构造：无项目规范块（测试/直连路径用）。 */
+    /** 5 参便捷构造：无项目规范块、无任务板恢复块（测试/直连路径用）。 */
     public AssembledContext(
             String l2SystemBlock,
             String farSummaryBlock,
             List<ChatTurn> midTurns,
             List<ChatTurn> nearTurns,
             String l3MaterialBlock) {
-        this(l2SystemBlock, farSummaryBlock, midTurns, nearTurns, l3MaterialBlock, "");
+        this(l2SystemBlock, farSummaryBlock, midTurns, nearTurns, l3MaterialBlock, "", "");
+    }
+
+    /** 任务板恢复块：跨轮复用任务板，render 顺序位于 Near 之后、L3 之前。 */
+    public AssembledContext withTaskListRestoreBlock(String block) {
+        return new AssembledContext(l2SystemBlock, farSummaryBlock, midTurns, nearTurns,
+                l3MaterialBlock, projectGuideBlock, block == null ? "" : block);
     }
 
     public boolean hasAnyLayer() {
         return hasText(l2SystemBlock) || hasText(farSummaryBlock) || hasText(l3MaterialBlock)
-                || hasText(projectGuideBlock)
+                || hasText(projectGuideBlock) || hasText(taskListRestoreBlock)
                 || (midTurns != null && !midTurns.isEmpty())
                 || (nearTurns != null && !nearTurns.isEmpty());
     }

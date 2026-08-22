@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * AssembledContext → Gateway messages。
- * 顺序：system(ProjectGuide) → system(L2 + layerPrompt/usage) → system(Far) → Mid → Near → system(L3)。
+ * 顺序：system(ProjectGuide) → system(L2 + layerPrompt/usage) → system(Far) → Mid → Near → system(TaskListRestore) → system(L3)。
  */
 public final class ContextMessageBuilder {
 
@@ -29,6 +29,7 @@ public final class ContextMessageBuilder {
         addSystemIfText(messages, context.farSummaryBlock());
         appendTurns(messages, context.midTurns());
         appendTurns(messages, context.nearTurns());
+        addSystemIfText(messages, context.taskListRestoreBlock());
         addSystemIfText(messages, context.l3MaterialBlock());
     }
 

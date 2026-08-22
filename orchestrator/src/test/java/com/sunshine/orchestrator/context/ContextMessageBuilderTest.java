@@ -58,4 +58,20 @@ class ContextMessageBuilderTest {
         assertThat(msgs).hasSize(1);
         assertThat(msgs.get(0)).containsEntry("role", "user").containsEntry("content", "only-near");
     }
+
+    @Test
+    void appendAll_rendersTaskListRestoreBlock_beforeL3() {
+        var ctx = new AssembledContext("", "FAR", List.of(),
+                List.of(new ChatTurn("user", "near-msg")), "L3-material")
+                .withTaskListRestoreBlock("【任务板】\n进度：0/1 已完成\n- [pending] 步骤一\n接着未完成项继续；勿重建整个任务板。");
+        List<Map<String, Object>> messages = new ArrayList<>();
+        ContextMessageBuilder.appendAll(messages, ctx, "", "");
+        List<String> contents = messages.stream().map(m -> String.valueOf(m.get("content"))).toList();
+        int nearIdx = contents.indexOf("near-msg");
+        int boardIdx = contents.indexOf("【任务板】\n进度：0/1 已完成\n- [pending] 步骤一\n接着未完成项继续；勿重建整个任务板。");
+        int l3Idx = contents.indexOf("L3-material");
+        assertThat(nearIdx).isGreaterThan(-1);
+        assertThat(boardIdx).isGreaterThan(nearIdx);
+        assertThat(l3Idx).isGreaterThan(boardIdx);
+    }
 }
