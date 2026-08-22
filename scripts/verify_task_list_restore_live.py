@@ -13,7 +13,7 @@
   1) 数据谓词：最近快照含未完成项（注入前置）+ 快照行数不随普通轮次增长（只读红线）；
   2) 进度文本一致：审计 react.taskboard.final payload 的 summary 必须等于按 DB 快照复算的
      「进度：N/M 已完成」进度串，且 payload items 与快照 items 一致（persistFinal 同源 state，
-     块渲染数据源确定性可断言；按 brief 要求把审计 payload 当 Prompt 组装证据）；
+     块渲染数据源确定性可断言；等待条件以最近快照行 message_id 为键排除 T1 轮陈旧 payload）；
   3) 行为必要条件：T2 仅发「继续」，模型回复必须引用未完成项关键词（块内容本身），
      缺失即判定恢复块注入失效 → 硬失败。
 T3 存在未真正验证的场景（含 T3-demo 全流程未达全 terminal）时输出 INCONCLUSIVE（exit 2），
@@ -281,11 +281,16 @@ def render_expected_block(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def audit_final_payloads(conv_id: str) -> dict:
-    """取该会话最近一条 react.taskboard.final 审计 payload（T2 进度文本证据源；MQ→DB 异步需轮询）。"""
+def audit_payload_for_message(conv_id: str, message_id: str) -> dict:
+    """取指定 message_id 的 react.taskboard.final 审计 payload（T2 进度文本证据源；MQ→DB 异步需轮询）。
+
+    persistFinal 以 assistantMsgId 为 message_id 同时写 task_board 快照行与审计事件，
+    故以该 message_id 为键可精确定位「本轮」payload，天然排除 T1 轮陈旧行。
+    """
     sql = (
         "SELECT payload FROM chat_audit_log WHERE conversation_id='" + sql_escape(conv_id)
-        + "' AND event_type='react.taskboard.final' ORDER BY created_at DESC LIMIT 1"
+        + "' AND event_type='react.taskboard.final' AND message_id='" + sql_escape(message_id)
+        + "' ORDER BY created_at DESC LIMIT 1"
     )
     lines = mysql_lines(sql)
     if not lines:
@@ -394,13 +399,22 @@ def run_t2(token: str, conv_id: str, fails: list[str], soft: list[str],
         fail(f"T2 模型回复未引用未完成项关键词（{pending_keywords}）→ 恢复块注入行为证据缺失；"
              f"回复开头: {reply_preview}")
         fails.append("T2-keyword-missing")
-    # 进度文本一致（primary）：审计 react.taskboard.final payload 的 summary/items 与按 DB 快照
-    # 复算的期望进度串/块数据断言一致（persistFinal 写同源 state，块渲染数据源确定性可断言）
-    if wait_for(lambda: bool(audit_final_payloads(conv_id)), timeout=120, desc="react.taskboard.final 审计"):
-        payload = audit_final_payloads(conv_id)
+    # 进度文本一致（primary）：审计 react.taskboard.final payload 的 summary/items 必须与
+    # 快照复算一致（persistFinal 写同源 state，块渲染数据源确定性可断言）。等待条件以
+    # 最近快照行 message_id 为键——T2 推进任务会写新快照行，其 message_id 即本轮
+    # assistantMsgId，从而真正等待「本轮」payload 落库；若仍等「存在任意 payload」，
+    # T1 轮已落库的 react.taskboard.final 行会立即使等待成功，T2 推进任务时与 T2 新快照
+    # 对比必然误报 T2-audit-mismatch（陈旧 payload 竞态）。T2 未推进任务时最近快照行
+    # 即 T1 行，等待其 payload（MQ 异步）并与其自身快照对比，同样正确通过。
+    snap_rows = snapshot_rows(conv_id)
+    target_message_id = snap_rows[0][0] if snap_rows else None
+    if target_message_id and wait_for(
+            lambda: bool(audit_payload_for_message(conv_id, target_message_id)),
+            timeout=120, desc="T2 react.taskboard.final 审计"):
+        payload = audit_payload_for_message(conv_id, target_message_id)
         summary = str(payload.get("summary") or "")
         payload_items = payload.get("items") if isinstance(payload.get("items"), list) else []
-        latest_items = parse_items(snapshot_rows(conv_id)[0][1]) if snapshot_rows(conv_id) else []
+        latest_items = parse_items(snap_rows[0][1])
         expected_summary = progress_summary(latest_items)
         block = render_expected_block(latest_items) if latest_items else ""
         mismatches = []
