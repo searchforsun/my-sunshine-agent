@@ -484,11 +484,35 @@ def run_t3(token: str, conv_id: str, fails: list[str], soft: list[str],
 
 def _run_t3_no_inject(token: str, conv_id: str, fails: list[str], soft: list[str],
                       inconclusive: list[str]) -> None:
-    rows_before = len(snapshot_rows(conv_id))
+    before_rows = snapshot_rows(conv_id)
+    before_msg_id = before_rows[0][0] if before_rows else None
+    before_count = len(before_rows)
     _, _ = run_fast(token, conv_id, T3B_QUERY, label="T3b-summary")
-    if not wait_for(lambda: len(snapshot_rows(conv_id)) >= rows_before, timeout=60, desc="T3b 行数"):
-        pass
-    after = parse_items(snapshot_rows(conv_id)[0][1]) if snapshot_rows(conv_id) else []
+    # 以「最近快照行 message_id 变化或新行出现」为键等待 T3b 轮落盘（对齐 T2 审计等待）：
+    # persistFinal 按 assistantMsgId 写快照行，若本轮模型重建任务（todo_write）会写新行，
+    # 其 message_id 即本轮产物键。旧逻辑 wait(len >= rows_before) 恒真从未等待本轮落库，
+    # 读取可能命中上一轮全 terminal 行而静默误判「不注入」通过（误通过比误失败危害更大）。
+    wait_for(
+        lambda: bool(snapshot_rows(conv_id))
+        and (snapshot_rows(conv_id)[0][0] != before_msg_id
+             or len(snapshot_rows(conv_id)) > before_count),
+        timeout=60, desc="T3b 轮快照产物")
+    after_rows = snapshot_rows(conv_id)
+    if not after_rows:
+        warn("T3b 后无快照行；「全完成→不注入」未验证 → INCONCLUSIVE")
+        inconclusive.append("T3b-no-snapshot")
+        return
+    after = parse_items(after_rows[0][1])
+    if after_rows[0][0] == before_msg_id and len(after_rows) == before_count:
+        # 60s 内最近快照行未变化（message_id 不变、无新行）→ 模型未重建任务，读到的最近行
+        # 即 T3b 前的全 terminal 行，且等待期间已确认无并发写入 → 不注入成立。
+        if after and all(str(i.get("status") or "").strip() in TERMINAL_STATUSES for i in after):
+            ok("T3b 轮未写新快照行（模型未重建任务）→ 最近快照仍全 terminal → 不注入【任务板】块")
+            return
+        warn("T3b 最近快照非全 terminal（模型又重建任务；「全完成→不注入」未验证 → INCONCLUSIVE）")
+        inconclusive.append("T3b-rebuilt")
+        return
+    # 最近行是 T3b 轮新产物 → 以本轮快照断言
     if after and all(str(i.get("status") or "").strip() in TERMINAL_STATUSES for i in after):
         ok("T3b 全完成后新消息：最近快照仍全 terminal → 不注入【任务板】块")
     else:

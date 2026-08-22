@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -88,5 +89,21 @@ class TaskBoardRestoreServiceTest {
         when(repository.findFirstByConversationIdOrderByUpdatedAtDesc("conv-1"))
                 .thenReturn(Optional.of(entity("conv-1", "{not-json")));
         assertThat(service.renderRestoreBlock("conv-1")).isEmpty();
+    }
+
+    @Test
+    void renderRestoreBlock_empty_whenAllItemsCancelled() {
+        when(repository.findFirstByConversationIdOrderByUpdatedAtDesc("conv-1"))
+                .thenReturn(Optional.of(entity("conv-1",
+                        "[{\"id\":\"t1\",\"content\":\"任务一\",\"status\":\"cancelled\"},"
+                                + "{\"id\":\"t2\",\"content\":\"任务二\",\"status\":\"cancelled\"}]")));
+        assertThat(service.renderRestoreBlock("conv-1")).isEmpty();
+    }
+
+    @Test
+    void renderRestoreBlock_emptyAndSkipsRepository_whenBlankConversationId() {
+        assertThat(service.renderRestoreBlock("")).isEmpty();
+        assertThat(service.renderRestoreBlock(null)).isEmpty();
+        verifyNoInteractions(repository);
     }
 }
