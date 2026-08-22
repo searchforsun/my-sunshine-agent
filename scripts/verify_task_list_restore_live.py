@@ -9,9 +9,15 @@
   T4   无快照新会话简单问话 → 无块注入；普通轮次不写 task_board（验收红线）
 
 注入块文本【任务板】由服务端确定性纯函数渲染（TaskBoardService.renderTaskListBlock，
-单测已覆盖），平台不暴露组装后的 LLM 请求（无 API/日志含块文本）。故本脚本以
-「驱动块渲染的数据谓词 + 快照行数不随普通轮次增长」作黑盒断言，并输出按 DB 快照
-复算的期望块文案作为证据；审计 react.taskboard.final payload 作为补充证据（软）。
+单测已覆盖），平台不暴露组装后的 LLM 请求（无 API/日志含块文本）。本脚本以三条证据链断言 T2 注入：
+  1) 数据谓词：最近快照含未完成项（注入前置）+ 快照行数不随普通轮次增长（只读红线）；
+  2) 进度文本一致：审计 react.taskboard.final payload 的 summary 必须等于按 DB 快照复算的
+     「进度：N/M 已完成」进度串，且 payload items 与快照 items 一致（persistFinal 同源 state，
+     块渲染数据源确定性可断言；按 brief 要求把审计 payload 当 Prompt 组装证据）；
+  3) 行为必要条件：T2 仅发「继续」，模型回复必须引用未完成项关键词（块内容本身），
+     缺失即判定恢复块注入失效 → 硬失败。
+T3 存在未真正验证的场景（含 T3-demo 全流程未达全 terminal）时输出 INCONCLUSIVE（exit 2），
+禁止静默 ALL PASSED。
 
 用法:
   python3 scripts/verify_task_list_restore_live.py
@@ -24,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -235,8 +242,35 @@ def parse_items(items_json: str) -> list[dict]:
         return []
 
 
+def progress_summary(items: list[dict]) -> str:
+    """对齐 TaskBoardService.progressSummary：'{completed}/{total} 已完成'。"""
+    total = len(items)
+    completed = sum(1 for i in items if str(i.get("status") or "").strip() == "completed")
+    return f"{completed}/{total} 已完成"
+
+
+def extract_keywords(items: list[dict]) -> list[str]:
+    """从未完成项 content 提取候选关键词：全句 + 按分隔符切分的「标签/细节」片段。
+
+    任务原文为「标签：细节」形态（如『提交单据：提交一笔报销申请』），模型话术常只引用
+    「标签」（如『提交单据』），故按冒号/括号/标点切分后逐段匹配，避免整句精确匹配过脆。
+    """
+    kws: list[str] = []
+    for item in items:
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        for part in re.split(r"[：:（(）)，,、。.；;]", content):
+            part = part.strip()
+            if len(part) >= 2 and part not in kws:
+                kws.append(part)
+        if content not in kws:
+            kws.append(content)
+    return kws
+
+
 def render_expected_block(items: list[dict]) -> str:
-    """按 TaskBoardService.renderTaskListBlock 复算期望恢复块（仅作证据展示）。"""
+    """按 TaskBoardService.renderTaskListBlock 复算期望恢复块（T2 断言数据源，兼作证据展示）。"""
     total = len(items)
     completed = sum(1 for i in items if str(i.get("status") or "").strip() == "completed")
     lines = ["【任务板】", f"进度：{completed}/{total} 已完成"]
@@ -247,20 +281,20 @@ def render_expected_block(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def audit_final_payloads(conv_id: str) -> list[dict]:
-    """取该会话最近一条 react.taskboard.final 审计 payload（软证据；MQ→DB 异步需轮询）。"""
+def audit_final_payloads(conv_id: str) -> dict:
+    """取该会话最近一条 react.taskboard.final 审计 payload（T2 进度文本证据源；MQ→DB 异步需轮询）。"""
     sql = (
         "SELECT payload FROM chat_audit_log WHERE conversation_id='" + sql_escape(conv_id)
         + "' AND event_type='react.taskboard.final' ORDER BY created_at DESC LIMIT 1"
     )
     lines = mysql_lines(sql)
     if not lines:
-        return []
+        return {}
     try:
         data = json.loads(lines[0])
-        return data if isinstance(data, dict) else []
+        return data if isinstance(data, dict) else {}
     except Exception:
-        return []
+        return {}
 
 
 def wait_for(cond, *, timeout: int, interval: float = 1.0, desc: str) -> bool:
@@ -321,7 +355,8 @@ def run_t1(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
     print("  | " + render_expected_block(items).replace("\n", "\n  | "))
 
 
-def run_t2(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
+def run_t2(token: str, conv_id: str, fails: list[str], soft: list[str],
+           inconclusive: list[str]) -> None:
     print("\n=== T2 同会话新消息注入【任务板】块 + 只读红线 ===")
     pre_rows = snapshot_rows(conv_id)
     pre_items = parse_items(pre_rows[0][1]) if pre_rows else []
@@ -347,28 +382,49 @@ def run_t2(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
     else:
         fail(f"T2 task_board 行数异常: {count_before}→{count_after}（task_activity={task_activity}）")
         fails.append("T2-row-growth")
-    # 行为证据：T2 消息仅「继续」，若模型回复引用了恢复块中的未完成项 → 块确实注入了
-    pending_keywords = []
-    for item in pre_non_terminal:
-        content = str(item.get("content") or "")
-        pending_keywords.extend([k for k in (content.split("（")[0].strip(),) if k])
+    # 行为必要条件：T2 消息仅「继续」，恢复块注入时模型应引用未完成项关键词（块内容本身）；
+    # 关键词按「标签：细节」形态切分对齐模型话术；若块注入失效，模型仅凭会话历史作答，
+    # 无法保证命中块内任务原文 → 缺失即硬失败（注入失效门禁必须失败）
+    pending_keywords = extract_keywords(pre_non_terminal)
     hit = [k for k in pending_keywords if k and k in text]
     if hit:
-        ok(f"T2 模型回复引用了恢复块未完成项关键词 {hit} → 恢复块已注入上下文")
+        ok(f"T2 模型回复引用恢复块未完成项关键词 {hit} → 行为证据成立")
     else:
-        warn(f"T2 模型回复未引用未完成项关键词（{pending_keywords}）；注入证据以数据谓词 + 单测为准（软）")
-    # 审计 payload 软证据：T1 快照数据（summary/items）即恢复块渲染来源；经 MQ 消费需轮询
+        reply_preview = text[:120].replace("\n", " ")
+        fail(f"T2 模型回复未引用未完成项关键词（{pending_keywords}）→ 恢复块注入行为证据缺失；"
+             f"回复开头: {reply_preview}")
+        fails.append("T2-keyword-missing")
+    # 进度文本一致（primary）：审计 react.taskboard.final payload 的 summary/items 与按 DB 快照
+    # 复算的期望进度串/块数据断言一致（persistFinal 写同源 state，块渲染数据源确定性可断言）
     if wait_for(lambda: bool(audit_final_payloads(conv_id)), timeout=120, desc="react.taskboard.final 审计"):
         payload = audit_final_payloads(conv_id)
         summary = str(payload.get("summary") or "")
-        audit_items = payload.get("items") or []
-        if isinstance(audit_items, list) and any(
-                str(i.get("status") or "").strip() not in TERMINAL_STATUSES for i in audit_items):
-            ok(f"T2 审计 react.taskboard.final payload 含未完成项 + summary='{summary}'（块渲染数据源）")
+        payload_items = payload.get("items") if isinstance(payload.get("items"), list) else []
+        latest_items = parse_items(snapshot_rows(conv_id)[0][1]) if snapshot_rows(conv_id) else []
+        expected_summary = progress_summary(latest_items)
+        block = render_expected_block(latest_items) if latest_items else ""
+        mismatches = []
+        if summary != expected_summary:
+            mismatches.append(f"summary '{summary}' != 复算 '{expected_summary}'")
+        if latest_items and payload_items:
+            payload_sig = [(str(i.get("content") or "").strip(), str(i.get("status") or "").strip())
+                           for i in payload_items]
+            snap_sig = [(str(i.get("content") or "").strip(), str(i.get("status") or "").strip())
+                        for i in latest_items]
+            if payload_sig != snap_sig:
+                mismatches.append("payload items 与快照 items 不一致")
+        elif latest_items and not payload_items:
+            mismatches.append("payload 缺 items")
+        if mismatches:
+            fail(f"T2 审计 payload 与快照复算不一致: {'; '.join(mismatches)}")
+            fails.append("T2-audit-mismatch")
         else:
-            warn(f"T2 审计 payload 未含未完成项 summary='{summary}'（软）")
+            ok(f"T2 审计 payload summary='{summary}' 与复算进度串一致 → 块『进度：』文本数据源成立")
+            print("  T2 期望恢复块（按 DB 快照复算，即注入提示词的进度/数据）:")
+            print("  | " + block.replace("\n", "\n  | "))
     else:
-        warn("T2 审计 react.taskboard.final 120s 未落 MySQL（MQ 消费延迟；软）")
+        inconclusive.append("T2-audit-missing")
+        warn("T2 审计 react.taskboard.final 120s 未落 MySQL（MQ 消费延迟；进度文本证据缺失 → INCONCLUSIVE）")
     latest_items = parse_items(snapshot_rows(conv_id)[0][1]) if snapshot_rows(conv_id) else []
     latest_non_terminal = [i for i in latest_items if str(i.get("status") or "").strip() not in TERMINAL_STATUSES]
     if latest_non_terminal:
@@ -377,11 +433,13 @@ def run_t2(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
         warn("T2 后快照已全完成（本轮模型把任务全部收尾；T3 直接验证不再注入）")
 
 
-def run_t3(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
+def run_t3(token: str, conv_id: str, fails: list[str], soft: list[str],
+           inconclusive: list[str]) -> None:
     print("\n=== T3 任务全完成后再发新消息 → 不再注入 ===")
     rows_before = snapshot_rows(conv_id)
     if not rows_before:
-        warn("T3 无快照，跳过")
+        warn("T3 无快照；「全完成→不注入」未验证 → INCONCLUSIVE")
+        inconclusive.append("T3-no-snapshot")
         return
     latest = parse_items(rows_before[0][1])
     if all(str(i.get("status") or "").strip() in TERMINAL_STATUSES for i in latest):
@@ -401,16 +459,17 @@ def run_t3(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
         latest = parse_items(snapshot_rows(conv_id)[0][1])
     if all(str(i.get("status") or "").strip() in TERMINAL_STATUSES for i in latest):
         ok(f"T3 最近快照全 terminal（{len(latest)} 项）→ 恢复块注入前置关闭")
-        _run_t3_no_inject(token, conv_id, fails, soft)
+        _run_t3_no_inject(token, conv_id, fails, soft, inconclusive)
     else:
         non_term = [i for i in latest if str(i.get("status") or "").strip() not in TERMINAL_STATUSES]
         warn(f"T3 同会话未全部完成（未完成项 {len(non_term)} 个；报销流需用户补充信息 + HITL，"
              "模型拒绝空标完成）。转 T3-demo 会话用自主可完成任务验证「全完成 → 不注入」")
         soft.append("T3-same-conv-not-completed")
-        _run_t3_demo(fails, soft)
+        _run_t3_demo(fails, soft, inconclusive)
 
 
-def _run_t3_no_inject(token: str, conv_id: str, fails: list[str], soft: list[str]) -> None:
+def _run_t3_no_inject(token: str, conv_id: str, fails: list[str], soft: list[str],
+                      inconclusive: list[str]) -> None:
     rows_before = len(snapshot_rows(conv_id))
     _, _ = run_fast(token, conv_id, T3B_QUERY, label="T3b-summary")
     if not wait_for(lambda: len(snapshot_rows(conv_id)) >= rows_before, timeout=60, desc="T3b 行数"):
@@ -419,18 +478,21 @@ def _run_t3_no_inject(token: str, conv_id: str, fails: list[str], soft: list[str
     if after and all(str(i.get("status") or "").strip() in TERMINAL_STATUSES for i in after):
         ok("T3b 全完成后新消息：最近快照仍全 terminal → 不注入【任务板】块")
     else:
-        warn("T3b 快照出现新未完成项（模型又重建任务；不注入断言受影响，记 WARN）")
-        soft.append("T3b-rebuilt")
+        warn("T3b 快照出现新未完成项（模型又重建任务；「全完成→不注入」未验证 → INCONCLUSIVE）")
+        inconclusive.append("T3b-rebuilt")
 
 
-def _run_t3_demo(fails: list[str], soft: list[str]) -> None:
-    """自主可完成任务的独立会话：列出 3 个琐事任务 → 全部完成 → 新消息不再注入。"""
+def _run_t3_demo(fails: list[str], soft: list[str], inconclusive: list[str]) -> None:
+    """自主可完成任务的独立会话：列出 3 个琐事任务 → 全部完成 → 新消息不再注入。
+
+    任一环节未能推进到「全 terminal + 不注入」，即 T3 未真正验证 → INCONCLUSIVE（禁止静默通过）。
+    """
     token, conv_id = setup_auth()
     print(f"  -- T3-demo conversation={conv_id}")
     steps, _ = run_fast(token, conv_id, T3D_LIST_QUERY, label="T3d-list")
     if not wait_for(lambda: bool(snapshot_rows(conv_id)), timeout=60, desc="T3d 快照"):
-        warn("T3-demo 无快照（模型未建任务），跳过")
-        soft.append("T3-demo-no-snapshot")
+        warn("T3-demo 无快照（模型未建任务）；「全完成→不注入」未验证 → INCONCLUSIVE")
+        inconclusive.append("T3-demo-no-snapshot")
         return
     rows = snapshot_rows(conv_id)
     items = parse_items(rows[0][1])
@@ -439,17 +501,18 @@ def _run_t3_demo(fails: list[str], soft: list[str]) -> None:
         warn(f"T3-demo 快照少于 3 项（{len(items)}）；继续推进完成流程")
     steps, _ = run_fast(token, conv_id, T3D_COMPLETE_QUERY, label="T3d-complete")
     if not wait_for(lambda: bool(snapshot_rows(conv_id)), timeout=60, desc="T3d-complete 快照"):
-        warn("T3-demo 完成轮无快照")
-        soft.append("T3-demo-complete-no-snapshot")
+        warn("T3-demo 完成轮无快照；「全完成→不注入」未验证 → INCONCLUSIVE")
+        inconclusive.append("T3-demo-complete-no-snapshot")
         return
     after = parse_items(snapshot_rows(conv_id)[0][1])
     non_term = [i for i in after if str(i.get("status") or "").strip() not in TERMINAL_STATUSES]
     if non_term:
-        warn(f"T3-demo 完成轮后仍有未完成项 {len(non_term)} 个（模型未全部标 completed；数据谓词兜底，记 WARN）")
-        soft.append("T3-demo-not-all-terminal")
+        warn(f"T3-demo 完成轮后仍有未完成项 {len(non_term)} 个（模型未全部标 completed；"
+             "「全完成→不注入」未验证 → INCONCLUSIVE）")
+        inconclusive.append("T3-demo-not-all-terminal")
         return
     ok(f"T3-demo 快照全 terminal（{len(after)} 项）→ 注入前置关闭")
-    _run_t3_no_inject(token, conv_id, fails, soft)
+    _run_t3_no_inject(token, conv_id, fails, soft, inconclusive)
 
 
 def run_t4(fails: list[str], soft: list[str]) -> None:
@@ -477,12 +540,13 @@ def main() -> int:
 
     fails: list[str] = []
     soft: list[str] = []
+    inconclusive: list[str] = []
     try:
         token, conv_id = setup_auth()
         print(f"T1 会话 conversation={conv_id}")
         run_t1(token, conv_id, fails, soft)
-        run_t2(token, conv_id, fails, soft)
-        run_t3(token, conv_id, fails, soft)
+        run_t2(token, conv_id, fails, soft, inconclusive)
+        run_t3(token, conv_id, fails, soft, inconclusive)
         run_t4(fails, soft)
     except Exception as exc:  # noqa: BLE001
         fail(f"执行异常: {exc}")
@@ -496,6 +560,11 @@ def main() -> int:
         for f in fails:
             print(f"  - {f}")
         return 1
+    if inconclusive:
+        print("❌ INCONCLUSIVE: 存在未真正验证的场景（门禁不通过）:")
+        for r in inconclusive:
+            print(f"  - {r}")
+        return 2
     print("✅ ALL PASSED")
     return 0
 
