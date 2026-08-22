@@ -77,6 +77,13 @@ class TaskBoardRestoreServiceTest {
     }
 
     @Test
+    void renderRestoreBlock_empty_whenItemsJsonEmptyArray() {
+        when(repository.findFirstByConversationIdOrderByUpdatedAtDesc("conv-1"))
+                .thenReturn(Optional.of(entity("conv-1", "[]")));
+        assertThat(service.renderRestoreBlock("conv-1")).isEmpty();
+    }
+
+    @Test
     void renderRestoreBlock_empty_whenItemsJsonBroken() {
         when(repository.findFirstByConversationIdOrderByUpdatedAtDesc("conv-1"))
                 .thenReturn(Optional.of(entity("conv-1", "{not-json")));

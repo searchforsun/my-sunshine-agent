@@ -18,8 +18,8 @@ import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
-import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
+import com.sunshine.orchestrator.taskboard.TaskBoardRestoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +46,7 @@ public class ChatStreamContextFactory {
     private final DefaultKbResolver defaultKbResolver;
     private final ReactCheckpointService checkpointService;
     private final PromptCatalogHolder catalogHolder;
+    private final TaskBoardRestoreService taskBoardRestoreService;
 
     /** INTERRUPTED assistant 折叠注记的 Catalog id（方案 A · 中断感知，见五层 spec §5.5.7 v16） */
     private static final String INTERRUPTED_MARKER = "context.l1.interrupted-marker";
@@ -91,6 +92,11 @@ public class ChatStreamContextFactory {
         }
         AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
                 userId, tenantId, conv.getId(), loadedHistory, executionQuery, modelOverride));
+        // fast 跨轮任务板恢复（M0）：仅 fast 会话注入最近快照的未完成任务清单，恢复块由服务端渲染
+        if (preference == ExecutionMode.FAST) {
+            memory = memory.withTaskListRestoreBlock(
+                    taskBoardRestoreService.renderRestoreBlock(conv.getId()).orElse(""));
+        }
         if (!loadedHistory.isEmpty() && !memory.hasAnyLayer()) {
             log.debug("[Orchestrator] 上下文为空 loaded={} user={}",
                     loadedHistory.size(),

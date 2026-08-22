@@ -32,7 +32,7 @@ public class TaskBoardRestoreService {
         }
         return repository.findFirstByConversationIdOrderByUpdatedAtDesc(conversationId)
                 .flatMap(entity -> toItems(conversationId, entity))
-                .filter(items -> !TaskBoardService.allTerminal(items))
+                .filter(items -> !items.isEmpty() && !TaskBoardService.allTerminal(items))
                 .map(TaskBoardService::renderTaskListBlock);
     }
 
