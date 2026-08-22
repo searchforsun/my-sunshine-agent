@@ -4,6 +4,7 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.TimelineStepId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -68,6 +69,22 @@ public class TaskBoardService {
         }
         return items.stream().allMatch(i ->
                 "completed".equals(i.status()) || "cancelled".equals(i.status()));
+    }
+
+    static String renderTaskListBlock(List<TaskBoardItemView> items) {
+        StringBuilder sb = new StringBuilder("【任务板】");
+        sb.append('\n').append("进度：").append(progressSummary(items));
+        for (TaskBoardItemView item : items) {
+            if (item == null || !StringUtils.hasText(item.content())) {
+                continue;
+            }
+            sb.append('\n').append("- [")
+                    .append(StringUtils.hasText(item.status()) ? item.status().strip() : "pending")
+                    .append("] ")
+                    .append(item.content().strip());
+        }
+        sb.append("\n接着未完成项继续；勿重建整个任务板，勿把已完成项改回待办。");
+        return sb.toString();
     }
 
     static String findActiveTask(List<TaskBoardItemView> items) {
