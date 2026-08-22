@@ -81,51 +81,6 @@ export function matchSandboxPathByIndex(
   return { resolved: '', hit: false }
 }
 
-/**
- * 判断是否像沙箱相对路径。
- * - 单段含扩展名：assemble-index.mjs（单文件名）
- * - 多段含 /：src/App.vue、templates/styles、wt-abc123/src/index.ts
- * 排除 URL、windows 路径、版本号、CSS/JS 这类大写缩写词组合等。
- */
-export function looksLikeSandboxRelativePath(text: string): boolean {
-  const t = text.trim()
-  if (!t || t.length < 2) return false
-  if (t.startsWith('/')) return false
-  if (t.startsWith('http://') || t.startsWith('https://')) return false
-  // 排除 windows 盘符
-  if (/^[A-Za-z]:[\\/]/.test(t)) return false
-  // 排除版本号形如 1.2.3
-  if (/^\d+(\.\d+)+$/.test(t)) return false
-  // 排除含空格的句子片段
-  if (/\s/.test(t)) return false
-  // 每段不能为空，且不能含特殊字符（除 . _ -）
-  const segments = t.split('/')
-  if (segments.some((s) => !s || /[;:|<>"'`{}()]/.test(s))) return false
-  // 至少有一个段含扩展名（.xxx）或路径深度 >= 2
-  const hasExtension = segments.some((s) => /\.[A-Za-z0-9]{1,12}$/.test(s))
-  const depth = segments.length
-  if (!hasExtension && depth < 2) return false
-  // 排除 CSS/JS、JS/JSON 这类纯大写缩写词组合（无扩展名且每段短）
-  if (!hasExtension && segments.every((s) => /^[A-Z]{2,8}$/.test(s))) return false
-  return true
-}
-
-/**
- * 将可能的相对路径解析为沙箱绝对路径。
- * - 已是 /workspace/... 或 /skills/... -> 原样返回
- * - 相对路径 -> 结合 workspaceRoot 拼接（workspaceRoot 形如 /workspace/wt-xxx）
- * - 无法解析 -> 返回空串
- */
-export function resolveSandboxPath(rawPath: string, workspaceRoot: string): string {
-  const t = rawPath.trim()
-  if (!t) return ''
-  if (isSandboxContainerPath(t)) return t
-  if (!looksLikeSandboxRelativePath(t)) return ''
-  const root = workspaceRoot.trim().replace(/\/+$/, '')
-  if (!root || !isSandboxContainerPath(root)) return ''
-  return `${root}/${t}`
-}
-
 export function sandboxPathBasename(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
   if (normalized === '/workspace' || normalized === '/skills') {

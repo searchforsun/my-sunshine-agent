@@ -160,12 +160,6 @@ export function reactivatePausedPlanHitlNodes(steps: ProcessingStep[] | undefine
   })
 }
 
-/** ReAct 续跑：仅保留意图识别步 */
-export function retainIntentStepsOnly(steps: ProcessingStep[] | undefined): ProcessingStep[] {
-  if (!steps?.length) return []
-  return steps.filter(s => s.id === 'intent' || s.phase === 'intent')
-}
-
 /** 续跑开始：普通 paused 节点重置 pending；HITL/Recovery awaiting 保留 metadata 并恢复 running */
 export function reactivatePausedStepsForResume(steps: ProcessingStep[] | undefined): ProcessingStep[] {
   if (!steps?.length) return steps ?? []

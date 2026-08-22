@@ -32,9 +32,10 @@ llm:
     read-idle-timeout: 60s
 
 # 模型注册表 SSOT = resource-manager；此处仅保留加解密密钥材料
+# 生产强制 env 注入（禁默认材料）；缺失时启动失败（fail-fast）
 model:
   crypto:
-    aes-key: ${MODEL_AES_KEY:sunshine-model-aes-key-32b!!}
+    aes-key: ${MODEL_AES_KEY}
 
 resource-manager:
   base-url: http://sunshine-resource-manager

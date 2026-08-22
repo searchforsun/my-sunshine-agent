@@ -11,28 +11,28 @@ import {
 } from './statusArchitecture'
 
 describe('statusArchitecture', () => {
-  it('lists 16 probeable microservices including sandbox, oa and hr', () => {
-    expect(countProbeable(SERVICE_DEFS)).toBe(16)
+  it('lists probeable microservices including sandbox and biz-simulator', () => {
+    expect(countProbeable(SERVICE_DEFS)).toBe(11)
     const names = SERVICE_DEFS.map((d) => d.name)
     expect(names).toContain('Sandbox Service')
-    expect(names).toContain('OA')
-    expect(names).toContain('HR')
+    expect(names).toContain('Biz Simulator')
   })
 
-  it('places OA, Finance, HR on L4 domain apps row and MCP on access row', () => {
-    expect(domainToolApps(SERVICE_DEFS).map((d) => d.name)).toEqual(['OA', 'Finance', 'HR'])
+  it('places Biz Simulator on L4 domain apps row and MCP on access row', () => {
+    expect(domainToolApps(SERVICE_DEFS).map((d) => d.name)).toEqual(['Biz Simulator'])
     expect(domainAccess(SERVICE_DEFS).map((d) => d.name)).toEqual(['MCP'])
-    expect(domainServices(SERVICE_DEFS).map((d) => d.name)).toEqual(['OA', 'Finance', 'HR', 'MCP'])
+    expect(domainServices(SERVICE_DEFS).map((d) => d.name)).toEqual(['Biz Simulator', 'MCP'])
     const mcp = domainAccess(SERVICE_DEFS)[0]
     expect(mcp?.gatewayPath).toBeUndefined()
     expect(mcp?.description).toMatch(/已接入|Catalog/)
   })
 
-  it('keeps Desensitize as platform root (not domain)', () => {
+  it('keeps Desensitize inside Resource Manager (not domain)', () => {
     const roots = platformRoots(SERVICE_DEFS)
-    expect(roots.some((r) => r.name === 'Desensitize')).toBe(true)
-    expect(roots.some((r) => r.name === 'OA')).toBe(false)
-    expect(domainServices(SERVICE_DEFS).some((d) => d.name === 'Desensitize')).toBe(false)
+    expect(roots.some((r) => r.name === 'Resource Manager')).toBe(true)
+    expect(roots.some((r) => r.name === 'Biz Simulator')).toBe(false)
+    expect(domainServices(SERVICE_DEFS).some((d) => d.name === 'Resource Manager')).toBe(false)
+    expect(roots.find((r) => r.name === 'Resource Manager')?.description).toMatch(/Desensitize/)
   })
 
   it('infra strip is display-only', () => {

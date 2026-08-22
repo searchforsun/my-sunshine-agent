@@ -33,11 +33,9 @@ public class ExecutionPlanRouter {
         RoutingContext routedCtx = routingContextForPinnedPreference(ctx, preference);
         return forcedExecutionRouter.resolve(routedCtx, preference, ctx.forcedWorkflowId())
                 .map(plan -> preference == ExecutionMode.FAST
-                        ? skillDiscoveryService.enrich(plan, routedCtx.userMessage())
+                        ? skillDiscoveryService.enrich(plan)
                         : plan)
-                .map(plan -> skillDiscoveryService.filterForTrack(plan, preference == ExecutionMode.WORKFLOW
-                        ? ExecutionMode.WORKFLOW
-                        : ExecutionMode.from(preference.wireValue())));
+                .map(plan -> skillDiscoveryService.filterForTrack(plan, preference));
     }
 
     /** WORKFLOW 钉死：路由与执行均忽略 /skill、$agent，仅保留正文；保留 kind */

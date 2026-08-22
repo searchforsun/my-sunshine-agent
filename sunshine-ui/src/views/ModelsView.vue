@@ -44,6 +44,8 @@ const {
   definitionEditId,
   definitionDraft,
   boolParamOptions,
+  reasoningSplitSelectValue,
+  includeUsageSelectValue,
   thinkingTypeOptions,
   serviceTierOptions,
   showSceneModal,
@@ -252,7 +254,7 @@ onMounted(() => {
         <div class="form-grid form-grid-3">
           <NFormItem label="reasoning_split">
             <NSelect
-              v-model:value="definitionDraft.requestExtras.reasoning_split"
+              v-model:value="reasoningSplitSelectValue"
               class="sun-field"
               clearable
               placeholder="unset"
@@ -294,7 +296,7 @@ onMounted(() => {
           </NFormItem>
           <NFormItem label="stream_options.include_usage">
             <NSelect
-              v-model:value="definitionDraft.requestExtras.stream_options_include_usage"
+              v-model:value="includeUsageSelectValue"
               class="sun-field"
               clearable
               placeholder="unset"

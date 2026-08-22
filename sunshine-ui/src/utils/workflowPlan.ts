@@ -34,15 +34,6 @@ export function defaultStartNode(): WorkflowPlanNode {
   return { id: 'start', type: 'start', displayName: '开始', params: {} }
 }
 
-export function emptyWorkflowPlan(workflowId: string, nodeDefaults?: WorkflowNodeDefaultsResponse): WorkflowPlan {
-  return {
-    planId: null,
-    reason: `新建工作流 ${workflowId}`,
-    nodes: [defaultStartNode(), defaultAnswerNode(nodeDefaults)],
-    edges: [{ from: 'start', to: 'answer' }],
-  }
-}
-
 /** 线性 DAG：start → 业务节点… → answer */
 export function rebuildLinearEdges(nodes: WorkflowPlanNode[]): { from: string; to: string }[] {
   const order = nodes.map(n => n.id)
@@ -410,15 +401,6 @@ export function insertBusinessNode(
     after.params = { ...after.params, context: upstreamOutputRef(node) }
   }
   const existingAnswer = normalized.nodes.find(n => n.type === 'answer') ?? defaultAnswerNode(nodeDefaults)
-  const nodes = [defaultStartNode(), ...business, existingAnswer]
-  const edges = rebuildLinearEdges(nodes)
-  return reconcilePlanDataFlow({ ...normalized, nodes, edges }, { refreshAnswer: true })
-}
-
-export function removeBusinessNode(plan: WorkflowPlan, nodeId: string): WorkflowPlan {
-  const normalized = normalizeWorkflowPlan(plan, '')
-  const business = businessNodeOrder(normalized).filter(n => n.id !== nodeId)
-  const existingAnswer = normalized.nodes.find(n => n.type === 'answer') ?? defaultAnswerNode()
   const nodes = [defaultStartNode(), ...business, existingAnswer]
   const edges = rebuildLinearEdges(nodes)
   return reconcilePlanDataFlow({ ...normalized, nodes, edges }, { refreshAnswer: true })

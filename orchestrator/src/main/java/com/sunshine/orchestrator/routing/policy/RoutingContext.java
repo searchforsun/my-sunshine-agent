@@ -40,21 +40,6 @@ public record RoutingContext(
         this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, null, null);
     }
 
-    public RoutingContext(
-            String userMessage,
-            String traceMessageId,
-            ExecutionMode preference,
-            String forcedWorkflowId,
-            String clientSkillId,
-            AssembledContext memory,
-            ExecutionMode lockedMode) {
-        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, null);
-    }
-
-    public static RoutingContext of(String userMessage) {
-        return new RoutingContext(userMessage, null, ExecutionMode.FAST, null, null, null, null, null);
-    }
-
     public RoutingContext withLockedMode(ExecutionMode mode) {
         return new RoutingContext(
                 userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, mode, kind);
@@ -82,10 +67,7 @@ public record RoutingContext(
 
     /** 用户钉死的执行模式（与 preference 同值；v6 无 auto 自判） */
     public ExecutionMode executionMode() {
-        if (preference == null) {
-            return ExecutionMode.FAST;
-        }
-        return ExecutionMode.from(preference.wireValue());
+        return preference != null ? preference : ExecutionMode.FAST;
     }
 
     /** 收集用锁死 mode：显式 lockedMode 优先，否则取用户 preference */

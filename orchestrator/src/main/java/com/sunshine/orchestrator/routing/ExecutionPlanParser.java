@@ -33,7 +33,7 @@ public class ExecutionPlanParser {
         }
         try {
             JsonNode node = objectMapper.readTree(trimmed);
-            // 仅读 mode（兼容旧 classifier）；忽略 planMode / executionMode，防 L3 改轨
+            // 仅读 mode（L3 分类器输出契约）；忽略 planMode / executionMode，防 L3 改轨
             ExecutionMode mode = ExecutionMode.from(text(node, "mode"));
             String workflowId = text(node, "workflowId");
             String reason = text(node, "reason");

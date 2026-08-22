@@ -34,7 +34,7 @@ class ModelWindowCacheTest {
                                 "qwen-plus", "p", "qwen", 262144, 8192, "cl100k_base",
                                 ModelCapabilities.defaults(), null, true, true, 0)),
                 List.of(new ModelCatalogScene("chat", "deepseek-v4-pro", "qwen-plus", Map.of(), true)));
-        cache = new ModelWindowCache(null, resolver);
+        cache = new ModelWindowCache(resolver);
         cache.refresh(resolver.allContextWindows());
     }
 

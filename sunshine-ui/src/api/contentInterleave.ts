@@ -630,15 +630,6 @@ export function contentRowsAfterStep(
   return rows
 }
 
-export function leadingContentRows(
-  _steps: ProcessingStep[],
-  _visibleStepIds: ReadonlySet<string>,
-  blocks: ContentBlock[] | undefined,
-  opts: { live: boolean; lastBlockIndex: number },
-): TimelineContentRow[] {
-  return []
-}
-
 export function resolveLastContentBlockIndex(blocks: ContentBlock[] | undefined): number {
   if (!blocks?.length) return -1
   return blocks.length - 1

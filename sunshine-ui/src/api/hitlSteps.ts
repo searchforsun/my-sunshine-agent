@@ -269,14 +269,6 @@ export function syncPendingHitlListFromSteps(steps: ProcessingStep[] | undefined
   return out
 }
 
-/** step upsert 后扫描主 timeline 工具步与 agent 节点 subSteps，同步 pending（兼容旧 API） */
-export function syncPendingHitlFromSteps(
-  steps: ProcessingStep[] | undefined,
-): HitlConfirmationPayload | undefined {
-  const list = syncPendingHitlListFromSteps(steps)
-  return list.length ? list[list.length - 1] : undefined
-}
-
 function mergePendingLists(
   fromSteps: HitlConfirmationPayload[],
   prev: HitlConfirmationPayload[],
@@ -419,13 +411,6 @@ export function formatHitlParamsSummary(raw?: string | null, maxValueLen = 120):
   return parseHitlParamsSummary(raw, maxValueLen)
     .map(({ key, value }) => `${key}=${value}`)
     .join(', ')
-}
-
-export function resolveHitlHint(step: ProcessingStep): string {
-  if (step.summary?.active?.trim()) {
-    return step.summary.active.trim()
-  }
-  return ''
 }
 
 function isRunningStep(step: ProcessingStep): boolean {
@@ -694,21 +679,6 @@ function findAgentNodeStep(
     }
   }
   return best
-}
-
-/** 子 Agent 执行过程：保证 HITL metadata 落在 tool 子步，供 Plan 抽屉确认框 */
-export function resolveAgentSubStepsForDisplay(
-  parent: ProcessingStep | undefined,
-  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
-): ProcessingStep[] {
-  if (!parent?.subSteps?.length) return []
-  let node = relocateAgentNodeHitl(parent)
-  const list = normalizePendingHitlList(pending)
-  if (list.length) {
-    const merged = reapplyPendingHitlList([node], list)
-    node = merged[0] ?? node
-  }
-  return node.subSteps ?? []
 }
 
 /** agent 节点误挂 HITL 时归位到 subSteps 内 tool 步（含 loop 内 i{n}-node-*） */

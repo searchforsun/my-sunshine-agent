@@ -40,16 +40,6 @@ export function linesFromEditDiffMeta(meta?: SandboxEditDiffMeta | null): Sandbo
   return lines.length > 0 ? lines : null
 }
 
-export function formatDiffLinesAsText(lines: SandboxDiffLine[]): string {
-  return lines
-    .filter(l => l.kind !== 'fold')
-    .map(l => {
-      const p = l.kind === 'del' ? '-' : l.kind === 'add' ? '+' : ' '
-      return `${p}${l.text}`
-    })
-    .join('\n')
-}
-
 export function summarizeDiffCounts(lines: SandboxDiffLine[]): { add: number; del: number } {
   let add = 0
   let del = 0

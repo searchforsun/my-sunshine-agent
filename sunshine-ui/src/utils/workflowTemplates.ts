@@ -63,10 +63,6 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
   },
 ]
 
-export function getWorkflowTemplate(id: WorkflowTemplateId): WorkflowTemplateDefinition | undefined {
-  return WORKFLOW_TEMPLATES.find(t => t.id === id)
-}
-
 export function buildWorkflowTemplatePreviewPlan(
   id: WorkflowTemplateId,
   nodeDefaults?: WorkflowNodeDefaultsResponse | null,

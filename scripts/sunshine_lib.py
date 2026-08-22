@@ -14,6 +14,35 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def load_env_file(path: Path | None = None) -> dict[str, str]:
+    """读取项目根 .env（KEY=VALUE，跳过 # 注释与空行）；不存在返回 {}。
+
+    凭据类 env（如 MODEL_AES_KEY）统一经 .env 注入，禁止提交到 git（见 .gitignore）。
+    """
+    env_file = path or ROOT / ".env"
+    out: dict[str, str] = {}
+    if not env_file.is_file():
+        return out
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key:
+            out[key] = value.strip()
+    return out
+
+
+def service_env() -> dict[str, str]:
+    """子进程环境：宿主 env 优先，.env 补齐缺失项。"""
+    merged = dict(os.environ)
+    for key, value in load_env_file().items():
+        if key not in merged:
+            merged[key] = value
+    return merged
+
+
 def unwrap_r(body: dict, *, context: str = "request") -> dict | list | None:
     """解析后端 R<T> 响应；业务失败抛 RuntimeError。"""
     code = body.get("code")
@@ -100,6 +129,7 @@ def start_java_detached(
         stdout=stdout,
         stderr=stderr,
         cwd=str(ROOT),
+        env=service_env(),
         creationflags=creationflags,
         **kwargs,
     )

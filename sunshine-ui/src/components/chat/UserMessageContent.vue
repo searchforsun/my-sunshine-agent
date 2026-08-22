@@ -5,7 +5,7 @@ import type { SkillCatalogIndexEntry } from '../../api/skills'
 import type { AgentCatalogIndexEntry } from '../../api/agents'
 import type { WorkflowCatalogEntry } from '../../api/workflows'
 import type { ExecutionMode } from '../../api/executionModes'
-import { segmentChatMentionsForMessage } from '../../utils/chatMention'
+import { allowsForPreference, segmentChatMentions } from '../../utils/chatMention'
 
 const props = defineProps<{
   content: string
@@ -16,14 +16,14 @@ const props = defineProps<{
 }>()
 
 const segments = computed(() =>
-  segmentChatMentionsForMessage(
+  segmentChatMentions(
     props.content,
     {
       skills: props.catalog,
       agents: props.agentCatalog ?? [],
       workflows: props.workflowCatalog ?? [],
     },
-    props.executionPreference,
+    allowsForPreference(props.executionPreference ?? 'fast'),
   ),
 )
 

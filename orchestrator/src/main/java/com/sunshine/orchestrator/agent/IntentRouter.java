@@ -45,11 +45,6 @@ public class IntentRouter {
     private final LlmGatewayClient llmGateway;
     private final ModelSceneResolver modelSceneResolver;
 
-    /** 兼容仅传用户句的调用方 */
-    public Mono<ExecutionPlan> classifyPlan(String userMessage) {
-        return classifyPlan(new RoutingContext(userMessage, null));
-    }
-
     /**
      * 分类并返回结构化执行计划（L3 主入口 — 含 Skill Catalog + 会话上下文）
      */

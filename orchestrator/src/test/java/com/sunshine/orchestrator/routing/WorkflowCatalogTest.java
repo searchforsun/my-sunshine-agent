@@ -38,7 +38,7 @@ class WorkflowCatalogTest {
                         "knowledge-qa", "workflow", "知识库问答", "查制度", "all",
                         List.of("年假"), List.of("start", "rag", "answer"), null)));
 
-        String rendered = catalog.renderForPrompt();
+        String rendered = catalog.renderForPrompt(null);
 
         assertThat(rendered).contains("knowledge-qa").contains("查制度");
     }

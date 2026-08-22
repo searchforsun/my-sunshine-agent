@@ -32,10 +32,10 @@ spring:
     open-in-view: false
     show-sql: false
 
-# 模型注册表 api_key AES 材料（明文密钥仅经管理面写入；生产用 MODEL_AES_KEY 注入）
+# 模型注册表 api_key AES 材料（明文密钥仅经管理面写入；生产强制 env 注入，禁默认材料）
 model:
   crypto:
-    aes-key: ${MODEL_AES_KEY:sunshine-model-aes-key-32b!!}
+    aes-key: ${MODEL_AES_KEY}
 
 # 原 skill-manager 专属：MinIO 存储
 skill:

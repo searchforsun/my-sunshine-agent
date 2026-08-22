@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sunshine_lib import ROOT, package_java_modules, skywalking_agent, start_java_detached, stop_java_service
+from sunshine_lib import ROOT, package_java_modules, skywalking_agent, start_java_detached, stop_java_service, load_env_file
 
 # (服务名, 模块目录, JAR artifact, 端口)
 SERVICES = [
@@ -33,6 +33,17 @@ SERVICES = [
 ]
 
 SERVICE_BY_NAME = {name: (module, artifact, port) for name, module, artifact, port in SERVICES}
+
+# Nacos aes-key 已强制 env（禁默认材料）；启动前缺失即 fail-fast 提示
+MODEL_AES_KEY_SERVICES = {"llm-gateway", "resource-manager"}
+
+
+def require_model_aes_key(targets: list[tuple[str, str, str, int]]) -> None:
+    missing = [n for n, *_ in targets if n in MODEL_AES_KEY_SERVICES and not load_env_file().get("MODEL_AES_KEY")]
+    if missing:
+        raise SystemExit(
+            f"[FAIL] {', '.join(missing)} 需要 MODEL_AES_KEY（见 .env），缺失将启动失败（fail-fast）"
+        )
 
 
 def resolve_targets(names: list[str] | None) -> list[tuple[str, str, str, int]]:
@@ -83,6 +94,7 @@ def main() -> int:
 
     restart = args.restart is not None
     targets = resolve_targets(args.restart if restart else None)
+    require_model_aes_key(targets)
     if restart:
         print(f"[RESTART] {', '.join(n for n, *_ in targets)}")
         package_java_modules([module for _, module, _, _ in targets])

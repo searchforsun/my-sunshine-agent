@@ -84,21 +84,12 @@ public class SkillCatalogService {
 
     /** L3 意图分类器 — Skill 目录（含 sandbox 能力），按会话 kind 过滤（保留 all + 同 kind） */
     public String renderForClassifier(String sessionKind) {
-        return renderForClassifier(sessionKind, false);
-    }
-
-    /** 兼容旧调用（无 kind 上下文 → 全量） */
-    public String renderForClassifier() {
-        return renderForClassifier(null, true);
-    }
-
-    private String renderForClassifier(String sessionKind, boolean includeAll) {
         if (indexEntries().isEmpty()) {
             return "(无 skill 目录)";
         }
         return indexEntries().stream()
                 .filter(SkillCatalogIndexEntry::enabled)
-                .filter(e -> includeAll || ResourceKindFilter.matches(e.kind(), sessionKind))
+                .filter(e -> ResourceKindFilter.matches(e.kind(), sessionKind))
                 .map(e -> "- **" + e.id() + "**: " + e.displayName()
                         + " | sandbox=" + e.sandbox()
                         + (StringUtils.hasText(e.description()) ? " — " + e.description() : ""))
@@ -110,13 +101,6 @@ public class SkillCatalogService {
             return classifierPrompt;
         }
         return classifierPrompt.replace("{{skill-catalog}}", renderForClassifier(sessionKind));
-    }
-
-    public String renderIntoClassifier(String classifierPrompt) {
-        if (!StringUtils.hasText(classifierPrompt)) {
-            return classifierPrompt;
-        }
-        return classifierPrompt.replace("{{skill-catalog}}", renderForClassifier());
     }
 
     /** 校验 plan.params.skill 是否在 catalog 内；未知 id 剥离 */

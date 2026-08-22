@@ -154,23 +154,6 @@ export async function listSkillVersions(id: string): Promise<SkillVersion[]> {
 }
 
 /** 更新版本 sandbox / sandbox_policy（T9 UI 编辑器用） */
-export async function updateSkillVersionSandbox(
-  id: string,
-  version: number,
-  sandbox: string,
-  sandboxPolicy?: SandboxPolicy | null,
-): Promise<SkillEntry> {
-  const res = await fetch(
-    apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/sandbox`),
-    {
-      method: 'PUT',
-      headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sandbox, sandboxPolicy: sandboxPolicy ?? null }),
-    },
-  )
-  return parseApiResponse<SkillEntry>(res)
-}
-
 /** 覆写版本绑定的业务工具 Catalog ID 列表（独立于 SKILL.md frontmatter） */
 export async function updateSkillVersionTools(
   id: string,

@@ -25,7 +25,6 @@ public enum ToolErrorCode implements ErrorCode {
     MCP_INVOKE_FAILED(502, "mcp_invoke_failed", "MCP 工具调用失败"),
     TOOL_SET_NOT_FOUND(404, "tool_set_not_found", "工具集不存在"),
     TOOL_SET_MEMBER_NOT_FOUND(404, "tool_set_member_not_found", "工具集成员不存在"),
-    EXECUTION_MODE_POLICY_NOT_FOUND(404, "execution_mode_policy_not_found", "执行模式策略不存在"),
     LOCAL_TOOL_INVOKE(400, "tool_local_invoke", "本地工具须由 orchestrator 执行，不可经 tool-manager invoke"),
     SUMMARIZE_INPUT_REQUIRED(400, "tool_summarize_input_required", "摘要请求不能为空"),
     TOOL_ID_INVALID(400, "tool_id_invalid", "工具 ID 不符合规范（仅允许字母数字_-，使用 __ 拼接）");

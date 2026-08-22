@@ -119,10 +119,6 @@ export function isPipelineLocked(versions: ConfigVersionSummary[]): boolean {
 }
 
 /** 当前选中版本是否处于评测中（只读，但可切换版本/导出） */
-export function isSelectedVersionEvaluating(selected: ConfigVersionSummary | null): boolean {
-  return selected?.status === 'evaluating'
-}
-
 export function canShowMoreMenu(versions: ConfigVersionSummary[]): boolean {
   return versions.length > 0
 }
@@ -184,10 +180,6 @@ export function canEditConfigForm(
   return canShowSaveDraft(selected, versions)
 }
 
-export function canUseVersionActions(versions: ConfigVersionSummary[]): boolean {
-  return !isPipelineLocked(versions)
-}
-
 export function canActivateConfigVersion(v: ConfigVersionSummary, versions: ConfigVersionSummary[]): boolean {
   if (v.status !== 'eval_passed') return false
   const latestPassed = versions
@@ -212,18 +204,6 @@ export function findDefaultAppliedVersion(versions: ConfigVersionSummary[]): Con
     ?? versions.find((v) => v.status === 'eval_passed')
     ?? versions.find((v) => canApplyConfigVersion(v))
     ?? null
-}
-
-export function findActiveAppliedVersion(versions: ConfigVersionSummary[]): ConfigVersionSummary | null {
-  return versions.find((v) => v.active || v.status === 'active') ?? null
-}
-
-export function hasEvaluatingConfigVersion(versions: ConfigVersionSummary[]): boolean {
-  return isPipelineLocked(versions)
-}
-
-export function canChangeConfigVersionStatus(versions: ConfigVersionSummary[]): boolean {
-  return canUseVersionActions(versions)
 }
 
 export function canRunEvalForAppliedVersion(v: ConfigVersionSummary | null): boolean {
@@ -282,16 +262,6 @@ export function evalJobConfigVersionDisplay(
 }
 
 /** 评测任务是否关联当前生效配置（生效配置不可一键应用参数建议） */
-export function isEvalJobLiveConfigVersion(
-  job: { configVersionId: number | null; configVersionNo?: number | null },
-  versions: ConfigVersionSummary[],
-): boolean {
-  const ver = resolveVersionForEvalJob(job, versions)
-  if (!ver) return false
-  return resolveConfigVersionStatus(ver) === 'live'
-}
-
-/** 评测任务关联配置是否为评测失败（仅此状态可一键应用参数建议） */
 export function isEvalJobEvalFailedConfigVersion(
   job: { configVersionId: number | null; configVersionNo?: number | null },
   versions: ConfigVersionSummary[],

@@ -73,7 +73,8 @@ import {
   fetchModelCatalog,
   type ModelCatalogDefinition,
 } from '../api/models'
-import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
+import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention, findExecutionModeOption } from '../api/executionModes'
+import { executionModeIcon } from '../api/executionModeIcons'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
 import { useConversationAttention } from '../composables/useConversationAttention'
@@ -271,6 +272,9 @@ const collapseTick = ref(0)
 const scrollFab = computed<{ kind: ScrollFabKind } | null>(() => {
   const cid = chatStore.currentId
   if (!cid) return null
+  // 空态（新对话/新任务尚无消息）：没有可滚动内容，不显示回到底部/折叠按钮，
+  // 避免从其它对话离开底部后遗留的贴底状态在新对话输入框上方残留该图标
+  if (messages.value.length === 0) return null
   void streamRevision.value
   // 最底部：回到底部图标消失；运行中时间线展开 → 折叠气泡
   if (chatScrollPinned.value) {
@@ -521,6 +525,19 @@ function onModelChange(next: string | null) {
   if (convId) chatStore.updateModelNameLocal(convId, next)
 }
 
+/** 新对话/新任务（尚无消息）：输入框垂直居中；发出第一条消息后自动贴地。
+ * 输入文字不打断居中，仅首个会话发送后进入贴地态 */
+const composerCentered = computed(
+  () =>
+    messages.value.length === 0 &&
+    !chatStore.initializing &&
+    !sessionHydrating.value,
+)
+
+/** 会话头右上角当前执行模式徽标（替换原「正在回复」状态文案） */
+const headerModeLabel = computed(() => findExecutionModeOption(preference.value).label)
+const headerModeIcon = computed(() => executionModeIcon(preference.value))
+
 const {
   inputRef,
   skillCatalog,
@@ -597,9 +614,7 @@ const composerPlaceholder = computed(() => {
 const CHAT_EMPTY_HINTS = [
   { label: '青松假政策', prompt: '青松假有多少天、怎么申请？' },
   { label: '网约车上限', prompt: '市内网约车报销上限是多少？' },
-  { label: '双路检索', prompt: '青松假有多少天，同时查一下网约车报销上限' },
   { label: '假期助手', prompt: '我今年还有几天假期？帮我列出请假单' },
-  { label: '费用合规', prompt: '对照网约车制度，帮我看我的报销是否合规' },
   { label: 'OA 待办', prompt: '我的 OA 待办有哪些？' },
 ] as const
 
@@ -609,8 +624,6 @@ const TASK_EMPTY_HINTS = [
   { label: '审查改动', prompt: '审查工作区中的代码改动，指出潜在问题并给出修改建议' },
   { label: '实现功能', prompt: '实现一个新功能，具体需求是：' },
   { label: '修复问题', prompt: '修复一个 Bug，具体现象是：' },
-  { label: '补充测试', prompt: '为当前代码补充单元测试用例' },
-  { label: '讲解项目', prompt: '讲解当前工作区的项目架构和关键文件' },
 ] as const
 
 /** 空态场景：新任务（工作区代码任务）还是新对话（知识库/Skill）；新对话选工作区仍属对话空态 */
@@ -1631,9 +1644,9 @@ watch(
       <SidebarToggle />
       <div class="header-inner">
         <h1 class="header-title">{{ sessionTitle }}</h1>
-        <span v-if="loading" class="header-status">
-          <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
-          正在回复
+        <span class="header-status" :title="`当前模式：${headerModeLabel}`">
+          <NIcon :component="headerModeIcon" :size="14" />
+          <span>{{ headerModeLabel }}</span>
         </span>
       </div>
       <button
@@ -1686,32 +1699,6 @@ watch(
             </svg>
           </div>
           <h2 class="empty-title">正在加载对话…</h2>
-        </div>
-        <div v-else-if="messages.length === 0" class="empty-state">
-          <div class="empty-icon">
-            <!-- 新任务：代码任务图标；新对话：对话图标 -->
-            <svg v-if="emptyTaskState" width="40" height="40" viewBox="0 0 48 48" fill="none">
-              <rect x="9" y="9" width="30" height="30" rx="6" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
-              <path d="M19 21l-5 4 5 4M29 21l5 4-5 4M24 18l-3 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
-            </svg>
-            <svg v-else width="40" height="40" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
-              <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.5" />
-            </svg>
-          </div>
-          <h2 class="empty-title">{{ emptyTitle }}</h2>
-          <p class="empty-desc">{{ emptyDesc }}</p>
-          <div class="hint-chips">
-            <button
-              v-for="hint in emptyHints"
-              :key="hint.label"
-              type="button"
-              class="hint-chip"
-              @click="applyEmptyHint(hint.prompt)"
-            >
-              {{ hint.label }}
-            </button>
-          </div>
         </div>
 
         <div v-else class="msg-list">
@@ -1821,7 +1808,12 @@ watch(
     />
 
     <!-- 悬浮输入区 -->
-    <footer v-show="!planDagExpanded" class="chat-composer" @wheel="forwardWheelToChatScroll">
+    <footer
+      v-show="!planDagExpanded"
+      class="chat-composer"
+      :class="{ 'composer--centered': composerCentered }"
+      @wheel="forwardWheelToChatScroll"
+    >
       <div class="composer-inner">
         <!-- 输入框上方右侧圆形快捷按钮；始终置于其它气泡（todolist/错误信息等）之上。
              离开底部 → 回到底部（待决策 → 黄色问号；待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
@@ -1921,6 +1913,40 @@ watch(
         <div v-else-if="branchSwitchStatus" class="pre-action-bubble pre-action-bubble--float">
           <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
           <span class="pre-action-text">{{ branchSwitchStatusText }}</span>
+        </div>
+        <!-- 新对话/新任务空态：示例与说明显示在居中输入框上方 -->
+        <div v-if="composerCentered" class="empty-hero">
+          <div class="empty-icon">
+            <!-- 新任务：代码任务图标；新对话：对话图标 -->
+            <svg v-if="emptyTaskState" width="40" height="40" viewBox="0 0 48 48" fill="none">
+              <rect x="9" y="9" width="30" height="30" rx="6" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+              <path d="M19 21l-5 4 5 4M29 21l5 4-5 4M24 18l-3 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+            </svg>
+            <svg v-else width="40" height="40" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+              <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.5" />
+            </svg>
+          </div>
+          <h2 class="empty-title">{{ emptyTitle }}</h2>
+          <p class="empty-desc">{{ emptyDesc }}</p>
+          <div class="hint-chips">
+            <button
+              v-for="hint in emptyHints"
+              :key="hint.label"
+              type="button"
+              class="hint-chip"
+              @click="applyEmptyHint(hint.prompt)"
+            >
+              {{ hint.label }}
+            </button>
+          </div>
+        </div>
+        <!-- 输入框上侧气泡行：模式选择仅在对话开始时展示（居中态可选，发送后隐藏，避免中途变动导致系统提示词不一致） -->
+        <div v-if="composerCentered" class="composer-bubbles">
+          <ExecutionModeSelector
+            :model-value="preference"
+            @update:model-value="setPreference"
+          />
         </div>
         <div
           class="composer-box composer-box--input"
@@ -2023,9 +2049,11 @@ watch(
             />
             <div class="composer-toolbar">
               <div class="composer-toolbar-left">
-                <ExecutionModeSelector
-                  :model-value="preference"
-                  @update:model-value="setPreference"
+                <ModelSelector
+                  v-if="!voiceListening"
+                  :model-value="modelName"
+                  :options="chatModelOptions"
+                  @update:model-value="onModelChange"
                 />
                 <GitBranchSelector
                   v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
@@ -2037,12 +2065,6 @@ watch(
                 />
               </div>
               <div class="composer-toolbar-right">
-                <ModelSelector
-                  v-if="!voiceListening"
-                  :model-value="modelName"
-                  :options="chatModelOptions"
-                  @update:model-value="onModelChange"
-                />
                 <UsageStatusBar :usage="lastUsage" />
                 <button
                   v-if="loading"
@@ -2886,6 +2908,33 @@ watch(
   pointer-events: none;
 }
 
+/* 新对话/新任务空态：输入框严格垂直居中；说明/示例与模式气泡向上浮动在输入框上方；
+   发出第一条消息后自动贴地（去掉 bottom 靠 top 定位） */
+.chat-composer.composer--centered {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  padding-bottom: 0;
+}
+
+/* 居中态下说明/示例脱离文档流上浮，不参与居中计算，保证输入框本身严格居中 */
+.chat-composer.composer--centered .empty-hero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 44px);
+  padding: 0;
+}
+
+/* 居中态下模式气泡上浮到输入框上方，同样不参与居中计算 */
+.chat-composer.composer--centered .composer-bubbles {
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 6px);
+  padding: 0;
+}
+
 .composer-inner {
   position: relative;
   display: flex;
@@ -3022,6 +3071,46 @@ watch(
   gap: 8px;
 }
 
+/* 新对话/新任务空态：标题/说明/示例 chips 显示在居中输入框上方 */
+.empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 0 20px;
+}
+
+.empty-hero .empty-icon {
+  color: var(--sun-text-muted);
+  margin-bottom: 16px;
+  opacity: 0.7;
+}
+
+.empty-hero .empty-title {
+  font-size: var(--sun-font-2xl);
+  font-weight: 600;
+  color: var(--sun-text);
+  margin: 0 0 8px;
+  letter-spacing: -0.4px;
+}
+
+.empty-hero .empty-desc {
+  font-size: var(--sun-font-base);
+  color: var(--sun-text-muted);
+  margin: 0 0 24px;
+  line-height: var(--sun-line-relaxed);
+}
+
+/* ---- 输入框上侧气泡行：模式选择 + 项目/分支选择（左对齐，样式与项目选择一致） ---- */
+.composer-bubbles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 0 2px 6px;
+}
+
 .composer-box {
   display: flex;
   align-items: center;
@@ -3101,12 +3190,13 @@ watch(
   overflow: hidden;
 }
 
-.composer-toolbar-left :deep(.mode-dropdown-root),
-.composer-toolbar-left :deep(.branch-dropdown-root) {
+.composer-toolbar-left :deep(.model-dropdown-root) {
   flex: 0 0 auto;
+  max-width: 180px;
 }
 
 .composer-toolbar-left :deep(.branch-dropdown-root) {
+  flex: 0 0 auto;
   max-width: 240px;
   min-width: 0;
   flex: 0 1 auto;

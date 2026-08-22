@@ -337,23 +337,3 @@ export function serializeRoutingContent(content: RoutingRuleContent): string {
   }
   return JSON.stringify(payload)
 }
-
-export function parseFragmentMeta(raw: string | null | undefined): {
-  attachTo: string
-  sortOrder: number
-} {
-  if (!raw?.trim()) return { attachTo: 'mode-overlay.react', sortOrder: 0 }
-  try {
-    const parsed = JSON.parse(raw) as { attachTo?: string; sortOrder?: number }
-    return {
-      attachTo: parsed.attachTo || 'mode-overlay.react',
-      sortOrder: typeof parsed.sortOrder === 'number' ? parsed.sortOrder : 0,
-    }
-  } catch {
-    return { attachTo: 'mode-overlay.react', sortOrder: 0 }
-  }
-}
-
-export function serializeFragmentMeta(attachTo: string, sortOrder: number): string {
-  return JSON.stringify({ attachTo, sortOrder })
-}

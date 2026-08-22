@@ -60,7 +60,7 @@ class SkillCatalogServiceTest {
         when(catalogClient.fetchCatalogIndex()).thenReturn(List.of(
                 new SkillCatalogIndexEntry("sandbox-coding-demo", "沙箱编码演示", "docker 示例", 1, true, "docker", "all", null)));
         service.refresh();
-        assertThat(service.renderForClassifier())
+        assertThat(service.renderForClassifier("chat"))
                 .contains("sandbox-coding-demo")
                 .contains("sandbox=docker");
     }

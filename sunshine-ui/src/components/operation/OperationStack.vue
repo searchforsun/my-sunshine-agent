@@ -485,7 +485,7 @@ function processRoundSegment(steps: ProcessingStep[]): { separates: DisplayRow[]
 
 /** 构建 roundGroup 折叠标签：
  * 统计折叠区内除 intent/tasks/首 think / subagent / decision 外的操作 */
-function buildRoundGroupLabel(_collapsedRounds: DisplayRow[][], flatCollapsed: DisplayRow[]): string {
+function buildRoundGroupLabel(flatCollapsed: DisplayRow[]): string {
   const keyCounts = new Map<string, number>()
   const keyLabel = new Map<string, string>()
 
@@ -550,7 +550,7 @@ function pushCollapsedOperationRows(result: DisplayRow[], collapsedRows: Display
   const anyRunning = collapsedRows.some(r => r.kind === 'step' ? (r.step.lifecycle ?? 'pending') === 'running' : r.anyRunning)
   result.push({
     kind: 'roundGroup',
-    label: buildRoundGroupLabel([collapsedRows], collapsedRows),
+    label: buildRoundGroupLabel(collapsedRows),
     rows: collapsedRows,
     allDone,
     anyRunning,

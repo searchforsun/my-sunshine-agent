@@ -52,9 +52,6 @@ import { consumeChatSseStream } from './chatSessionSseConsumer'
 import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 
-export type { SendOptions, SessionState } from './chatSessionRegistry'
-export { appendChunk } from './chatSessionRegistry'
-
 const API_BASE = () => resolveBffStreamBase()
 const sessions = getSessionRegistry()
 

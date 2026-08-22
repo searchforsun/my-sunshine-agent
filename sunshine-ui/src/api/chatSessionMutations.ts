@@ -1,21 +1,6 @@
 import type { ProcessingStep } from './processingSteps'
 import type { SessionState } from './chatSessionRegistry'
 
-/** 测试辅助：深拷贝 steps；生产 bump 路径禁止使用（见 bumpAssistantMessage） */
-export function cloneStepsForReactive(steps: ProcessingStep[]): ProcessingStep[] {
-  return steps.map(step => ({
-    ...step,
-    summary: step.summary ? { ...step.summary } : step.summary,
-    metadata: step.metadata ? { ...step.metadata } : step.metadata,
-    contentBlocks: step.contentBlocks?.map(b => ({ ...b })),
-    subSteps: step.subSteps?.map(sub => ({
-      ...sub,
-      summary: sub.summary ? { ...sub.summary } : sub.summary,
-      metadata: sub.metadata ? { ...sub.metadata } : sub.metadata,
-    })),
-  }))
-}
-
 export function updateNodeStepContent(
   steps: ProcessingStep[],
   nodeStepId: string,

@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.client;
 
 import com.sunshine.common.model.ModelSceneKey;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.prompt.PromptComposeRequest;
 import com.sunshine.orchestrator.prompt.PromptComposer;
@@ -108,18 +107,6 @@ public class LlmGatewayClient {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                 .doOnError(e -> log.warn("[LlmGatewayClient] completeRaw 失败: {}", e.getMessage()));
-    }
-
-    /**
-     * 拉取 LLM Gateway 模型列表 — 供 ModelWindowCache 获取模型上下文窗口。
-     */
-    public Mono<ModelListDto> listModels() {
-        return webClient.get()
-                .uri("/models")
-                .retrieve()
-                .bodyToMono(ModelListDto.class)
-                .timeout(Duration.ofSeconds(5))
-                .doOnError(e -> log.warn("[LlmGatewayClient] listModels 失败: {}", e.getMessage()));
     }
 
     // ==================== 内部实现 ====================
@@ -260,15 +247,5 @@ public class LlmGatewayClient {
         } catch (Exception ignored) {
         }
         return Flux.empty();
-    }
-
-    // ==================== DTO（从 ModelWindowCache 迁出） ====================
-
-    public record ModelListDto(String object, List<ModelInfoDto> data) {
-    }
-
-    public record ModelInfoDto(String id,
-                               @JsonProperty("context_window") Integer contextWindow,
-                               String encoding) {
     }
 }

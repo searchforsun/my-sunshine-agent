@@ -17,11 +17,6 @@ public class WorkflowCatalog {
     private final WorkflowCatalogRegistry catalogRegistry;
     private final WorkflowManagerClient workflowManagerClient;
 
-    /** 渲染全部 workflow（Planner 参考目录，不做会话形态裁剪） */
-    public String renderForPrompt() {
-        return renderForPrompt(null);
-    }
-
     /** 按会话 kind 过滤渲染（保留 all + 同 kind）；kind 为空渲染全部 */
     public String renderForPrompt(String sessionKind) {
         if (catalogRegistry.entries().isEmpty()) {

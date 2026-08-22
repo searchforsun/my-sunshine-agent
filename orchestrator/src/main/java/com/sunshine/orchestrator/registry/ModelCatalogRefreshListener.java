@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.registry;
 
+import com.sunshine.orchestrator.context.ModelWindowCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Component;
 public class ModelCatalogRefreshListener implements MessageListener {
 
     private final ModelSceneResolver modelSceneResolver;
-    private final ModelWindowCacheBridge modelWindowCacheBridge;
+    private final ModelWindowCache modelWindowCache;
 
     @Override
     public void onMessage(Message message, byte[] pattern) {
@@ -22,6 +23,6 @@ public class ModelCatalogRefreshListener implements MessageListener {
                 : "default";
         log.info("[ModelCatalogRefreshListener] refresh triggered tenant={}", tenantId);
         modelSceneResolver.refreshBestEffort();
-        modelWindowCacheBridge.syncFromResolver();
+        modelWindowCache.syncFromRegistry();
     }
 }

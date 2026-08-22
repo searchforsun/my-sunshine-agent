@@ -146,23 +146,6 @@ export function allowsForPreference(preference: ExecutionMode): ChatMentionAllow
   }
 }
 
-export function segmentChatMentionsForMessage(
-  content: string,
-  catalogs: ChatMentionCatalogs,
-  executionPreference?: ExecutionMode,
-): ChatMentionSegment[] {
-  const pref = executionPreference ?? 'fast'
-  return segmentChatMentions(content, catalogs, allowsForPreference(pref))
-}
-
-export function hasChatMentionChips(
-  content: string,
-  catalogs: ChatMentionCatalogs,
-  allows: ChatMentionAllows,
-): boolean {
-  return segmentChatMentions(content, catalogs, allows).some(s => s.type !== 'text')
-}
-
 export function mentionPrefix(kind: ChatMentionKind): string {
   switch (kind) {
     case 'skill': return '/'

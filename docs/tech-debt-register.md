@@ -31,24 +31,33 @@
 | TD-164 | P2 | done | `specs/2026-07-31-unified-context-compression-design.md` | 基线压缩已 ✅；spec 状态行已更新「基线管道 ✅ / §5.5+ 增强 ⬜ 设计稿」（§13.3 落地清单为验收依据）；「Layer1 待恢复」表述已不存在；archive 历史文件不在范围 |
 | TD-167 | P3 | done | `SandboxAgentTools.java` L207 / `MemoryProperties.DEFAULT_SUMMARY_PROMPT` + `HarnessAgentFactory.resolveSummaryPrompt` | 删兜底：`sandbox.budget-exhausted` 死分支 `if(!hasText)` 删除（Catalog 已有 seed）；`compaction.summary-prompt` 回退链（config→Java 硬编码副本）删除，`resolveSummaryPrompt` 只读 Catalog（requireText 缺失 warn），`DEFAULT_SUMMARY_PROMPT` 常量与 `summaryPrompt` 字段删除；20 单测绿 |
 | TD-168 | P1 | open | Catalog DTO `ModelCapabilities`/`ModelCatalog*` 四方平行（rm/orch/gw/ui） | 2026-08-10 已统一 `defaults().toolCall=true` 与 Crypto/SceneKey SSOT；完整 DTO 生成/上收 common 延后 |
-| TD-169 | P1 | open | `OperationStack.vue` `buildRoundGroupLabel` | 本地 sandbox 步骤话术 Map；应走后端 summary/label |
+| TD-169 | P1 | wontfix | `OperationStack.vue` `buildRoundGroupLabel` | 后端无「折叠区聚合统计」数据、SSE 无聚合契约；强行走后端需新增契约（收益低）。2026-08-22 删死参数 `_collapsedRounds`，话术 Map 保留为最简方案 |
 | TD-170 | P2 | open | `useModelsPage.ts` / `ModelsView.vue` / `ModelSceneResolver` | 上帝类拆分（按 Provider/Definition/Scene；Resolver Fetch vs Resolve） |
-| TD-171 | P2 | open | `ModelWindowCache` + `ModelWindowCacheBridge` | 窗口双路径；应只信 Catalog |
-| TD-172 | P3 | open | `model.crypto.aes-key` 默认串 | 生产应 fail-fast / 强制 env，禁默认材料 |
+| TD-171 | P2 | done | `ModelWindowCache` + `ModelWindowCacheBridge` | 收口双路径：删 `ModelWindowCache.refreshFromGateway`（绕经 llm-gateway，数据源同为注册表 Catalog）+ `LlmGatewayClient.listModels`/`ModelListDto`/`ModelInfoDto` 死代码 + 冗余转发层 `ModelWindowCacheBridge`（`syncFromResolver` 与 `syncFromRegistry` 重复，listener 直连 cache）+ `windowFor` 防御性 null 检查；构造签名单参；orchestrator 1085 单测绿 |
+| TD-172 | P3 | done | `model.crypto.aes-key` 默认串 | 删两处 Nacos 默认串（`sunshine-llm-gateway.yaml` / `sunshine-resource-manager.yaml`）：`${MODEL_AES_KEY}` 强制 env，缺失启动失败（fail-fast）；2026-08-22 同步 Nacos 并设 `MODEL_AES_KEY` env 重启验证 |
 | TD-184 | P2 | open | `DecisionCard.vue` (~847 行) | 状态机+多题 UI+CSS 上帝组件；拆 `useDecisionForm` / QuestionList（R5 延后） |
-| TD-185 | P2 | open | `DecisionLabels` `{choice}` 旧模板键 | Catalog 改 `{answers}` 后删兼容键 |
+| TD-185 | P2 | wontfix | `DecisionLabels` `{choice}` 旧模板键 | 线上 `timeline.steps.decision.after` 实测为 `"用户已选择：{choice}"`（catalog_version=137）；Java 侧仅 `{choice}` 替换，无 `{answers}` 兼容键可删。2026-08-22 线上核实关闭 |
 | TD-186 | P3 | open | Labels.bind 样板（17×） | 中期统一 `TimelineLabelFacade`；本轮不合并 |
 | TD-194 | P3 | done | `ChatMessageEntity.execution_mode` 列 | v6 迁移后双列仅写不读：删 entity 字段 + `updateMessageExecutionPlan` 写入 + DDL 列；读侧 DTO/审计零消费，39 单测绿 |
-| TD-195 | P3 | done | `sunshine-ui` `ExecutionPreference` 类型 / `useExecutionPreference` | 类型 `ExecutionMode` + 组合函数 `useExecutionMode`（文件改名）+ `isExecutionMode`/`normalizeExecutionMode`；读侧 DTO 属性 `executionPreference` 与 storage key 保留；vue-tsc 仅存量 ModelsView 4 错，单测绿 |
+| TD-195 | P3 | done | `sunshine-ui` `ExecutionPreference` 类型 / `useExecutionPreference` | 类型 `ExecutionMode` + 组合函数 `useExecutionMode`（文件改名）+ `isExecutionMode`/`normalizeExecutionMode`；读侧 DTO 属性 `executionPreference` 与 storage key 保留；ModelsView 存量 4 错已随 TD-204 修复，vue-tsc 全绿，单测绿 |
 | TD-196 | P3 | done | 归档引用死链（全仓） | spec 归档 `archive/` 时未同步引用，全仓 278 处死链全部修复：核心文档 `implementation-plan.md`/`specs/README.md`/`CLAUDE.md` + 全部次级文档（103 文件 279/274 行）；880 链接复扫零死链；修复规则：`specs|plans` 段后补 `archive/`、archive 内回退 `../`、README 类按原 rel 目录语义匹配 `docs/<dir>/README.md` |
+| TD-203 | P3 | done | `useConversationStreaming.ts` 孤儿 composable | 侧栏流式指示零引用（消费方已改走 `chatSessionRegistry`），删除；删除前全仓引用核实 |
+| TD-204 | P3 | done | `ModelsView.vue` 存量 4 个 vue-tsc 错 | `boolParamOptions` value 由 boolean 改为 `'true'/'false'` 字符串 + `reasoningSplitSelectValue`/`includeUsageSelectValue` computed 桥接（运行时仍写回 boolean，`buildRequestExtras` 输出不变）；TD-195 遗留 4 错全消，vue-tsc 全绿 |
+| TD-205 | P3 | done | `statusArchitecture.test.ts` 服务合并后拓扑未同步 | 期望值对齐 `SERVICE_DEFS`（11 个可探测服务；L4 上行 `Biz Simulator`、下行 MCP；Desensitize 并入 Resource Manager 描述）；5 测试全绿，前端全量 315 绿 |
+| TD-206 | P3 | done | 无消费 re-export 清理 | `chatSessions.ts` 删 `appendChunk`/`SendOptions`/`SessionState` re-export（唯一外部消费 ChatView 仅用 `useChatSessions`）；`processingSteps.ts` 删无消费 `RewriteDetailView` re-export（保留 `TimelineMessageStatus`） |
+| TD-207 | P3 | done | 前端 API 孤儿函数批量清理（21 函数） | 全仓 refs=1 扫描：`workspaceGit` 删 `createCheckout`/`removeCheckout`/`gitStatus`+`GitStatus` 接口（`ensureCheckout` 为幂等实现）；`executionPlans` 删 `listExecutionPlans`/`getExecutionPlanNodes`/`formatPlanStatus`/`formatTraceStatus`+`ExecutionPlanSummary`；`planHydrate` 删 `isPlanBizNodeStep`/`listPlanBizNodeSteps`；`processingStepsPause` 删 `retainIntentStepsOnly`；`taskBoardWaves` 删 `groupTaskBoardWaves`（+spec 对应 describe）；`chatSessionMutations` 删 `cloneStepsForReactive`（注释自称测试辅助但零消费）；`hitlSteps` 删 `syncPendingHitlFromSteps`（「兼容旧 API」注释）`/resolveHitlHint`/`resolveAgentSubStepsForDisplay`；`contentInterleave` 删 stub `leadingContentRows`（恒返回 []）；`sandboxEditDiff` 删 `formatDiffLinesAsText`（补齐 TD-141 前端侧）；`skills` 删 `updateSkillVersionSandbox`；`prompts` 删 `parseFragmentMeta`/`serializeFragmentMeta`；`ragAdmin/kbDocuments` 删 `ingestText`/`searchKnowledgePublic` + 连带删孤儿导出 `ragHeaders`（client.ts）。对应后端端点均为脚本/服务契约保留不动；vue-tsc 全绿，单测 311 绿 |
+| TD-208 | P3 | done | `sunshine-ui/tsconfig.tsbuildinfo` 误跟踪 | vue-tsc 增量编译缓存被 git 跟踪（每次构建产生 `M` 脏状态）：`.gitignore` 增 `*.tsbuildinfo` + `git rm --cached` 取消跟踪；git 扫描无其它构建缓存产物（dist/.vite/.pyc/node_modules 均已被忽略） |
+| TD-209 | P3 | done | `tool-service` `ExecutionModePolicy` 全链死代码 | `ExecutionModePolicyEntity`/`ExecutionModePolicyRepository`/`ToolRegistry`（纯转发 `InvokeRouter`，零消费）+ `ToolErrorCode.EXECUTION_MODE_POLICY_NOT_FOUND` + 建表 `docker/mysql/init/16-sunshine-tool-service.sql` `execution_mode_policy` 表全部删除；全仓零引用，tool-service 编译 + 42 单测绿 |
+| TD-210 | P3 | done | `rag-service` `ConfigAdminMarker` 死占位接口 | package-private 空接口「T10–T12 实现」标注但全仓零引用，删除 |
+| TD-211 | P3 | done | 前端 utils 孤儿函数批量清理（17 函数） | 全仓 refs=1 扫描：`workflowTemplates` 删 `getWorkflowTemplate`；`chatMention` 删 `segmentChatMentionsForMessage`/`hasChatMentionChips`；`skillMention` 删 `segmentSkillMentions`/`segmentSkillMentionsForMessage`/`hasSkillMentionSegments` + 类型/常量（`resolveSkillBindingForSend` 内联为 `findSkillByToken` 直取首个 token）；`agentMention` 删 `segmentAgentMentions`/`segmentAgentMentionsForMessage` + `AgentMentionSegment`；`workflowMention` 删 `segmentWorkflowMentions`/`segmentWorkflowMentionsForMessage` + `WorkflowMentionSegment`（`resolveWorkflowBindingForSend` 同法内联）；`kbConfigVersion` 删 `isSelectedVersionEvaluating`/`findActiveAppliedVersion`/`hasEvaluatingConfigVersion`/`canChangeConfigVersionStatus`/`isEvalJobLiveConfigVersion`/`canUseVersionActions`（连删后孤儿）；`evalConstants` 删 `isEvalNegativeCategory`；`workflowNodeParams` 删 `displayAgentKbId`/`displayRagKbId`/`agentKbIdEmptyLabel`；`workflowPlan` 删 `emptyWorkflowPlan`/`removeBusinessNode`；`sandboxPathChip` 删 `resolveSandboxPath`/`looksLikeSandboxRelativePath`；`workflowNodeIo` 删 `readToolParamValue`；`planGraph` 删 `linearNodeOrder`；vue-tsc 全绿，单测 311 绿 |
 
 ### 文档债
 
 | ID | 严重度 | 状态 | 位置 | 摘要 |
 |----|--------|------|------|------|
-| DOC-101 | P3 | open | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 仍写 TenantUserStore/`/mock-data`；实现期清单，可读但非 SSOT |
-| DOC-102 | P3 | open | `specs/plans/2026-07-29-multi-agent-unified.*` | 历史对照仍大量使用 expert/peer 措辞（peer-collab 已删、spawn_subagent 已落地）；非本轮代码范围，建议后续文档轮次收敛术语 |
-| DOC-103 | P1 | open | `CLAUDE.md` vs `executionModes.ts` | 已纠偏为「routing v6 设计中 / 现状 auto\|react…」；落地 fast/pro/workflow 时删本条 |
+| DOC-101 | P3 | wontfix | `plans/2026-07-21-corpus50-platform-adapt.md` 等历史 plan | 已全部 ✅ 的实现期清单；`TenantUserStore`/`/mock-data` 为当时实现事实（代码中已不存在，TD-189/190 收口），改动历史文档会失真；SSOT 已在 CLAUDE/README |
+| DOC-102 | P3 | wontfix | `specs/plans/2026-07-29-multi-agent-unified.*` | 状态行已标注术语清理完成；expert/peer 仅存于 §0 术语重命名对照表（刻意保留的历史映射，删除会失去对照信息）；peer-collab 代码已删（TD-165） |
+| DOC-103 | P1 | done | `CLAUDE.md` vs `executionModes.ts` | routing v6 已落地（wire 仅 fast/pro/workflow，`ExecutionPreference` 已删）；CLAUDE.md 已同步「存储读侧 DTO 字段仍名 executionPreference」；`normalizeExecutionMode` 的 auto/react→fast 为读侧归一化（spec 已覆盖），非 wire 兼容分支 |
 | DOC-104 | P3 | open | `specs/2026-08-12-skill-sticky-process-chain-design.md` | v3.1：可发现≠触发；落地 S-0→S-D/S-T→S-1 后再归档；ledger/软链/图不做 |
 
 **阶段三已知 WARN（非代码债）**：RAG v6 相对 vector +15% 提升轨未达标（见 `docs/rag/regression-*.md`）。
@@ -225,6 +234,13 @@
 | TD-191 | 2026-07-17 | 删 `SandboxSessionLifecycle.openIfNeeded`；bridge 废弃 no-op / 未用 getter |
 | TD-192 | 2026-07-17 | 沙箱时间线 SSOT：后端 headerPath/glob 推断 + metadata；前端停二次加工 |
 | TD-193 | 2026-07-21 | `sync_nacos.py` 补漏 `sunshine-oa.yaml`（否则 OA admin-token 永不更新） |
+| TD-197 | 2026-08-22 | `SkillCatalogService` 无参 `renderForClassifier()`/`renderIntoClassifier(String)` 兼容入口（仅测试引用，生产只走 kind 路径）删除；`includeAll` 布尔参数内联；测试迁移 `renderForClassifier("chat")`；orchestrator 全量 1085 单测绿 |
+| TD-198 | 2026-08-22 | 注释精确化：`ConversationDetailDto`「读侧映射旧 wire」→「DTO 字段名沿用读侧旧名 executionPreference，值域 wire 三值」；`ExecutionPlanParser`「兼容旧 classifier」→「L3 分类器输出契约」；`ToolNodeHandler`/`ExecutionPlanParser` 均无残留兼容分支（核查后保持） |
+| TD-199 | 2026-08-22 | 删恒真死方法 `ExecutionMode.isForced()`（三模式均钉死，v6 无 auto 自判）→ 调用处 `ChatStreamContextFactory` 简化为 `!preference.allowsSkillBinding()`；`ModelWindowCache.refresh` 删冗余 `new ConcurrentHashMap<>(...)`（`Map.copyOf` 已生成不可变副本）；orchestrator 1085 单测绿 |
+| TD-200 | 2026-08-22 | 删 `IntentRouter.classifyPlan(String)` 兼容重载（仅传用户句的调用方已无）；`SkillDiscoveryService.enrich(plan, userMessage)` 删死参数 `userMessage`（实现仅 `sanitizeSkillPlan(plan)`）；`ExecutionPlanRouter` 两处链式简化（`enrich(plan)` + `filterForTrack(plan, preference)` 直传）；测试同步；全仓零残留引用 |
+| TD-201 | 2026-08-22 | `RoutingContext` 收口：删死构造 7-arg（含 memory+lockedMode，零引用）+ 死静态方法 `of(String)`（零引用）；`executionMode()` 删枚举→字符串→枚举无意义往返（`ExecutionMode.from(preference.wireValue())` → 直接返回 `preference`）；routing 相关 68 单测绿 |
+| TD-202 | 2026-08-22 | `WorkflowCatalog.renderForPrompt()` 无参重载删除（仅测试引用，生产全走 `renderForPrompt(sessionKind)`；与 TD-197 同构），测试迁移 `renderForPrompt(null)`；前端删 3 个孤儿组件：`SkillMentionChip.vue`（仅包装 MentionChip 的 skill 场景）、`WorkspaceSelector.vue`（工作区选择模态）、`ReasoningPanel.vue`（思考过程面板，chat-meta 已由时间线取代）——全仓零引用，vue-tsc 仅存量 ModelsView 4 错 |
+| TD-199 | 2026-08-22 | 路由域收口：删 `ExecutionMode.isForced()` 恒真方法（调用处 `!allowsSkillBinding()` 等价简化）；`SkillDiscoveryService.enrich` 死参数 `userMessage` 删除；`ExecutionPlanRouter` `filterForTrack` 冗余三元 `from(wireValue())` 恒等简化；`IntentRouter.classifyPlan(String)` 无生产调用方死重载删除；orchestrator 1085 单测绿 |
 
 ### 文档债（DOC）
 

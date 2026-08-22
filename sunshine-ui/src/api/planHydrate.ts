@@ -2,19 +2,9 @@
 import type { ChatMessage } from './chat'
 import type { ProcessingStep } from './processingSteps'
 
-/** Plan DAG 业务 node 步（不含 answer；HITL 等） */
-export function isPlanBizNodeStep(step: ProcessingStep): boolean {
-  return step.id.startsWith('node-') && step.id !== 'node-answer'
-}
-
 /** DAG 上所有 node 步（含 node-answer） */
 export function isPlanDagNodeStep(step: ProcessingStep): boolean {
-  return step.id.startsWith('node-')
-}
-
-export function listPlanBizNodeSteps(steps: ProcessingStep[] | undefined): ProcessingStep[] {
-  if (!steps?.length) return []
-  return steps.filter(isPlanBizNodeStep)
+  return step.id.startsWith('node-') && step.id !== 'node-answer'
 }
 
 export function listPlanDagNodeSteps(steps: ProcessingStep[] | undefined): ProcessingStep[] {

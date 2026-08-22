@@ -135,12 +135,6 @@ export function readAgentMaxIters(
   return defaults?.nodeParams?.agent?.maxIters ?? 8
 }
 
-export function agentKbIdEmptyLabel(defaults: WorkflowNodeDefaultsResponse | null): string {
-  return defaults?.nodeParams?.agent?.kbIdEmptyLabel?.trim()
-    || defaults?.nodeParams?.rag?.kbIdEmptyLabel?.trim()
-    || '（会话默认）'
-}
-
 export const SESSION_KB_VALUE = '__session_default__'
 
 export function ragKbIdEmptyLabel(defaults: WorkflowNodeDefaultsResponse | null): string {
@@ -157,26 +151,6 @@ export function resolveKbSelectValue(
 
 export function patchKbIdFromSelect(selected: string): string | null {
   return selected === SESSION_KB_VALUE ? null : selected
-}
-
-export function displayAgentKbId(
-  params: Record<string, unknown> | undefined,
-  defaults: WorkflowNodeDefaultsResponse | null,
-  readOnly: boolean,
-): string {
-  const raw = params?.kbId
-  if (raw != null && String(raw).trim() !== '') return String(raw)
-  return readOnly ? agentKbIdEmptyLabel(defaults) : ''
-}
-
-export function displayRagKbId(
-  params: Record<string, unknown> | undefined,
-  defaults: WorkflowNodeDefaultsResponse | null,
-  readOnly: boolean,
-): string {
-  const raw = params?.kbId
-  if (raw != null && String(raw).trim() !== '') return String(raw)
-  return readOnly ? ragKbIdEmptyLabel(defaults) : ''
 }
 
 /** @param strict 为 true 时不自动补齐默认值（发布/校验 DAG 用） */

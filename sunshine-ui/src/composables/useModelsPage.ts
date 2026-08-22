@@ -31,6 +31,16 @@ import { useModelsRouteState, type ModelsTab } from './useModelsRouteState'
 
 export type { ModelsTab }
 
+function boolSelectValue(v: boolean | null): 'true' | 'false' | null {
+  if (v === null) return null
+  return v ? 'true' : 'false'
+}
+
+function boolDraftValue(v: 'true' | 'false' | null): boolean | null {
+  if (v === null) return null
+  return v === 'true'
+}
+
 export function useModelsPage() {
   const message = useMessage()
   const route = useRoute()
@@ -75,8 +85,8 @@ export function useModelsPage() {
   })
 
   const boolParamOptions = [
-    { label: 'true', value: true },
-    { label: 'false', value: false },
+    { label: 'true', value: 'true' as const },
+    { label: 'false', value: 'false' as const },
   ]
   const thinkingTypeOptions = [
     { label: 'adaptive', value: 'adaptive' },
@@ -86,6 +96,20 @@ export function useModelsPage() {
     { label: 'standard', value: 'standard' },
     { label: 'priority', value: 'priority' },
   ]
+
+  // NSelect value 仅支持 string/number；boolean 经字符串桥转换，运行时仍写回 boolean
+  const reasoningSplitSelectValue = computed({
+    get: () => boolSelectValue(definitionDraft.value.requestExtras.reasoning_split),
+    set: (v) => {
+      definitionDraft.value.requestExtras.reasoning_split = boolDraftValue(v)
+    },
+  })
+  const includeUsageSelectValue = computed({
+    get: () => boolSelectValue(definitionDraft.value.requestExtras.stream_options_include_usage),
+    set: (v) => {
+      definitionDraft.value.requestExtras.stream_options_include_usage = boolDraftValue(v)
+    },
+  })
 
   const showSceneModal = ref(false)
   const sceneEditKey = ref<string | null>(null)
@@ -636,6 +660,8 @@ export function useModelsPage() {
     definitionEditId,
     definitionDraft,
     boolParamOptions,
+    reasoningSplitSelectValue,
+    includeUsageSelectValue,
     thinkingTypeOptions,
     serviceTierOptions,
     showSceneModal,

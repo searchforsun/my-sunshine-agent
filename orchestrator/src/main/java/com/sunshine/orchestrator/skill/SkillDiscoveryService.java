@@ -18,7 +18,7 @@ public class SkillDiscoveryService {
         this.skillCatalogService = skillCatalogService;
     }
 
-    public ExecutionPlan enrich(ExecutionPlan plan, String userMessage) {
+    public ExecutionPlan enrich(ExecutionPlan plan) {
         return skillCatalogService.sanitizeSkillPlan(plan);
     }
 

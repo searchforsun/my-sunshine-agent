@@ -37,7 +37,7 @@ class SkillDiscoveryServiceTest {
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm");
         when(skillCatalogService.sanitizeSkillPlan(react)).thenReturn(react);
 
-        ExecutionPlan enriched = service.enrich(react, "帮我做一笔报销的合规分析");
+        ExecutionPlan enriched = service.enrich(react);
 
         assertThat(enriched.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
     }
@@ -50,7 +50,7 @@ class SkillDiscoveryServiceTest {
         ExecutionPlan sanitized = new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm");
         when(skillCatalogService.sanitizeSkillPlan(react)).thenReturn(sanitized);
 
-        ExecutionPlan enriched = service.enrich(react, "随便聊聊");
+        ExecutionPlan enriched = service.enrich(react);
 
         assertThat(enriched.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);
     }
@@ -60,6 +60,6 @@ class SkillDiscoveryServiceTest {
         ExecutionPlan workflow = new ExecutionPlan(ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "rule");
         when(skillCatalogService.sanitizeSkillPlan(workflow)).thenReturn(workflow);
 
-        assertThat(service.enrich(workflow, "合规分析")).isSameAs(workflow);
+        assertThat(service.enrich(workflow)).isSameAs(workflow);
     }
 }

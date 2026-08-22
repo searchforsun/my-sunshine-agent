@@ -61,7 +61,7 @@ public class ConversationDetailDto {
         private String status;
         private String intent;
         private String executionPlanId;
-        /** user 消息发送时的执行模式（API：fast|pro|workflow；读侧映射旧 wire） */
+        /** user 消息发送时的执行模式（值域 fast|pro|workflow；DTO 字段名沿用读侧旧名 executionPreference） */
         private String executionPreference;
         private int seq;
         private Instant createdAt;

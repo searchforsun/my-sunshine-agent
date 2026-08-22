@@ -18,7 +18,7 @@ export {
   isWorkflowNodeStepId,
   STEP_ORDER,
 } from './processingStepsNormalize'
-export type { RewriteDetailView, TimelineMessageStatus } from './processingStepsDisplay'
+export type { TimelineMessageStatus } from './processingStepsDisplay'
 export {
   formatStepLabel,
   formatDuration,

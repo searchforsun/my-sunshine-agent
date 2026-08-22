@@ -84,7 +84,7 @@ public class ChatStreamContextFactory {
             conversationService.updateModelName(conv.getId(), userId, tenantId, modelOverride);
         }
         String executionQuery = userContent;
-        if (preference.isForced() && !preference.allowsSkillBinding()) {
+        if (!preference.allowsSkillBinding()) {
             executionQuery = skillBindingParser.stripSlashMention(userContent);
         } else if (StringUtils.hasText(msg.getSkillId())) {
             executionQuery = skillBindingParser.stripSkillMentions(userContent);

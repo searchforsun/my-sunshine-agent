@@ -66,14 +66,6 @@ export interface ExecutionPlanDetail {
   completedAt?: string
 }
 
-export interface ExecutionPlanSummary {
-  id: string
-  messageId: string
-  status: string
-  createdAt?: string
-  completedAt?: string
-}
-
 async function parseJson<T>(res: Response): Promise<T> {
   return parseBffPayload<T>(res)
 }
@@ -87,33 +79,6 @@ export async function getExecutionPlan(planId: string): Promise<ExecutionPlanDet
     headers: apiHeaders(),
   })
   return parseJson<ExecutionPlanDetail>(res)
-}
-
-export async function listExecutionPlans(conversationId: string): Promise<ExecutionPlanSummary[]> {
-  const res = await fetch(
-    apiUrl(`/api/execution-plans?conversationId=${encodeURIComponent(conversationId)}`),
-    { headers: apiHeaders() },
-  )
-  return parseJson<ExecutionPlanSummary[]>(res)
-}
-
-export async function getExecutionPlanNodes(planId: string): Promise<PlanNodeTrace[]> {
-  const res = await fetch(apiUrl(`/api/execution-plans/${encodeURIComponent(planId)}/nodes`), {
-    headers: apiHeaders(),
-  })
-  return parseJson<PlanNodeTrace[]>(res)
-}
-
-export function formatPlanStatus(status: string): string {
-  const map: Record<string, string> = {
-    awaiting_approval: '待确认',
-    validated: '已校验',
-    running: '执行中',
-    completed: '已完成',
-    failed: '失败',
-    rejected: '已拒绝',
-  }
-  return map[status] ?? status
 }
 
 export function formatPlanNodeType(type: string): string {
@@ -134,13 +99,4 @@ export function formatPlanNodeType(type: string): string {
     task: '任务',
   }
   return map[type] ?? type
-}
-
-export function formatTraceStatus(status: string): string {
-  const map: Record<string, string> = {
-    completed: '完成',
-    failed: '失败',
-    running: '执行中',
-  }
-  return map[status] ?? status
 }

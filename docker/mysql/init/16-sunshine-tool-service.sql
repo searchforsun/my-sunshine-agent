@@ -74,15 +74,6 @@ CREATE TABLE tool_set_member (
     PRIMARY KEY (set_id, tool_id)
 );
 
-CREATE TABLE execution_mode_policy (
-    id              VARCHAR(64) PRIMARY KEY,
-    mode_key        VARCHAR(32) NOT NULL,
-    tenant_id       VARCHAR(32),
-    policy_json     JSON NOT NULL,
-    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_mode_tenant (mode_key, tenant_id)
-);
-
 INSERT INTO sdk_application (id, nacos_service, display_name, tenant_id, status) VALUES
 ('sunshine-biz', 'sunshine-biz-simulator', '业务模拟应用', 'default', 'offline');
 

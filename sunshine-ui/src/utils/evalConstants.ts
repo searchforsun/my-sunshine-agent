@@ -183,10 +183,6 @@ export function formatEvalCategory(category: string | null | undefined): string 
   return EVAL_CATEGORY_LABEL[key] ?? key
 }
 
-export function isEvalNegativeCategory(category: string | null | undefined): boolean {
-  return category?.trim() === 'negative'
-}
-
 export function kbCustomSuiteKey(kbId: string): string {
   const safe = kbId.trim().replace(/[^a-zA-Z0-9_-]/g, '-')
   return `${safe || 'default'}-custom`

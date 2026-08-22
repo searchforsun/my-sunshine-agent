@@ -81,38 +81,6 @@ function nodeLabel(node: PlanGraphNode): string {
   return formatPlanNodeType(node.type)
 }
 
-/** 从 edges 拓扑排序；无边时按 nodes 数组顺序 */
-export function linearNodeOrder(graph: PlanGraph): string[] {
-  const nodes = (graph.nodes ?? []).filter(isBusinessNode)
-  const ids = nodes.map(n => n.id)
-  const edges = graph.edges ?? []
-  if (edges.length === 0) return ids
-  const incoming = new Map<string, number>()
-  const adj = new Map<string, string[]>()
-  for (const id of ids) {
-    incoming.set(id, 0)
-    adj.set(id, [])
-  }
-  for (const e of edges) {
-    if (!incoming.has(e.to) || !adj.has(e.from)) continue
-    adj.get(e.from)!.push(e.to)
-    incoming.set(e.to, (incoming.get(e.to) ?? 0) + 1)
-  }
-  const queue = ids.filter(id => (incoming.get(id) ?? 0) === 0)
-  const order: string[] = []
-  while (queue.length > 0) {
-    const cur = queue.shift()!
-    order.push(cur)
-    for (const next of adj.get(cur) ?? []) {
-      const deg = (incoming.get(next) ?? 1) - 1
-      incoming.set(next, deg)
-      if (deg === 0) queue.push(next)
-    }
-  }
-  if (order.length < ids.length) return ids
-  return order
-}
-
 function mapTraceStatus(status: string): DagNodeStatus {
   if (status === 'completed') return 'done'
   if (status === 'failed') return 'error'

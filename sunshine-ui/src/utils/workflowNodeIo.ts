@@ -87,8 +87,3 @@ export function nodeOutputRefs(node: WorkflowPlanNode, tool?: ToolCatalogEntry |
       return []
   }
 }
-
-export function readToolParamValue(params: Record<string, unknown> | undefined, name: string): string {
-  const raw = params?.[name]
-  return raw != null ? String(raw) : ''
-}

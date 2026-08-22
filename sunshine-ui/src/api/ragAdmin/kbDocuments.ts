@@ -1,6 +1,6 @@
 import type { TenantId } from '../tenants'
 import { parseApiResponse } from '../apiError'
-import { adminHeaders, ragApiBase, ragHeaders } from './client'
+import { adminHeaders, ragApiBase } from './client'
 
 export interface KnowledgeBase {
   kbId: string
@@ -345,21 +345,6 @@ export async function forkDocumentVersion(
   return parseApiResponse<DocumentDetail>(res)
 }
 
-export async function ingestText(
-  tenantId: TenantId,
-  kbId: string,
-  content: string,
-  docName?: string,
-  docId?: string,
-): Promise<{ docId: string; docName: string; version: string; chunks: number }> {
-  const res = await fetch(`${ragApiBase()}/api/rag/admin/kbs/${encodeURIComponent(kbId)}/ingest/text`, {
-    method: 'POST',
-    headers: adminHeaders(tenantId),
-    body: JSON.stringify({ content, docName, docId, displayName: docName }),
-  })
-  return parseApiResponse(res)
-}
-
 export async function debugSearch(
   tenantId: TenantId,
   kbId: string,
@@ -371,20 +356,4 @@ export async function debugSearch(
     body: JSON.stringify({ ...body, kbId }),
   })
   return parseApiResponse<DebugSearchResponse>(res)
-}
-
-/** 公开检索（非 admin） */
-export async function searchKnowledgePublic(
-  query: string,
-  tenantId: TenantId,
-  kbId: string,
-  topK = 5,
-): Promise<Array<{ docName: string; content: string; score: number }>> {
-  const res = await fetch(`${ragApiBase()}/api/rag/search`, {
-    method: 'POST',
-    headers: ragHeaders(tenantId),
-    body: JSON.stringify({ query, topK, kbId }),
-  })
-  const data = await parseApiResponse<{ results?: Array<{ docName: string; content: string; score: number }> }>(res)
-  return Array.isArray(data.results) ? data.results : []
 }

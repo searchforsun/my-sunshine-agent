@@ -26,11 +26,6 @@ public enum ExecutionMode {
         return this == FAST || this == PRO;
     }
 
-    /** 三模式均钉死分发，无 auto 自判 */
-    public boolean isForced() {
-        return true;
-    }
-
     /** API / DB 存储值 */
     public String wireValue() {
         return switch (this) {

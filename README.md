@@ -97,6 +97,8 @@ python scripts/start.py
 python scripts/start.py --restart             # 打包并重启全链路
 python scripts/start.py --stop                # 停止全链路
 
+# 凭据 env 经项目根 .env 注入（gitignore 忽略）：MODEL_AES_KEY 缺失时 llm-gateway/resource-manager 启动 fail-fast
+
 # 清会话（MySQL + Redis 生成流；可选重启 orchestrator）
 python scripts/clear_session_cache.py --force --restart-orchestrator
 ```
