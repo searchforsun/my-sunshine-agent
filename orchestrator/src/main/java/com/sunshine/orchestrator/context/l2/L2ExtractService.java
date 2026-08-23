@@ -18,9 +18,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * 每轮 completed 后静默抽取 L2 状态：LLM + Catalog {@code context.l2.extract} → 置信门禁 → Merger upsert。
+ * 每轮 completed 后静默抽取 L2 状态：LLM + Catalog {@code context.memory.extract}（scope 参数化）→ 置信门禁 → Merger upsert。
+ * todo 类叠加 v22 门禁（key 场景化 / background 必填 / value 非布尔孤值）；其他 kind 不强弃，兼容 chat 现状。
  * 成功后触发轻量腐败/矛盾审计（异步、可防抖）。失败仅日志，不阻断用户路径。
  */
 @Slf4j
@@ -28,11 +30,17 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class L2ExtractService {
 
-    public static final String EXTRACT_PROMPT = "context.l2.extract";
+    public static final String EXTRACT_PROMPT = "context.memory.extract";
+
+    /** v22：key 必须 {domain}.{facet}（todo 类强制）。 */
+    private static final Pattern KEY_PATTERN = Pattern.compile("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$");
+
+    /** v22：布尔孤值禁止（todo 类强制）。 */
+    private static final Set<String> BOOLEAN_LONE_VALUES = Set.of("true", "false", "yes", "no", "1", "0");
 
     private static final Set<String> VALID_KINDS = Set.of(
             "profile", "preference", "goal", "agreement", "constraint", "fact", "decision",
-            "reasoning", "option", "interim_conclusion", "topic");
+            "reasoning", "option", "interim_conclusion", "topic", "todo");
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -63,12 +71,12 @@ public class L2ExtractService {
         if (!StringUtils.hasText(userId)) {
             return;
         }
-        runExtract(userId, null, tenantId, sourceMsgId, history);
+        runExtract("user", userId, null, tenantId, sourceMsgId, history);
     }
 
     /**
-     * workspace scope 抽取（T2 最小实现）：复用 extract 链路（同一 prompt / parseCandidates / 置信门禁），
-     * 仅落库走 workspace 维度。workspaceId 空 → 直接返回；失败仅日志。T3 再升级为参数化抽取。
+     * workspace scope 抽取：与 extract 共用同一参数化 prompt（scope=workspace）/ parseCandidates / 置信门禁，
+     * 仅落库走 workspace 维度。workspaceId 空 → 直接返回；失败仅日志。
      */
     public void extractWorkspace(
             String workspaceId,
@@ -78,10 +86,11 @@ public class L2ExtractService {
         if (!StringUtils.hasText(workspaceId)) {
             return;
         }
-        runExtract(null, workspaceId, tenantId, sourceMsgId, history);
+        runExtract("workspace", null, workspaceId, tenantId, sourceMsgId, history);
     }
 
     private void runExtract(
+            String scope,
             String userId,
             String workspaceId,
             String tenantId,
@@ -90,7 +99,7 @@ public class L2ExtractService {
         if (!contextProperties.isEnabled() || history == null || history.isEmpty()) {
             return;
         }
-        String system = catalogHolder.requireText(EXTRACT_PROMPT);
+        String system = buildSystemPrompt(catalogHolder.requireText(EXTRACT_PROMPT), scope);
         if (!StringUtils.hasText(system)) {
             log.warn("[ContextL2] missing catalog {}", EXTRACT_PROMPT);
             return;
@@ -154,8 +163,17 @@ public class L2ExtractService {
             case "reasoning", "option" -> l2.getReasoningMinConfidence();
             case "interim_conclusion" -> l2.getInterimConclusionMinConfidence();
             case "topic" -> 0.0;
+            case "todo" -> l2.getMinConfidence();
             default -> l2.getMinConfidence();
         };
+    }
+
+    /** Catalog 正文 {scope} 占位替换：user / workspace 中文释义由正文自带。 */
+    static String buildSystemPrompt(String catalogText, String scope) {
+        if (!StringUtils.hasText(catalogText)) {
+            return "";
+        }
+        return catalogText.replace("{scope}", scope);
     }
 
     static String buildExtractPayload(List<SessionTurn> history) {
@@ -207,12 +225,38 @@ public class L2ExtractService {
                 if (Double.isNaN(confidence)) {
                     continue;
                 }
-                out.add(new L2ConflictMerger.Candidate(kind, key.strip(), value.strip(), confidence));
+                String strippedKey = key.strip();
+                String strippedValue = value.strip();
+                String background = text(node, "background").strip();
+                // status 生命周期仅 todo 类：其他 kind 固定 active，模型误产 done/void 不会静默 void 既有 chat 行
+                String status = isTodo(kind) ? L2ConflictMerger.normalizeStatus(text(node, "status")) : "active";
+                if (isTodo(kind) && !v22TodoGatesPass(strippedKey, strippedValue, background, status)) {
+                    continue;
+                }
+                out.add(new L2ConflictMerger.Candidate(
+                        kind, strippedKey, strippedValue, confidence,
+                        StringUtils.hasText(background) ? background : null, status));
             }
             return List.copyOf(out);
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    /** v22 P3（仅 todo 强制，其他 kind 不强弃以兼容 chat 现状）：key 场景化 + value 非布尔孤值；background 仅 active 必填（done/void 豁免）。 */
+    private static boolean v22TodoGatesPass(String key, String value, String background, String status) {
+        boolean backgroundRequired = !"done".equals(status) && !"void".equals(status);
+        return (!backgroundRequired || StringUtils.hasText(background))
+                && KEY_PATTERN.matcher(key).matches()
+                && !isBooleanLoneValue(value);
+    }
+
+    private static boolean isTodo(String kind) {
+        return "todo".equals(kind);
+    }
+
+    static boolean isBooleanLoneValue(String value) {
+        return BOOLEAN_LONE_VALUES.contains(value.strip().toLowerCase(Locale.ROOT));
     }
 
     static String extractJsonArray(String raw) {

@@ -20,7 +20,12 @@ public class L2ConflictMerger {
         REJECT
     }
 
-    public record Candidate(String kind, String key, String value, double confidence) {
+    public record Candidate(
+            String kind, String key, String value, double confidence, String background, String status) {
+        /** 4 参便捷构造：background=null、status="active"，兼容既有调用点。 */
+        public Candidate(String kind, String key, String value, double confidence) {
+            this(kind, key, value, confidence, null, "active");
+        }
     }
 
     public Decision decide(UserContextStateEntity existingActive, Candidate incoming, ContextProperties.L2 props) {
@@ -44,6 +49,18 @@ public class L2ConflictMerger {
 
     static String normalizeKind(String kind) {
         return kind == null ? "" : kind.strip().toLowerCase(Locale.ROOT);
+    }
+
+    /** todo 生命周期 status：仅 active/done/void；缺失或非法值默认 active。 */
+    static String normalizeStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "active";
+        }
+        String s = status.strip().toLowerCase(Locale.ROOT);
+        return switch (s) {
+            case "done", "void" -> s;
+            default -> "active";
+        };
     }
 
     static boolean isElevatedKind(String kind) {

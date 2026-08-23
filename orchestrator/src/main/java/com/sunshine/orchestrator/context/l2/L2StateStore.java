@@ -159,13 +159,19 @@ public class L2StateStore {
         String key = candidate.key().strip();
         String value = candidate.value().strip();
         Instant clock = now != null ? now : Instant.now();
+        String status = L2ConflictMerger.normalizeStatus(candidate.status());
+        // status 生命周期仅 todo 类：done/void 对既有 active 行显式失效；其他 kind 固定 active 走正常合并
+        if ("todo".equals(kind) && ("done".equals(status) || "void".equals(status))) {
+            voidActiveRow(workspaceId, userId, tid, kind, key, clock);
+            return;
+        }
         Optional<UserContextStateEntity> existingOpt = workspaceId != null
                 ? repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
                         workspaceId, tid, kind, key, "active")
                 : repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(userId, tid, kind, key, "active");
         UserContextStateEntity existing = existingOpt.orElse(null);
         if (existing != null && sameValue(existing.getStateValue(), value)) {
-            refreshSameValue(existing, candidate.confidence(), sourceMsgId, clock);
+            refreshSameValue(existing, candidate, sourceMsgId, clock);
             return;
         }
         L2ConflictMerger.Decision decision = merger.decide(existing, candidate, contextProperties.getL2());
@@ -189,6 +195,7 @@ public class L2StateStore {
         neu.setKind(kind);
         neu.setStateKey(key);
         neu.setStateValue(value);
+        neu.setBackground(candidate.background());
         neu.setConfidence(candidate.confidence());
         neu.setStatus("active");
         neu.setExpiresAt(expiresAtFor(kind, clock));
@@ -198,15 +205,32 @@ public class L2StateStore {
         repository.save(neu);
     }
 
-    /** 同 key+value：只刷新时间（及溯源/更高置信），不产生 superseded。 */
+    /** done/void 候选：不新增，将同 scope+kind+key 的 active 行显式置 void（无 active 行则无操作）。 */
+    private void voidActiveRow(
+            String workspaceId, String userId, String tid, String kind, String key, Instant clock) {
+        Optional<UserContextStateEntity> activeOpt = workspaceId != null
+                ? repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(workspaceId, tid, kind, key, "active")
+                : repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(userId, tid, kind, key, "active");
+        activeOpt.ifPresent(existing -> {
+            existing.setStatus("void");
+            existing.setUpdatedAt(clock);
+            repository.save(existing);
+            log.debug("[ContextL2] void active row id={} kind={} key={}", existing.getId(), kind, key);
+        });
+    }
+
+    /** 同 key+value：只刷新时间/背景（及溯源/更高置信），不产生 superseded。 */
     private void refreshSameValue(
             UserContextStateEntity existing,
-            double incomingConfidence,
+            L2ConflictMerger.Candidate candidate,
             String sourceMsgId,
             Instant clock) {
         existing.setUpdatedAt(clock);
-        if (incomingConfidence > existing.getConfidence()) {
-            existing.setConfidence(incomingConfidence);
+        if (candidate.confidence() > existing.getConfidence()) {
+            existing.setConfidence(candidate.confidence());
+        }
+        if (StringUtils.hasText(candidate.background())) {
+            existing.setBackground(candidate.background());
         }
         if (StringUtils.hasText(sourceMsgId)) {
             existing.setSourceMsgId(sourceMsgId);

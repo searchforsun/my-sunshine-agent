@@ -190,6 +190,116 @@ class L2StateStoreFilterTest {
         assertThat(expires).isEqualTo(now.plus(7, ChronoUnit.DAYS));
     }
 
+    @Test
+    void upsert_todoDone_voidsActiveRowWithoutInsert() {
+        UserContextStateEntity active = entity("old", "todo", "finance.pending_approval", "跟进审批单 PR-2026-0812", 0.9, null);
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "todo", "finance.pending_approval", "active"))
+                .thenReturn(Optional.of(active));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("todo", "finance.pending_approval", "跟进审批单 PR-2026-0812",
+                        0.9, "OA 审批", "done"),
+                "msg-done", now);
+
+        assertThat(active.getStatus()).isEqualTo("void");
+        assertThat(active.getUpdatedAt()).isEqualTo(now);
+        verify(repository, times(1)).save(active);
+    }
+
+    @Test
+    void upsert_todoVoidWithoutActiveRow_doesNothing() {
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "todo", "finance.dropped", "active"))
+                .thenReturn(Optional.empty());
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("todo", "finance.dropped", "已不跟进", 0.9, "OA 审批", "void"),
+                "msg-void", now);
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void upsertWorkspace_todoDone_voidsWorkspaceActiveRow() {
+        UserContextStateEntity active = wsEntity("old", "todo", "finance.pending_approval", "跟进审批单 PR-2026-0812", 0.9, null);
+        when(repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "ws-1", "default", "todo", "finance.pending_approval", "active"))
+                .thenReturn(Optional.of(active));
+
+        store.upsertWorkspace("ws-1", "default",
+                new L2ConflictMerger.Candidate("todo", "finance.pending_approval", "跟进审批单 PR-2026-0812",
+                        0.9, "OA 审批", "done"),
+                "msg-done", now);
+
+        assertThat(active.getStatus()).isEqualTo("void");
+        verify(repository, times(1)).save(active);
+    }
+
+    @Test
+    void upsert_newTodo_persistsBackground() {
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "todo", "finance.pending_approval", "active"))
+                .thenReturn(Optional.empty());
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("todo", "finance.pending_approval", "跟进审批单 PR-2026-0812",
+                        0.9, "OA 审批", "active"),
+                "msg-bg", now);
+
+        ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
+        verify(repository).save(cap.capture());
+        assertThat(cap.getValue().getBackground()).isEqualTo("OA 审批");
+    }
+
+    @Test
+    void upsert_sameValue_refreshesBackground() {
+        UserContextStateEntity old = entity("old", "todo", "finance.pending_approval", "跟进审批单 PR-2026-0812", 0.9, null);
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "todo", "finance.pending_approval", "active"))
+                .thenReturn(Optional.of(old));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("todo", "finance.pending_approval", "跟进审批单 PR-2026-0812",
+                        0.9, "OA 审批窗口期", "active"),
+                "msg-bg2", now);
+
+        assertThat(old.getStatus()).isEqualTo("active");
+        assertThat(old.getBackground()).isEqualTo("OA 审批窗口期");
+    }
+
+    @Test
+    void upsert_nonTodoDoneDoesNotVoidActiveRow() {
+        // P2-2：status 生命周期仅 todo；非 todo 即使传 done 也走正常合并，不静默 void 既有 chat 行
+        UserContextStateEntity old = entity("old", "preference", "style", "简洁", 0.85, null);
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "preference", "style", "active"))
+                .thenReturn(Optional.of(old));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("preference", "style", "简洁", 0.9, null, "done"),
+                "msg-done", now);
+
+        assertThat(old.getStatus()).isEqualTo("active");
+        assertThat(old.getUpdatedAt()).isEqualTo(now);
+    }
+
+    @Test
+    void upsertWorkspace_newTodo_persistsBackground() {
+        when(repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "ws-1", "default", "todo", "finance.pending_approval", "active"))
+                .thenReturn(Optional.empty());
+
+        store.upsertWorkspace("ws-1", "default",
+                new L2ConflictMerger.Candidate("todo", "finance.pending_approval", "跟进审批单 PR-2026-0812",
+                        0.9, "OA 审批", "active"),
+                "msg-ws-bg", now);
+
+        ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
+        verify(repository).save(cap.capture());
+        assertThat(cap.getValue().getBackground()).isEqualTo("OA 审批");
+    }
+
     private static UserContextStateEntity wsEntity(
             String id, String kind, String key, String value, double conf, Instant expiresAt) {
         UserContextStateEntity e = entity(id, kind, key, value, conf, expiresAt);

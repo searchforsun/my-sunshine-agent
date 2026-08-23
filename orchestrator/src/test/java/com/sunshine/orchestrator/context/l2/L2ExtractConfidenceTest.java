@@ -33,6 +33,11 @@ class L2ExtractConfidenceTest {
     }
 
     @Test
+    void minConfidenceFor_todo_usesDefault() {
+        assertThat(L2ExtractService.minConfidenceFor("todo", l2)).isEqualTo(0.75);
+    }
+
+    @Test
     void ttlDays_newKinds() {
         ContextProperties.L2 props = new ContextProperties.L2();
         assertThat(L2StateStore.ttlDays("reasoning", props)).isEqualTo(7);
