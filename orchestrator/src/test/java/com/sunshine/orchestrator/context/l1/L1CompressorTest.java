@@ -6,6 +6,8 @@ import com.sunshine.orchestrator.context.ModelWindowCache;
 import com.sunshine.orchestrator.context.SessionTurn;
 import com.sunshine.orchestrator.context.TokenEstimator;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
+import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.registry.ModelCapabilities;
 import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
@@ -63,6 +65,8 @@ class L1CompressorTest {
     private TokenEstimator tokenEstimator;
     @Mock
     private ModelWindowCache modelWindowCache;
+    @Mock
+    private ChatConversationRepository conversationRepo;
 
     private ContextProperties properties;
     private L1Compressor compressor;
@@ -85,7 +89,7 @@ class L1CompressorTest {
                         new ModelCatalogScene("chat", "deepseek-v4-pro", null, Map.of(), true),
                         new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         compressor = new L1Compressor(properties, llm, store, l2StateStore, catalogHolder,
-                tokenEstimator, modelWindowCache, resolver);
+                tokenEstimator, modelWindowCache, resolver, conversationRepo);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(256000);
         // 默认低 token（远低于阈值），靠轮数兜底触发
         lenient().when(tokenEstimator.effectiveCount(any(), anyDouble())).thenReturn(10);
@@ -98,6 +102,7 @@ class L1CompressorTest {
         lenient().when(store.farSummaryOf(any())).thenReturn("");
         lenient().when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of());
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
+        lenient().when(conversationRepo.findById(anyString())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -341,5 +346,39 @@ class L1CompressorTest {
             hold.countDown();
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void compress_taskKind_readsWorkspaceL2Scope() {
+        ChatConversationEntity conv = new ChatConversationEntity();
+        conv.setId("c1");
+        conv.setKind("task");
+        conv.setWorkspaceId("ws-1");
+        when(conversationRepo.findById("c1")).thenReturn(Optional.of(conv));
+        when(l2StateStore.assembleWorkspaceBlock("ws-1", "default"))
+                .thenReturn("[workspace L2] plan/step: 完成");
+        when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
+        when(llm.complete(eq("far-system"), anyString())).thenReturn("远窗");
+
+        List<SessionTurn> history = List.of(
+                SessionTurn.of("u0", "user", "Q0"),
+                SessionTurn.of("a0", "assistant", "A0"),
+                SessionTurn.of("u1", "user", "Q1"),
+                SessionTurn.of("a1", "assistant", "A1"),
+                SessionTurn.of("u2", "user", "Q2"),
+                SessionTurn.of("a2", "assistant", "A2"),
+                SessionTurn.of("u3", "user", "Q3"),
+                SessionTurn.of("a3", "assistant", "A3"),
+                SessionTurn.of("u4", "user", "Q4"),
+                SessionTurn.of("a4", "assistant", "A4"));
+
+        compressor.compress("u", "default", "c1", history);
+
+        verify(l2StateStore).assembleWorkspaceBlock("ws-1", "default");
+        verify(l2StateStore, never()).assembleSystemBlock(anyString(), anyString());
+        // far-fold 注入 workspace L2 块，避免折叠时污染 user scope
+        ArgumentCaptor<String> farUserCaptor = ArgumentCaptor.forClass(String.class);
+        verify(llm).complete(eq("far-system"), farUserCaptor.capture());
+        assertThat(farUserCaptor.getValue()).contains("[workspace L2] plan/step: 完成");
     }
 }

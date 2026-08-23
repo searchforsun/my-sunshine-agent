@@ -60,10 +60,34 @@ public class L2ExtractService {
             String tenantId,
             String sourceMsgId,
             List<SessionTurn> history) {
-        if (!contextProperties.isEnabled() || !StringUtils.hasText(userId)) {
+        if (!StringUtils.hasText(userId)) {
             return;
         }
-        if (history == null || history.isEmpty()) {
+        runExtract(userId, null, tenantId, sourceMsgId, history);
+    }
+
+    /**
+     * workspace scope 抽取（T2 最小实现）：复用 extract 链路（同一 prompt / parseCandidates / 置信门禁），
+     * 仅落库走 workspace 维度。workspaceId 空 → 直接返回；失败仅日志。T3 再升级为参数化抽取。
+     */
+    public void extractWorkspace(
+            String workspaceId,
+            String tenantId,
+            String sourceMsgId,
+            List<SessionTurn> history) {
+        if (!StringUtils.hasText(workspaceId)) {
+            return;
+        }
+        runExtract(null, workspaceId, tenantId, sourceMsgId, history);
+    }
+
+    private void runExtract(
+            String userId,
+            String workspaceId,
+            String tenantId,
+            String sourceMsgId,
+            List<SessionTurn> history) {
+        if (!contextProperties.isEnabled() || history == null || history.isEmpty()) {
             return;
         }
         String system = catalogHolder.requireText(EXTRACT_PROMPT);
@@ -93,12 +117,18 @@ public class L2ExtractService {
                         c.kind(), c.key(), c.confidence());
                 continue;
             }
-            l2StateStore.upsert(userId, tenantId, c, sourceMsgId, now);
+            if (workspaceId != null) {
+                l2StateStore.upsertWorkspace(workspaceId, tenantId, c, sourceMsgId, now);
+            } else {
+                l2StateStore.upsert(userId, tenantId, c, sourceMsgId, now);
+            }
             accepted++;
         }
-        log.debug("[ContextL2] extracted user={} candidates={} accepted={}",
-                userId, candidates.size(), accepted);
-        if (accepted > 0 || !candidates.isEmpty()) {
+        log.debug("[ContextL2] extracted scope={} candidates={} accepted={}",
+                workspaceId != null ? "workspace:" + workspaceId : "user:" + userId,
+                candidates.size(), accepted);
+        // workspace scope 无 user 维度，不触发 user 级审计
+        if (StringUtils.hasText(userId) && (accepted > 0 || !candidates.isEmpty())) {
             maybeAuditAfterExtract(userId, tenantId);
         }
     }

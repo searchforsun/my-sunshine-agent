@@ -61,7 +61,9 @@ public class ContextAssembler {
         List<ChatTurn> mid = projectMid(bands.mid(), midAnswers);
         List<ChatTurn> near = toChatTurns(trimByTokens(bands.near(), budgetTokens, tokenEstimator));
         String farBlock = StringUtils.hasText(farSummary) ? farSummary.strip() : "";
-        String l2Block = l2StateStore.assembleSystemBlock(request.userId(), request.tenantId());
+        String l2Block = "task".equals(request.kind())
+                ? l2StateStore.assembleWorkspaceBlock(request.workspaceId(), request.tenantId())
+                : l2StateStore.assembleSystemBlock(request.userId(), request.tenantId());
 
         Set<String> nearMidIds = collectMsgIds(bands.near(), bands.mid());
         Set<String> farIds = collectMsgIds(bands.far());
@@ -257,8 +259,21 @@ public class ContextAssembler {
             String conversationId,
             List<SessionTurn> history,
             String currentUserQuery,
-            String modelName
+            String modelName,
+            String kind,
+            String workspaceId
     ) {
+        /** 兼容既有调用：kind 缺省 chat（user scope），workspaceId 缺省 null。 */
+        public AssembleRequest(
+                String userId,
+                String tenantId,
+                String conversationId,
+                List<SessionTurn> history,
+                String currentUserQuery,
+                String modelName) {
+            this(userId, tenantId, conversationId, history, currentUserQuery, modelName, "chat", null);
+        }
+
         public AssembleRequest(
                 String userId,
                 String tenantId,

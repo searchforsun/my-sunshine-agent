@@ -25,6 +25,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -182,5 +184,43 @@ class ContextAssemblerTest {
         assertThat(ctx.nearTurns()).hasSize(2);
         assertThat(ctx.nearTurns().get(0).content()).isEqualTo("写 cpp 快排");
         assertThat(ctx.nearTurns().get(1).content()).isEqualTo("cpp code full content");
+    }
+
+    @Test
+    void assemble_taskKind_readsWorkspaceScope() {
+        when(l2StateStore.assembleWorkspaceBlock("ws-1", "default"))
+                .thenReturn("[workspace L2] plan/step: 完成");
+
+        AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1"));
+
+        assertThat(ctx.l2SystemBlock()).isEqualTo("[workspace L2] plan/step: 完成");
+        verify(l2StateStore).assembleWorkspaceBlock("ws-1", "default");
+        verify(l2StateStore, never()).assembleSystemBlock(anyString(), anyString());
+    }
+
+    @Test
+    void assemble_chatKind_readsUserScope() {
+        when(l2StateStore.assembleSystemBlock("u1", "default"))
+                .thenReturn("[user L2] preference/style: 简洁");
+
+        AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", List.of(), "q", null, "chat", null));
+
+        assertThat(ctx.l2SystemBlock()).isEqualTo("[user L2] preference/style: 简洁");
+        verify(l2StateStore).assembleSystemBlock("u1", "default");
+        verify(l2StateStore, never()).assembleWorkspaceBlock(anyString(), anyString());
+    }
+
+    @Test
+    void assemble_legacyConstructorDefaultsToChatScope() {
+        when(l2StateStore.assembleSystemBlock("u1", "default")).thenReturn("[user L2] legacy");
+
+        AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", List.of(), "q", null));
+
+        assertThat(ctx.l2SystemBlock()).isEqualTo("[user L2] legacy");
+        verify(l2StateStore).assembleSystemBlock("u1", "default");
+        verify(l2StateStore, never()).assembleWorkspaceBlock(anyString(), anyString());
     }
 }

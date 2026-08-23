@@ -7,6 +7,8 @@ import com.sunshine.orchestrator.context.ModelWindowCache;
 import com.sunshine.orchestrator.context.SessionTurn;
 import com.sunshine.orchestrator.context.TokenEstimator;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
+import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,7 @@ public class L1Compressor {
     private final TokenEstimator tokenEstimator;
     private final ModelWindowCache modelWindowCache;
     private final com.sunshine.orchestrator.registry.ModelSceneResolver modelSceneResolver;
+    private final ChatConversationRepository conversationRepo;
 
     /** 按会话串行化 compress，防止并发 async 丢更新。 */
     private final ConcurrentHashMap<String, Object> compressLocks = new ConcurrentHashMap<>();
@@ -81,7 +84,7 @@ public class L1Compressor {
         }
         ConversationContextL1Entity existing = l1Store.find(convId).orElse(null);
         String farSummary = l1Store.farSummaryOf(existing);
-        String l2Block = l2StateStore.assembleSystemBlock(userId, tenantId);
+        String l2Block = resolveL2Block(convId, userId, tenantId);
         // 自适应 Near 轮数：默认保轮数完整，组装估算超阈值时逐轮缩小（溢出转 Mid）
         int nearN = resolveNearRounds(history, l1, modelWindow, tokenEstimator, l2Block, farSummary);
         int midN = Math.max(0, l1.getMidTurns());
@@ -128,6 +131,24 @@ public class L1Compressor {
         l1Store.upsert(userId, tenantId, convId, midAnswers, farSummary, foldedIds, nearN, midN);
         log.debug("[ContextL1] compressed conv={} midKeys={} farLen={} folded={}",
                 convId, midAnswers.size(), farSummary != null ? farSummary.length() : 0, foldedIds.size());
+    }
+
+    /**
+     * 按会话 kind 选 L2 scope：task → workspace 块；chat/缺省 → user 块。
+     * 反查失败/无记录降级 user scope（不抛错，不阻断压缩）。
+     */
+    private String resolveL2Block(String convId, String userId, String tenantId) {
+        try {
+            if (StringUtils.hasText(convId)) {
+                ChatConversationEntity conv = conversationRepo.findById(convId).orElse(null);
+                if (conv != null && "task".equals(conv.getKind())) {
+                    return l2StateStore.assembleWorkspaceBlock(conv.getWorkspaceId(), tenantId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[ContextL1] conversation 反查失败 conv={}: {}", convId, e.getMessage());
+        }
+        return l2StateStore.assembleSystemBlock(userId, tenantId);
     }
 
     /** token 阈值为主 + 轮次宽限兜底：effectiveToken > window×ratio 或轮数 > turnBackstop。 */

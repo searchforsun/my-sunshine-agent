@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.MessageStatus;
+import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.context.l1.L1Compressor;
 import com.sunshine.orchestrator.context.l2.L2ExtractService;
@@ -41,7 +42,12 @@ public class ContextWritePath {
                     .map(m -> SessionTurn.of(m.getId(), m.getRole(), MessageBodyText.resolve(m)))
                     .filter(t -> StringUtils.hasText(t.content()))
                     .toList();
-            l2ExtractService.extract(userId, tenantId, messageId, history);
+            ChatConversationEntity conv = conversationService.getOwned(convId, userId, tenantId);
+            if ("task".equals(conv.getKind())) {
+                l2ExtractService.extractWorkspace(conv.getWorkspaceId(), tenantId, messageId, history);
+            } else {
+                l2ExtractService.extract(userId, tenantId, messageId, history);
+            }
             l1Compressor.compress(userId, tenantId, convId, history);
             ingestTurnPair(userId, tenantId, messages, assistant);
         } catch (Exception e) {
