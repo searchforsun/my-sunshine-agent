@@ -17,10 +17,18 @@ public interface UserContextStateRepository extends JpaRepository<UserContextSta
     Optional<UserContextStateEntity> findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
             String userId, String tenantId, String kind, String stateKey, String status);
 
+    /** 同 key 最新一条 void 行（乱序保护用；同 key 多次完成可存在多条 void）。 */
+    Optional<UserContextStateEntity> findFirstByUserIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
+            String userId, String tenantId, String kind, String stateKey, String status);
+
     List<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndStatus(
             String workspaceId, String tenantId, String status);
 
     Optional<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
+            String workspaceId, String tenantId, String kind, String stateKey, String status);
+
+    /** 同 key 最新一条 void 行（workspace 维度）。 */
+    Optional<UserContextStateEntity> findFirstByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
             String workspaceId, String tenantId, String kind, String stateKey, String status);
 
     /** active 且 expires_at 已过（硬过期 → void） */

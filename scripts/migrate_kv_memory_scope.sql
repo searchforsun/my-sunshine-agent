@@ -10,7 +10,7 @@ ALTER TABLE user_context_state
 
 -- 存量行均为 user scope（默认值生效），无需回填
 
-CREATE INDEX idx_ctx_ws_kind_key_status (workspace_id, tenant_id, kind, state_key, status) ON user_context_state;
+CREATE INDEX idx_ctx_ws_kind_key_status ON user_context_state (workspace_id, tenant_id, kind, state_key, status);
 
 -- 回滚：
 -- ALTER TABLE user_context_state
@@ -23,4 +23,4 @@ CREATE INDEX idx_ctx_ws_kind_key_status (workspace_id, tenant_id, kind, state_ke
 -- ALTER TABLE user_context_state ADD COLUMN scope VARCHAR(16) NOT NULL DEFAULT 'user' AFTER id;
 -- ALTER TABLE user_context_state ADD COLUMN workspace_id VARCHAR(64) NULL AFTER user_id;
 -- ALTER TABLE user_context_state ADD COLUMN background VARCHAR(256) NULL AFTER state_value;
--- CREATE INDEX idx_ctx_ws_kind_key_status (workspace_id, tenant_id, kind, state_key, status) ON user_context_state;
+-- CREATE INDEX idx_ctx_ws_kind_key_status ON user_context_state (workspace_id, tenant_id, kind, state_key, status);

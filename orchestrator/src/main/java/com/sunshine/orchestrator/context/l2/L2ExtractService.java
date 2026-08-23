@@ -55,9 +55,10 @@ public class L2ExtractService {
             String userId,
             String tenantId,
             String sourceMsgId,
-            List<SessionTurn> history) {
+            List<SessionTurn> history,
+            Instant msgAt) {
         try {
-            extract(userId, tenantId, sourceMsgId, history);
+            extract(userId, tenantId, sourceMsgId, history, msgAt);
         } catch (Exception e) {
             log.warn("[ContextL2] 抽取失败 user={} msg={}: {}", userId, sourceMsgId, e.getMessage());
         }
@@ -68,10 +69,19 @@ public class L2ExtractService {
             String tenantId,
             String sourceMsgId,
             List<SessionTurn> history) {
+        extract(userId, tenantId, sourceMsgId, history, null);
+    }
+
+    public void extract(
+            String userId,
+            String tenantId,
+            String sourceMsgId,
+            List<SessionTurn> history,
+            Instant msgAt) {
         if (!StringUtils.hasText(userId)) {
             return;
         }
-        runExtract("user", userId, null, tenantId, sourceMsgId, history);
+        runExtract("user", userId, null, tenantId, sourceMsgId, history, msgAt);
     }
 
     /**
@@ -83,10 +93,19 @@ public class L2ExtractService {
             String tenantId,
             String sourceMsgId,
             List<SessionTurn> history) {
+        extractWorkspace(workspaceId, tenantId, sourceMsgId, history, null);
+    }
+
+    public void extractWorkspace(
+            String workspaceId,
+            String tenantId,
+            String sourceMsgId,
+            List<SessionTurn> history,
+            Instant msgAt) {
         if (!StringUtils.hasText(workspaceId)) {
             return;
         }
-        runExtract("workspace", null, workspaceId, tenantId, sourceMsgId, history);
+        runExtract("workspace", null, workspaceId, tenantId, sourceMsgId, history, msgAt);
     }
 
     private void runExtract(
@@ -95,7 +114,8 @@ public class L2ExtractService {
             String workspaceId,
             String tenantId,
             String sourceMsgId,
-            List<SessionTurn> history) {
+            List<SessionTurn> history,
+            Instant msgAt) {
         if (!contextProperties.isEnabled() || history == null || history.isEmpty()) {
             return;
         }
@@ -104,7 +124,7 @@ public class L2ExtractService {
             log.warn("[ContextL2] missing catalog {}", EXTRACT_PROMPT);
             return;
         }
-        String userPayload = buildExtractPayload(history);
+        String userPayload = buildExtractPayload(history, existingTodoHints(userId, workspaceId, tenantId));
         if (!StringUtils.hasText(userPayload)) {
             return;
         }
@@ -117,7 +137,8 @@ public class L2ExtractService {
         }
         List<L2ConflictMerger.Candidate> candidates = parseCandidates(raw);
         ContextProperties.L2 l2 = contextProperties.getL2();
-        Instant now = Instant.now();
+        // 落库时钟以消息时间为准：避免异步抽取乱序时旧消息覆盖新消息已 void 的状态
+        Instant now = msgAt != null ? msgAt : Instant.now();
         int accepted = 0;
         for (L2ConflictMerger.Candidate c : candidates) {
             double minConf = minConfidenceFor(c.kind(), l2);
@@ -176,10 +197,33 @@ public class L2ExtractService {
         return catalogText.replace("{scope}", scope);
     }
 
-    static String buildExtractPayload(List<SessionTurn> history) {
+    /** 既有 active todo 的 key 参照（scope 维度），让 LLM 在完成/取消时沿用原 key 产出 status=void，避免 key 漂移导致失效落空。 */
+    private String existingTodoHints(String userId, String workspaceId, String tenantId) {
+        List<UserContextStateEntity> active = workspaceId != null
+                ? l2StateStore.listInjectableWorkspace(workspaceId, tenantId, Instant.now())
+                : l2StateStore.listInjectable(userId, tenantId, Instant.now());
+        if (active == null || active.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("【既有待办（仅作 key 参照；完成/取消时输出 status=void 且 key 必须与下列之一完全一致）】\n");
+        for (UserContextStateEntity e : active) {
+            if (e == null || !"todo".equals(e.getKind()) || !StringUtils.hasText(e.getStateKey())) {
+                continue;
+            }
+            sb.append("- ").append(e.getStateKey())
+                    .append(": ").append(e.getStateValue() != null ? e.getStateValue() : "").append('\n');
+        }
+        return sb.toString();
+    }
+
+    static String buildExtractPayload(List<SessionTurn> history, String todoHints) {
         // 取尾部若干轮，避免整段历史过长
         int from = Math.max(0, history.size() - 6);
         StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(todoHints)) {
+            sb.append(todoHints.strip()).append('\n');
+        }
         sb.append("【本轮对话】\n");
         for (int i = from; i < history.size(); i++) {
             SessionTurn t = history.get(i);

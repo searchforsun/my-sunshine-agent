@@ -221,6 +221,50 @@ class L2StateStoreFilterTest {
     }
 
     @Test
+    void upsert_todoActive_skipsResurrectWhenVoidedByNewerMessage() {
+        // 乱序保护：同 key 已被更晚消息 void（void 时间晚于候选消息），旧抽取的 active 候选不得复活
+        UserContextStateEntity voided = entity("old", "todo", "approval.pr_2026_0812_follow_up",
+                "跟进审批单 PR-2026-0812", 0.9, null);
+        voided.setStatus("void");
+        voided.setUpdatedAt(now.plus(1, ChronoUnit.HOURS));
+        when(repository.findFirstByUserIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
+                "u1", "default", "todo", "approval.pr_2026_0812_follow_up", "void"))
+                .thenReturn(Optional.of(voided));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("todo", "approval.pr_2026_0812_follow_up",
+                        "跟进审批单 PR-2026-0812", 0.9, "OA 审批", "active"),
+                "msg-older", now);
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void upsert_todoActive_allowsResurrectWhenVoidOlderThanCandidate() {
+        // 乱序保护不误伤：void 早于候选消息时间（如 TTL 过期后用户重新提出）→ 允许重新 active
+        UserContextStateEntity voided = entity("old", "todo", "approval.pr_2026_0812_follow_up",
+                "跟进审批单 PR-2026-0812", 0.9, null);
+        voided.setStatus("void");
+        voided.setUpdatedAt(now.minus(1, ChronoUnit.HOURS));
+        when(repository.findFirstByUserIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
+                "u1", "default", "todo", "approval.pr_2026_0812_follow_up", "void"))
+                .thenReturn(Optional.of(voided));
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "todo", "approval.pr_2026_0812_follow_up", "active"))
+                .thenReturn(Optional.empty());
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("todo", "approval.pr_2026_0812_follow_up",
+                        "跟进审批单 PR-2026-0812", 0.9, "OA 审批", "active"),
+                "msg-newer", now);
+
+        ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
+        verify(repository).save(cap.capture());
+        assertThat(cap.getValue().getStatus()).isEqualTo("active");
+        assertThat(cap.getValue().getSourceMsgId()).isEqualTo("msg-newer");
+    }
+
+    @Test
     void upsertWorkspace_todoDone_voidsWorkspaceActiveRow() {
         UserContextStateEntity active = wsEntity("old", "todo", "finance.pending_approval", "跟进审批单 PR-2026-0812", 0.9, null);
         when(repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(

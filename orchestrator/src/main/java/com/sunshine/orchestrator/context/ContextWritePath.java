@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -43,10 +44,11 @@ public class ContextWritePath {
                     .filter(t -> StringUtils.hasText(t.content()))
                     .toList();
             ChatConversationEntity conv = conversationService.getOwned(convId, userId, tenantId);
+            Instant msgAt = assistant.getCreatedAt() != null ? assistant.getCreatedAt() : Instant.now();
             if ("task".equals(conv.getKind())) {
-                l2ExtractService.extractWorkspace(conv.getWorkspaceId(), tenantId, messageId, history);
+                l2ExtractService.extractWorkspace(conv.getWorkspaceId(), tenantId, messageId, history, msgAt);
             } else {
-                l2ExtractService.extract(userId, tenantId, messageId, history);
+                l2ExtractService.extract(userId, tenantId, messageId, history, msgAt);
             }
             l1Compressor.compress(userId, tenantId, convId, history);
             ingestTurnPair(userId, tenantId, messages, assistant);

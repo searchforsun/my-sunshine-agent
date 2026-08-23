@@ -337,6 +337,7 @@ agent:
       option-ttl-days: 7
       interim-conclusion-ttl-days: 7
       topic-ttl-days: 1
+      todo-ttl-days: 7
     l3:
       collection: sunshine_chat_history
       top-k: 8

@@ -165,6 +165,13 @@ public class L2StateStore {
             voidActiveRow(workspaceId, userId, tid, kind, key, clock);
             return;
         }
+        // 乱序保护（仅 todo，其他 kind 无 done/void 生命周期）：异步抽取乱序时，
+        // 若同 key 已被更晚消息 void（void 时间晚于本候选消息），不得复活
+        if ("todo".equals(kind) && isVoidedAfter(workspaceId, userId, tid, kind, key, clock)) {
+            log.debug("[ContextL2] skip resurrect scope={} kind={} key={}（已被更晚消息 void）",
+                    workspaceId != null ? "workspace:" + workspaceId : "user:" + userId, kind, key);
+            return;
+        }
         Optional<UserContextStateEntity> existingOpt = workspaceId != null
                 ? repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
                         workspaceId, tid, kind, key, "active")
@@ -203,6 +210,21 @@ public class L2StateStore {
         neu.setCreatedAt(clock);
         neu.setUpdatedAt(clock);
         repository.save(neu);
+    }
+
+    /** 同 key 是否存在「void 时间晚于给定时钟」的 void 行（含 workspace/user 双维度）。 */
+    private boolean isVoidedAfter(
+            String workspaceId, String userId, String tid, String kind, String key, Instant clock) {
+        Optional<UserContextStateEntity> voidOpt = workspaceId != null
+                ? repository.findFirstByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
+                        workspaceId, tid, kind, key, "void")
+                : repository.findFirstByUserIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
+                        userId, tid, kind, key, "void");
+        if (voidOpt.isEmpty()) {
+            return false;
+        }
+        Instant voidAt = voidOpt.get().getUpdatedAt();
+        return voidAt != null && voidAt.isAfter(clock);
     }
 
     /** done/void 候选：不新增，将同 scope+kind+key 的 active 行显式置 void（无 active 行则无操作）。 */

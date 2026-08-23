@@ -22,7 +22,10 @@ public final class ContextAdminDtos {
             Instant expiresAt,
             String sourceMsgId,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            String scope,
+            String workspaceId,
+            String background) {
     }
 
     public record L2UpdateRequest(String stateValue, Double confidence, String status) {

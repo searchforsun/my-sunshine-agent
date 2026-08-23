@@ -278,7 +278,10 @@ public class ContextAdminService {
                 e.getExpiresAt(),
                 e.getSourceMsgId(),
                 e.getCreatedAt(),
-                e.getUpdatedAt());
+                e.getUpdatedAt(),
+                e.getScope(),
+                e.getWorkspaceId(),
+                e.getBackground());
     }
 
     private static String normalizeTenant(String tenantId) {
