@@ -31,6 +31,13 @@ public interface UserContextStateRepository extends JpaRepository<UserContextSta
     Optional<UserContextStateEntity> findFirstByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatusOrderByUpdatedAtDesc(
             String workspaceId, String tenantId, String kind, String stateKey, String status);
 
+    /** 结构导出全量对比：该 scope 下 kind + state_key 前缀（如 task.）的 active 行。 */
+    List<UserContextStateEntity> findByUserIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+            String userId, String tenantId, String kind, String stateKeyPrefix, String status);
+
+    List<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+            String workspaceId, String tenantId, String kind, String stateKeyPrefix, String status);
+
     /** active 且 expires_at 已过（硬过期 → void） */
     List<UserContextStateEntity> findByStatusAndExpiresAtBefore(String status, Instant expiresAt);
 

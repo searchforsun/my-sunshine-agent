@@ -32,6 +32,7 @@ public class PlannerHarnessExecutor {
     private final PlannerHarnessLoop loop;
     private final ReactExecutor reactExecutor;
     private final AgentExecutionProperties executionProperties;
+    private final H1TodoExportService todoExportService;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         // PRO 路径须与 ReactExecutor 一致绑定工具审计上下文：worker/planner 内 spawn_subagent、
@@ -54,8 +55,23 @@ public class PlannerHarnessExecutor {
         }
         applyFollowUpGoalChange(notebook, resolveQuery(ctx));
         return loop.run(ctx, notebook)
-                .doFinally(signal -> store.renewTtl(sessionId))
+                .doFinally(signal -> {
+                    store.renewTtl(sessionId);
+                    exportTodoQuietly(ctx, notebook);
+                })
                 .onErrorResume(e -> fallbackOrPropagate(ctx, e));
+    }
+
+    /**
+     * M2 pro 终态导出：success / error / cancel 三态收束后，将 H1 未完成项沉淀到 KV Memory。
+     * 导出失败仅记日志，不阻断用户路径（执行态 H1 仍权威）。
+     */
+    private void exportTodoQuietly(ExecutionStreamContext ctx, PlanNotebook notebook) {
+        try {
+            todoExportService.export(notebook, ctx);
+        } catch (Exception e) {
+            log.warn("[H1TodoExport] 导出失败 session={}: {}", notebook.getSessionId(), e.getMessage());
+        }
     }
 
     /**

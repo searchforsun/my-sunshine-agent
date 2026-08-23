@@ -10,9 +10,11 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -139,6 +141,76 @@ public class L2StateStore {
             return;
         }
         upsertInternal(workspaceId, null, tenantId, candidate, sourceMsgId, now);
+    }
+
+    /**
+     * 结构导出全量对比（user 维度）：pending 集合内的 todo 逐条 upsert；
+     * 该 scope 下 kind=todo 且 key 以 {@code task.} 开头、但不在 pending 集合的 active 行显式 void。
+     * 幂等：同 key 重复导出刷新；全部完成（pending 空）→ task.* 全 void；换题（goal 变）→ 旧前缀残留被清。
+     */
+    public void syncTodoExport(
+            String userId,
+            String tenantId,
+            List<L2ConflictMerger.Candidate> pending,
+            String sourceMsgId,
+            Instant now) {
+        if (!StringUtils.hasText(userId) || pending == null) {
+            return;
+        }
+        syncTodoExportInternal(null, userId, tenantId, pending, sourceMsgId, now);
+    }
+
+    /** workspace 维度结构导出全量对比。 */
+    public void syncTodoExportWorkspace(
+            String workspaceId,
+            String tenantId,
+            List<L2ConflictMerger.Candidate> pending,
+            String sourceMsgId,
+            Instant now) {
+        if (!StringUtils.hasText(workspaceId) || pending == null) {
+            return;
+        }
+        syncTodoExportInternal(workspaceId, null, tenantId, pending, sourceMsgId, now);
+    }
+
+    private void syncTodoExportInternal(
+            String workspaceId,
+            String userId,
+            String tenantId,
+            List<L2ConflictMerger.Candidate> pending,
+            String sourceMsgId,
+            Instant now) {
+        String tid = tenantId != null ? tenantId : "default";
+        Instant clock = now != null ? now : Instant.now();
+        Set<String> pendingKeys = new HashSet<>();
+        for (L2ConflictMerger.Candidate c : pending) {
+            if (c != null && StringUtils.hasText(c.key())) {
+                pendingKeys.add(c.key().strip());
+            }
+        }
+        String prefix = "task.";
+        List<UserContextStateEntity> activeTaskRows = workspaceId != null
+                ? repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+                        workspaceId, tid, "todo", prefix, "active")
+                : repository.findByUserIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+                        userId, tid, "todo", prefix, "active");
+        if (activeTaskRows != null) {
+            for (UserContextStateEntity e : activeTaskRows) {
+                if (e == null || pendingKeys.contains(e.getStateKey())) {
+                    continue;
+                }
+                e.setStatus("void");
+                e.setUpdatedAt(clock);
+                repository.save(e);
+                log.debug("[ContextL2] syncTodoExport void stale id={} key={}", e.getId(), e.getStateKey());
+            }
+        }
+        for (L2ConflictMerger.Candidate c : pending) {
+            if (c == null) {
+                continue;
+            }
+            upsertInternal(workspaceId, userId, tid, c, sourceMsgId, clock);
+        }
     }
 
     private void upsertInternal(

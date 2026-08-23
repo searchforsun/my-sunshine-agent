@@ -38,6 +38,8 @@ class PlannerHarnessExecutorTest {
     private PlannerHarnessLoop loop;
     @Mock
     private ReactExecutor reactExecutor;
+    @Mock
+    private H1TodoExportService todoExportService;
 
     private AgentExecutionProperties executionProperties;
     private PlannerHarnessExecutor executor;
@@ -49,7 +51,7 @@ class PlannerHarnessExecutorTest {
         executionProperties.getHarness().setEnabled(true);
         executionProperties.getHarness().setMaxRounds(12);
         executionProperties.getHarness().setMaxTotalTasks(24);
-        executor = new PlannerHarnessExecutor(store, loop, reactExecutor, executionProperties);
+        executor = new PlannerHarnessExecutor(store, loop, reactExecutor, executionProperties, todoExportService);
     }
 
     @AfterEach

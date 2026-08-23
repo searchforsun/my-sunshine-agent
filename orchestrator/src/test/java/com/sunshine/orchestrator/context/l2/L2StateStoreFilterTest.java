@@ -16,6 +16,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -342,6 +343,60 @@ class L2StateStoreFilterTest {
         ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
         verify(repository).save(cap.capture());
         assertThat(cap.getValue().getBackground()).isEqualTo("OA 审批");
+    }
+
+    @Test
+    void syncTodoExport_upsertsPending_voidsStaleTaskPrefixRows() {
+        UserContextStateEntity t1 = entity("t1", "todo", "task.a1b2c3d4.t1", "部署 QA 环境", 1.0, null);
+        UserContextStateEntity t2 = entity("t2", "todo", "task.a1b2c3d4.t2", "回归测试", 1.0, null);
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+                "u1", "default", "todo", "task.", "active"))
+                .thenReturn(List.of(t1, t2));
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "todo", "task.a1b2c3d4.t1", "active"))
+                .thenReturn(Optional.of(t1));
+
+        store.syncTodoExport("u1", "default",
+                List.of(new L2ConflictMerger.Candidate(
+                        "todo", "task.a1b2c3d4.t1", "部署 QA 环境", 1.0, "目标", "active")),
+                "msg-export", now);
+
+        assertThat(t2.getStatus()).isEqualTo("void");
+        assertThat(t1.getStatus()).isEqualTo("active");
+        assertThat(t1.getUpdatedAt()).isEqualTo(now);
+        verify(repository).save(t2);
+    }
+
+    @Test
+    void syncTodoExportWorkspace_pendingEmpty_voidsAllTaskPrefixRows() {
+        UserContextStateEntity t1 = wsEntity("t1", "todo", "task.a1b2c3d4.t1", "部署 QA 环境", 1.0, null);
+        UserContextStateEntity t2 = wsEntity("t2", "todo", "task.b2c3d4e5.t2", "回归测试", 1.0, null);
+        when(repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+                "ws-1", "default", "todo", "task.", "active"))
+                .thenReturn(List.of(t1, t2));
+
+        store.syncTodoExportWorkspace("ws-1", "default", List.of(), "msg-export", now);
+
+        assertThat(t1.getStatus()).isEqualTo("void");
+        assertThat(t2.getStatus()).isEqualTo("void");
+        verify(repository, times(2)).save(any());
+    }
+
+    @Test
+    void syncTodoExport_usesTaskPrefixQueryOnly() {
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+                "u1", "default", "todo", "task.", "active"))
+                .thenReturn(List.of());
+
+        store.syncTodoExport("u1", "default",
+                List.of(new L2ConflictMerger.Candidate(
+                        "todo", "task.a1b2c3d4.t1", "部署 QA 环境", 1.0, "目标", "active")),
+                "msg-export", now);
+
+        ArgumentCaptor<String> cap = ArgumentCaptor.forClass(String.class);
+        verify(repository).findByUserIdAndTenantIdAndKindAndStateKeyStartingWithAndStatus(
+                eq("u1"), eq("default"), eq("todo"), cap.capture(), eq("active"));
+        assertThat(cap.getValue()).isEqualTo("task.");
     }
 
     private static UserContextStateEntity wsEntity(
