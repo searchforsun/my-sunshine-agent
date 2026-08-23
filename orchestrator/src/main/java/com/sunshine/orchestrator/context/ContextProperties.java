@@ -60,6 +60,8 @@ public class ContextProperties {
         private int interimConclusionTtlDays = 7;
         /** 话题锚点 TTL（短生命周期）。 */
         private int topicTtlDays = 1;
+        /** todo（未完成任务清单）TTL，短生命周期。 */
+        private int todoTtlDays = 7;
     }
 
     @Getter

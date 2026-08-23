@@ -20,8 +20,14 @@ public class UserContextStateEntity {
     @Column(length = 32)
     private String id;
 
+    @Column(nullable = false, length = 16)
+    private String scope = "user";
+
     @Column(name = "user_id", nullable = false, length = 64)
     private String userId;
+
+    @Column(name = "workspace_id", length = 64)
+    private String workspaceId;
 
     @Column(name = "tenant_id", nullable = false, length = 32)
     private String tenantId = "default";
@@ -34,6 +40,9 @@ public class UserContextStateEntity {
 
     @Column(name = "state_value", nullable = false, columnDefinition = "TEXT")
     private String stateValue;
+
+    @Column(length = 256)
+    private String background;
 
     @Column(nullable = false)
     private double confidence;

@@ -35,9 +35,24 @@ public class L2StateStore {
         if (!StringUtils.hasText(userId)) {
             return List.of();
         }
+        return listInjectableInternal(userId, null, tenantId, now);
+    }
+
+    /** workspace scope：仅命中 workspace_id 维度，user 行不参与。 */
+    public List<UserContextStateEntity> listInjectableWorkspace(String workspaceId, String tenantId, Instant now) {
+        if (!StringUtils.hasText(workspaceId)) {
+            return List.of();
+        }
+        return listInjectableInternal(null, workspaceId, tenantId, now);
+    }
+
+    private List<UserContextStateEntity> listInjectableInternal(
+            String userId, String workspaceId, String tenantId, Instant now) {
         String tid = tenantId != null ? tenantId : "default";
         Instant clock = now != null ? now : Instant.now();
-        List<UserContextStateEntity> active = repository.findByUserIdAndTenantIdAndStatus(userId, tid, "active");
+        List<UserContextStateEntity> active = workspaceId != null
+                ? repository.findByWorkspaceIdAndTenantIdAndStatus(workspaceId, tid, "active")
+                : repository.findByUserIdAndTenantIdAndStatus(userId, tid, "active");
         if (active == null || active.isEmpty()) {
             return List.of();
         }
@@ -58,6 +73,15 @@ public class L2StateStore {
         return renderSystemBlock(entries);
     }
 
+    /** workspace scope 的 L2 块；workspaceId 空/blank → 空串。 */
+    public String assembleWorkspaceBlock(String workspaceId, String tenantId) {
+        if (!StringUtils.hasText(workspaceId)) {
+            return "";
+        }
+        List<UserContextStateEntity> entries = listInjectableWorkspace(workspaceId, tenantId, Instant.now());
+        return renderSystemBlock(entries);
+    }
+
     /** 渲染 L2 system 块；无条目返回空串（不写标题）。 */
     public static String renderSystemBlock(List<UserContextStateEntity> entries) {
         if (entries == null || entries.isEmpty()) {
@@ -72,6 +96,9 @@ public class L2StateStore {
             sb.append('\n').append("- ")
                     .append(e.getKind()).append('/').append(e.getStateKey())
                     .append(": ").append(e.getStateValue() != null ? e.getStateValue() : "");
+            if (StringUtils.hasText(e.getBackground())) {
+                sb.append(" （背景：").append(e.getBackground()).append('）');
+            }
         }
         return sb.length() > "[用户状态 · L2]".length() ? sb.toString() : "";
     }
@@ -98,6 +125,29 @@ public class L2StateStore {
         if (!StringUtils.hasText(userId) || candidate == null) {
             return;
         }
+        upsertInternal(null, userId, tenantId, candidate, sourceMsgId, now);
+    }
+
+    /** workspace scope 落库：workspace_id 维度，冲突/刷新/落库逻辑与 user 路径一致。 */
+    public void upsertWorkspace(
+            String workspaceId,
+            String tenantId,
+            L2ConflictMerger.Candidate candidate,
+            String sourceMsgId,
+            Instant now) {
+        if (!StringUtils.hasText(workspaceId) || candidate == null) {
+            return;
+        }
+        upsertInternal(workspaceId, null, tenantId, candidate, sourceMsgId, now);
+    }
+
+    private void upsertInternal(
+            String workspaceId,
+            String userId,
+            String tenantId,
+            L2ConflictMerger.Candidate candidate,
+            String sourceMsgId,
+            Instant now) {
         if (!StringUtils.hasText(candidate.kind()) || !StringUtils.hasText(candidate.key())) {
             return;
         }
@@ -109,8 +159,10 @@ public class L2StateStore {
         String key = candidate.key().strip();
         String value = candidate.value().strip();
         Instant clock = now != null ? now : Instant.now();
-        Optional<UserContextStateEntity> existingOpt =
-                repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(userId, tid, kind, key, "active");
+        Optional<UserContextStateEntity> existingOpt = workspaceId != null
+                ? repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
+                        workspaceId, tid, kind, key, "active")
+                : repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(userId, tid, kind, key, "active");
         UserContextStateEntity existing = existingOpt.orElse(null);
         if (existing != null && sameValue(existing.getStateValue(), value)) {
             refreshSameValue(existing, candidate.confidence(), sourceMsgId, clock);
@@ -118,8 +170,9 @@ public class L2StateStore {
         }
         L2ConflictMerger.Decision decision = merger.decide(existing, candidate, contextProperties.getL2());
         if (decision == L2ConflictMerger.Decision.REJECT) {
-            log.debug("[ContextL2] reject overwrite user={} kind={} key={} conf={}",
-                    userId, kind, key, candidate.confidence());
+            log.debug("[ContextL2] reject overwrite scope={} kind={} key={} conf={}",
+                    workspaceId != null ? "workspace:" + workspaceId : "user:" + userId,
+                    kind, key, candidate.confidence());
             return;
         }
         if (existing != null) {
@@ -129,7 +182,9 @@ public class L2StateStore {
         }
         UserContextStateEntity neu = new UserContextStateEntity();
         neu.setId(newId());
-        neu.setUserId(userId);
+        neu.setScope(workspaceId != null ? "workspace" : "user");
+        neu.setUserId(workspaceId != null ? "" : userId);
+        neu.setWorkspaceId(workspaceId);
         neu.setTenantId(tid);
         neu.setKind(kind);
         neu.setStateKey(key);
@@ -191,6 +246,7 @@ public class L2StateStore {
             case "option" -> l2.getOptionTtlDays();
             case "interim_conclusion" -> l2.getInterimConclusionTtlDays();
             case "topic" -> l2.getTopicTtlDays();
+            case "todo" -> l2.getTodoTtlDays();
             default -> l2.getFactTtlDays();
         };
     }

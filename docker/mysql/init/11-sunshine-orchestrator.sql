@@ -78,11 +78,14 @@ CREATE TABLE conversation_context_l1 (
 -- L2 用户状态
 CREATE TABLE user_context_state (
     id              VARCHAR(32)  NOT NULL PRIMARY KEY,
+    scope           VARCHAR(16)  NOT NULL DEFAULT 'user' COMMENT 'user|workspace',
     user_id         VARCHAR(64)  NOT NULL,
+    workspace_id    VARCHAR(64)  NULL COMMENT 'scope=workspace 时的工作区 id（scope=user 为 NULL）',
     tenant_id       VARCHAR(32)  NOT NULL DEFAULT 'default',
     kind            VARCHAR(32)  NOT NULL,
     state_key       VARCHAR(128) NOT NULL,
     state_value     TEXT         NOT NULL,
+    background      VARCHAR(256) NULL COMMENT '成立场景背景（v20）',
     confidence      DOUBLE       NOT NULL DEFAULT 0,
     status          VARCHAR(16)  NOT NULL DEFAULT 'active',
     expires_at      TIMESTAMP(3) NULL,
@@ -92,6 +95,7 @@ CREATE TABLE user_context_state (
     -- 无 UNIQUE(kind,key)：同 key 可多条 superseded 审计；应用保证至多一条 active
     INDEX idx_ctx_user_kind_key_status (user_id, tenant_id, kind, state_key, status),
     INDEX idx_ctx_user_status (user_id, tenant_id, status),
+    INDEX idx_ctx_ws_kind_key_status (workspace_id, tenant_id, kind, state_key, status),
     INDEX idx_ctx_expires (expires_at)
 );
 

@@ -17,6 +17,12 @@ public interface UserContextStateRepository extends JpaRepository<UserContextSta
     Optional<UserContextStateEntity> findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
             String userId, String tenantId, String kind, String stateKey, String status);
 
+    List<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndStatus(
+            String workspaceId, String tenantId, String status);
+
+    Optional<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
+            String workspaceId, String tenantId, String kind, String stateKey, String status);
+
     /** active 且 expires_at 已过（硬过期 → void） */
     List<UserContextStateEntity> findByStatusAndExpiresAtBefore(String status, Instant expiresAt);
 

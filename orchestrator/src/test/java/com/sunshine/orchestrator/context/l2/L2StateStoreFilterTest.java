@@ -128,9 +128,74 @@ class L2StateStoreFilterTest {
     }
 
     @Test
+    void assembleWorkspaceBlock_readsOnlyWorkspaceScope() {
+        UserContextStateEntity wsTodo = wsEntity("w1", "todo", "collect-receipts", "收齐报销发票", 0.9, null);
+        wsTodo.setBackground("财务报销项目收尾");
+        UserContextStateEntity wsPref = wsEntity("w2", "preference", "output", "表格优先", 0.85, null);
+        when(repository.findByWorkspaceIdAndTenantIdAndStatus("ws-1", "default", "active"))
+                .thenReturn(List.of(wsTodo, wsPref));
+
+        String block = store.assembleWorkspaceBlock("ws-1", "default");
+
+        assertThat(block)
+                .contains("- todo/collect-receipts: 收齐报销发票 （背景：财务报销项目收尾）")
+                .contains("- preference/output: 表格优先");
+        verify(repository, never()).findByUserIdAndTenantIdAndStatus(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void upsertWorkspace_persistsWorkspaceScopeRow() {
+        when(repository.findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "ws-1", "default", "todo", "collect-receipts", "active"))
+                .thenReturn(Optional.empty());
+
+        store.upsertWorkspace("ws-1", "default",
+                new L2ConflictMerger.Candidate("todo", "collect-receipts", "收齐报销发票", 0.9),
+                "msg-ws", now);
+
+        ArgumentCaptor<UserContextStateEntity> cap = ArgumentCaptor.forClass(UserContextStateEntity.class);
+        verify(repository).save(cap.capture());
+        UserContextStateEntity saved = cap.getValue();
+        assertThat(saved.getScope()).isEqualTo("workspace");
+        assertThat(saved.getWorkspaceId()).isEqualTo("ws-1");
+        assertThat(saved.getUserId()).isEqualTo("");
+        assertThat(saved.getStatus()).isEqualTo("active");
+        assertThat(saved.getSourceMsgId()).isEqualTo("msg-ws");
+    }
+
+    @Test
+    void renderSystemBlock_showsBackgroundWhenPresent() {
+        UserContextStateEntity withBg = entity("1", "preference", "style", "简洁", 0.9, null);
+        withBg.setBackground("面向财务同事演示");
+        UserContextStateEntity withoutBg = entity("2", "constraint", "budget", "单次不超过500", 0.95,
+                now.plus(5, ChronoUnit.DAYS));
+
+        String block = L2StateStore.renderSystemBlock(List.of(withBg, withoutBg));
+
+        assertThat(block).isEqualTo("""
+                [用户状态 · L2]
+                - preference/style: 简洁 （背景：面向财务同事演示）
+                - constraint/budget: 单次不超过500""");
+    }
+
+    @Test
     void ttlDays_forConstraintUsesConfiguredDays() {
         Instant expires = store.expiresAtFor("constraint", now);
         assertThat(expires).isEqualTo(now.plus(30, ChronoUnit.DAYS));
+    }
+
+    @Test
+    void ttlDays_forTodoUsesConfiguredDays() {
+        Instant expires = store.expiresAtFor("todo", now);
+        assertThat(expires).isEqualTo(now.plus(7, ChronoUnit.DAYS));
+    }
+
+    private static UserContextStateEntity wsEntity(
+            String id, String kind, String key, String value, double conf, Instant expiresAt) {
+        UserContextStateEntity e = entity(id, kind, key, value, conf, expiresAt);
+        e.setUserId("");
+        e.setWorkspaceId("ws-1");
+        return e;
     }
 
     private static UserContextStateEntity entity(
