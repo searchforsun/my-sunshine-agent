@@ -44,6 +44,7 @@ public class DynamicToolkitFactory {
     private final SkillCatalogService skillCatalogService;
     private final AgentExecutionProperties executionProperties;
     private final SandboxAgentTools sandboxAgentTools;
+    private final SessionSearchTool sessionSearchTool;
 
     /** 主 Agent：按会话 kind 装默认工具集（缺省 chat） */
     public Toolkit build(String userId) {
@@ -57,7 +58,7 @@ public class DynamicToolkitFactory {
     public Toolkit build(String tenantId, String skillId, String userId, String conversationKind) {
         return buildFromWhitelist(
                 toolSetResolver.resolveDefaultTools(tenantId, conversationKind),
-                ToolkitScope.MAIN, skillId, userId, tenantId);
+                ToolkitScope.MAIN, skillId, userId, tenantId, conversationKind);
     }
 
     /** 子 Agent / 白名单：显式白名单与启用池求交 */
@@ -72,7 +73,7 @@ public class DynamicToolkitFactory {
         }
         return buildFromWhitelist(
                 toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId),
-                ToolkitScope.MAIN, skillId, userId, tenantId);
+                ToolkitScope.MAIN, skillId, userId, tenantId, conversationKind);
     }
 
     /** Workflow 子 Agent：始终含 search_knowledge；可选 tools 白名单追加业务工具（不含 spawn_subagent / request_decision） */
@@ -80,20 +81,20 @@ public class DynamicToolkitFactory {
         List<String> whitelist = toolWhitelist == null || toolWhitelist.isEmpty()
                 ? List.of()
                 : toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId);
-        return buildFromWhitelist(whitelist, ToolkitScope.SUB, skillId, userId, tenantId);
+        return buildFromWhitelist(whitelist, ToolkitScope.SUB, skillId, userId, tenantId, null);
     }
 
     /**
      * Planner-Executor Worker：SUB 基础（RAG + 业务白名单 + think_summary + 沙箱）之上，
      * 额外注册异步元工具——await_tool_run（等待自己派发的 background exec / spawn run）、
      * async_status（run 级状态回查）、spawn_subagent（完整 fast ReAct，可隔离子工作）。
-     * 不注册 request_decision（用户决策仍归主链）。
+     * 不注册 request_decision（用户决策仍归主链）。session_search 二期跟进（需 Worker 独立工具审计上下文）。
      */
     public Toolkit buildForWorker(List<String> toolWhitelist, String tenantId, String skillId, String userId) {
         List<String> whitelist = toolWhitelist == null || toolWhitelist.isEmpty()
                 ? List.of()
                 : toolSetResolver.intersectEnabledPool(toolWhitelist, tenantId);
-        return buildFromWhitelist(whitelist, ToolkitScope.WORKER, skillId, userId, tenantId);
+        return buildFromWhitelist(whitelist, ToolkitScope.WORKER, skillId, userId, tenantId, null);
     }
 
     /**
@@ -152,7 +153,12 @@ public class DynamicToolkitFactory {
     }
 
     private Toolkit buildFromWhitelist(
-            List<String> whitelist, ToolkitScope scope, String skillId, String userId, String tenantId) {
+            List<String> whitelist,
+            ToolkitScope scope,
+            String skillId,
+            String userId,
+            String tenantId,
+            String conversationKind) {
         // 绑 skill 时并入 skill 声明的业务工具（`["*"]` 展开为租户启用池全量）；skill 为空则原样
         whitelist = mergeSkillTools(whitelist, skillId, tenantId);
         // skillId 保留签名兼容；方案 B 不再门控沙箱工具
@@ -218,6 +224,14 @@ public class DynamicToolkitFactory {
                     && react != null && react.getSubagent() != null && react.getSubagent().isEnabled()) {
                 tk.registerAgentTool(spawnSubagentTool);
                 registered.add(SpawnSubagentTool.NAME);
+            }
+            // M3 session_search：仅 task 会话 MAIN 注册（chat 不注入；workflow/SUB/PLANNER 不注册）
+            if (scope == ToolkitScope.MAIN
+                    && "task".equals(conversationKind)
+                    && react != null && react.getSessionSearch() != null
+                    && react.getSessionSearch().isEnabled()) {
+                tk.registerAgentTool(sessionSearchTool);
+                registered.add(SessionSearchTool.NAME);
             }
             // D12：request_decision 用户决策归主链——MAIN 在此注册；PLANNER 走 buildForPlanner 单独注册；
             // WORKER / SUB 不注册（决策不派发子 Agent）

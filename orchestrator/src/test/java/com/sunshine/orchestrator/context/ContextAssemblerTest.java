@@ -200,6 +200,24 @@ class ContextAssemblerTest {
     }
 
     @Test
+    void assemble_taskKind_skipsAutomaticL3Recall() {
+        // M3：task 会话不自动注入 L3（只写不自动注入），由 sunshine_session_search 按需恢复；
+        // chat 会话保留自动召回。
+        assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1"));
+
+        verify(l3RecallService, never()).recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void assemble_chatKind_keepsAutomaticL3Recall() {
+        assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", List.of(), "q", null, "chat", null));
+
+        verify(l3RecallService).recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean());
+    }
+
+    @Test
     void assemble_chatKind_readsUserScope() {
         when(l2StateStore.assembleSystemBlock("u1", "default"))
                 .thenReturn("[user L2] preference/style: 简洁");

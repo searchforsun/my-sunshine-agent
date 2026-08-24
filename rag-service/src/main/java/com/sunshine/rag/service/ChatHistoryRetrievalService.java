@@ -28,14 +28,21 @@ public class ChatHistoryRetrievalService {
 
     public Mono<List<ChatHistoryMilvusService.ChatHistoryHit>> search(
             String userId, String tenantId, String query, int topK) {
+        return search(userId, tenantId, null, query, topK);
+    }
+
+    /** convId 非空 → 会话级过滤（session_search scope=session） */
+    public Mono<List<ChatHistoryMilvusService.ChatHistoryHit>> search(
+            String userId, String tenantId, String convId, String query, int topK) {
         if (!StringUtils.hasText(userId) || !StringUtils.hasText(query)) {
             return Mono.just(List.of());
         }
         String tid = tenantId != null ? tenantId : "default";
         int k = Math.max(1, topK);
         return embeddingService.embed(query)
-                .map(vector -> milvusService.search(userId, tid, vector, k))
-                .doOnSuccess(h -> log.info("[ChatHistory] 召回 user={} hits={}", userId, h.size()))
+                .map(vector -> milvusService.search(userId, tid, convId, vector, k))
+                .doOnSuccess(h -> log.info("[ChatHistory] 召回 user={} conv={} hits={}",
+                        userId, convId != null ? convId : "-", h.size()))
                 .onErrorResume(e -> {
                     log.warn("[ChatHistory] search 失败: {}", e.getMessage());
                     return Mono.just(List.of());

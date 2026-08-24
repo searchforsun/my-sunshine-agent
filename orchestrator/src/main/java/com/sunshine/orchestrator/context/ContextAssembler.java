@@ -67,8 +67,10 @@ public class ContextAssembler {
 
         Set<String> nearMidIds = collectMsgIds(bands.near(), bands.mid());
         Set<String> farIds = collectMsgIds(bands.far());
+        // M3：task 会话不自动注入 L3（对齐 task-scene §6.3/§6.4「只写不自动注入」），
+        // 由 sunshine_session_search 按需恢复本会话正文；L3 自动召回仅 chat。
         String l3Block = "";
-        if (StringUtils.hasText(request.currentUserQuery())) {
+        if (!"task".equals(request.kind()) && StringUtils.hasText(request.currentUserQuery())) {
             try {
                 l3Block = l3RecallService.recall(
                         request.userId(),

@@ -29,8 +29,9 @@ public class ChatHistoryController {
         String tenantId = body.containsKey("tenantId") ? str(body, "tenantId") : "default";
         String query = str(body, "query");
         int topK = body.containsKey("topK") ? ((Number) body.get("topK")).intValue() : 5;
+        String convId = str(body, "convId");
 
-        return chatHistoryRetrievalService.search(userId, tenantId, query, topK)
+        return chatHistoryRetrievalService.search(userId, tenantId, convId, query, topK)
                 .map(hits -> R.ok(Map.of(
                         "results", (Object) hits.stream().map(ChatHistoryController::toMap).toList())));
     }

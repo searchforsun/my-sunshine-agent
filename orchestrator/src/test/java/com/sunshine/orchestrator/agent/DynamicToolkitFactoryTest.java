@@ -56,6 +56,8 @@ class DynamicToolkitFactoryTest {
     private AgentExecutionProperties.React reactProps;
     @Mock
     private SandboxAgentTools sandboxAgentTools;
+    @Mock
+    private SessionSearchTool sessionSearchTool;
     @InjectMocks
     private DynamicToolkitFactory factory;
 
@@ -83,14 +85,67 @@ class DynamicToolkitFactoryTest {
         when(toolSetResolver.resolveDefaultTools("default", "task")).thenReturn(List.of());
         when(ragTool.getName()).thenReturn(RagTool.NAME);
         when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(sessionSearchTool.getName()).thenReturn(SessionSearchTool.NAME);
         when(executionProperties.getReact()).thenReturn(reactProps);
         when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(reactProps.getSessionSearch()).thenReturn(new AgentExecutionProperties.React.SessionSearch());
         when(sandboxAgentTools.all()).thenReturn(List.of());
 
         factory.build("default", null, "u1", "task");
 
         verify(toolSetResolver).resolveDefaultTools("default", "task");
         verify(toolSetResolver, never()).resolveChatTools("default");
+    }
+
+    @Test
+    void build_taskKindEnabled_registersSessionSearchTool() {
+        // M3：task 会话 MAIN 注册 sunshine_session_search（本会话正文按需恢复）。
+        when(toolSetResolver.resolveDefaultTools("default", "task")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(sessionSearchTool.getName()).thenReturn(SessionSearchTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(reactProps.getSessionSearch()).thenReturn(new AgentExecutionProperties.React.SessionSearch() {{
+            setEnabled(true);
+        }});
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+
+        var toolkit = factory.build("default", null, "u1", "task");
+
+        assertThat(toolkit.getToolNames()).contains(SessionSearchTool.NAME);
+    }
+
+    @Test
+    void build_chatKind_doesNotRegisterSessionSearchTool() {
+        // M3：session_search 仅 task 会话；chat 会话不注册。
+        when(toolSetResolver.resolveDefaultTools("default", "chat")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+
+        var toolkit = factory.build("default", null, "u1", "chat");
+
+        assertThat(toolkit.getToolNames()).doesNotContain(SessionSearchTool.NAME);
+    }
+
+    @Test
+    void build_taskKindDisabled_doesNotRegisterSessionSearchTool() {
+        when(toolSetResolver.resolveDefaultTools("default", "task")).thenReturn(List.of());
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(reactProps.getSessionSearch()).thenReturn(new AgentExecutionProperties.React.SessionSearch() {{
+            setEnabled(false);
+        }});
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+
+        var toolkit = factory.build("default", null, "u1", "task");
+
+        assertThat(toolkit.getToolNames()).doesNotContain(SessionSearchTool.NAME);
     }
 
     @Test

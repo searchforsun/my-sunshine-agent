@@ -83,7 +83,8 @@ class AgentInfraTest {
                 toolSetResolver,
                 Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class),
                 executionProperties,
-                Mockito.mock(com.sunshine.orchestrator.sandbox.SandboxAgentTools.class));
+                Mockito.mock(com.sunshine.orchestrator.sandbox.SandboxAgentTools.class),
+                Mockito.mock(SessionSearchTool.class));
         Toolkit toolkit = factory.build(null);
 
         assertThat(toolkit).isNotNull();

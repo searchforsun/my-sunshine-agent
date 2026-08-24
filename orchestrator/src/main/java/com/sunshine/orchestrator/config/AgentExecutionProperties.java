@@ -34,6 +34,8 @@ public class AgentExecutionProperties {
         private Decision decision = new Decision();
         /** 异步长工具 + await_tool_run — SSOT：Nacos agent.execution.react.async-tool */
         private AsyncTool asyncTool = new AsyncTool();
+        /** M3 session_search（会话级正文恢复）— SSOT：Nacos agent.execution.react.session-search */
+        private SessionSearch sessionSearch = new SessionSearch();
 
         @Data
         public static class Taskboard {
@@ -73,6 +75,12 @@ public class AgentExecutionProperties {
             private int workerAwaitMaxWaits = 6;
             private int execWallTimeoutSec = 600;
             private int maxConcurrentPerMessage = 10;
+        }
+
+        @Data
+        public static class SessionSearch {
+            /** true=task 会话 MAIN 注册 sunshine_session_search（chat/workflow 不注册，无影响） */
+            private boolean enabled = true;
         }
     }
 

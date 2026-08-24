@@ -84,6 +84,9 @@ agent:
         exec-wall-timeout-sec: 600
         # 同消息并发派发上限：worker/spawn/exec 共享槽位，10 满足 pro 多路并发调研
         max-concurrent-per-message: 10
+      # M3 session_search：task 会话 MAIN 注册 sunshine_session_search（chat/workflow 不注册）
+      session-search:
+        enabled: true
     harness:
       # true：pro → PlannerHarnessExecutor
       # false：专业模式不可用（显式失败）；禁止静默改 fast，禁止回落旧动态规划

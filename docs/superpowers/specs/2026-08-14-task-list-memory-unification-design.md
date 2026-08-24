@@ -1,7 +1,7 @@
 # 任务清单记忆一体化（Task List Memory Unification · 清爽收敛版）
 
 > **日期**：2026-08-14（v2 收敛）· **v1**：2026-08-14 初稿
-> **状态**：**M0 ✅ 已实现**（2026-08-23，fast 跨轮任务板恢复；Live `verify_task_list_restore_live.py`）· **M1 ✅ 已实现**（2026-08-23，KV Memory 统一 + `todo` 类 + scope 闸门；Live `verify_kv_memory_todo_live.py` T1–T5 全绿）· **M2 ✅ 已实现**（2026-08-24，pro 终态导出；Live `verify_pro_todo_export_live.py` P1–P6）· **M3 ⬜ 未实现**（session_search，见 §9）
+> **状态**：**M0 ✅ 已实现**（2026-08-23，fast 跨轮任务板恢复；Live `verify_task_list_restore_live.py`）· **M1 ✅ 已实现**（2026-08-23，KV Memory 统一 + `todo` 类 + scope 闸门；Live `verify_kv_memory_todo_live.py` T1–T5 全绿）· **M2 ✅ 已实现**（2026-08-24，pro 终态导出；Live `verify_pro_todo_export_live.py` P1–P6）· **M3 ✅ 已实现**（2026-08-24，session_search 收缩版 body + scope=session；Live `verify_session_search_live.py` P1–P4 全绿）
 > **编号**：阶段四增量（上下文记忆 / 长任务执行能力）
 > **一句话**：长任务续跑的关键是**未完成任务清单**。本方案把它统一为**两级作用域**——**会话级执行态**（fast `TaskList` / pro `H1`，跨轮恢复的真相源）+ **KV Memory 沉淀**（终态/显式停下时导出「未完成任务」到一张表，`scope=workspace`（task）/ `scope=user`（chat））。召回按「**先同会话、再跨会话**」装配；执行中**不双写**。
 > **v2 收敛要点（对齐五层 v25 / task-scene v14）**：
@@ -215,7 +215,7 @@ pro（Planner-Executor）会话收束（success / error / cancel 三态，`loop.
 | **M0** | fast 跨轮恢复：`react_task_board` 按 conversationId 取最近 → 注入【任务清单】块 | 无（复用既有表与 resume 渲染） | **✅ 已实现**（2026-08-23；`TaskBoardRestoreService` + FAST 新消息注入；Live `verify_task_list_restore_live.py` T1–T4 全绿）：长任务「继续」看到未完成任务；已完成项标注；全 terminal / 无快照不注入 |
 | **M1** | KV Memory 统一 + `todo` 类：`scope` 列 + `VALID_KINDS` + Catalog extract 参数化 + v22 门禁 | task-scene P1/P2（闸门） | **✅ 已实现**（2026-08-23；`L2StateStore` scope 路由 + `context.memory.extract` 参数化 + todo 生命周期 + 读写闸门；Live `verify_kv_memory_todo_live.py` T1–T5 全绿）：chat 沉淀用户 todo 新会话注入；task 沉淀工作区 todo；完成即 void；chat/task 隔离 |
 | **M2** | pro 终态导出：ANSWER/显式停下 → H1 未完成项 → KV Memory | M1 | **✅ 已实现**（2026-08-24；`H1TodoExportService` + `PlannerHarnessExecutor.doFinally` 三态收束导出 + `L2StateStore.syncTodoExport` 全量对比 void + key 编码 `task.{goalHash8}.{baseTaskId}`；Live `verify_pro_todo_export_live.py` P1–P6 全绿）：pro 会话收束后未完成项（pending/in_progress/fail）按会话 kind 分流（task→workspace / chat→user）沉淀 KV `todo`；幂等覆盖不膨胀；全完成/换题 → `task.` 前缀 active 行全量对比 void；pro 新会话续接未完成任务 |
-| M3 | session_search 收缩版（body + scope=session） | L3 task 通道 | ⬜ 按需恢复本会话正文，不进前缀 |
+| **M3** | session_search 收缩版（body + scope=session）：task 会话按需恢复本会话正文，不进前缀 | L3 task 通道 | **✅ 已实现**（2026-08-24；`SessionSearchTool` + rag-service convId 过滤 + `ContextAssembler` task 跳过 L3 自动注入 + Nacos `react.session-search.enabled`；单测 `SessionSearchToolTest`/`ChatHistorySearchExprTest`/工厂注册断言；Live `verify_session_search_live.py` P1–P4 全绿）：task（fast）MAIN 注册 `sunshine_session_search`；scope=session 仅本会话正文；chat/workflow/SUB/PLANNER 不注册；无会话上下文降级报错不抛异常；chat 自动召回不受影响 |
 | 并行 | task-scene 读写闸门 P1/P2、KV Memory 表迁移 | — | — |
 
 **建议顺序**：M0（成本最低、修复最大缺口）→ M1（KV 统一）→ M2（pro 出口）→ M3。
@@ -230,6 +230,7 @@ pro（Planner-Executor）会话收束（success / error / cancel 三态，`loop.
 | 已完成项 | 已 done 项不重复提醒 | **✅ M0**（Live T3：全 terminal 不注入） |
 | KV todo 类 | 用户「记得帮我看 X」→ 新会话召回；完成后 void；无裸 todo | **✅ M1**（Live T1/T2/T3） |
 | pro 续接 | ANSWER/终态后新会话召回未完成项，不丢 goal | **✅ M2**（Live P1/P3） |
+| session_search | task 会话按需恢复本会话早前正文；chat 不注册（隔离） | **✅ M3**（Live P1–P4：检索→恢复标记端到端） |
 | 不双写 | 执行中 `react_task_board`/H1 无记忆层写入；仅终态/显式停下沉淀 | **✅ M0**（Live 红线：快照行数不随普通轮次增长） |
 | 去重 | 会话级与 KV 同 goal 只注入最近一层 | ⬜（M1 后） |
 | 压缩点兼容 | 沉淀副本 Tier 1 幂等字节稳定；恢复块 Tier 2 尾部，prefix 不漂移 | ⬜（五层 §5.5） |

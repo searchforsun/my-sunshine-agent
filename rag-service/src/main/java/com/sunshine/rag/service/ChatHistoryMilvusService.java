@@ -3,6 +3,7 @@ package com.sunshine.rag.service;
 import io.milvus.client.MilvusServiceClient;
 import io.milvus.common.clientenum.ConsistencyLevelEnum;
 import io.milvus.grpc.DataType;
+import io.milvus.grpc.SearchResultData;
 import io.milvus.grpc.SearchResults;
 import io.milvus.param.MetricType;
 import io.milvus.param.R;
@@ -225,7 +226,13 @@ public class ChatHistoryMilvusService {
     }
 
     public List<ChatHistoryHit> search(String userId, String tenantId, List<Float> queryVector, int topK) {
-        String expr = "user_id == \"" + escape(userId) + "\" && tenant_id == \"" + escape(tenantId) + "\"";
+        return search(userId, tenantId, null, queryVector, topK);
+    }
+
+    /** convId 非空时按会话过滤（session_search scope=session：仅本会话正文） */
+    public List<ChatHistoryHit> search(
+            String userId, String tenantId, String convId, List<Float> queryVector, int topK) {
+        String expr = buildSearchExpr(userId, tenantId, convId);
         R<SearchResults> result = client.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
                 .withMetricType(MetricType.IP)
@@ -241,8 +248,14 @@ public class ChatHistoryMilvusService {
             log.warn("[ChatHistory] 检索返回空: {}", result.getMessage());
             return List.of();
         }
+        SearchResultData results = result.getData().getResults();
+        // Milvus 空命中时无 FieldData/Scores，SDK 字段读取会抛异常；此处直接返回空列表
+        if (results == null || results.getFieldsDataCount() == 0 || results.getScoresCount() == 0) {
+            log.debug("[ChatHistory] 检索无命中 conv={}", convId);
+            return List.of();
+        }
 
-        SearchResultsWrapper wrapper = new SearchResultsWrapper(result.getData().getResults());
+        SearchResultsWrapper wrapper = new SearchResultsWrapper(results);
         List<?> convIds = wrapper.getFieldData("conv_id", 0);
         List<?> msgIds = wrapper.getFieldData("msg_id", 0);
         List<?> contents = wrapper.getFieldData("content", 0);
@@ -256,16 +269,25 @@ public class ChatHistoryMilvusService {
             if (content == null) {
                 continue;
             }
-            String convId = fieldAt(convIds, i);
+            String hitConvId = fieldAt(convIds, i);
             String msgId = fieldAt(msgIds, i);
             long createdAt = 0L;
             if (createdAts != null && i < createdAts.size() && createdAts.get(i) instanceof Number num) {
                 createdAt = num.longValue();
             }
             float score = idScores != null && i < idScores.size() ? idScores.get(i).getScore() : 0f;
-            hits.add(new ChatHistoryHit(convId, msgId, content.toString(), score, createdAt));
+            hits.add(new ChatHistoryHit(hitConvId, msgId, content.toString(), score, createdAt));
         }
         return hits;
+    }
+
+    /** 检索 expr：user+tenant 恒过滤；convId 非空追加会话过滤（scope=session） */
+    static String buildSearchExpr(String userId, String tenantId, String convId) {
+        String expr = "user_id == \"" + escape(userId) + "\" && tenant_id == \"" + escape(tenantId) + "\"";
+        if (StringUtils.hasText(convId)) {
+            expr += " && conv_id == \"" + escape(convId.strip()) + "\"";
+        }
+        return expr;
     }
 
     private static String fieldAt(List<?> values, int i) {

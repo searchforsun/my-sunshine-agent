@@ -31,11 +31,19 @@ public class HistoryRagClient {
     }
 
     public Mono<List<HistoryHit>> search(String userId, String tenantId, String query, int topK) {
-        Map<String, Object> body = Map.of(
-                "userId", userId,
-                "tenantId", tenantId != null ? tenantId : "default",
-                "query", query != null ? query : "",
-                "topK", topK);
+        return search(userId, tenantId, null, query, topK);
+    }
+
+    /** convId 非空 → rag-service 会话级过滤（session_search scope=session 仅本会话正文） */
+    public Mono<List<HistoryHit>> search(String userId, String tenantId, String convId, String query, int topK) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("userId", userId);
+        body.put("tenantId", tenantId != null ? tenantId : "default");
+        body.put("query", query != null ? query : "");
+        body.put("topK", topK);
+        if (convId != null) {
+            body.put("convId", convId);
+        }
 
         return webClient.post()
                 .uri("/api/rag/chat-history/search")
