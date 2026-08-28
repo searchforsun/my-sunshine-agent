@@ -73,11 +73,15 @@ class ExecutionPlanRouterTest {
                         new WorkflowBindingParser(workflowCatalog), skillCatalogService,
                         agentCatalogService, workflowCatalog),
                 skillBindingParser,
-                agentBindingParser);
+                agentBindingParser,
+                new com.sunshine.orchestrator.routing.RoutingStickyService(),
+                new com.sunshine.orchestrator.routing.SkillAdoptionService(
+                        new com.sunshine.orchestrator.config.AgentExecutionProperties(),
+                        skillCatalogService, agentCatalogService));
         when(skillBindingParser.stripSlashMention(org.mockito.ArgumentMatchers.anyString())
                 ).thenAnswer(inv -> inv.getArgument(0));
         when(skillCatalogService.indexEntries()).thenReturn(List.of());
-        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> inv.getArgument(0));
     }
 

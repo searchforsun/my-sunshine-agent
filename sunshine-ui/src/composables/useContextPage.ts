@@ -5,6 +5,8 @@ import { PersonOutline } from '@vicons/ionicons5'
 import {
   getContextL1,
   getContextL3Status,
+  getH1Notebook,
+  getTaskBoardSnapshot,
   listContextConversations,
   listContextL2,
   listContextL3Entries,
@@ -13,12 +15,15 @@ import {
   updateContextL2,
   voidContextL2,
   type ConversationSummary,
+  type H1Notebook,
   type L1Snapshot,
   type L1WindowRow,
   type L2StateEntry,
   type L3Entry,
   type L3Status,
+  type TaskBoardSnapshot,
 } from '../api/contextAdmin'
+import { searchTaskHistory, type TaskHistoryHit } from '../api/ragAdmin'
 import { listAuthUsers } from '../api/auth'
 import type { TenantId } from '../api/tenants'
 import { useAuthStore } from '../stores/authStore'
@@ -79,6 +84,16 @@ export function useContextPage() {
   const l3Status = ref<L3Status | null>(null)
   const l3Entries = ref<L3Entry[]>([])
   const expandedL3Key = ref<string | null>(null)
+
+  /** 任务分层上下文（T0 / H1 / L3 可观测） */
+  const taskBoardSnapshot = ref<TaskBoardSnapshot | null>(null)
+  const h1Notebook = ref<H1Notebook | null>(null)
+  const taskHistoryHits = ref<TaskHistoryHit[]>([])
+  const loadingTaskBoard = ref(false)
+  const loadingH1 = ref(false)
+  const loadingTaskHistory = ref(false)
+  const taskHistoryQuery = ref('')
+  const expandedTaskHistoryKey = ref<string | null>(null)
 
   const editForm = ref({
     stateValue: '',
@@ -163,7 +178,8 @@ export function useContextPage() {
   })
 
   const refreshing = computed(() =>
-    loading.value || loadingConvs.value || loadingL1.value || loadingL3.value,
+    loading.value || loadingConvs.value || loadingL1.value || loadingL3.value
+      || loadingTaskBoard.value || loadingH1.value,
   )
 
   function l1RowKey(row: L1WindowRow, i: number) {
@@ -241,10 +257,12 @@ export function useContextPage() {
 
   function pickConversation() {
     const preferred = selectedConvId.value
-    if (preferred && conversations.value.some(c => c.id === preferred)) {
+    // 仅当首选会话落在当前 kindTab 过滤后的列表内才保留（列表已按 kind 隔离，
+    // 避免从 URL 恢复或默认选中落到 task 会话，导致「对话」L3 历史索引展示 task 过程）
+    if (preferred && filteredConversations.value.some(c => c.id === preferred)) {
       return
     }
-    selectedConvId.value = conversations.value[0]?.id ?? null
+    selectedConvId.value = filteredConversations.value[0]?.id ?? null
     if (!selectedConvId.value) {
       l1Snapshot.value = null
     }
@@ -365,6 +383,64 @@ export function useContextPage() {
     }
   }
 
+  async function loadTaskBoard(convId?: string) {
+    const id = (convId || selectedConvId.value || '').trim()
+    if (!id) {
+      taskBoardSnapshot.value = null
+      return
+    }
+    loadingTaskBoard.value = true
+    try {
+      taskBoardSnapshot.value = await getTaskBoardSnapshot(id)
+    } catch (e) {
+      taskBoardSnapshot.value = null
+    } finally {
+      loadingTaskBoard.value = false
+    }
+  }
+
+  async function loadH1(convId?: string) {
+    const id = (convId || selectedConvId.value || '').trim()
+    if (!id) {
+      h1Notebook.value = null
+      return
+    }
+    loadingH1.value = true
+    try {
+      h1Notebook.value = await getH1Notebook(id)
+    } catch (e) {
+      h1Notebook.value = null
+    } finally {
+      loadingH1.value = false
+    }
+  }
+
+  async function runTaskHistorySearch(convId?: string) {
+    const id = (convId || selectedConvId.value || '').trim()
+    const query = taskHistoryQuery.value.trim()
+    const userId = filterUserId.value.trim()
+    if (!userId || !query) {
+      taskHistoryHits.value = []
+      expandedTaskHistoryKey.value = null
+      return
+    }
+    expandedTaskHistoryKey.value = null
+    loadingTaskHistory.value = true
+    try {
+      // 按当前选中的 task 会话检索其 L3 body/process 段落
+      taskHistoryHits.value = await searchTaskHistory(filterTenantId.value || 'default', {
+        userId,
+        query,
+        convId: id,
+      })
+    } catch (e) {
+      taskHistoryHits.value = []
+      message.error(e instanceof Error ? e.message : '任务检索失败')
+    } finally {
+      loadingTaskHistory.value = false
+    }
+  }
+
   function l3RowKey(entry: L3Entry, i: number) {
     return `${entry.msgId}-${entry.chunkIndex}-${i}`
   }
@@ -373,18 +449,41 @@ export function useContextPage() {
     expandedL3Key.value = expandedL3Key.value === key ? null : key
   }
 
+  function taskHistoryRowKey(hit: TaskHistoryHit, i: number) {
+    return `${hit.convId}-${hit.msgId}-${i}`
+  }
+
+  function toggleTaskHistoryExpand(key: string) {
+    expandedTaskHistoryKey.value = expandedTaskHistoryKey.value === key ? null : key
+  }
+
   async function refreshAll() {
     await Promise.all([loadConversations(), loadL2(), loadL3()])
     if (selectedConvId.value) {
-      await Promise.all([loadL1(selectedConvId.value), loadL3Entries(selectedConvId.value)])
+      await Promise.all([
+        loadL1(selectedConvId.value),
+        loadL3Entries(selectedConvId.value),
+        loadTaskBoard(selectedConvId.value),
+        loadH1(selectedConvId.value),
+      ])
     } else {
       l3Entries.value = []
+      taskBoardSnapshot.value = null
+      h1Notebook.value = null
     }
   }
 
   async function selectConversation(id: string) {
     selectedConvId.value = id
-    await Promise.all([loadL1(id), loadL3Entries(id)])
+    taskHistoryQuery.value = ''
+    taskHistoryHits.value = []
+    expandedTaskHistoryKey.value = null
+    await Promise.all([
+      loadL1(id),
+      loadL3Entries(id),
+      loadTaskBoard(id),
+      loadH1(id),
+    ])
   }
 
   async function handleSave() {
@@ -554,6 +653,14 @@ export function useContextPage() {
     l3Status,
     l3Entries,
     expandedL3Key,
+    taskBoardSnapshot,
+    h1Notebook,
+    taskHistoryHits,
+    loadingTaskBoard,
+    loadingH1,
+    loadingTaskHistory,
+    taskHistoryQuery,
+    expandedTaskHistoryKey,
     editForm,
     statusOptions,
     l2StatusFilterOptions,
@@ -582,6 +689,11 @@ export function useContextPage() {
     l3RowKey,
     toggleL3Expand,
     l3RoleLabel,
+    loadTaskBoard,
+    loadH1,
+    runTaskHistorySearch,
+    taskHistoryRowKey,
+    toggleTaskHistoryExpand,
     refreshAll,
     selectConversation,
     handleSave,

@@ -4,6 +4,9 @@ import com.sunshine.orchestrator.audit.AuditService;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
+import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,6 +73,64 @@ class ConversationServiceTest {
 
         assertThat(saved.getUsageJson()).isEqualTo(usageJson);
         assertThat(saved.getStatus()).isEqualTo(MessageStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("updateMessageExecutionPlan 落库完整 RoutingResult（S-0）")
+    void updateMessageExecutionPlan_persistsRoutingResult() {
+        ChatMessageEntity msg = persistedMessage("m-plan");
+        when(messageRepo.findById("m-plan")).thenReturn(Optional.of(msg));
+        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.FAST, null,
+                Map.of(
+                        "skillIds", "compliance-review,policy-qa",
+                        ExecutionPlan.PARAM_AGENT_IDS, "compliance-agent"),
+                "skill:/mention");
+
+        service.updateMessageExecutionPlan("m-plan", plan);
+
+        assertThat(msg.getIntent()).isEqualTo("fast");
+        assertThat(msg.getRoutingSkillIds()).isEqualTo("compliance-review,policy-qa");
+        assertThat(msg.getRoutingAgentIds()).isEqualTo("compliance-agent");
+    }
+
+    @Test
+    @DisplayName("updateMessageExecutionPlan 无绑定不落空串（保持 null）")
+    void updateMessageExecutionPlan_withoutBindings_leavesRoutingNull() {
+        ChatMessageEntity msg = persistedMessage("m-empty");
+        when(messageRepo.findById("m-empty")).thenReturn(Optional.of(msg));
+
+        service.updateMessageExecutionPlan("m-empty",
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"));
+
+        assertThat(msg.getRoutingSkillIds()).isNull();
+        assertThat(msg.getRoutingAgentIds()).isNull();
+    }
+
+    @Test
+    @DisplayName("loadRoutingSeed 跳过 STREAMING 取最近一条已终态 assistant（S-1）")
+    void loadRoutingSeed_skipsStreaming_returnsLatestCompleted() {
+        ChatMessageEntity streaming = persistedMessage("m-s1");
+        streaming.setSeq(3);
+        streaming.setRoutingSkillIds("skill-b");
+        ChatMessageEntity done = persistedMessage("m-done");
+        done.setSeq(2);
+        done.setStatus(MessageStatus.COMPLETED);
+        done.setRoutingSkillIds("skill-a");
+        done.setRoutingAgentIds("agent-x,agent-y");
+        when(messageRepo.findRecentByConversationIdDesc("conv-1", 10))
+                .thenReturn(List.of(streaming, done));
+
+        RoutingSeed seed = service.loadRoutingSeed("conv-1");
+
+        assertThat(seed.skillIds()).containsExactly("skill-a");
+        assertThat(seed.agentIds()).containsExactly("agent-x", "agent-y");
+    }
+
+    @Test
+    @DisplayName("loadRoutingSeed 无终态 assistant 返回 EMPTY")
+    void loadRoutingSeed_noCompletedAssistant_returnsEmpty() {
+        when(messageRepo.findRecentByConversationIdDesc("conv-1", 10)).thenReturn(List.of());
+        assertThat(service.loadRoutingSeed("conv-1").hasAny()).isFalse();
     }
 
     @Test

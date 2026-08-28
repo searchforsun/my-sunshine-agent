@@ -16,8 +16,11 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 
 /**
- * 语义缓存 — 对 (model, messages, temperature) 做 MD5 哈希
+ * 语义缓存 — 对 (model, call_site, messages, temperature) 做 MD5 哈希
  * 配合 DeepSeek V4 缓存命中定价（¥0.02/M tokens），成本可降 98%+
+ * <p>
+ * model=auto/缺省的动态路由请求一律跳过缓存（phase5 5.3）：缓存有效性依赖路由策略状态，
+ * 静态复用会导致策略变更后仍命中旧模型输出，且 call_site 已入 key 防跨调用点串用。
  */
 @Slf4j
 @Service
@@ -31,7 +34,7 @@ public class SemanticCacheService {
     private static final Duration TTL = Duration.ofHours(24);
 
     public Mono<ChatCompletionResponse> get(ChatCompletionRequest request) {
-        if (Boolean.TRUE.equals(request.getSkipCache())) {
+        if (Boolean.TRUE.equals(request.getSkipCache()) || isAutoModel(request.getModel())) {
             return Mono.empty();
         }
         String key = cacheKey(request);
@@ -56,7 +59,9 @@ public class SemanticCacheService {
     }
 
     public Mono<Boolean> put(ChatCompletionRequest request, ChatCompletionResponse response) {
-        if (Boolean.TRUE.equals(request.getSkipCache()) || hasEmptyAssistantContent(response)) {
+        if (Boolean.TRUE.equals(request.getSkipCache())
+                || isAutoModel(request.getModel())
+                || hasEmptyAssistantContent(response)) {
             return Mono.just(false);
         }
         String key = cacheKey(request);
@@ -98,11 +103,17 @@ public class SemanticCacheService {
 
     private String cacheKey(ChatCompletionRequest request) {
         String raw = request.getModel() + "|"
+                + (request.getCallSite() == null ? "" : request.getCallSite()) + "|"
                 + request.getMessages().stream()
                         .map(m -> m.getRole() + ":" + m.getContent())
                         .reduce("", String::concat) + "|"
                 + request.getTemperature();
         return CACHE_PREFIX + md5(raw);
+    }
+
+    /** model=auto/缺省走动态路由，缓存有效性依赖策略状态，一律跳过语义缓存（phase5 5.3）。 */
+    private static boolean isAutoModel(String model) {
+        return model == null || model.isBlank() || "auto".equalsIgnoreCase(model.strip());
     }
 
     private String md5(String input) {

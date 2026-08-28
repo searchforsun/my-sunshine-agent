@@ -277,15 +277,14 @@ function onLoad(option: TreeOption) {
   padding: 4px 10px;
   cursor: pointer;
   font-size: 12px;
-  border: 1px solid transparent;
   border-radius: 3px;
   margin: 1px 6px;
   min-width: 0;
+  transition: background 0.15s;
 }
 
 .search-result-item:hover {
-  border-color: var(--sun-border);
-  background: color-mix(in srgb, var(--sun-text) 4%, var(--sun-black));
+  background: var(--sun-row-hover);
 }
 
 .search-file-icon {
@@ -330,12 +329,12 @@ function onLoad(option: TreeOption) {
 
 .file-tree-pane :deep(.n-tree-node-content) {
   padding: 2px 4px;
-  border: 1px solid transparent;
   border-radius: 3px;
   display: flex;
   align-items: center;
   min-width: 0;
   cursor: grab;
+  transition: background 0.15s;
 }
 
 .file-tree-pane :deep(.n-tree-node-content:active) {
@@ -349,15 +348,15 @@ function onLoad(option: TreeOption) {
   text-overflow: ellipsis;
 }
 
-.file-tree-pane :deep(.n-tree-node-content:hover) {
-  border-color: var(--sun-border);
+.file-tree-pane :deep(.n-tree-node-content:hover),
+.file-tree-pane :deep(.n-tree-node--selected > .n-tree-node-content) {
+  background: var(--sun-row-hover);
 }
 
 .file-tree-pane :deep(.n-tree-node--selected > .n-tree-node-content) {
-  border-color: var(--sun-border);
   color: var(--sun-text);
   font-weight: 600;
-  background: transparent !important;
+  background: var(--sun-row-hover) !important;
 }
 
 .file-tree-pane :deep(.tree-icon-dir),

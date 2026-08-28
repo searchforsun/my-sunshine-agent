@@ -12,6 +12,7 @@ import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
+import com.sunshine.common.tool.admin.ToolSetToolIdsResponse;
 import com.sunshine.bff.client.ToolManagerAdminClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -115,6 +116,14 @@ public class ToolsAdminController {
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String q) {
         return toolManagerAdminClient.toolSetPicker(kind, tenantId, q);
+    }
+
+    /** A-4：skill/agent 声明 picker 按 (tenant, kind) 集过滤候选；kind=all = chat∪task 并集 */
+    @GetMapping("/api/admin/tools/sets/{kind}/tool-ids")
+    public Mono<R<ToolSetToolIdsResponse>> toolSetToolIds(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId) {
+        return toolManagerAdminClient.toolSetToolIds(kind, tenantId);
     }
 
     @PostMapping("/api/admin/tools/sets/{kind}/members:add")

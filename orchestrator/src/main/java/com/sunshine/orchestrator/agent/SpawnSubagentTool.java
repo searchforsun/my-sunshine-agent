@@ -92,7 +92,13 @@ public class SpawnSubagentTool implements AgentTool {
         props.put("prompt", Map.of("type", "string", "description", "给子 Agent 的完整任务说明（必填）"));
         props.put("agent_id", Map.of(
                 "type", "string",
-                "description", "预定义智能体 ID（可选，如 policy-agent / finance-agent）"));
+                "description", "预定义智能体 ID（可选，如 policy-agent / finance-agent）；"
+                        + "指定时自动装配其声明工具，无需传 tool_ids"));
+        props.put("tool_ids", Map.of(
+                "type", "array",
+                "items", Map.of("type", "string"),
+                "description", "可选（仅动态 sub agent 用）：从当前 (tenant, kind) 工具集自选子集，"
+                        + "越界工具自动剔除；缺省 = 主 Agent 同款工具集全量"));
         props.put("label", Map.of("type", "string", "description", "时间线卡片短标题（可选）"));
         props.put("background", Map.of(
                 "type", "boolean",
@@ -112,7 +118,8 @@ public class SpawnSubagentTool implements AgentTool {
                     String agentId = stringParam(input, "agent_id");
                     String label = stringParam(input, "label");
                     Boolean background = asBoolean(input.get("background"));
-                    String text = spawnSubagent(prompt, agentId, label, toolUseId, background);
+                    List<String> toolIds = parseToolIdsParam(input.get("tool_ids"));
+                    String text = spawnSubagent(prompt, agentId, label, toolUseId, background, toolIds);
                     return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
                 })
                 .subscribeOn(VirtualThreadExecutors.scheduler());
@@ -120,14 +127,19 @@ public class SpawnSubagentTool implements AgentTool {
 
     /** 单测入口：无 toolUseId 时回退 activeMessageId（单会话）。 */
     String spawnSubagent(String prompt, String agentId, String label) {
-        return spawnSubagent(prompt, agentId, label, null, null);
+        return spawnSubagent(prompt, agentId, label, null, null, null);
     }
 
     String spawnSubagent(String prompt, String agentId, String label, String toolUseId) {
-        return spawnSubagent(prompt, agentId, label, toolUseId, null);
+        return spawnSubagent(prompt, agentId, label, toolUseId, null, null);
     }
 
     String spawnSubagent(String prompt, String agentId, String label, String toolUseId, Boolean background) {
+        return spawnSubagent(prompt, agentId, label, toolUseId, background, null);
+    }
+
+    String spawnSubagent(String prompt, String agentId, String label, String toolUseId, Boolean background,
+            List<String> requestedToolIds) {
         AgentExecutionProperties.React.Subagent subCfg = subagentConfig();
         if (subCfg == null || !subCfg.isEnabled()) {
             return errorJson("spawn_subagent 未启用");
@@ -191,7 +203,9 @@ public class SpawnSubagentTool implements AgentTool {
         String resolvedModelConfigJson;
         int resolvedMaxIters;
         if (agentEntry != null) {
-            toolIds = mergeAgentSkillTools(agentEntry);
+            // A-1 双轨·预定义 agent：自动注入 (tenant, kind) 工具集 ∩ 声明工具（toolsJson ∪ 绑定 skill 工具）
+            toolIds = toolSetResolver.intersectToolSet(
+                    mergeAgentSkillTools(agentEntry), audit.tenantId(), audit.conversationKind());
             resolvedSystemOverlay = agentEntry.systemPrompt();
             // 子 agent 的 skills 经 skillId 加载（PromptComposer.resolveSkillOverlay）；skillIds 不是注入块
             resolvedSkillId = agentEntry.primarySkillId();
@@ -202,7 +216,18 @@ public class SpawnSubagentTool implements AgentTool {
                 displayLabel = agentEntry.displayName();
             }
         } else {
-            toolIds = sameToolsAsMain;
+            // A-6：动态 sub agent 主 agent 自选工具集子集（越界剔除并提示）；缺省 = 主 agent 同款集全量
+            if (requestedToolIds != null && !requestedToolIds.isEmpty()) {
+                List<String> within = toolSetResolver.intersectToolSet(
+                        requestedToolIds, audit.tenantId(), audit.conversationKind());
+                if (within.size() != requestedToolIds.size()) {
+                    log.warn("[SpawnSubagentTool] tool_ids 越界剔除: 请求 {} 生效 {}（仅 (tenant,kind) 工具集内可用）",
+                            requestedToolIds, within);
+                }
+                toolIds = within;
+            } else {
+                toolIds = sameToolsAsMain;
+            }
             resolvedSystemOverlay = systemOverlay;
             resolvedSkillId = null;
             resolvedPermissionsJson = "{}";
@@ -515,6 +540,29 @@ public class SpawnSubagentTool implements AgentTool {
     private static String stringParam(Map<String, Object> input, String key) {
         Object value = input.get(key);
         return value != null ? String.valueOf(value) : null;
+    }
+
+    /** tool_ids 参数：数组或逗号分隔字符串均接受；逐项 strip 去空 */
+    private static List<String> parseToolIdsParam(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .map(String::strip)
+                    .filter(StringUtils::hasText)
+                    .toList();
+        }
+        String text = String.valueOf(value).strip();
+        if (!StringUtils.hasText(text)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(text.split(","))
+                .map(String::strip)
+                .filter(StringUtils::hasText)
+                .toList();
     }
 
     private static Boolean asBoolean(Object value) {

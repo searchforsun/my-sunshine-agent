@@ -1,6 +1,8 @@
 # Task 场景上下文方案（CLAUDE.md 式项目规范 + KV Cache 增量组装）
 
-> **阶段**：四（增量）· **状态**：设计稿（待评审）· **v8（2026-08-10）**：对齐 [unified-routing v6](./2026-07-29-unified-routing-design.md) 三模式与 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)——见 **§2.2 三模式裁剪**；压缩点/T0/W0/`session_search` **收窄到 `kind=task` × (`fast`|`pro`)**；专业模式计划态以 **H1 为 SSOT**（砍重型 T0）；工作流模式退出本套工程。
+> **阶段**：四（增量）· **状态**：设计稿（待评审）· **v28（2026-08-27 · 仅影响 chat 的 L3 摘要化，task 不变）**：联合 [unified-context-compression §13.4.1 v28](2026-07-31-unified-context-compression-design.md)——**chat 场景 L3 只保留 semantic 摘要层**（body 原文层退役，`L3IngestService` 对 chat 恒不写 body）；task 场景**完全不受影响**，仍写 `scene=task` 的 body+process 两层（供 `session_search` 深挖原文依赖，§6.4）。`agent.context.l3.body-gate-enabled` 仅对 task 生效。task L3 可观测（v19 T0/H1/L3 Tab 中的 L3 检索 `layer=body|process`）保持不变。· **v19（2026-08-27 · 可观测性）**：`kind=task` 工作区面板新增 T0/H1/L3 三 Tab 展示——**T0 任务进度**读取 `task_board` 表最近一次快照（`GET /api/admin/context/task/{convId}/taskboard`，即 `react_task_board` 终态快照的读侧可观测，非 v14 作废的设计态 T0）；**H1 计划笔记本**读 Redis `sunshine:plan:notebook:{convId}`（`GET /api/admin/context/task/{convId}/notebook`，Pro 执行态 PlanNotebook）；**L3 任务检索**按会话直连 rag `POST /api/rag/chat-history/search`（`scene=task`、`layer=body|process`）。· **v18（2026-08-26 · §5.5 延后项收口）**：§4.2.1 **同步推进 P ✅**（assemble 超预算 → `L1Compressor.advanceCompressionPoint` 零 LLM 纯写库前移 `far_folded_msg_ids`；**P/S 分离**——`far_summarized_msg_ids` 新列记录已折叠子集，间隙轮写路径异步补折叠）+ **Budget 退役并入 ✅**（压缩点模式丢 L3→退役 Mid 进 P→丢 Far 块）+ **≤10k 硬预算 ✅**（`task-post-compact-budget`）+ **Tier 定序 ✅**（scope-prompt 前置）+ **Mid schema 骨架 ✅（2026-08-26：`ToolSchemaRenderer` 确定性渲染 + task 短结论机械截取，见 §6.5 落地注记）** + **Near 完整过程装载 ✅（2026-08-26：`TaskProcessRenderer` think 全文 + tool 序列原文，见 §6.6 落地注记）** + **chat 压缩点二期 ✅（2026-08-26：`compressionPointActive` 扩至 chat×fast|pro，Near/Mid 参数按 kind 分化 4+4，无 ≤10k 硬预算；Live 验收近 9 轮折叠 2/4+4/rebuild-check PASS，见 §2.2 落地注记）**；**仍 ⬜**：无（本轮已收口）。**v17（2026-08-25 · 压缩点读/写路径落地）**：§4 压缩点模式一期核心已实现——`L1Compressor.partitionByPoint`/`compressByCompressionPoint`（Near 起点 = `far_folded_msg_ids` 之后，只增不减；重组 2+2+Far，`agent.context.l1.compression-point.near-keep/mid-keep-rounds`）+ `ContextAssembler` 压缩点分区（Near 不从头部丢轮次）；启用面 `task×fast|pro`（workflow/chat 走滑动窗基线）。
+> **v16（2026-08-25 · executionMode 读写闸门收口）**：`AssembleRequest` 补 `executionMode`（首轮 `preference.wireValue()` / 续跑 `conv.executionPreference` 透传），`ContextAssembler` 按 **task×workflow** 退出裁剪（不注入 KV workspace/P0 guide）；`ContextWritePath` 同步裁剪（task×workflow 跳过 KV 抽取与 L3 ingest，L1 折叠照常）。单测 `ContextAssemblerTest`/`ContextWritePathTest` 覆盖；其余闸门（kind 分流/KV scope/L3 scene）v8 后已落地。
+> **v8（2026-08-10）**：对齐 [unified-routing v6](./2026-07-29-unified-routing-design.md) 三模式与 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)——见 **§2.2 三模式裁剪**；压缩点/T0/W0/`session_search` **收窄到 `kind=task` × (`fast`|`pro`)**；专业模式计划态以 **H1 为 SSOT**（砍重型 T0）；工作流模式退出本套工程。
 > **v9（2026-08-10）**：Mid「过程骨架」**schema 组装优先**（工具调用结构化压缩存储），LLM 仅补决策句；禁止默认对 tool_result 再做语义摘要（§6.5 / §6.6）。
 > **v10（2026-08-10）**：**状态保真**（§2.0）——对齐五层 §2.1；失败路径硬进 processTrail；工具关键字段 schema 白名单；`goalEpoch` 建议字段；续跑补充验收。
 > **v11（2026-08-10）**：chat 侧 Near/Mid schema **SSOT 在五层 §5.5.8**（正文为主 + 工具轮一行；非本节完整过程窗）；本节 §6.5/§6.6 仅约束 task。
@@ -251,6 +253,8 @@ chat:         KV Memory scope=user；不注入 workspace/P0；L3 召回 scene=ch
 
 #### 4.2.1 同步/异步衔接：同步推进 P + 异步折叠（v4 细化）
 
+> ✅ **已落地（2026-08-26）**：`ContextAssembler` L1 组装超预算 → `L1Compressor.advanceCompressionPoint`（零 LLM 纯写库，压缩锁 + 单调前移）→ 本轮按新 P 重分区；**P/S 分离**——`far_folded_msg_ids`(P)=退役边界 / `far_summarized_msg_ids`(S)=已折叠进 far_summary 的子集（新列；NULL 存量行视为与 P 一致），间隙轮（P\S）由写路径 `compressByCompressionPoint` 异步补折叠，信息不丢；Budget 退役并入同步收口（五层 §8.2）。
+
 **难点**：`L1Compressor.compress` 是**异步**写库（assistant 完成后），而 `ContextAssembler.assemble` 是**同步**读（下一条 user 消息前）。组装时若 Near 已超预算，无法立即拿到压缩结果。
 
 **决策（2026-08-07 拍板）**：**同步推进压缩点 P + 异步执行 LLM 折叠**——
@@ -282,12 +286,13 @@ assemble 检测 tail token > modelWindow × 0.8 且 P 未推进：
 
 ### 4.4 实施范围（v8 收窄）
 
-**压缩点模式优先启用面**：`kind=task` × (`executionMode=fast`|`pro`)。  
-**不做 / 延后**：`executionMode=workflow`；纯 chat 可继续五层**滑动窗基线**，不强制本 spec 压缩点一期上线。  
+**压缩点模式启用面（v18 全量落地）**：`kind=task` × (`executionMode=fast`|`pro`) 一期 + **chat 二期 ✅（2026-08-26）**：`kind=chat` × (`fast`|`pro`) 同机制启用，Near/Mid 参数按 kind 分化（chat 4+4+Far / task 2+2+Far≤10k，`compression-point.chat-near-keep/mid-keep-rounds`；chat 无 ≤10k 硬预算，靠组装侧 Budget 退役并入收敛）。  
+**不做 / 延后**：`executionMode=workflow`（继续滑动窗基线）。  
+> **落地注记（2026-08-26）**：`L1Compressor.compressionPointActive` kind 闸门扩至 task|chat × fast|pro；`compressByCompressionPoint`/`advanceCompressionPoint` 按 kind 选参数（task 2/2 / chat 4/4）；chat 差异项天然满足——L3 保留（scene=chat）、KV 走 user scope、无任务清单恢复块/P0。Live 验收：9 轮短对话 → 日志 `compression-point kind=chat`、Near 不裁剪、折叠 2 轮进 far_summary（P=S gap=0）、L1 行 near_n=4/mid_n=4、rebuild-check 三会话全 PASS。
 
 差异仍按 kind：Tier 0/1 内容（P0/KV Memory scope=workspace）与 L3 通道（chat=`scene=chat`；task 写 `scene=task` 供 session_search，§6.3/§6.4）。
 
-实施顺序：**§2.1 隔离闸门（P1/P2）** → AssembleRequest 透传 `kind`/`workspaceId`/`executionMode` → task×fast 压缩点 → **fast 跨轮恢复（task-list-memory M0）** → pro 接 H1 → KV Memory（v14）→ `session_search`（body+session）增强。chat 跟随压缩点为可选二期。
+实施顺序：**§2.1 隔离闸门（P1/P2）** → AssembleRequest 透传 `kind`/`workspaceId`/`executionMode` → task×fast 压缩点 → **fast 跨轮恢复（task-list-memory M0）** → pro 接 H1 → KV Memory（v14）→ `session_search`（body+session）增强。**chat 跟随压缩点二期 2026-08-26 已落地**（§4.4 落地注记）。
 
 ---
 
@@ -323,14 +328,14 @@ CREATE TABLE workspace_context_state (
 );
 ```
 
-> `content_hash` 用于幂等 upsert（§5.5.6）：LLM 每轮抽取结果若 hash 与库中一致则**跳过写库**，保证 Tier 1 组装字节不变、KV 缓存不失效。
+> `content_hash` 用于幂等 upsert（§5.5.6）：LLM 每轮抽取结果若 hash 与库中一致则**跳过写库**，保证 Tier 1 组装字节不变、KV 缓存不失效。**落地差异（2026-08-26）**：实现采用**字段级增益判定**替代独立 `content_hash` 列——`user_context_state` 未落该列，`L2StateStore.refreshSameValue` 在同 key+value 且候选无增益（无更高置信/新背景/新溯源）时**零写库**，效果等价且省一列一算；注入块 `renderSystemBlock` 按 `(kind, key)` 定序、无时间戳 → 字节稳定已满足。
 
 ### 5.2 读写链路
 
 - **注入**：`ContextAssembler.assemble` 依据 `conv.workspaceId`（task）读 `scope=workspace` 块、或按 `userId`（chat）读 `scope=user` 块，组装成 system 块放 **Tier 1**
 - **写入**：`ContextWritePath` 按 kind 分流（§2.1 写路由）——task 会话**跳过 scope=user 抽取**、执行 **scope=workspace 抽取**（LLM 按 Catalog `context.memory.extract`（带 `scope=workspace`）抽项目级信息）；chat 会话执行 scope=user 抽取；**content-hash 幂等 upsert**：产出块 sha256 与库中 `content_hash` 比对，未变化跳过写库（对齐五层 spec §5.5.6，保证 Tier 1 字节稳定）
 - **冲突合并**：复用 `L2ConflictMerger` 逻辑（时间优先覆盖，旧条 superseded 审计保留）
-- **语义冲突识别（v7 预置 · 二期可选）**：写路径**直接内置语义候选判定**（对齐五层 spec §6.4）——新 candidate 入库前对同 scope+kind active 条目做语义判定（LLM · Catalog `context.memory.merge`），动作 NOOP/MERGE/UPDATE/CONFLICT 与 L2 一致。**v14**：一期先用字面 + key 规范化门禁，语义判定与五层 §6.4 同节奏（二期可选）
+- **语义冲突识别（✅ 2026-08-25 落地）**：写路径**直接内置语义候选判定**（对齐五层 spec §6.4，三阶段：字面快路径 → 同 kind 候选检索 → LLM 判定，动作与 L2 一致 NOOP/MERGE/UPDATE/CONFLICT）。workspace 与 user 侧同一套 `L2StateStore` + `L2SemanticMergeService`；Catalog SSOT = `context.l2.merge`（本节早期别名 `context.memory.merge` 未启用）；`task.*` 结构键（M2 导出）不走语义路径
 - **清理**：`ContextMaintenanceJob` 扩展扫 workspace 维度（过期/矛盾）
 
 ### 5.3 与 L2/L3 的关系（v14 统一）
@@ -504,6 +509,8 @@ context.l1.mid-compress.task（v9 · 仅补决策，可选触发）：
 - **与 T0 分工**：T0 processTrail = 跨轮常驻半结构轨迹；Mid = 滑出 Near 的**历史轮骨架**（可检索原文仍在 `chat_message` / session_search）。骨架字段应与 T0/process 层同形，避免三套说法。  
 - **明确不做**：默认「对每条 tool_result 再 LLM 智能摘要」；用语义摘要代替 schema 存工具过程。
 
+> **✅ 已落地（2026-08-26）**：`ToolSchemaRenderer` 从 `chat_message.steps` 确定性渲染 `[toolName] keyArgs=… status=ok|fail|denied exit=? · result≤200 · refs=[path]`；`L1Compressor` task 分支 Mid 摘要改**机械短结论**（`extractShortConclusion`：原文前 2 句 ≤120 字，零 LLM，替代默认 LLM 散文摘要），`context.l1.mid-compress.task` 决策句分支保持默认关。落地差异：① schema 行附于 assistant 内容尾部（user → assistant「短结论 + schema」），未插入独立 tools 消息；② 写/改类工具省略 result（禁止 patch 原文）、沙箱路径进 refs；③ `keyArgs` 白名单并入业务 ID 字段（`ids=[…]` 未单列）。**task Near 完整过程装载（§6.6：think + tool 序列原文）✅ 已落地（2026-08-26，见 §6.6 落地注记）**。
+
 ### 6.6 task 压缩后保留内容（v6 · **v9 Mid 骨架** · 2+2+Far ≤10k）
 
 > **决策（2026-08-07）**：task 场景压缩触发后按「**近 2 轮完整过程 + 次 2 轮过程骨架 + 其余折叠**」重组（比 chat 4+4 少——task 每轮含过程信息密度高、Tier 0/1 挤占预算多），并加**硬性总量预算**：**Near+Mid+Far 合计 ≤ 10k token**，不止控轮数。
@@ -566,6 +573,8 @@ assistant: 短结论
 | 单轮上限 | 无 | 无（压缩兜底） |
 | 工具输出 | schema 白名单 + result≤200；关键态亦可进 L2 | Near：读/执行摘要+refs、写/改原文；Mid：一律 schema 行 |
 | 跨会话业务态 | **KV Memory scope=user**（宁缺毋滥） | KV Memory scope=workspace / 任务清单恢复块 / H1 / P0（不写 scope=user） |
+
+> **✅ 已落地（2026-08-26）**：task Near 完整过程装载——`TaskProcessRenderer` 从 `chat_message.steps` 渲染「think 推理全文 + tool 序列」确定性过程行（零 LLM）：think 步保留 `reasoning` 全文（`think: …`）；tool 步与 §6.5 schema 行同构但按**结果分级**——写/改类（`sandbox__write/edit`）保留输出原文（完整 patch/代码，Near 短期保留），读/执行类仍 `result≤200 + refs`。`SessionTurn` 增加 `processLines`（task 场景 `fromMessage` 填充），`ContextAssembler.toChatTurns` 对 task assistant 轮渲染完整过程（think + tool 行 + 终态正文），Mid 仍走 schema 骨架（`projectMid` 不变）。落地差异：① 完整过程行并入 assistant 轮正文（`think: …` / `[tool] …` 逐行），未拆独立 messages；② `l1OverBudget`/`applyBudgetAtPoint`/`trimByTokens` 预算估算均按完整渲染内容计（含过程行），超限仍走压缩点退役兜底（§4.2.1），不静默丢 Near；③ think `reasoning` 未收口（running/空）的行跳过。
 
 **中断感知（v8 注记 · 方案 A，对齐五层 spec §5.5.7 v16）**：task 装载层对 `INTERRUPTED` 的 assistant 条同样折叠显式中断注记（Catalog `context.l1.interrupted-marker`）——与 chat 统一由 `ChatStreamContextFactory` 装载时生效；正文空时仅注记（不被 `hasText` 过滤），非空时注记 + 已生成部分。task 场景因 Near 保留轮次内过程（steps），中断时已执行的 tool/think 过程本身仍经 v6 折叠进 Near，中断注记补充「执行被中断」状态语义，二者叠加不冲突。
 
@@ -630,15 +639,15 @@ assistant: 短结论
 | # | 任务 | 文件 | 依赖 |
 |---|------|------|------|
 | P0 | 项目规范（CLAUDE.md 式） | 已落地 ✅ | — |
-| **P1** | **写路由闸门（§2.1）**：按 `kind` 分流；task 跳过 KV scope=user 抽取；L3 ingest `scene=task`（body 层）；**workflow 模式跳过 KV workspace 抽取与任务沉淀** | `ContextWritePath`、`L1Compressor` | — |
-| **P2** | **读路由闸门（§2.1）**：`AssembleRequest`+`kind`/`workspaceId`/`executionMode`；task 注入 KV workspace + guide + 任务清单恢复块；**pro 注入 H1**；chat 注入 KV user；workflow 不走 task 专用块 | `ContextAssembler`、`AssembleRequest` | P1 |
+| **P1** ✅ | **写路由闸门（§2.1）**：按 `kind` 分流；task 跳过 KV scope=user 抽取；L3 ingest `scene=task`（body 层）；**workflow 模式跳过 KV workspace 抽取与任务沉淀**（v16：`ContextWritePath` 按 `conv.executionPreference` 裁剪） | `ContextWritePath`、`L1Compressor` | — |
+| **P2** ✅ | **读路由闸门（§2.1）**：`AssembleRequest`+`kind`/`workspaceId`/`executionMode`（v16 补齐）；task 注入 KV workspace + guide + 任务清单恢复块；**pro 注入 H1**；chat 注入 KV user；workflow 不走 task 专用块 | `ContextAssembler`、`AssembleRequest` | P1 |
 | **P2b** | Tier0 overlay 按 `executionMode`：`fast`→`mode-overlay.react`，`pro`→`planner.harness`；禁止 L3 自判模式注入 | `ContextMessageBuilder` / PromptComposer | P2 |
-| 2 | **压缩点**（§4）：优先 **task×(fast\|pro)**；同步推进 P + 异步折叠 | `ContextAssembler`、`L1Compressor` | P2 |
-| 3 | Tier 0/1/2 定序 + 确定性序列化（无自动 planMode） | `ContextMessageBuilder` | 2 |
+| **4** ✅ | **压缩点**（§4）：读/写路径压缩点分区 + 2+2+Far 重组 + **同步推进 P / ≤10k 硬预算 ✅（2026-08-26，P/S 分离 + `applyBudgetAtPoint` 退役并入 + `enforcePostCompactBudget`）**；**Mid schema 骨架 ✅（2026-08-26，§6.5 落地注记）**；**task Near 完整过程装载 ✅（2026-08-26，§6.6 落地注记——`TaskProcessRenderer` think 全文 + tool 序列原文）** | `ContextAssembler`、`L1Compressor` | P2 |
+| 3 ✅ | Tier 0/1/2 定序（2026-08-26：scope-prompt 静态前置 / nodePrompt 尾部）+ 确定性序列化（无自动 planMode） | `PromptComposer` / `ContextMessageBuilder` | 2 |
 | **4（作废·v14）** | ~~T0（仅 task×fast）~~ → 改由 fast 跨轮恢复（`react_task_board`）+ 任务 item 状态承接（[task-list-memory M0](./2026-08-14-task-list-memory-unification-design.md)）；**pro 计划态→H1** | — | 2、3 |
 | 1 | KV Memory 统一（`user_context_state`+`scope` 列）+ 抽取（`context.memory.extract` 参数化；仅 task×fast\|pro 写 workspace） | orchestrator context/ | P2 |
-| 4a/4b | KV 幂等 upsert / 语义 merge（二期可选） | … | 1 |
-| 4c | Mid **schema 骨架**（§6.5 v9）：确定性渲染 tool 行；可选 `context.l1.mid-compress.task` 仅补决策 | `L1Compressor` / Mid 装载器、Catalog | P2 |
+| 4a/4b | KV 幂等 upsert（✅ 2026-08-26：字段级增益判定——同值零增益跳过写库，见五层 §5.5.6 落地差异）/ 语义 merge（✅ 2026-08-25，随五层 §6.4 落地） | … | 1 |
+| 4c ✅ | Mid **schema 骨架**（§6.5 v9）：确定性渲染 tool 行；task 短结论机械截取（零 LLM）；可选 `context.l1.mid-compress.task` 仅补决策（保持默认关） | `L1Compressor` / Mid 装载器、Catalog | P2 |
 | 5a/5b | L3 scene 隔离 + `session_search`（**一期 body+scope=session**；仅 task×fast\|pro 注册工具） | rag + orchestrator | P1 |
 | 5 | 项目索引 + `ws_index`（增强） | workspace/ | 1 |
 | 6 | Nacos/Catalog 开关：按 kind×executionMode 门控 KV workspace/任务沉淀/session_search | Nacos + Catalog | — |

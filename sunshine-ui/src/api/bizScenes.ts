@@ -12,6 +12,10 @@ export interface BizSceneEntry {
   description?: string | null
   status: string
   tenantId?: string
+  source?: string
+  sourceConversationId?: string | null
+  approvedBy?: string | null
+  approvedAt?: string | null
   updatedAt?: string | null
 }
 
@@ -47,7 +51,7 @@ export async function createBizScene(body: {
 
 export async function updateBizScene(
   code: string,
-  body: { displayName?: string; description?: string; status?: string },
+  body: { displayName?: string; description?: string; status?: string; approvedBy?: string },
 ): Promise<BizSceneEntry> {
   const res = await fetch(apiUrl(`/api/biz-scenes/${encodeURIComponent(code)}`), {
     method: 'PUT',
@@ -55,6 +59,11 @@ export async function updateBizScene(
     body: JSON.stringify(body),
   })
   return parseApiResponse<BizSceneEntry>(res)
+}
+
+/** auto 场景审核：approve → active（记录审核人）；reject → rejected（authority §2.1c）。 */
+export async function reviewBizScene(code: string, approve: boolean, operator: string): Promise<BizSceneEntry> {
+  return updateBizScene(code, approve ? { status: 'active', approvedBy: operator } : { status: 'rejected' })
 }
 
 export async function deleteBizScene(code: string): Promise<void> {

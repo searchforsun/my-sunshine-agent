@@ -380,3 +380,62 @@ export async function fetchModelCatalog(tenantId?: string): Promise<ModelCatalog
     scenes: raw.scenes ?? [],
   }
 }
+
+// ---- 路由策略（phase5 5.3 model=auto 选型） ----
+
+export interface ModelRouteKeyMeta {
+  key: string
+  label: string
+  description: string
+}
+
+export interface ModelRoute {
+  id: number
+  callSite: string
+  label: string
+  description: string
+  models: string[]
+  strategy: string
+  enabled: boolean
+  tenantId: string
+  remark: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ModelRouteUpsert {
+  callSite: string
+  models: string[]
+  strategy?: string
+  enabled?: boolean
+  tenantId?: string
+  remark?: string | null
+}
+
+export async function listModelRouteKeys(): Promise<ModelRouteKeyMeta[]> {
+  const res = await fetch(apiUrl('/api/models/routes/keys'), { headers: apiHeaders() })
+  return parseApiResponse<ModelRouteKeyMeta[]>(res)
+}
+
+export async function listModelRoutes(tenantId?: string): Promise<ModelRoute[]> {
+  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
+  const res = await fetch(apiUrl(`/api/models/routes${qs}`), { headers: apiHeaders() })
+  return parseApiResponse<ModelRoute[]>(res)
+}
+
+export async function upsertModelRoute(body: ModelRouteUpsert): Promise<ModelRoute> {
+  const res = await fetch(apiUrl('/api/models/routes'), {
+    method: 'PUT',
+    headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return parseApiResponse<ModelRoute>(res)
+}
+
+export async function deleteModelRoute(id: number): Promise<void> {
+  const res = await fetch(apiUrl(`/api/models/routes/${id}`), {
+    method: 'DELETE',
+    headers: apiHeaders(),
+  })
+  await parseApiResponse<void>(res, { allowEmptyData: true })
+}

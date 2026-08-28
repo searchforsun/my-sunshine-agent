@@ -18,8 +18,8 @@ public class SkillDiscoveryService {
         this.skillCatalogService = skillCatalogService;
     }
 
-    public ExecutionPlan enrich(ExecutionPlan plan) {
-        return skillCatalogService.sanitizeSkillPlan(plan);
+    public ExecutionPlan enrich(ExecutionPlan plan, String tenantId) {
+        return skillCatalogService.sanitizeSkillPlan(plan, tenantId);
     }
 
     /** 召回/合并后按轨裁剪：轨 A 去 workflowId；轨 B 去 skill/agent */

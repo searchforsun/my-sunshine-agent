@@ -51,8 +51,7 @@ export function formatTime(iso?: string | null) {
   return new Date(t).toLocaleString()
 }
 
-export function l3RoleLabel(role?: string) {
-  if (role === 'user') return 'User'
-  if (role === 'assistant') return 'Assistant'
+export function l3RoleLabel(_role?: string) {
+  // v28：对话 L3 面板仅展示 semantic 摘要层，原文 user/assistant 角色已无意义，统一标记为 Chunk
   return 'Chunk'
 }

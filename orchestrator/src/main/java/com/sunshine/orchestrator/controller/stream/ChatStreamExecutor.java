@@ -57,6 +57,7 @@ public class ChatStreamExecutor {
     private final ConversationTitleService titleService;
     private final GenerationFlushScheduler flushScheduler;
     private final ContextLifecycle contextLifecycle;
+    private final com.sunshine.orchestrator.routing.RoutingStickyService routingStickyService;
 
     @Value("${agent.generation.flush-interval-ms:500}")
     private long flushIntervalMs;
@@ -199,6 +200,10 @@ public class ChatStreamExecutor {
         }
         if (ctx.intent() != null) {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
+            // S-0：续跑复用该消息已存 RoutingResult（triggered skill / 可调度 agent），不重跑收集、不重触发决策
+            if (ctx.routingSeed() != null && ctx.routingSeed().hasAny()) {
+                plan = routingStickyService.applySeed(plan, ctx.routingSeed());
+            }
             executionMode.set(plan.mode());
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
             // ReAct 暂停续跑：仅保留 intent，从规划推理重新开始（见 ChatStreamContextFactory）
@@ -224,7 +229,9 @@ public class ChatStreamExecutor {
                         ctx.clientSkillId(),
                         ctx.memory(),
                         null,
-                        StringUtils.hasText(ctx.conversationKind()) ? ctx.conversationKind() : "chat"))
+                        StringUtils.hasText(ctx.conversationKind()) ? ctx.conversationKind() : "chat",
+                        ctx.routingSeed(),
+                        ctx.tenantId()))
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->

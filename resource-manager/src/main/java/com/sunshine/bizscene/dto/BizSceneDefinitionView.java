@@ -8,6 +8,10 @@ public record BizSceneDefinitionView(
         String description,
         String status,
         String tenantId,
+        String source,
+        String sourceConversationId,
+        String approvedBy,
+        Instant approvedAt,
         Instant updatedAt
 ) {
 }

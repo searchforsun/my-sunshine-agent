@@ -35,7 +35,14 @@ class L2StateStoreFilterTest {
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
-        store = new L2StateStore(repository, new L2ConflictMerger(), properties);
+        // 既有测试覆盖字面路径：语义判定一律 NOOP（专项覆盖见 L2StateStoreSemanticMergeTest）
+        L2SemanticMergeService noopMerge = new L2SemanticMergeService(null, null) {
+            @Override
+            public Verdict judge(L2ConflictMerger.Candidate candidate, List<UserContextStateEntity> rows) {
+                return Verdict.noop("test");
+            }
+        };
+        store = new L2StateStore(repository, new L2ConflictMerger(), properties, noopMerge);
         now = Instant.parse("2026-07-22T03:00:00Z");
     }
 
@@ -88,6 +95,26 @@ class L2StateStoreFilterTest {
         assertThat(old.getConfidence()).isEqualTo(0.95);
         assertThat(old.getSourceMsgId()).isEqualTo("msg-same");
         verify(repository, times(1)).save(old);
+    }
+
+    @Test
+    void upsert_sameValueNoGain_skipsWrite() {
+        // ⑦ 幂等：同 key+value 且无增益（无更高置信/无新背景/无新溯源）→ 零写库
+        UserContextStateEntity old = entity("old", "profile", "name", "测一", 0.9, null);
+        old.setSourceMsgId("msg-same");
+        old.setBackground("本名");
+        Instant oldUpdated = old.getUpdatedAt();
+        when(repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(
+                "u1", "default", "profile", "name", "active"))
+                .thenReturn(Optional.of(old));
+
+        store.upsert("u1", "default",
+                new L2ConflictMerger.Candidate("profile", "name", "测一", 0.9, "本名", "active"),
+                "msg-same", now);
+
+        assertThat(old.getStatus()).isEqualTo("active");
+        assertThat(old.getUpdatedAt()).isEqualTo(oldUpdated);
+        verify(repository, never()).save(any());
     }
 
     @Test

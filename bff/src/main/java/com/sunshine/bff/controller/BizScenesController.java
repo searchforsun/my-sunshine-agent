@@ -46,6 +46,17 @@ public class BizScenesController {
         return skillManagerClient.deleteBizScene(code);
     }
 
+    @GetMapping("/api/biz-scenes/embedding-index")
+    public Mono<Map<String, Object>> embeddingIndex() {
+        return skillManagerClient.embeddingIndex();
+    }
+
+    @PutMapping("/api/biz-scenes/{code}/vector")
+    public Mono<Map<String, Object>> updateVector(
+            @PathVariable String code, @RequestBody Map<String, Object> body) {
+        return skillManagerClient.updateSceneVector(code, body);
+    }
+
     @GetMapping("/api/biz-scenes/policies")
     public Mono<Map<String, Object>> listPolicies(@RequestParam(defaultValue = "default") String tenantId) {
         return skillManagerClient.listBizScenePolicies(tenantId);

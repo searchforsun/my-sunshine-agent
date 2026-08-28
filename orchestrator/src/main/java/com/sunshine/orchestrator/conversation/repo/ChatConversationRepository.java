@@ -39,6 +39,17 @@ public interface ChatConversationRepository extends JpaRepository<ChatConversati
             @Param("workspaceId") String workspaceId,
             Pageable pageable);
 
+    /** session_search scope=workspace：某工作区下全部 task 会话 id（跨会话正文检索的过滤面） */
+    @Query("""
+            SELECT c.id FROM ChatConversationEntity c
+            WHERE c.userId = :userId AND c.tenantId = :tenantId
+              AND c.kind = 'task' AND c.workspaceId = :workspaceId
+            """)
+    List<String> findTaskIdsByWorkspace(
+            @Param("userId") String userId,
+            @Param("tenantId") String tenantId,
+            @Param("workspaceId") String workspaceId);
+
     @Query("""
             SELECT c FROM ChatConversationEntity c
             WHERE c.userId = :userId AND c.tenantId = :tenantId

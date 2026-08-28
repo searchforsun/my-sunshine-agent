@@ -23,6 +23,11 @@ public enum ModelErrorCode implements ErrorCode {
     SCENE_PRIMARY_REQUIRED(400, "model_scene_primary_required", "场景主模型不能为空"),
     SCENE_NOT_FOUND(404, "model_scene_not_found", "未找到场景绑定"),
     SCENE_REQUEST_INVALID(400, "model_scene_request_invalid", "场景绑定请求格式无效"),
+    ROUTE_CALL_SITE_REQUIRED(400, "model_route_call_site_required", "调用点不能为空"),
+    ROUTE_CALL_SITE_INVALID(400, "model_route_call_site_invalid", "调用点必须为系统枚举值，禁止自定义"),
+    ROUTE_MODELS_REQUIRED(400, "model_route_models_required", "候选模型池不能为空"),
+    ROUTE_STRATEGY_INVALID(400, "model_route_strategy_invalid", "路由策略仅支持 first-available"),
+    ROUTE_NOT_FOUND(404, "model_route_not_found", "未找到路由策略"),
     CRYPTO_FAILED(500, "model_crypto_failed", "模型密钥加解密失败");
 
     private final int code;

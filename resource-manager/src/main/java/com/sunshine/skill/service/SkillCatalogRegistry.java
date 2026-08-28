@@ -81,6 +81,7 @@ public class SkillCatalogRegistry {
                 ver.getSandbox() != null ? ver.getSandbox() : "none",
                 SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson()),
                 def.getKind() != null ? def.getKind() : "all",
-                def.getBizScene());
+                def.getBizScene(),
+                def.getTenantId());
     }
 }

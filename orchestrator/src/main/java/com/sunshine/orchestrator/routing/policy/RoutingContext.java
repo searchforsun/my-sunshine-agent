@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.routing.policy;
 
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 import org.springframework.util.StringUtils;
 
 /** 路由上下文：preference 过渡承载用户钉死的 executionMode；kind 正交透传 */
@@ -15,10 +16,14 @@ public record RoutingContext(
         /** L3 锁死 mode，仅解析绑定 */
         ExecutionMode lockedMode,
         /** 会话 kind（chat/…）；路由不改写，缺省 chat */
-        String kind) {
+        String kind,
+        /** 上轮 RoutingResult seed（S-1 轻 sticky；可空） */
+        RoutingSeed seed,
+        /** 会话租户（A-2：skill 目录按租户过滤；default 全局共享，空视为 default） */
+        String tenantId) {
 
     public RoutingContext(String userMessage, String traceMessageId) {
-        this(userMessage, traceMessageId, ExecutionMode.FAST, null, null, null, null, null);
+        this(userMessage, traceMessageId, ExecutionMode.FAST, null, null, null, null, null, null, null);
     }
 
     public RoutingContext(
@@ -27,7 +32,7 @@ public record RoutingContext(
             ExecutionMode preference,
             String forcedWorkflowId,
             String clientSkillId) {
-        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, null, null, null);
+        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, null, null, null, null, null);
     }
 
     public RoutingContext(
@@ -37,27 +42,38 @@ public record RoutingContext(
             String forcedWorkflowId,
             String clientSkillId,
             AssembledContext memory) {
-        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, null, null);
+        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, null, null, null, null);
     }
 
     public RoutingContext withLockedMode(ExecutionMode mode) {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, mode, kind);
+                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, mode, kind, seed, tenantId);
     }
 
     public RoutingContext withUserMessage(String message) {
         return new RoutingContext(
-                message, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind);
+                message, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId);
     }
 
     public RoutingContext withForcedWorkflowId(String workflowId) {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, workflowId, clientSkillId, memory, lockedMode, kind);
+                userMessage, traceMessageId, preference, workflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId);
     }
 
     public RoutingContext withoutClientSkill() {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, forcedWorkflowId, null, memory, lockedMode, kind);
+                userMessage, traceMessageId, preference, forcedWorkflowId, null, memory, lockedMode, kind, seed, tenantId);
+    }
+
+    /** S-1：携带上轮轻 sticky seed */
+    public RoutingContext withSeed(RoutingSeed seed) {
+        return new RoutingContext(
+                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId);
+    }
+
+    /** A-2：会话租户；缺省 default（全局共享） */
+    public String tenantIdOrDefault() {
+        return StringUtils.hasText(tenantId) ? tenantId.strip() : "default";
     }
 
     /** 会话形态；缺省 chat（四轴 kind，路由不改写） */

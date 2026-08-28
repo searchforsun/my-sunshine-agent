@@ -191,7 +191,20 @@ export async function patchTool(toolId: string, body: ToolPatchBody): Promise<To
   return parseApiResponse<ToolDefinition>(res)
 }
 
-export type ToolSetKindPath = 'chat' | 'task'
+export type ToolSetKindPath = 'chat' | 'task' | 'all'
+
+/** (tenant, kind) 集成员（all=chat∪task 并集，声明候选用；skill-sticky A-4） */
+export async function fetchToolSetToolIds(
+  kind: ToolSetKindPath,
+  tenantId?: TenantId,
+): Promise<string[]> {
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenantId', tenantId)
+  const qs = params.toString()
+  const res = await fetch(apiUrl(`/api/admin/tools/sets/${kind}/tool-ids${qs ? `?${qs}` : ''}`), { headers: apiHeaders() })
+  const data = await parseApiResponse<{ toolIds: string[] }>(res)
+  return data.toolIds ?? []
+}
 
 export interface ToolSetMemberItem {
   toolId: string

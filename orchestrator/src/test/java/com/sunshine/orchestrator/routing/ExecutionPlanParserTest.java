@@ -76,4 +76,37 @@ class ExecutionPlanParserTest {
         assertThat(plan.params()).containsEntry("skillIds", "s1,s2");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "s1");
     }
+
+    @Test
+    void parsesSkillAndAgentScoresAsCompressedPairs() {
+        String json = """
+                {"agentIds":["a1"],"skillIds":["s1"],\
+                "skillScores":{"s1":0.9,"s2":0.6},"agentScores":{"a1":0.7},"reason":"S-C"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        assertThat(plan.params()).containsEntry(ExecutionPlan.PARAM_SKILL_SCORES, "s1=0.9,s2=0.6");
+        assertThat(plan.params()).containsEntry(ExecutionPlan.PARAM_AGENT_SCORES, "a1=0.7");
+        assertThat(plan.skillScores()).containsEntry("s1", 0.9).containsEntry("s2", 0.6);
+        assertThat(plan.agentScores()).containsEntry("a1", 0.7);
+    }
+
+    @Test
+    void dropsInvalidScoresAndNonObjectScoreNodes() {
+        String json = """
+                {"skillScores":{"s1":1.5,"s2":-0.1,"s3":"high","":"0.5","s4":0.8},\
+                "agentScores":["a1"],"reason":"非法剔除"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        assertThat(plan.params()).containsEntry(ExecutionPlan.PARAM_SKILL_SCORES, "s4=0.8");
+        assertThat(plan.params()).doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);
+    }
+
+    @Test
+    void missingScoresLeaveParamsUntouched() {
+        ExecutionPlan plan = parser.parse("""
+                {"skillIds":["s1"],"reason":"无分数"}
+                """);
+        assertThat(plan.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES);
+        assertThat(plan.params()).doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);
+    }
 }

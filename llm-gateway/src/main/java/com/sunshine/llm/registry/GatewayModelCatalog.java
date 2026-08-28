@@ -24,4 +24,7 @@ public class GatewayModelCatalog {
 
     @Builder.Default
     private List<ModelSceneView> scenes = new ArrayList<>();
+
+    @Builder.Default
+    private List<ModelRoutePolicyView> routes = new ArrayList<>();
 }

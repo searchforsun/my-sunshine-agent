@@ -383,6 +383,18 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    /** O4 账本重建校验（只读透传 orchestrator rebuild-check）。 */
+    public Mono<Map<String, Object>> rebuildCheckContextL1(String convId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/l1/rebuild-check")
+                        .queryParam("convId", convId)
+                        .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> getContextL3Status(String userId, String tenantId) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -420,6 +432,24 @@ public class OrchestratorClient {
                         .path("/api/admin/context/l3/reingest")
                         .queryParam("convId", convId)
                         .build())
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    /** T0 任务进度：按会话取最近一次任务板快照（orchestrator task_board）。 */
+    public Mono<Map<String, Object>> getTaskBoardSnapshot(String convId) {
+        return webClient.get()
+                .uri("/api/admin/context/task/{convId}/taskboard", convId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    /** H1 计划笔记本：读 Redis 中的执行态 PlanNotebook。 */
+    public Mono<Map<String, Object>> getH1Notebook(String convId) {
+        return webClient.get()
+                .uri("/api/admin/context/task/{convId}/notebook", convId)
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
@@ -737,6 +767,89 @@ public class OrchestratorClient {
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Object> usageRecords(Long since, Long until, String model, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/api/usage/records");
+                    if (since != null) b.queryParam("since", since);
+                    if (until != null) b.queryParam("until", until);
+                    if (model != null && !model.isBlank()) b.queryParam("model", model);
+                    if (tenantId != null && !tenantId.isBlank()) b.queryParam("tenantId", tenantId);
+                    return b.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
+    }
+
+    public Mono<Object> usageSummary(Long since, Long until, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/api/usage/summary");
+                    if (since != null) b.queryParam("since", since);
+                    if (until != null) b.queryParam("until", until);
+                    if (tenantId != null && !tenantId.isBlank()) b.queryParam("tenantId", tenantId);
+                    return b.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
+    }
+
+    public Mono<Object> usageDaily(Long since, Long until, String tenantId, String model) {
+        return webClient.get()
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/api/usage/daily");
+                    if (since != null) b.queryParam("since", since);
+                    if (until != null) b.queryParam("until", until);
+                    if (tenantId != null && !tenantId.isBlank()) b.queryParam("tenantId", tenantId);
+                    if (model != null && !model.isBlank()) b.queryParam("model", model);
+                    return b.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
+    }
+
+    public Mono<Object> usageQuotaList() {
+        return webClient.get()
+                .uri("/api/usage/quota")
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
+    }
+
+    public Mono<Object> usageQuotaCheck(String tenantId, String model) {
+        return webClient.get()
+                .uri(uriBuilder -> {
+                    var b = uriBuilder.path("/api/usage/quota/check");
+                    if (tenantId != null && !tenantId.isBlank()) b.queryParam("tenantId", tenantId);
+                    if (model != null && !model.isBlank()) b.queryParam("model", model);
+                    return b.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
+    }
+
+    public Mono<Object> usageQuotaUpsert(Map<String, Object> body) {
+        return webClient.post()
+                .uri("/api/usage/quota")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
+    }
+
+    public Mono<Object> usageQuotaDelete(String tenantId) {
+        return webClient.delete()
+                .uri("/api/usage/quota/{tenantId}", tenantId)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(Object.class);
     }
 
     private Mono<? extends Throwable> toStatusException(

@@ -44,6 +44,19 @@ public class UserContextStateEntity {
     @Column(length = 256)
     private String background;
 
+    /**
+     * 场景偏好作用域（authority §4.3）：{@code *} = 全局；或具体 {@code biz_scene}。
+     * 偏好装载经 biz_scene 白名单过滤；存量行为 {@code *}（全局）。
+     */
+    @Column(name = "biz_scene_scope", length = 64)
+    private String bizSceneScope = "*";
+
+    /**
+     * 偏好确认态（authority §4.3）：{@code confirmed}（默认可装载）| {@code inferred}（默认不装载）。
+     */
+    @Column(name = "confirm_status", length = 16)
+    private String confirmStatus = "confirmed";
+
     @Column(nullable = false)
     private double confidence;
 

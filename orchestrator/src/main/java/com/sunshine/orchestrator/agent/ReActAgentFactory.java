@@ -4,6 +4,7 @@ import com.sunshine.common.model.ModelSceneKey;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.transport.LoadBalancedWebClientTransport;
+import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.plan.harness.PlannerActionTool;
 import com.sunshine.orchestrator.plan.harness.WorkerDispatchTool;
@@ -15,7 +16,6 @@ import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -51,8 +51,6 @@ public class ReActAgentFactory {
     /** 惰性注入，避免 Factory → ActionTool → AgentRuntime → Factory 环 */
     private final ObjectProvider<PlannerActionTool> plannerActionTool;
 
-    private LoadBalancedWebClientTransport transport;
-
     @Value("${agent.model.base-url:http://sunshine-llm-gateway/v1}")
     private String modelBaseUrl;
     @Value("${agent.model.max-tokens:16384}")
@@ -60,11 +58,6 @@ public class ReActAgentFactory {
     /** Gateway 代理鉴权占位（常为 sunshine-gateway），非上游厂商 key */
     @Value("${agent.model.api-key:}")
     private String apiKey;
-
-    @PostConstruct
-    void initTransport() {
-        this.transport = new LoadBalancedWebClientTransport(webClientBuilder, "http://sunshine-llm-gateway");
-    }
 
     public ReActAgent create(AgentRunRequest request) {
         Toolkit toolkit = resolveToolkit(request);
@@ -81,7 +74,7 @@ public class ReActAgentFactory {
                 .maxIters(maxIters)
                 .stateStore(stateStore)
                 .enablePendingToolRecovery(true)
-                .middleware(middlewareFactory.shared());
+                .middlewares(middlewareFactory.sharedChain());
         // 原生 TaskList：todo_write + TaskReminderMiddleware，任务列表随 AgentState checkpoint 持久化，
         // 中断恢复后（含 id）随 stateStore 还原。仅主 Agent 开任务板（SUB/专家无独立任务清单）。
         if (request.role() == AgentRole.MAIN && isTaskBoardEnabled()) {
@@ -127,15 +120,32 @@ public class ReActAgentFactory {
                     resolvedMaxTokens, resolved.maxOutputTokens(), resolved.effectiveModel());
             resolvedMaxTokens = resolved.maxOutputTokens();
         }
+        // 每个 Agent 运行独立 transport：按角色注入 call_site（phase5 5.3 用量/路由维度）
+        String callSite = resolveCallSite(request);
+        LoadBalancedWebClientTransport roleTransport =
+                new LoadBalancedWebClientTransport(webClientBuilder, "http://sunshine-llm-gateway", callSite);
         return OpenAIChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(resolved.effectiveModel())
                 .baseUrl(overriddenBaseUrl)
-                .httpTransport(transport)
+                .httpTransport(roleTransport)
                 .contextWindowSize(resolved.contextWindow())
                 .generateOptions(GenerateOptions.builder().maxTokens(resolvedMaxTokens).build())
                 .stream(true)
                 .build();
+    }
+
+    /** Agent 角色 → call_site（chat|plan|worker|subagent）。 */
+    static String resolveCallSite(AgentRunRequest request) {
+        if (request == null || request.role() == null) {
+            return LlmGatewayClient.CALL_SITE_CHAT;
+        }
+        return switch (request.role()) {
+            case PLANNER -> LlmGatewayClient.CALL_SITE_PLAN;
+            case WORKER -> LlmGatewayClient.CALL_SITE_WORKER;
+            case SUB -> LlmGatewayClient.CALL_SITE_SUBAGENT;
+            case MAIN -> LlmGatewayClient.CALL_SITE_CHAT;
+        };
     }
 
     /**

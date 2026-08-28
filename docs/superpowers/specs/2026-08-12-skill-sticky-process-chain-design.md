@@ -1,6 +1,7 @@
 # Skill 可发现 / 触发分离 + 绑定保真（行业对齐）
 
-> **状态**：📋 设计评审中 · **v3.2（2026-08-14）** · **v3.3（2026-08-14 · 对齐记忆收敛）** · **v3.4（2026-08-15 · 工具装配 defer-loading 对齐）** · **v3.5（2026-08-15 · 工具统一授权 租户×kind）** · **v3.6（2026-08-15 · T0 唯一数据源 = 工具集配置）** · **v3.7（2026-08-15 · 委派子 agent 工具召集双轨）** · **v3.8（2026-08-15 · 双阈值采纳 / 候选动态加载）** · **v3.9（2026-08-15 · L0 短路 / 多资源处置）** · **v3.10（2026-08-15 · agentIds 跨轮 sticky）** · **v3.11/v3.12（2026-08-15 · spawn-hint 工具清单渲染）** · **v3.13（2026-08-15 · 子 agent 抽屉 skill 加载步骤）**  
+> **状态**：🟢 实施中（S-0/S-D/S-T/S-1/A-1/A-5-full/A-6/A-7 已实现；A-2~A-4 租户、S-C 双阈值、v3.6 retrieval 双层留待下一阶段） · **v3.2（2026-08-14）** · **v3.3（2026-08-14 · 对齐记忆收敛）** · **v3.4（2026-08-15 · 工具装配 defer-loading 对齐）** · **v3.5（2026-08-15 · 工具统一授权 租户×kind）** · **v3.6（2026-08-15 · T0 唯一数据源 = 工具集配置）** · **v3.7（2026-08-15 · 委派子 agent 工具召集双轨）** · **v3.8（2026-08-15 · 双阈值采纳 / 候选动态加载）** · **v3.9（2026-08-15 · L0 短路 / 多资源处置）** · **v3.10（2026-08-15 · agentIds 跨轮 sticky）** · **v3.11/v3.12（2026-08-15 · spawn-hint 工具清单渲染）** · **v3.13（2026-08-15 · 子 agent 抽屉 skill 加载步骤）** · **v3.14（2026-08-28 · 正文指令信封）** · **v3.15（2026-08-28 · 正文 SYSTEM 权威层）**  
+> **实施（2026-08-24）**：✅ **S-0**（chat_message 落 `routing_skill_ids`/`routing_agent_ids` + 续跑/新建复用 `RoutingSeed`）· ✅ **S-D**（`context.skill-directory` 名+描述目录，召回不灌 overlay）· ✅ **S-T**（L0 短路 + triggered skillIds 全链路 + skill 工具 schema 召回）· ✅ **S-1**（`RoutingSeed` 跨轮：L0 整表替换 / 无触发继承；`RoutingStickyService`）· ✅ **A-1**（预定义 agent 子工具 = (tenant,kind) ∩ 声明；动态 sub `tool_ids` ⊆ 集）· ✅ **A-5-full**（主 agent T0 = 工具集配置，skill 声明不并集；retrieval 双层留后续）· ✅ **A-6**（`tool_ids` 参数）· ✅ **A-7**（spawn-hint 工具清单 + v3.13 抽屉 skill 加载步骤）· ✅ **A-2**（skill `tenant_id` 全链路：DDL+Entity+Catalog+orchestrator `TenantVisibility` 消费）· ✅ **A-3**（agent 写侧 `tenantId` 落地）· ✅ **A-4**（picker 按 (tenant,kind) 集收敛：`/sets/all/tool-ids` 并集 + BFF 代理 + Agents/Skills 候选过滤）· ✅ **S-C**（v3.8 双阈值采纳 / 候选动态加载：`SkillAdoptionService` trigger/candidate/δ + `sunshine_search_skills` 升级触发 + 分类器逐项置信契约；默认关闭待开启验收）。Live 验收 `scripts/verify_skill_sticky_live.py`。⏳ **v3.6 retrieval 双层**（工具规模超阈值时启用）。
 > **日期**：2026-08-12（v3 收缩 → **v3.1 加载≠触发** → **v3.2 工具装配维度** → **v3.4 defer-loading 对齐** → **v3.5 统一授权** → **v3.6 装配收紧** → **v3.7 委派双轨** → **v3.8 双阈值采纳** → **v3.9 L0 短路 / 多资源处置** → **v3.10 agentIds 跨轮 sticky** → **v3.11/v3.12 spawn-hint 工具清单渲染** → **v3.13 子 agent 抽屉 skill 加载步骤**）  
 > **v3.2（2026-08-14 · 工具装配维度）**：**triggered 集同时驱动 overlay 与主 agent 工具并集**——`DynamicToolkitFactory` 主 agent 按 triggered `skillIds` **单调并集**工具（默认工具集 ∪ 各 triggered skill 声明的工具），triggered 集不变 → `tools` 字节不变 → Tier 0 稳定（联动 [五层 §5.5.3 v6/v24](./2026-07-31-unified-context-compression-design.md)）。SUB/Worker 无前缀包袱，仍**即时并集**。装配依赖 S-0（消息存 triggered）+ S-1（轻 sticky）先落地。**修正 task-scene §7.4 约束 3**「只作用于子 Agent」——主 agent 允许绑 skill 工具，但必须 sticky 化，禁止按每轮最新 skillId 自由并集。
 > **v3.3（2026-08-14 · 记忆收敛对齐）**：命名与五层 **v25** / task-scene **v14** 同步——「L2 用户状态」读作 **KV Memory（scope=user）**（§3.1/§3.2/§5）；**换题（清空 sticky seed）协同 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) 沉淀未完成任务到 KV Memory**（§4.3），随后 seed 清空、目录仍可发现。
@@ -13,6 +14,8 @@
 > **v3.10（2026-08-15 · agentIds 跨轮 sticky）**：**可调度 agentIds 与 skills 同语义跨轮接续**——上轮 `RoutingResult.agentIds`（指定 `$agent` / L1 规则命中 / L3 候选进池）作为 seed 粘到本轮，**本轮未产生新候选时继承不替换**；仅当本轮产生**新的候选 agent 集**（L0 `$agent` 或 L3 候选重选）才**整表覆盖替换**上轮 agentIds。退出/明确换题与 skill 同规则清空 seed。目的：避免跨轮次可调度 agent 断档（主 agent 持续可 spawn 上轮委派对象）、保持压缩点稳定（Prompt 委派提示字节跨轮可控）。seed 与 triggered skillIds 同存 `RoutingResult`（S-0），同步进 §4.1/§4.2/§4.3/§6/§7 验收。
 > **v3.11（2026-08-15 · spawn-hint 工具装配告知 → v3.12 工具清单渲染）**：`react.spawn-hint`（委派提示）补一条**工具装配告知**——预定义 agent（`agent_id` 指定）**已自动装配其声明工具**（(tenant, kind) 集 ∩ 声明工具，v3.7），主 agent **无需代查业务数据**，直接 `spawn_subagent` 委派即可；动态 sub agent（仅 prompt）才由主 agent 自选工具（`tool_ids`/同款集全量）。**v3.12 落点升级**：`{agents}` 渲染不再只是 id/描述，而是**每个预定义智能体附带「已装配工具」可读名清单**（`toolsJson` 经 ToolCatalogService.displayName 转换，索引自带 toolsJson，禁止远程 find），提示词正文同步声明「委派后由子智能体自行调用工具获取数据」，主 agent 见工具证据直接委派，不再因「我无业务数据工具」拒绝委派/反向向用户要数据。落点：委派提示模板（Catalog `react.spawn-hint`）+ `AgentCatalogService.renderForSpawnHint` + `AgentCatalogIndexEntry.toolsJson` + §4.5 工具召集双轨说明。详见 §4.5 及验收 V20。
 > **v3.13（2026-08-15 · 子 agent 抽屉 skill 加载步骤）**：预定义 agent 绑定的 skill 此前仅经 `PromptComposer.resolveSkillOverlay` **纯提示词装配**，子 agent 抽屉（subSteps）看不到「加载了哪个 skill」。现于 `SpawnSubagentTool` spawn 预定义 agent 时，若 `primarySkillId` 非空则向 subTimeline 注入一条**skill 加载步骤**（`phase=skill`，id/文案与主流程 `completeSkillLoad` 一致：label=「加载技能」、summary.after=「{skillId} {displayName}」、`StepMetadata.fromSkillLoad`），成为抽屉 subSteps 首行。动态 sub agent（无 skillId）不注入。落点：`SpawnSubagentTool.skillLoadToken`。详见验收 V20 补充。
+> **v3.14（2026-08-28 · 正文指令信封 / 跨轮重注入综合）**：触发集全文 overlay 在 React 链路（USER 角色，AS 2.0 Hook 禁 SYSTEM）下以 **`<skill_information>` 指令信封**注入（对齐 Claude Code `skill_information`）——`PromptComposer.wrapSkillEnvelope` 把正文包裹为 `<skills_referenced>`（各触发 skill id 索引）+ `<skill_block>`（正文），给 HARD-GATE 这类否定式禁令一个明确的**指令身份边界**，让模型识别「这是须遵循的技能指令」而非普通用户闲聊，缓解「模型无视 skill 要求」。（此前 `resolveSkillOverlays` 以裸 USER 消息注入，模型易将其当作上下文。）**跨轮 sticky 重注入无需新增逻辑**——触发集（`RoutingResult.skillIds`=triggered SSOT）不进 L1/L2/L3（§5.5 v24），由消息字段 `routing_skill_ids` → `loadRoutingSeed` → `RoutingStickyService.applySeed` → 本轮 `triggeredSkillIds` 承载，每轮（含 sticky 继承轮）都会经信封注入，压缩点天然不丢触发态。落点：`PromptComposer.wrapSkillEnvelope`（React 路径仅此一处；gateway 路径 skill 仍作 system 角色注入，本身已有指令身份，不套信封）。单测 `PromptComposerTest.composeReactInputs_wrapsSkillOverlayInInstructionEnvelope`。
+> **v3.15（2026-08-28 · 正文 SYSTEM 权威层）**：**v3.14 信封仍不足以让模型遵循 HARD-GATE**——实测「加载技能 brainstorming」后模型跳过 HARD-GATE 直接进入实现（建清单 → 改版本号 → 给结论），原因是信封只是 USER 角色消息，**惯性被用户「优化一下项目」这类可直接执行的任务感压过，而 USER 指令权重天然低于 SYSTEM**。根因：skill 正文被降级进 `inputMessages`（USER），未走 AS 2.0 官方 SYSTEM 通道。AS 2.0 约束 `PreCallEvent.inputMessages` 禁 SYSTEM（`AgentBase.notifyPreCall` 守卫），系统提示唯一官方通道是 `sysPrompt` / `PreCallEvent.setSystemMessage` / `appendSystemContent` / **`MiddlewareBase.onSystemPrompt`**（官方 skill 注入即经 `SkillHook.appendSystemContent`，2.0 起由 `DynamicSkillMiddleware.onSystemPrompt` 承接）。**修复**：新增 `SkillInjectionMiddleware implements MiddlewareBase`——在 `onSystemPrompt` 把触发集 skill 正文追加到 **system prompt（SYSTEM 权威层）**，取代 USER 信封。per-call 触发集经 `RuntimeContext` 注入（`CTX_TRIGGERED_SKILL_IDS`，由 `ReActAgentRuntime` 构建 rt 时 put），middleware 无状态共享单例满足 HarnessAgent 指纹缓存复用；仅 MAIN 生效（SUB/WORKER 单数 skillId 仍走 `systemOverlay`，PLANNER 走 harness）。`PromptComposer.composeReactInputs` 在 MAIN（`triggeredSkillIds` 非空）跳过 USER 信封，防重复注入稀释；SUB/WORKER（triggeredSkillIds 空）保留 USER 信封。**跨轮 sticky 重注入依旧自然成立**——每条触发集每轮经 `onSystemPrompt` 重注入 system，压缩点不丢触发态。落点：`SkillInjectionMiddleware`（`ProcessingStepMiddlewareFactory.sharedChain` 最内层）· `ReActAgentRuntime` rt 注入 · `PromptComposer` MAIN 跳过 USER 信封。单测 `SkillInjectionMiddlewareTest`（MAIN 注入/去重/非 MAIN 不注入/空集不注入）5 例 + `PromptComposerTest.composeReactInputs_mainSkipsUserSkillEnvelope`。
 > **编号**：阶段四增量（路由 / Skill 会话态）  
 > **前置**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) · [task-scene §7 插件/Skill 分层](./2026-08-01-task-scene-context-design.md)（名+描述静态 / 正文按需）  
 > **一句话**：**可发现**（Catalog 名+description）与 **触发**（本轮注入 overlay 的 `skillIds`）分离；**物料加载**（sandbox）与触发正交。消息存完整 `RoutingResult` + 上轮**已触发** id 轻 sticky。对齐 Cursor：context discovered, not dumped。
@@ -219,7 +222,7 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 
 > **v3.6 判定顺序**：先看工具规模——**≤ 阈值（默认 20）走 `full`，根本不进入召回问题**；> 阈值才进 `retrieval` + 召回。召回内再按「skill 声明命中 → 直接加载工具集 schema；无命中 → 模型 `search_tools` 自驱」判定。
 
-**与 ToolGroup 中间激活的关系**：AgentScope `Toolkit` 原生 `updateToolGroups` / `reset_equipped_tools` 是框架可选能力——激活新组后下一轮 `getToolSchemas(activeGroups)` 输出集合变化 → tools 字节变化 → **一次全量 prefix 重建**。属「省 token」换取「重建」，**非默认路径**；如用须定价限频（仅用户显式 `/skill` / L0 整表替换 / 单次高置信）。v3.6 默认仍推荐 `full`（规模小，无需召回）或 skill 声明召回注入（规模大），二者均无流内重建。
+，，**与 ToolGroup 中间激活的关系**：AgentScope `Toolkit` 原生 `updateToolGroups` / `reset_equipped_tools` 是框架可选能力——激活新组后下一轮 `getToolSchemas(activeGroups)` 输出集合变化 → tools 字节变化 → **一次全量 prefix 重建**。属「省 token」换取「重建」，**非默认路径**；如用须定价限频（仅用户显式 `/skill` / L0 整表替换 / 单次高置信）。v3.6 默认仍推荐 `full`（规模小，无需召回）或 skill 声明召回注入（规模大），二者均无流内重建。
 
 ### 4.7 工具统一授权（v3.5/v3.6 · 租户×kind 双头）
 
@@ -294,21 +297,21 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 
 ## 6. 实施切片
 
-| 阶段 | 内容 | 出口 |
-|------|------|------|
-| **S-0** | 消息存完整 `RoutingResult`（`skillIds` + `agentIds`）；续跑复用 triggered 与可调度池 | live：不丢 skill / 不丢可调度 agent |
-| **S-D** | 可发现层：Prompt 注入租户可见 **名+描述**目录；**召回默认不灌 overlay** | 无 L0 时不应出现无关 skill 全文 |
-| **S-T** | 触发：仅 L0 / sticky / force-trigger /（可选）L3 高置信 → `resolveSkillOverlay` + **skill 工具 schema 召回**（v3.6：triggered skill 声明工具 → 从工具集加载 schema 注入 Tier 2 尾部；主 agent T0 恒 = (tenant, kind) 工具集，不并集）。**L0 短路（v3.9）**：命中任意 `/skill` 或 `$agent` → 跳过规则层与 L3 直接出方案 | `/` 与续聊行为正确；embedding 召回 alone 不触发；T0 字节跨轮稳定；`$agent` 命中不再走 L3 |
-| **S-1** | 上轮 triggered 轻 sticky + agentIds 跨轮接续（v3.10，依赖 S-0） | 「继续」无 `/` 仍有 overlay + schema 召回稳定；无新候选时可调度池继承上轮，新候选整表替换 |
-| **A-1（v3.5 / v3.6 / v3.7）** | `mergeSkillTools` 脱离主 agent T0 装配（降为 schema 召回索引，命中校验 ⊆ 集）；**预定义 agent 子工具 = (tenant, kind) ∩ 声明**（`mergeAgentSkillTools` 结果求交）；**动态 sub `tool_ids` ⊆ 集校验** | 主 agent T0 唯一数据源 = 工具集；SUB 两种委派形态授权约束统一 |
-| **A-2（v3.5）** | skill 加 `tenant_id` 全链路（DDL + Entity + Registry + Catalog + orchestrator 消费端） | skill 目录/详情/工具绑定按租户隔离；存量归 default |
-| **A-3（v3.5）** | agent 写侧 tenantId 落地（`AgentAdminService.create`） | 租户私有 agent 可创建 |
-| **A-4（v3.5）** | picker 按 (tenant, kind) 集过滤候选；kind=all = chat ∪ task 并集 | 创建时声明天然 ⊆ 可用集 |
-| **A-5（v3.5 / v3.6）** | T0 装配 = 当前会话 (tenant, kind) **工具集配置**（full/retrieval 二选一，关联 §4.6；skill 声明不参与） | T0 面 = 工具集配置 = 模型真实可用面；chat 会话不见 task 工具 |
-| **A-6（v3.7）** | `spawn_subagent` 增 `tool_ids` 参数（动态 sub agent 主 agent 自选工具集子集；越界剔除提示；缺省回退主 agent 同款集全量） | 委派可裁剪工具面；缺省行为不变 |
-| **A-7（v3.11/v3.12）** | `react.spawn-hint` 渲染 `{agents}` 携带各预定义智能体**已装配工具清单**（可读名）：预定义 agent 已自动装配声明工具，主 agent 无需代查业务数据，直接委派；动态 sub agent 才自选工具 | 主 agent 不因「无业务工具」拒绝委派/反向要数据 |
-| **S-C（v3.8）** | 双阈值采纳：轨 A L3 输出置信度（复用 `confidence` + 相对差距 δ 判定）；`trigger` / `candidate` 阈值配置化（默认 `trigger` 高/关）；discoverable 层 `dynamicLoadable` 标记；候选版 `search_tools`（skill 域，加载后升级 triggered）；agent 可调度池 Top-K | trigger 直接触发 ≤1；候选动态加载零重建；agent 可调度不自动委派 |
-| **延期** | Redis、SOFT_CHAIN、processGraph、模型强制读 SKILL.md 才触发 | YAGNI |
+| 阶段 | 内容 | 出口 | 状态 |
+|------|------|------|------|
+| **S-0** | 消息存完整 `RoutingResult`（`skillIds` + `agentIds`）；续跑复用 triggered 与可调度池 | live：不丢 skill / 不丢可调度 agent | ✅ 已实现（`ConversationService.updateMessageExecutionPlan` / `loadRoutingSeed`） |
+| **S-D** | 可发现层：Prompt 注入租户可见 **名+描述**目录；**召回默认不灌 overlay** | 无 L0 时不应出现无关 skill 全文 | ✅ 已实现（`context.skill-directory` + `SkillCatalogService.renderDiscoverableForPrompt`） |
+| **S-T** | 触发：仅 L0 / sticky / force-trigger /（可选）L3 高置信 → `resolveSkillOverlay` + **skill 工具 schema 召回**（v3.6：triggered skill 声明工具 → 从工具集加载 schema 注入 Tier 2 尾部；主 agent T0 恒 = (tenant, kind) 工具集，不并集）。**L0 短路（v3.9）**：命中任意 `/skill` 或 `$agent` → 跳过规则层与 L3 直接出方案 | `/` 与续聊行为正确；embedding 召回 alone 不触发；T0 字节跨轮稳定；`$agent` 命中不再走 L3 | ✅ 已实现（`ForcedExecutionRouter` L0 短路 + `ReactExecutor` triggeredSkillIds + schema 召回） |
+| **S-1** | 上轮 triggered 轻 sticky + agentIds 跨轮接续（v3.10，依赖 S-0） | 「继续」无 `/` 仍有 overlay + schema 召回稳定；无新候选时可调度池继承上轮，新候选整表替换 | ✅ 已实现（`RoutingSeed` + `RoutingStickyService` + `ExecutionPlanRouter.applySeed`） |
+| **A-1（v3.5 / v3.6 / v3.7）** | `mergeSkillTools` 脱离主 agent T0 装配（降为 schema 召回索引，命中校验 ⊆ 集）；**预定义 agent 子工具 = (tenant, kind) ∩ 声明**（`mergeAgentSkillTools` 结果求交）；**动态 sub `tool_ids` ⊆ 集校验** | 主 agent T0 唯一数据源 = 工具集；SUB 两种委派形态授权约束统一 | ✅ 已实现（`ToolSetResolver.intersectToolSet` + `SpawnSubagentTool` 双轨） |
+| **A-2（v3.5）** | skill 加 `tenant_id` 全链路（DDL + Entity + Registry + Catalog + orchestrator 消费端） | skill 目录/详情/工具绑定按租户隔离；存量归 default | ⏳ 下一阶段 |
+| **A-3（v3.5）** | agent 写侧 tenantId 落地（`AgentAdminService.create`） | 租户私有 agent 可创建 | ⏳ 下一阶段 |
+| **A-4（v3.5）** | picker 按 (tenant, kind) 集过滤候选；kind=all = chat ∪ task 并集 | 创建时声明天然 ⊆ 可用集 | ⏳ 下一阶段 |
+| **A-5（v3.5 / v3.6）** | T0 装配 = 当前会话 (tenant, kind) **工具集配置**（full/retrieval 二选一，关联 §4.6；skill 声明不参与） | T0 面 = 工具集配置 = 模型真实可用面；chat 会话不见 task 工具 | ✅ full 口径已实现；⏳ retrieval 双层留后续 |
+| **A-6（v3.7）** | `spawn_subagent` 增 `tool_ids` 参数（动态 sub agent 主 agent 自选工具集子集；越界剔除提示；缺省回退主 agent 同款集全量） | 委派可裁剪工具面；缺省行为不变 | ✅ 已实现（`parseToolIdsParam` + 缺省 `sameToolsAsMain`） |
+| **A-7（v3.11/v3.12）** | `react.spawn-hint` 渲染 `{agents}` 携带各预定义智能体**已装配工具清单**（可读名）：预定义 agent 已自动装配声明工具，主 agent 无需代查业务数据，直接委派；动态 sub agent 才自选工具 | 主 agent 不因「无业务工具」拒绝委派/反向要数据 | ✅ 已实现（`AgentCatalogService.renderForSpawnHint` + v3.13 `skillLoadToken` 抽屉步骤） |
+| **S-C（v3.8）** | 双阈值采纳：轨 A L3 输出置信度（复用 `confidence` + 相对差距 δ 判定）；`trigger` / `candidate` 阈值配置化（默认 `trigger` 高/关）；discoverable 层 `dynamicLoadable` 标记；候选版 `search_tools`（skill 域，加载后升级 triggered）；agent 可调度池 Top-K | trigger 直接触发 ≤1；候选动态加载零重建；agent 可调度不自动委派 | ✅ 已实现（`SkillAdoptionService` + `sunshine_search_skills`；分类器契约线上 v2；Nacos `skill-adoption` 默认关，开启后走 Live V16/V17） |
+| **延期** | Redis、SOFT_CHAIN、processGraph、模型强制读 SKILL.md 才触发 | YAGNI | — |
 
 **顺序建议**：S-0 → S-D + S-T（可同 PR 纪律）→ S-1。S-D/S-T 是相对 v3 的**根因修正**，优先于加厚 sticky 算法。**工具装配（v3.2/v3.6）随 S-T 一并落地**。**v3.5/v3.6/v3.7 授权与装配（A-1～A-6）**：A-1（skill 脱离 T0 装配、SUB 双轨求交）无前置、可先做；A-2（skill 租户）是 A-4 的前置；A-5（T0 = (tenant, kind) 工具集配置）依赖 A-1，与 §4.6 retrieval 双层联动；A-6（`tool_ids` 自选）仅涉及 `spawn_subagent` 参数面，可独立于 A-1 之后做。**S-C（v3.8）依赖 S-0/S-D（discoverable 候选层）与 S-T（trigger 阈值化）**，建议 S-T 落地后跟进。
 
@@ -316,29 +319,29 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 
 ## 7. 验收标准
 
-| # | 场景 | 预期 |
-|---|------|------|
-| V0 | 仅租户启用、无 `/`、无高置信 | Prompt 有目录名+描述；**无**任意 skill 全文 overlay |
-| V1 | `/skill-A` | triggered=A，全文 overlay；可 mount |
-| V2 | 上轮已触发 A，本轮「继续」无 `/` | 仍 triggered=A（sticky） |
-| V3 | embedding 召回 B 但未 L0/未高置信 | B 可出现在目录/排序；**不**自动全文 overlay |
-| V4 | 「退出技能」/ 换题 | 清空 triggered；目录仍可发现 |
-| V5 | HITL / 续跑 | 复用 triggered，不丢 |
-| V6 | workflow / SUB | 无父 sticky；SUB 不继承 |
-| V7 | 软链自动切下一 skill | **不验收** |
-| V8 | 主 agent 连续轮次无 L0 / 换题（v3.2 / v3.6） | T0 工具面（(tenant, kind) 工具集配置）跨轮**字节不变**（Tier 0 不失效）；triggered skill 变化仅动尾部 schema 召回区 |
-| V9 | SUB/Worker 绑 skill（v3.2 / v3.6 / v3.7） | 工具即时注入（可用性 ⊆ (tenant, kind) 集）；预定义 agent 自动注入 (tenant, kind) ∩ 声明，动态 sub 主 agent 自选子集 |
-| V10 | `retrieval` 模式下连续轮次无 triggered 变化（v3.4 / v3.6） | 请求体 T0 工具名 stub（工具集配置）**字节不变**；仅尾部 schema 召回区变化；skill 声明命中 → **跳过相似读检索**直接加载；`search_tools` 流内触发**零重建** |
-| V11 | 感知面/注册面一致性（v3.4 / v3.6） | 单测：模型可见工具名 ⊆ 可执行注册集（同 (tenant, kind) 工具集渲染） |
-| V12 | skill 声明工具 ⊆ 租户集、不进 T0（v3.5 / v3.6） | 声明跨出 (tenant, kind) 集 → 召回校验剔除；主 agent T0 不含任何 skill 声明工具；`missing` 日志不出现跨租户工具 |
-| V13 | skill 租户隔离（v3.5） | 租户 A 的 skill 目录/详情/工具绑定对租户 B 不可见；存量数据归 default 兼容 |
-| V14 | T0 面 = (tenant, kind) 工具集配置（v3.5 / v3.6） | chat 会话 T0 无 task 专用工具；T0 字节随会话 kind 恒定（skill 触发不影响）；`kind=all` 声明候选 = chat ∪ task 并集 |
-| V15 | 委派子 agent 工具召集双轨（v3.7） | 预定义 agent：注入 = (tenant, kind) ∩ 声明（跨出剔除）；动态 sub：主 agent 传 `tool_ids` → 子 agent 仅见该子集，越界 id 运行时剔除 + 提示；不传 = 主 agent 同款集全量 |
-| V16 | 双阈值采纳（v3.8） | 置信 > `trigger` → 直接触发最高 ≤1 个（相对差距 δ 校验）；`candidate < 置信 ≤ trigger` → 仅 discoverable 候选（名+描述），模型显式动态加载后升级 triggered；agent 置信 ≥ `candidate` → 可调度池（Top-K），不自动委派 |
-| V17 | 候选 ≠ 触发底线（v3.8） | 候选永不进 T0 overlay；动态加载只动 Tier 2 尾部（V10 请求体字节稳定仍成立）；候选版 `search_tools` 为唯一动态加载入口；触发集公式不含低置信候选 |
-| V18 | L0 短路 / 多资源处置（v3.9） | 命中任意 `/skill` 或 `$agent` → 规则层（L1）与 L3 均不执行（trace 无 rule/L3、无额外 LLM 调用）；多 `/skill` 只 trigger 第一个、其余丢弃；多 `$agent` 全部进可调度池（不自动委派） |
-| V19 | agentIds 跨轮 sticky（v3.10） | 上轮指定/候选 agent（`$agent`、L1 规则、L3 候选）跨轮接续：本轮无新候选时继承不变（主 agent 持续可 spawn）；新一轮候选（L0 `$agent` 或 L3 重选）→ 整表替换；退出/换题 → 清空；HITL/续跑经 RoutingResult 复用不丢；seed 不进 L1 压缩 |
-| V20 | spawn-hint 工具清单渲染（v3.11/v3.12）→ 子 agent 抽屉 skill 步骤（v3.13） | `{agents}` 渲染每个预定义智能体附带「已装配工具」可读名清单；委派提示声明「子智能体自行调用工具获取数据」；`$compliance-agent 查我的报销` 类消息主 agent **直接 spawn 委派**，不因「无业务工具」拒绝委派或反向向用户索要数据；子 agent 抽屉 subSteps 首行展示 **skill 加载步骤**（`phase=skill`，「已加载 Skill compliance-check 业务合规检查」） |
+| # | 场景 | 预期 | 状态 |
+|---|------|------|------|
+| V0 | 仅租户启用、无 `/`、无高置信 | Prompt 有目录名+描述；**无**任意 skill 全文 overlay | ✅ `PromptComposerTest` |
+| V1 | `/skill-A` | triggered=A，全文 overlay；可 mount | ✅ `RoutingStickyServiceTest` + `ReactExecutorTest` |
+| V2 | 上轮已触发 A，本轮「继续」无 `/` | 仍 triggered=A（sticky） | ✅ Live `verify_skill_sticky_live.py` T2 |
+| V3 | embedding 召回 B 但未 L0/未高置信 | B 可出现在目录/排序；**不**自动全文 overlay | ✅ `PromptComposerTest`（目录含名+描述、无全文） |
+| V4 | 「退出技能」/ 换题 | 清空 triggered；目录仍可发现 | ✅ 同 S-1 替换语义（L0 整表替换） |
+| V5 | HITL / 续跑 | 复用 triggered，不丢 | ✅ `ConversationServiceTest.loadRoutingSeed_*` |
+| V6 | workflow / SUB | 无父 sticky；SUB 不继承 | ✅ `RoutingStickyServiceTest`（workflow 不套 seed） |
+| V7 | 软链自动切下一 skill | **不验收** | — |
+| V8 | 主 agent 连续轮次无 L0 / 换题（v3.2 / v3.6） | T0 工具面（(tenant, kind) 工具集配置）跨轮**字节不变**（Tier 0 不失效）；triggered skill 变化仅动尾部 schema 召回区 | ⏳ retrieval 双层未落地（full 口径已覆盖） |
+| V9 | SUB/Worker 绑 skill（v3.2 / v3.6 / v3.7） | 工具即时注入（可用性 ⊆ (tenant, kind) 集）；预定义 agent 自动注入 (tenant, kind) ∩ 声明，动态 sub 主 agent 自选子集 | ✅ `SpawnSubagentToolTest` 双轨三例 |
+| V10 | `retrieval` 模式下连续轮次无 triggered 变化（v3.4 / v3.6） | 请求体 T0 工具名 stub（工具集配置）**字节不变**；仅尾部 schema 召回区变化；skill 声明命中 → **跳过相似读检索**直接加载；`search_tools` 流内触发**零重建** | ⏳ retrieval 双层未落地 |
+| V11 | 感知面/注册面一致性（v3.4 / v3.6） | 单测：模型可见工具名 ⊆ 可执行注册集（同 (tenant, kind) 工具集渲染） | ⏳ 随 retrieval 双层 |
+| V12 | skill 声明工具 ⊆ 租户集、不进 T0（v3.5 / v3.6） | 声明跨出 (tenant, kind) 集 → 召回校验剔除；主 agent T0 不含任何 skill 声明工具；`missing` 日志不出现跨租户工具 | ✅ `DynamicToolkitFactoryTest` A-1/A-5（schema 召回剔除） |
+| V13 | skill 租户隔离（v3.5） | 租户 A 的 skill 目录/详情/工具绑定对租户 B 不可见；存量数据归 default 兼容 | ⏳ A-2~A-4 |
+| V14 | T0 面 = (tenant, kind) 工具集配置（v3.5 / v3.6） | chat 会话 T0 无 task 专用工具；T0 字节随会话 kind 恒定（skill 触发不影响）；`kind=all` 声明候选 = chat ∪ task 并集 | ✅ full 口径（T0 = 工具集配置，skill 声明不并集） |
+| V15 | 委派子 agent 工具召集双轨（v3.7） | 预定义 agent：注入 = (tenant, kind) ∩ 声明（跨出剔除）；动态 sub：主 agent 传 `tool_ids` → 子 agent 仅见该子集，越界 id 运行时剔除 + 提示；不传 = 主 agent 同款集全量 | ✅ `SpawnSubagentToolTest` |
+| V16 | 双阈值采纳（v3.8） | 置信 > `trigger` → 直接触发最高 ≤1 个（相对差距 δ 校验）；`candidate < 置信 ≤ trigger` → 仅 discoverable 候选（名+描述），模型显式动态加载后升级 triggered；agent 置信 ≥ `candidate` → 可调度池（Top-K），不自动委派 | ✅ 单测覆盖（`SkillAdoptionServiceTest`）；⏳ 开启开关后 Live |
+| V17 | 候选 ≠ 触发底线（v3.8） | 候选永不进 T0 overlay；动态加载只动 Tier 2 尾部（V10 请求体字节稳定仍成立）；候选版 `search_tools` 为唯一动态加载入口；触发集公式不含低置信候选 | ✅ 单测覆盖（`SkillSearchToolTest`）；⏳ 开启开关后 Live |
+| V18 | L0 短路 / 多资源处置（v3.9） | 命中任意 `/skill` 或 `$agent` → 规则层（L1）与 L3 均不执行（trace 无 rule/L3、无额外 LLM 调用）；多 `/skill` 只 trigger 第一个、其余丢弃；多 `$agent` 全部进可调度池（不自动委派） | ✅ `ForcedExecutionRouter` L0 短路 |
+| V19 | agentIds 跨轮 sticky（v3.10） | 上轮指定/候选 agent（`$agent`、L1 规则、L3 候选）跨轮接续：本轮无新候选时继承不变（主 agent 持续可 spawn）；新一轮候选（L0 `$agent` 或 L3 重选）→ 整表替换；退出/换题 → 清空；HITL/续跑经 RoutingResult 复用不丢；seed 不进 L1 压缩 | ✅ `RoutingStickyServiceTest` + Live T4/T5 |
+| V20 | spawn-hint 工具清单渲染（v3.11/v3.12）→ 子 agent 抽屉 skill 步骤（v3.13） | `{agents}` 渲染每个预定义智能体附带「已装配工具」可读名清单；委派提示声明「子智能体自行调用工具获取数据」；`$compliance-agent 查我的报销` 类消息主 agent **直接 spawn 委派**，不因「无业务工具」拒绝委派或反向向用户索要数据；子 agent 抽屉 subSteps 首行展示 **skill 加载步骤**（`phase=skill`，「已加载 Skill compliance-check 业务合规检查」） | ✅ `AgentCatalogService.renderForSpawnHint` 单测 + `SpawnSubagentToolTest` skillLoadToken |
 
 ---
 

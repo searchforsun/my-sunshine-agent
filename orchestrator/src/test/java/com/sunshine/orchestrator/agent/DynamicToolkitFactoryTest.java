@@ -58,6 +58,10 @@ class DynamicToolkitFactoryTest {
     private SandboxAgentTools sandboxAgentTools;
     @Mock
     private SessionSearchTool sessionSearchTool;
+    @Mock
+    private SkillSearchTool skillSearchTool;
+    @Mock
+    private ToolRetrievalService toolRetrievalService;
     @InjectMocks
     private DynamicToolkitFactory factory;
 
@@ -371,6 +375,44 @@ class DynamicToolkitFactoryTest {
         assertThat(toolkit.getToolNames()).containsAll(SandboxIds.ALL);
         assertThat(toolkit.getToolNames()).doesNotContain("todo_write");
         assertThat(toolkit.getToolNames()).doesNotContain(SpawnSubagentTool.NAME);
+    }
+
+    @Test
+    void build_main_doesNotMergeSkillDeclaredTools() {
+        // A-5：主 agent T0 恒 = (tenant, kind) 工具集配置，不与 skill 声明并集（skill 声明只作 schema 召回索引）
+        when(toolSetResolver.resolveDefaultTools("default", "chat")).thenReturn(List.of("sdk__sunshine-biz__tool_a"));
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(spawnSubagentTool.getName()).thenReturn(SpawnSubagentTool.NAME);
+        when(executionProperties.getReact()).thenReturn(reactProps);
+        when(reactProps.getSubagent()).thenReturn(new AgentExecutionProperties.React.Subagent());
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+        when(toolCatalogService.isRagTool("sdk__sunshine-biz__tool_a")).thenReturn(false);
+        when(remoteToolFactory.create(eq("sdk__sunshine-biz__tool_a"), eq("u1"), eq("default")))
+                .thenReturn(Optional.empty());
+
+        factory.build("default", "coding-skill", "u1", "chat");
+
+        // skill 声明工具不得进入 MAIN T0 装配
+        verify(skillCatalogService, never()).toolIds("coding-skill");
+    }
+
+    @Test
+    void buildForSubAgent_mergesSkillDeclaredTools_thenIntersectsEnabledPool() {
+        // A-1：SUB/Worker 仍并集 skill 声明工具，但结果须 ⊆ 租户启用池（越界剔除）
+        when(toolSetResolver.intersectEnabledPool(List.of("sdk__sunshine-biz__tool_a"), "default"))
+                .thenReturn(List.of("sdk__sunshine-biz__tool_a"));
+        when(skillCatalogService.toolIds("coding-skill")).thenReturn(List.of("sdk__sunshine-biz__tool_b"));
+        when(toolSetResolver.intersectEnabledPool(List.of("sdk__sunshine-biz__tool_a", "sdk__sunshine-biz__tool_b"), "default"))
+                .thenReturn(List.of("sdk__sunshine-biz__tool_a"));
+        when(ragTool.getName()).thenReturn(RagTool.NAME);
+        when(sandboxAgentTools.all()).thenReturn(List.of());
+        when(toolCatalogService.isRagTool("sdk__sunshine-biz__tool_a")).thenReturn(false);
+        when(remoteToolFactory.create(eq("sdk__sunshine-biz__tool_a"), eq("u1"), eq("default")))
+                .thenReturn(Optional.empty());
+
+        var toolkit = factory.buildForSubAgent(List.of("sdk__sunshine-biz__tool_a"), "default", "coding-skill", "u1");
+
+        assertThat(toolkit.getToolNames()).doesNotContain("sdk__sunshine-biz__tool_b");
     }
 
     private static List<AgentTool> stubSandboxTools() {

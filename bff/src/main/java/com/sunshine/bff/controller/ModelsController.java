@@ -99,4 +99,26 @@ public class ModelsController {
     public Mono<Map<String, Object>> publicCatalog(@RequestParam(required = false) String tenantId) {
         return modelManagerClient.publicCatalog(tenantId);
     }
+
+    // ---- route policy（phase5 5.3 model=auto 策略表） ----
+
+    @GetMapping("/routes/keys")
+    public Mono<Map<String, Object>> listRouteKeys() {
+        return modelManagerClient.listRouteKeys();
+    }
+
+    @GetMapping("/routes")
+    public Mono<Map<String, Object>> listRoutes(@RequestParam(required = false) String tenantId) {
+        return modelManagerClient.listRoutes(tenantId);
+    }
+
+    @PutMapping("/routes")
+    public Mono<Map<String, Object>> upsertRoute(@RequestBody Map<String, Object> body) {
+        return modelManagerClient.upsertRoute(body);
+    }
+
+    @DeleteMapping("/routes/{id}")
+    public Mono<Map<String, Object>> deleteRoute(@PathVariable Long id) {
+        return modelManagerClient.deleteRoute(id);
+    }
 }

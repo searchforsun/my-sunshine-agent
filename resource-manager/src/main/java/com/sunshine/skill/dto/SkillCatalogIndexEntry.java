@@ -9,7 +9,8 @@ public record SkillCatalogIndexEntry(
         boolean enabled,
         String sandbox,
         String kind,
-        String bizScene
+        String bizScene,
+        String tenantId
 ) {
     public SkillCatalogIndexEntry {
         if (sandbox == null || sandbox.isBlank()) {
@@ -17,6 +18,9 @@ public record SkillCatalogIndexEntry(
         }
         if (kind == null || kind.isBlank()) {
             kind = "all";
+        }
+        if (tenantId == null || tenantId.isBlank()) {
+            tenantId = "default";
         }
     }
 
@@ -29,6 +33,7 @@ public record SkillCatalogIndexEntry(
                 full.enabled(),
                 full.sandbox(),
                 full.kind(),
-                full.bizScene());
+                full.bizScene(),
+                full.tenantId());
     }
 }

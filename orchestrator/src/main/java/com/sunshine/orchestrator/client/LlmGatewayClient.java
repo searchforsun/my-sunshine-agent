@@ -28,10 +28,20 @@ import java.util.Map;
 /**
  * LLM Gateway 直连客户端 — 逐 token 流式，不经过 AgentScope。
  * 默认模型经 {@link ModelSceneResolver} 解析，不再绑定 Nacos agent.model.name。
+ * 请求体携带 {@code call_site}（phase5 5.3 调用点）：内部辅助调用默认 summarize，
+ * Agent 类调用（chat/plan/worker/subagent）走 AgentScope transport 注入。
  */
 @Slf4j
 @Component
 public class LlmGatewayClient {
+
+    public static final String CALL_SITE_CHAT = "chat";
+    public static final String CALL_SITE_PLAN = "plan";
+    public static final String CALL_SITE_WORKER = "worker";
+    public static final String CALL_SITE_TOOL_CALL = "tool-call";
+    public static final String CALL_SITE_REWRITE = "rewrite";
+    public static final String CALL_SITE_SUMMARIZE = "summarize";
+    public static final String CALL_SITE_SUBAGENT = "subagent";
 
     private final PromptComposer promptComposer;
     private final ModelSceneResolver modelSceneResolver;
@@ -65,31 +75,37 @@ public class LlmGatewayClient {
 
     /** 流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
     public Flux<StreamToken> streamComposed(PromptComposeRequest request) {
-        return doStream(promptComposer.composeGatewayMessages(request));
+        return doStream(promptComposer.composeGatewayMessages(request), CALL_SITE_CHAT);
     }
 
     // ==================== 非流式补全 ====================
 
     /**
-     * 非流式补全 — L1 Far / L2 抽取 / 审计等内部用途（scene=default）。
+     * 非流式补全 — L1 Far / L2 抽取 / 审计等内部用途（scene=default，callSite=summarize）。
      */
     public String complete(String systemPrompt, String userContent) {
-        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.DEFAULT.key(), null);
-        return complete(resolved.effectiveModel(), resolved.fallbackModel(), systemPrompt, userContent);
+        return complete(systemPrompt, userContent, CALL_SITE_SUMMARIZE);
     }
 
-    /** 非流式补全 — 指定模型（内部用途）。 */
-    public String complete(String model, String systemPrompt, String userContent) {
-        return complete(model, null, systemPrompt, userContent);
+    /** 非流式补全 — 内部用途，显式指定调用点（phase5 5.3）。 */
+    public String complete(String systemPrompt, String userContent, String callSite) {
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.DEFAULT.key(), null);
+        return complete(resolved.effectiveModel(), resolved.fallbackModel(),
+                systemPrompt, userContent, callSite);
     }
 
     public String complete(String model, String fallbackModel, String systemPrompt, String userContent) {
+        return complete(model, fallbackModel, systemPrompt, userContent, CALL_SITE_SUMMARIZE);
+    }
+
+    public String complete(String model, String fallbackModel, String systemPrompt,
+                           String userContent, String callSite) {
         List<Map<String, Object>> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
         }
         messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
-        return completeMessages(model, fallbackModel, messages).contentOrEmpty();
+        return completeMessages(model, fallbackModel, messages, callSite).contentOrEmpty();
     }
 
     // ==================== 公共底层 API（供内部调用方） ====================
@@ -111,11 +127,15 @@ public class LlmGatewayClient {
 
     // ==================== 内部实现 ====================
 
-    private LlmCompletion completeMessages(String model, String fallbackModel, List<Map<String, Object>> messages) {
+    private LlmCompletion completeMessages(String model, String fallbackModel,
+                                           List<Map<String, Object>> messages, String callSite) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", model);
         request.put("messages", messages);
         request.put("stream", false);
+        if (StringUtils.hasText(callSite)) {
+            request.put("call_site", callSite);
+        }
         if (StringUtils.hasText(fallbackModel)) {
             request.put("fallback_model", fallbackModel.strip());
         }
@@ -160,12 +180,15 @@ public class LlmGatewayClient {
         return value.toString().strip();
     }
 
-    private Flux<StreamToken> doStream(List<Map<String, Object>> messages) {
+    private Flux<StreamToken> doStream(List<Map<String, Object>> messages, String callSite) {
         ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), null);
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", resolved.effectiveModel());
         request.put("messages", messages);
         request.put("stream", true);
+        if (StringUtils.hasText(callSite)) {
+            request.put("call_site", callSite);
+        }
         if (StringUtils.hasText(resolved.fallbackModel())) {
             request.put("fallback_model", resolved.fallbackModel());
         }

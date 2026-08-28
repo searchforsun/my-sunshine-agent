@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import { NEmpty, NIcon, NInput, NSpin, NTag } from 'naive-ui'
+import { NEmpty, NIcon, NInput, NSpin } from 'naive-ui'
 import { SearchOutline, TimeOutline } from '@vicons/ionicons5'
 import { CONTEXT_PAGE_KEY, type ContextPageApi } from '../../composables/useContextPage'
 
@@ -41,12 +41,6 @@ const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
         >
           <span class="conv-title">
             {{ item.title || '新对话' }}
-            <NTag
-              v-if="(item.kind || 'chat') === 'task'"
-              :bordered="false"
-              size="tiny"
-              class="kind-tag"
-            >任务</NTag>
           </span>
           <span class="conv-time">
             <NIcon :component="TimeOutline" :size="12" />
@@ -82,12 +76,6 @@ const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
   gap: 8px;
   padding: 14px 14px 0;
   flex-shrink: 0;
-}
-
-.kind-tag {
-  margin-left: 6px;
-  --n-color: var(--sun-accent-soft, rgba(122, 162, 247, 0.12)) !important;
-  --n-text-color: var(--sun-text-secondary) !important;
 }
 
 .panel-title {

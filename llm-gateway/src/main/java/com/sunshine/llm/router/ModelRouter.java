@@ -40,11 +40,29 @@ public class ModelRouter {
     }
 
     public Mono<ChatCompletionResponse> route(ChatCompletionRequest request) {
-        return invokeChat(request.getModel(), request, new HashSet<>());
+        return invokeChat(resolveEffectiveModel(request), request, new HashSet<>());
     }
 
     public Flux<ServerSentEvent<String>> stream(ChatCompletionRequest request) {
-        return invokeStream(request.getModel(), request, new HashSet<>());
+        return invokeStream(resolveEffectiveModel(request), request, new HashSet<>());
+    }
+
+    /**
+     * 模型解析（phase5 5.3）：显式指定 model 直路由；
+     * model=auto 或缺省时按请求 call_site 查路由策略表选首个可用模型。
+     * 生效模型回写请求体：用量计量（5.2）按实际生效模型落库，语义缓存 key 亦以生效模型隔离。
+     */
+    private String resolveEffectiveModel(ChatCompletionRequest request) {
+        String model = request.getModel();
+        if (model != null && !model.isBlank() && !"auto".equalsIgnoreCase(model.strip())) {
+            return model.strip();
+        }
+        String effective = registryCache.routeModelFor(request.getCallSite())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "model=auto 但调用点无可用路由策略: callSite=" + request.getCallSite()
+                                + "（请在模型注册表配置 model_route_policy 或显式指定 model）"));
+        request.setModel(effective);
+        return effective;
     }
 
     private Mono<ChatCompletionResponse> invokeChat(

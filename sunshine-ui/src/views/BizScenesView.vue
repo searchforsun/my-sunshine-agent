@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { provide } from 'vue'
-import { NButton, NCard, NEmpty, NIcon, NSpace, NSpin } from 'naive-ui'
+import { NButton, NCard, NEmpty, NIcon, NSpace, NSpin, NTab, NTabs, NTag } from 'naive-ui'
 import { AddOutline, RefreshOutline } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import BizScenesListPanel from '../components/bizscenes/BizScenesListPanel.vue'
@@ -20,7 +20,7 @@ provide(BIZ_SCENES_PAGE_KEY, bizScenesPage)
         <h2>业务场景</h2>
       </div>
       <NSpace :size="8">
-        <NButton round secondary @click="bizScenesPage.showCreate = true">
+        <NButton v-if="bizScenesPage.activeTab === 'manual'" round secondary @click="bizScenesPage.showCreate = true">
           <template #icon><NIcon :component="AddOutline" /></template>
           新建
         </NButton>
@@ -30,6 +30,22 @@ provide(BIZ_SCENES_PAGE_KEY, bizScenesPage)
         </NButton>
       </NSpace>
     </header>
+
+    <div class="tabs-row">
+      <NTabs v-model:value="bizScenesPage.activeTab" type="segment" size="small">
+        <NTab name="manual" tab="预定义" />
+        <NTab name="auto">
+          <template #tab>
+            <span class="tab-auto">
+              自动发现
+              <NTag v-if="bizScenesPage.pendingCount" :bordered="false" size="tiny" round type="warning">
+                {{ bizScenesPage.pendingCount }} 待审核
+              </NTag>
+            </span>
+          </template>
+        </NTab>
+      </NTabs>
+    </div>
 
     <div class="biz-layout">
       <BizScenesListPanel />
@@ -79,6 +95,20 @@ provide(BIZ_SCENES_PAGE_KEY, bizScenesPage)
   letter-spacing: -0.4px;
   line-height: 36px;
   color: var(--sun-text);
+}
+
+.tabs-row {
+  flex-shrink: 0;
+}
+
+.tabs-row :deep(.n-tabs-pane-wrapper) {
+  display: none;
+}
+
+.tab-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .biz-layout {

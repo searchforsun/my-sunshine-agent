@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -27,6 +28,9 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class PromptComposer {
+
+    /** 可发现目录注入上限：防目录过长占前缀（skill-sticky §8 风险对策） */
+    private static final int SKILL_DIRECTORY_TOP_N = 20;
 
     private final PromptCatalogHolder catalogHolder;
     private final SkillCatalogService skillCatalogService;
@@ -68,9 +72,12 @@ public class PromptComposer {
         addGatewaySystem(messages, resolveSceneOverlay(request.kind()));
         addGatewaySystem(messages, resolveWorkspaceCheckoutOverlay(request.workspaceCheckout()));
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
-        addGatewaySystem(messages, resolveSkillOverlay(request.skillId()));
-        appendGatewayContextLayers(messages, ctx);
+        addGatewaySystem(messages, resolveSkillOverlays(request.skillId(), request.triggeredSkillIds()));
+        addGatewaySystem(messages, resolveSkillDirectory(request.kind(), request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId()));
+        // Tier 定序（§5.5.3 ⑥）：scope 边界是静态文本，前置进稳定前缀；
+        // nodePrompt 按节点变化（高频）留在上下文层之后的尾部。
         addGatewaySystem(messages, catalogText("scope-prompt"));
+        appendGatewayContextLayers(messages, ctx);
         addGatewaySystem(messages, nodePromptOrEmpty(request.nodePrompt()));
     }
 
@@ -94,7 +101,8 @@ public class PromptComposer {
         String harnessOverlay = resolveHarnessOverlay(request.harnessPromptId());
         String restartOverlay = resolveReactRestartOverlay(request);
         String hitlOverlay = resolveHitlOverlay(request.mode());
-        String skillOverlay = resolveSkillOverlay(request.skillId());
+        String skillOverlay = resolveSkillOverlays(request.skillId(), request.triggeredSkillIds());
+        String skillDirectory = resolveSkillDirectory(request.kind(), request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId());
         // 场景覆盖层：根据 kind 注入专属上下文（chat / task）
         String sceneOverlay = resolveSceneOverlay(request.kind());
         // 工作区 checkout 目录：让 AI 明确当前工作目录，避免误用 main checkout
@@ -102,7 +110,12 @@ public class PromptComposer {
         addReactUser(inputs, harnessOverlay);
         addReactUser(inputs, restartOverlay);
         addReactUser(inputs, hitlOverlay);
-        addReactUser(inputs, skillOverlay);
+        // MAIN 的 skill 正文已由 SkillInjectionMiddleware 走 onSystemPrompt（SYSTEM 权威层）注入，
+        // 此处不再以 USER 信封重复注入；SUB/WORKER（triggeredSkillIds 为空、仅单数 skillId）仍走 USER 信封。
+        if (request.triggeredSkillIds().isEmpty()) {
+            addReactUser(inputs, wrapSkillEnvelope(skillOverlay, request.skillId(), request.triggeredSkillIds()));
+        }
+        addReactUser(inputs, skillDirectory);
         addReactUser(inputs, sceneOverlay);
         addReactUser(inputs, workspaceOverlay);
         // skills 组：mode/harness/restart/hitl/skill/scene/workspace overlay 合计
@@ -111,10 +124,13 @@ public class PromptComposer {
                 + estimator.estimateText(restartOverlay)
                 + estimator.estimateText(hitlOverlay)
                 + estimator.estimateText(skillOverlay)
+                + estimator.estimateText(skillDirectory)
                 + estimator.estimateText(sceneOverlay)
                 + estimator.estimateText(workspaceOverlay), Integer::sum);
-        appendReactContextLayers(inputs, ctx, groups);
+        // Tier 定序（§5.5.3 ⑥）：scope 边界是静态文本，前置进稳定前缀；
+        // nodePrompt 按节点变化（高频）留在上下文层之后的尾部。
         addReactUser(inputs, catalogText("scope-prompt"));
+        appendReactContextLayers(inputs, ctx, groups);
         addReactUser(inputs, nodePromptOrEmpty(request.nodePrompt()));
     }
 
@@ -251,12 +267,90 @@ public class PromptComposer {
         return e.contentText() != null ? e.contentText().strip() : "";
     }
 
-    private String resolveSkillOverlay(String skillId) {
-        if (!StringUtils.hasText(skillId)) {
+    /**
+     * skill 正文指令信封（对齐 Claude Code {@code <skill_information>}）：给技能正文包一层
+     * 明确的「指令身份」边界，让模型识别「这是须遵循的技能指令」而非普通用户闲聊，从而把
+     * HARD-GATE 这类否定式禁令当作约束而非上下文。保持 USER 角色（AS 2.0 Hook 禁 SYSTEM），
+     * 由信封承担指令边界；索引 {@code skills_referenced} 与正文 {@code skill_block} 一一对应。
+     * 技能正文为空则返回空串（不注入空信封）。
+     */
+    private static String wrapSkillEnvelope(String body, String skillId, List<String> triggeredSkillIds) {
+        if (!StringUtils.hasText(body)) {
             return "";
         }
-        String fromCatalog = skillCatalogService.overlayOrEmpty(skillId);
-        return StringUtils.hasText(fromCatalog) ? fromCatalog.strip() : "";
+        List<String> ids = new ArrayList<>(new LinkedHashSet<>());
+        if (StringUtils.hasText(skillId)) {
+            ids.add(skillId.strip());
+        }
+        if (triggeredSkillIds != null) {
+            for (String id : triggeredSkillIds) {
+                if (StringUtils.hasText(id)) {
+                    ids.add(id.strip());
+                }
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("<skill_information>\n");
+        sb.append("<skills_referenced>\n");
+        for (String id : ids) {
+            sb.append("- ").append(id).append('\n');
+        }
+        sb.append("</skills_referenced>\n");
+        sb.append("<skill_block>\n");
+        sb.append(body.strip());
+        sb.append("\n</skill_block>\n");
+        sb.append("</skill_information>");
+        return sb.toString();
+    }
+
+    /**
+     * 触发集全文 overlay：单数 skillId（SUB/Workflow）与 triggeredSkillIds（主 Agent）合并，
+     * 逐个注入 skill 正文；仅触发集灌 overlay，召回只进目录（skill-sticky S-T）。
+     */
+    private String resolveSkillOverlays(String skillId, List<String> triggeredSkillIds) {
+        List<String> ids = new ArrayList<>();
+        if (StringUtils.hasText(skillId)) {
+            ids.add(skillId.strip());
+        }
+        if (triggeredSkillIds != null) {
+            for (String id : triggeredSkillIds) {
+                if (StringUtils.hasText(id)) {
+                    ids.add(id.strip());
+                }
+            }
+        }
+        List<String> unique = new ArrayList<>(new LinkedHashSet<>(ids));
+        if (unique.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String id : unique) {
+            String fromCatalog = skillCatalogService.overlayOrEmpty(id);
+            if (StringUtils.hasText(fromCatalog)) {
+                sb.append(fromCatalog.strip()).append("\n\n");
+            }
+        }
+        return sb.toString().strip();
+    }
+
+    /**
+     * 可发现目录层（名+描述，不灌正文）：enabled + 会话 kind 匹配的 skill 目录，
+     * 剔除已触发项；候选集（S-C）提权置顶并标「可动态加载」；模板在 Catalog
+     * （context.skill-directory），{skills} 运行时替换。目录过长按 Top-N 截断并提示
+     * 「更多经 / 或检索」（skill-sticky S-D/S-C）。
+     */
+    private String resolveSkillDirectory(
+            String kind, List<String> triggeredSkillIds, List<String> candidateSkillIds, String tenantId) {
+        String template = catalogText("context.skill-directory");
+        if (!StringUtils.hasText(template)) {
+            return "";
+        }
+        String skills = skillCatalogService.renderDiscoverableForPrompt(
+                kind, triggeredSkillIds, candidateSkillIds, SKILL_DIRECTORY_TOP_N, tenantId);
+        if (!StringUtils.hasText(skills)) {
+            return "";
+        }
+        return template.replace("{skills}", skills);
     }
 
     /** Catalog 缺 id → 空串 + warn；有条目即使正文为空也不 warn */

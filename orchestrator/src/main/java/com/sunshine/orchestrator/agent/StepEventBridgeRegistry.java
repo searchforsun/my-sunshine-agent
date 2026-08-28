@@ -29,6 +29,8 @@ public class StepEventBridgeRegistry {
     private final Map<String, ConcurrentLinkedQueue<StreamToken>> hookTokenQueues = new ConcurrentHashMap<>();
     private final Map<String, String> ragDetails = new ConcurrentHashMap<>();
     private final Map<String, String> userQueries = new ConcurrentHashMap<>();
+    /** 4.7.7 goal-alignment：per-run 状态（bridgeId 生命周期，clear 随 bridge 回收） */
+    private final Map<String, AgentRunState> agentRunStates = new ConcurrentHashMap<>();
     private final Map<String, StepEventBridge.ToolAuditContext> toolAuditContexts = new ConcurrentHashMap<>();
     private final Map<String, Boolean> hitlEnabled = new ConcurrentHashMap<>();
     private final Map<String, String> hitlAssistantByBridge = new ConcurrentHashMap<>();
@@ -71,6 +73,7 @@ public class StepEventBridgeRegistry {
         hookTokenQueues.clear();
         ragDetails.clear();
         userQueries.clear();
+        agentRunStates.clear();
         toolAuditContexts.clear();
         hitlEnabled.clear();
         hitlAssistantByBridge.clear();
@@ -231,6 +234,14 @@ public class StepEventBridgeRegistry {
 
     public boolean hasSession(String bridgeId) {
         return bridgeId != null && sessions.containsKey(bridgeId);
+    }
+
+    /** 4.7.7 goal-alignment：per-run 状态（bridgeId 无则懒建，clear 随 bridge 回收） */
+    public AgentRunState runState(String bridgeId) {
+        if (bridgeId == null || bridgeId.isBlank()) {
+            return null;
+        }
+        return agentRunStates.computeIfAbsent(bridgeId, k -> new AgentRunState());
     }
 
     public void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
@@ -513,6 +524,7 @@ public class StepEventBridgeRegistry {
             hookTokenQueues.remove(messageId);
             ragDetails.remove(messageId);
             userQueries.remove(messageId);
+            agentRunStates.remove(messageId);
             toolAuditContexts.remove(messageId);
             hitlEnabled.remove(messageId);
             hitlAssistantByBridge.remove(messageId);

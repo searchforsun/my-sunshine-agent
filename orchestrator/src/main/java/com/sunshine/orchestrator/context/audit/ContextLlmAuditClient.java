@@ -85,8 +85,11 @@ public class ContextLlmAuditClient {
                     .append(" kind=").append(e.getKind())
                     .append(" key=").append(e.getStateKey())
                     .append(" value=").append(e.getStateValue())
-                    .append(" confidence=").append(e.getConfidence())
-                    .append('\n');
+                    .append(" confidence=").append(e.getConfidence());
+            if (StringUtils.hasText(e.getBackground())) {
+                sb.append(" background=").append(e.getBackground());
+            }
+            sb.append('\n');
         }
         return sb.toString().strip();
     }

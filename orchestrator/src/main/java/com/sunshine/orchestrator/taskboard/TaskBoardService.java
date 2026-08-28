@@ -55,6 +55,28 @@ public class TaskBoardService {
         }
     }
 
+    /**
+     * O1 中断落板：仅写 MySQL 快照（幂等：按 messageId upsert），不做 timeline 收口。
+     * 中断时流与 hookQueue 均无消费者，恢复块读的是最近快照。
+     */
+    public void persistInterruptSnapshot(
+            com.sunshine.orchestrator.agent.runtime.AgentRunRequest request,
+            io.agentscope.core.state.AgentState agentState) {
+        if (request == null || request.assistantMessageId() == null
+                || request.assistantMessageId().isBlank()) {
+            return;
+        }
+        List<TaskBoardItemView> items = agentState != null && agentState.getTasksContext() != null
+                ? TodoTasksBridge.toItems(agentState.getTasksContext().getTasks())
+                : List.of();
+        if (items.isEmpty()) {
+            return;
+        }
+        String msgId = request.assistantMessageId();
+        auditService.persistFinal(new TaskBoardState(
+                "native-" + msgId, msgId, items.size(), System.currentTimeMillis(), items));
+    }
+
     static String progressSummary(List<TaskBoardItemView> items) {
         if (items == null || items.isEmpty()) {
             return "0/0 已完成";

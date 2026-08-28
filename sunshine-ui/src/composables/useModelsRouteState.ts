@@ -1,8 +1,8 @@
 import { useRoute, useRouter } from 'vue-router'
 
-export type ModelsTab = 'providers' | 'models' | 'scenes'
+export type ModelsTab = 'providers' | 'models' | 'scenes' | 'routes'
 
-const VALID_TABS = new Set<string>(['providers', 'models', 'scenes'])
+const VALID_TABS = new Set<string>(['providers', 'models', 'scenes', 'routes'])
 
 function queryString(value: unknown): string | null {
   if (typeof value !== 'string') return null

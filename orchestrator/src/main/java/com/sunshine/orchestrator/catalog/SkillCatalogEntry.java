@@ -16,11 +16,15 @@ public record SkillCatalogEntry(
         String sandbox,
         SandboxPolicy sandboxPolicy,
         String kind,
-        String bizScene
+        String bizScene,
+        String tenantId
 ) {
     public SkillCatalogEntry {
         if (kind == null || kind.isBlank()) {
             kind = "all";
+        }
+        if (tenantId == null || tenantId.isBlank()) {
+            tenantId = "default";
         }
     }
 

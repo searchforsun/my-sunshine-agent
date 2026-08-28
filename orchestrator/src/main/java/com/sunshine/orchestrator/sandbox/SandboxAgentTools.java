@@ -242,6 +242,10 @@ public class SandboxAgentTools {
                 }
                 String output = resp != null && resp.output() != null ? resp.output() : "";
                 boolean ok = resp != null && resp.ok();
+                if (resp != null && resp.exitCode() != null) {
+                    // 确定性 schema 行数据面（§5.5.8）：退出码经 holder 透传进 StepMetadata，不进模型可见正文
+                    SandboxExitCodeHolder.put(toolUseId, resp.exitCode());
+                }
                 if (ok && SandboxIds.EDIT.equals(name) && resp.meta() != null) {
                     Object rawEditDiff = resp.meta().get("editDiff");
                     SandboxEditDiff parsed = SandboxEditDiffCodec.fromMeta(rawEditDiff);
@@ -251,7 +255,10 @@ public class SandboxAgentTools {
                 }
                 Map<String, String> auditParams = auditParams(body, sessionId, resp, System.currentTimeMillis() - startMs);
                 auditIfBound(name, auditParams, output, ok ? "ok" : "fail");
-                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(output).build());
+                // 失败契约（goal-alignment §5.1 复用 AS 2.0）：非成功结果统一输出 [ERROR] 前缀，
+                // 使 AS 判定 ToolResultState.ERROR → FailureBudgetMiddleware 计数
+                String text = ok ? output : "[ERROR] " + output;
+                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(text).build());
             } catch (Exception e) {
                 if (trackCancel && (cancellableToolRunRegistry.isCancelled(invocationId)
                         || isCancelException(e))) {
@@ -263,7 +270,9 @@ public class SandboxAgentTools {
                 String err = StringUtils.hasText(raw) ? raw : "沙箱工具调用失败";
                 Map<String, String> auditParams = auditParams(body, sessionId, null, System.currentTimeMillis() - startMs);
                 auditIfBound(name, auditParams, err, "fail");
-                return ToolResultBlock.of(toolUseId, name, TextBlock.builder().text(err).build());
+                // 失败契约（goal-alignment §5.1）：异常路径同样输出 [ERROR] 前缀，AS 判 ERROR state
+                return ToolResultBlock.of(toolUseId, name,
+                        TextBlock.builder().text("[ERROR] " + err).build());
             } finally {
                 if (trackCancel) {
                     cancellableToolRunRegistry.unregister(invocationId);

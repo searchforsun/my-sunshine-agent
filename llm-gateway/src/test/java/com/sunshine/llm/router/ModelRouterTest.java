@@ -80,6 +80,19 @@ class ModelRouterTest {
                                 .fallbackModel("qwen-plus")
                                 .enabled(true)
                                 .build()))
+                .routes(List.of(
+                        com.sunshine.llm.registry.ModelRoutePolicyView.builder()
+                                .callSite("rewrite")
+                                .models(List.of("qwen-plus", "deepseek-v4-pro"))
+                                .strategy("first-available")
+                                .enabled(true)
+                                .build(),
+                        com.sunshine.llm.registry.ModelRoutePolicyView.builder()
+                                .callSite("plan")
+                                .models(List.of("deepseek-v4-pro"))
+                                .strategy("first-available")
+                                .enabled(true)
+                                .build()))
                 .build());
     }
 
@@ -183,6 +196,73 @@ class ModelRouterTest {
 
         ChatCompletionRequest request = new ChatCompletionRequest();
         request.setModel("deepseek-v4-pro");
+
+        StepVerifier.create(router.stream(request))
+                .expectNextCount(1)
+                .verifyComplete();
+        verify(qwen).stream(any());
+    }
+
+    @Test
+    @DisplayName("model=auto 按 call_site 路由策略选首个可用模型")
+    void route_auto_withCallSite_selectsFirstAvailable() {
+        LlmAdapter deepseek = mock(LlmAdapter.class);
+        LlmAdapter qwen = mock(LlmAdapter.class);
+        when(deepseek.supports("deepseek-v4-pro")).thenReturn(true);
+        when(qwen.supports("qwen-plus")).thenReturn(true);
+        when(qwen.chat(any())).thenReturn(Mono.just(new ChatCompletionResponse()));
+
+        ModelRouter router = newRouter(deepseek, qwen);
+
+        // rewrite 策略 = [qwen-plus, deepseek-v4-pro] → 应选 qwen-plus
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("auto");
+        request.setCallSite("rewrite");
+
+        router.route(request).block();
+        verify(qwen).chat(any());
+        verify(deepseek, never()).chat(any());
+        // 生效模型回写请求（用量计量按实际模型落库，5.2/5.3）
+        assertThat(request.getModel()).isEqualTo("qwen-plus");
+
+        // plan 策略 = [deepseek-v4-pro] → 应选 deepseek-v4-pro
+        ChatCompletionRequest plan = new ChatCompletionRequest();
+        plan.setModel("auto");
+        plan.setCallSite("plan");
+        when(deepseek.chat(any())).thenReturn(Mono.just(new ChatCompletionResponse()));
+
+        router.route(plan).block();
+        verify(deepseek).chat(any());
+    }
+
+    @Test
+    @DisplayName("model=auto 但无可用策略时抛 IllegalArgumentException")
+    void route_auto_withoutPolicy_throws() {
+        LlmAdapter adapter = mock(LlmAdapter.class);
+        ModelRouter router = newRouter(adapter);
+
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("auto");
+        request.setCallSite("no-such-site");
+
+        assertThatThrownBy(() -> router.route(request).block())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no-such-site");
+    }
+
+    @Test
+    @DisplayName("model=auto 流式同样按 call_site 路由")
+    void stream_auto_selectsModel() {
+        LlmAdapter qwen = mock(LlmAdapter.class);
+        when(qwen.supports("qwen-plus")).thenReturn(true);
+        when(qwen.stream(any())).thenReturn(Flux.just(
+                ServerSentEvent.builder("chunk").build()));
+
+        ModelRouter router = newRouter(qwen);
+
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("auto");
+        request.setCallSite("rewrite");
 
         StepVerifier.create(router.stream(request))
                 .expectNextCount(1)

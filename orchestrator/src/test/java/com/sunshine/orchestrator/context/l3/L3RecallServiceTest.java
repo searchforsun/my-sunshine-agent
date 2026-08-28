@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -44,7 +45,8 @@ class L3RecallServiceTest {
 
     @Test
     void recall_excludesMessageIdsAlreadyInL1Window() {
-        when(historyRagClient.search(eq("u1"), eq("default"), eq("budget"), anyInt()))
+        when(historyRagClient.search(eq("u1"), eq("default"), isNull(String.class), eq("chat"),
+                eq(List.of("semantic")), eq("budget"), anyInt()))
                 .thenReturn(Mono.just(List.of(
                         new HistoryRagClient.HistoryHit("c1", "msg-near", "近窗内容不应出现", 0.95f, 1L),
                         new HistoryRagClient.HistoryHit("c0", "msg-old", "旧会话预算约定", 0.9f, 1L))));
@@ -65,7 +67,8 @@ class L3RecallServiceTest {
     void recall_farBackfill_includesFarHitsWhenSummaryPresent() {
         // Far 命中降权 0.92×0.5=0.46，需 minScore ≤ 0.46 才能保留
         properties.getL3().setMinScore(0.4);
-        when(historyRagClient.search(anyString(), anyString(), anyString(), anyInt()))
+        when(historyRagClient.search(anyString(), anyString(), isNull(String.class), eq("chat"),
+                eq(List.of("semantic")), anyString(), anyInt()))
                 .thenReturn(Mono.just(List.of(
                         new HistoryRagClient.HistoryHit("c1", "msg-far", "远窗细节：合同金额 50 万", 0.92f, 1L))));
 

@@ -4,6 +4,8 @@ import io.agentscope.core.model.transport.HttpRequest;
 import io.agentscope.core.model.transport.HttpResponse;
 import io.agentscope.core.model.transport.HttpTransport;
 import io.agentscope.core.model.transport.HttpTransportException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
@@ -23,21 +25,29 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 而非硬编码 host:port。
  * <p>
  * 使用方式：通过 OpenAIChatModel.Builder.httpTransport(this) 注入。
+ * <p>
+ * callSite（phase5 5.3）：Agent 角色调用点（chat/plan/worker/subagent），
+ * 请求体 JSON 注入 {@code call_site}，供 llm-gateway 用量计量维度与模型路由消费。
  */
 @Slf4j
 public class LoadBalancedWebClientTransport implements HttpTransport {
 
     private final WebClient webClient;
+    private final String callSite;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * @param loadBalancedBuilder 已注入 @LoadBalanced + @Primary 的 WebClient.Builder
      * @param serviceBaseUrl      服务名 URL（如 http://sunshine-llm-gateway）
+     * @param callSite            Agent 角色调用点（chat/plan/worker/subagent），null 不注入
      */
-    public LoadBalancedWebClientTransport(WebClient.Builder loadBalancedBuilder, String serviceBaseUrl) {
+    public LoadBalancedWebClientTransport(
+            WebClient.Builder loadBalancedBuilder, String serviceBaseUrl, String callSite) {
         this.webClient = loadBalancedBuilder
                 .baseUrl(serviceBaseUrl)
                 .build();
-        log.info("[LoadBalancedWebClientTransport] serviceBaseUrl={}", serviceBaseUrl);
+        this.callSite = callSite;
+        log.info("[LoadBalancedWebClientTransport] serviceBaseUrl={} callSite={}", serviceBaseUrl, callSite);
     }
 
     @Override
@@ -54,8 +64,9 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
                     spec.header(k, v);
                 }
             });
-            if (request.getBody() != null) {
-                spec.bodyValue(request.getBody());
+            Object body = withCallSite(request.getBody(), callSite);
+            if (body != null) {
+                spec.bodyValue(body);
             }
             org.springframework.http.ResponseEntity<String> entity = spec
                     .retrieve()
@@ -101,8 +112,9 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
                     spec.header(k, v);
                 }
             });
-            if (request.getBody() != null) {
-                spec.bodyValue(request.getBody());
+            Object body = withCallSite(request.getBody(), callSite);
+            if (body != null) {
+                spec.bodyValue(body);
             }
             return spec.retrieve()
                     .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
@@ -130,6 +142,24 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
     @Override
     public void close() {
         // WebClient 无显式 close，资源由 Reactor 回收
+    }
+
+    /**
+     * 请求体 JSON 注入 {@code call_site}（AgentScope 请求体为 JSON 字符串）。
+     * 非 JSON 或解析失败时原样返回，保证不破坏既有链路。
+     */
+    static Object withCallSite(String body, String callSite) {
+        if (body == null || body.isBlank() || callSite == null || callSite.isBlank()) {
+            return body;
+        }
+        try {
+            ObjectNode node = (ObjectNode) objectMapper.readTree(body);
+            node.put("call_site", callSite);
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            log.debug("[LoadBalancedWebClientTransport] call_site 注入跳过（非 JSON body）: {}", e.getMessage());
+            return body;
+        }
     }
 
     /**

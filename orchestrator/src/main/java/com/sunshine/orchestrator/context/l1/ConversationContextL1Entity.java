@@ -33,9 +33,18 @@ public class ConversationContextL1Entity {
     @Column(name = "far_summary", columnDefinition = "MEDIUMTEXT")
     private String farSummary;
 
-    /** JSON array of messageIds already folded into far_summary */
+    /** JSON array of messageIds 已退役（压缩点之前）；Near 起点 = 该边界之后 */
     @Column(name = "far_folded_msg_ids", columnDefinition = "MEDIUMTEXT")
     private String farFoldedMsgIds;
+
+    /**
+     * JSON array of messageIds 已实际折叠进 far_summary（压缩点边界的子集）。
+     * 同步推进压缩点（§5.5 ① / §8.2）仅移动 {@code far_folded_msg_ids} 边界（零 LLM），
+     * 被退役但尚未折叠的轮次留在两者差集，由写路径异步补折叠。
+     * {@code null} = 存量行兼容：视为与 {@code far_folded_msg_ids} 一致（旧语义全部已折叠）。
+     */
+    @Column(name = "far_summarized_msg_ids", columnDefinition = "MEDIUMTEXT")
+    private String farSummarizedMsgIds;
 
     @Column(name = "near_n", nullable = false)
     private int nearN = 8;

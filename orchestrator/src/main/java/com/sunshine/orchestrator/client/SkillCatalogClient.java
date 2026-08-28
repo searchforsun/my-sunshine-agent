@@ -23,10 +23,16 @@ public class SkillCatalogClient {
         this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
     }
 
-    public List<SkillCatalogIndexEntry> fetchCatalogIndex() {
+    public List<SkillCatalogIndexEntry> fetchCatalogIndex(String tenantId) {
         try {
             List<SkillCatalogIndexEntry> entries = webClient.get()
-                    .uri("/api/skills/catalog/index")
+                    .uri(uriBuilder -> {
+                        uriBuilder.path("/api/skills/catalog/index");
+                        if (tenantId != null && !tenantId.isBlank()) {
+                            uriBuilder.queryParam("tenantId", tenantId);
+                        }
+                        return uriBuilder.build();
+                    })
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<R<List<SkillCatalogIndexEntry>>>() {})
                     .map(R::getData)

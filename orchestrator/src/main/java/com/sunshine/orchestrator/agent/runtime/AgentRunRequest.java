@@ -39,12 +39,18 @@ public record AgentRunRequest(
         /** 会话级模型 override（仅 MAIN chat / Planner 主对话；intent/rewrite/title 忽略） */
         String modelOverride,
         /** 会话 kind（chat|task）；装默认工具集透传，缺省按 chat */
-        String conversationKind
+        String conversationKind,
+        /** 本轮已触发 skill 集（仅 MAIN；skill-sticky S-T，SUB/Worker 用单数 skillId） */
+        List<String> triggeredSkillIds,
+        /** 本轮候选 skill 集（仅 MAIN；S-C：目录提权 + dynamicLoadable，可经 sunshine_search_skills 升级触发） */
+        List<String> candidateSkillIds
 ) {
     public AgentRunRequest {
         memory = memory != null ? memory : AssembledContext.empty();
         injectedBlocks = injectedBlocks != null ? List.copyOf(injectedBlocks) : List.of();
         toolWhitelist = toolWhitelist != null ? List.copyOf(toolWhitelist) : null;
+        triggeredSkillIds = triggeredSkillIds != null ? List.copyOf(triggeredSkillIds) : List.of();
+        candidateSkillIds = candidateSkillIds != null ? List.copyOf(candidateSkillIds) : List.of();
     }
 
     public AgentRunRequest withModelOverride(String modelOverride) {
@@ -53,7 +59,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
-                conversationKind);
+                conversationKind, triggeredSkillIds, candidateSkillIds);
     }
 
     /** 透传会话 kind（装默认工具集）；不查库 */
@@ -63,7 +69,27 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
-                conversationKind);
+                conversationKind, triggeredSkillIds, candidateSkillIds);
+    }
+
+    /** 本轮已触发 skill 集（MAIN；skill-sticky S-T） */
+    public AgentRunRequest withTriggeredSkillIds(List<String> triggeredSkillIds) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind, triggeredSkillIds, candidateSkillIds);
+    }
+
+    /** 本轮候选 skill 集（MAIN；skill-sticky S-C） */
+    public AgentRunRequest withCandidateSkillIds(List<String> candidateSkillIds) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind, triggeredSkillIds, candidateSkillIds);
     }
 
     /** Planner-Executor harness overlay（机制层）；仅 PLANNER 使用 */
@@ -73,7 +99,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
-                conversationKind);
+                conversationKind, triggeredSkillIds, candidateSkillIds);
     }
 
     /** MAIN 每 run 独立 main-{runId}；SUB/WORKER 用角色前缀（SSE 经 bindHitlBridge 映射 assistantMessageId） */
@@ -180,6 +206,51 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
+                null,
+                null,
+                null);
+    }
+
+    /** MAIN — 含本轮已触发 skill 集（skill-sticky S-T）；null 兼容旧调用 */
+    public static AgentRunRequest main(
+            AssembledContext memory,
+            String query,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            List<String> injectedBlocks,
+            String skillId,
+            boolean reactRestart,
+            String conversationId,
+            int checkpointThinkIteration,
+            int maxIters,
+            List<String> triggeredSkillIds) {
+        return new AgentRunRequest(
+                AgentRole.MAIN,
+                UUID.randomUUID().toString(),
+                null,
+                memory,
+                query,
+                injectedBlocks,
+                userId,
+                tenantId,
+                assistantMessageId,
+                skillId,
+                null,
+                null,
+                maxIters,
+                TimelineBinding.MAIN_FULL,
+                reactRestart,
+                null,
+                conversationId,
+                checkpointThinkIteration,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                triggeredSkillIds,
                 null);
     }
 
@@ -285,6 +356,8 @@ public record AgentRunRequest(
                 permissionsJson,
                 modelConfigJson,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -330,6 +403,8 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -366,6 +441,8 @@ public record AgentRunRequest(
                 null,
                 conversationId,
                 0,
+                null,
+                null,
                 null,
                 null,
                 null,

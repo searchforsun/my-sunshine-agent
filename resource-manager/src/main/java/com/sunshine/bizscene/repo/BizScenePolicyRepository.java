@@ -13,4 +13,6 @@ public interface BizScenePolicyRepository extends JpaRepository<BizScenePolicyEn
 
     Optional<BizScenePolicyEntity> findTopByTenantIdAndBizSceneAndStatusOrderByVersionDesc(
             String tenantId, String bizScene, String status);
+
+    List<BizScenePolicyEntity> findByStatusOrderByBizSceneAscVersionAsc(String status);
 }

@@ -20,6 +20,12 @@ function formatTs(ts?: string | null): string {
       <div class="detail-title-block">
         <div class="detail-name-row">
           <h3>{{ page.selectedScene!.bizScene }}</h3>
+          <NTag v-if="(page.selectedScene!.source ?? 'manual') === 'auto'" :bordered="false" size="tiny" round class="meta-chip">
+            auto
+          </NTag>
+          <NTag v-if="page.selectedScene!.status === 'pending_review'" :bordered="false" size="tiny" round type="warning" class="meta-chip">
+            待审核
+          </NTag>
         </div>
         <div class="detail-meta-inline">
           <span class="detail-subtitle">{{ page.selectedScene!.displayName }}</span>
@@ -34,7 +40,7 @@ function formatTs(ts?: string | null): string {
       <div class="rules-block">
         <div class="rules-head">
           <span class="rules-title">场景规则</span>
-          <NButton size="tiny" secondary class="add-rule-btn" @click="page.openCreateRule()">
+          <NButton v-if="page.selectedScene!.status !== 'pending_review'" size="tiny" secondary class="add-rule-btn" @click="page.openCreateRule()">
             <template #icon><NIcon :component="AddOutline" :size="14" /></template>
             新增规则
           </NButton>

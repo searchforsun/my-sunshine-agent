@@ -45,6 +45,10 @@ public class ChatCompletionRequest {
     @JsonProperty("stream_options")
     private Map<String, Object> streamOptions;
 
+    /** 调用点标注（phase5 5.3）：chat|plan|worker|tool-call|rewrite|summarize|subagent；用量/路由维度 */
+    @JsonProperty("call_site")
+    private String callSite;
+
     /** 降级链切换模型时保留 tools / fallback 等字段 */
     public ChatCompletionRequest copyWithModel(String model) {
         ChatCompletionRequest copy = new ChatCompletionRequest();
@@ -58,6 +62,7 @@ public class ChatCompletionRequest {
         copy.setSkipCache(this.skipCache);
         copy.setFallbackModel(this.fallbackModel);
         copy.setStreamOptions(this.streamOptions);
+        copy.setCallSite(this.callSite);
         return copy;
     }
 

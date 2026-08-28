@@ -41,6 +41,7 @@ public class ExecutionPlanParser {
             mergeSkillId(node, params);
             mergeSkillIds(node, params);
             mergeAgentIds(node, params);
+            mergeScores(node, params);
             return new ExecutionPlan(mode, workflowId, params, reason);
         } catch (Exception e) {
             log.warn("[ExecutionPlanParser] parse failed: {}", e.getMessage());
@@ -104,6 +105,43 @@ public class ExecutionPlanParser {
             return;
         }
         params.put("agentIds", String.join(",", ids));
+    }
+
+    /**
+     * L3 逐项置信分（skill-sticky S-C）：分类器输出 {"skillScores":{"id":0-1}, "agentScores":{"id":0-1}}，
+     * 压缩为 "id=conf,…" 串（保序）供双阈值采纳；缺失或非法不写，不影响基础绑定。
+     */
+    private static void mergeScores(JsonNode node, Map<String, String> params) {
+        String skillScores = scorePairs(node.get("skillScores"));
+        if (StringUtils.hasText(skillScores)) {
+            params.put(ExecutionPlan.PARAM_SKILL_SCORES, skillScores);
+        }
+        String agentScores = scorePairs(node.get("agentScores"));
+        if (StringUtils.hasText(agentScores)) {
+            params.put(ExecutionPlan.PARAM_AGENT_SCORES, agentScores);
+        }
+    }
+
+    private static String scorePairs(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        List<String> pairs = new ArrayList<>();
+        Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> e = it.next();
+            String id = e.getKey() != null ? e.getKey().strip() : "";
+            JsonNode v = e.getValue();
+            if (!StringUtils.hasText(id) || v == null || v.isNull() || !v.isNumber()) {
+                continue;
+            }
+            double conf = v.asDouble();
+            if (conf < 0 || conf > 1) {
+                continue;
+            }
+            pairs.add(id + "=" + conf);
+        }
+        return pairs.isEmpty() ? null : String.join(",", pairs);
     }
 
     private static List<String> stringList(JsonNode node) {

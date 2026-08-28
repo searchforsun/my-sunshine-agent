@@ -12,6 +12,7 @@ import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
+import com.sunshine.common.tool.admin.ToolSetToolIdsResponse;
 import com.sunshine.common.web.RemoteErrorMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
@@ -189,6 +190,21 @@ public class ToolManagerAdminClient {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
                 .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
+    }
+
+    /** A-4：声明 picker 候选按 (tenant, kind) 集过滤；kind=all = chat∪task 并集 */
+    public Mono<R<ToolSetToolIdsResponse>> toolSetToolIds(String kind, String tenantId) {
+        return webClient.get()
+                .uri(uri -> {
+                    var builder = uri.path("/api/tools/sets/" + kind + "/tool-ids");
+                    if (StringUtils.hasText(tenantId)) {
+                        builder.queryParam("tenantId", tenantId);
+                    }
+                    return builder.build();
+                })
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSetToolIdsResponse>>() {});
     }
 
     public Mono<R<List<ToolCatalogEntry>>> catalog(String tenantId, boolean enabledOnly) {

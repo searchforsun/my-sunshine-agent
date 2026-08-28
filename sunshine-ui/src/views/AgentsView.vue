@@ -43,7 +43,7 @@ import {
 } from '../api/agents'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
 import { listBizScenes, type BizSceneEntry } from '../api/bizScenes'
-import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
+import { fetchToolSetToolIds, listToolCatalog, type ToolCatalogEntry } from '../api/tools'
 import {
   catalogEnabledModelOptions,
   fetchModelCatalog,
@@ -66,6 +66,8 @@ const isEditing = ref(false)
 const agents = ref<AgentEntry[]>([])
 const skillOptions = ref<SkillCatalogIndexEntry[]>([])
 const toolOptions = ref<ToolCatalogEntry[]>([])
+/** A-4：(tenant, kind) 工具集成员（kind=all = chat∪task 并集），声明 picker 候选收敛用 */
+const toolSetMembers = ref<Record<string, string[]>>({})
 const kbOptions = ref<KnowledgeBase[]>([])
 const modelSelectOptions = ref<{ label: string; value: string }[]>([])
 const selectedId = ref<string | null>(readId())
@@ -141,11 +143,17 @@ const skillSelectOptions = computed(() =>
   skillOptions.value.map(s => ({ label: `${s.displayName} (${s.id})`, value: s.id })),
 )
 
-const toolSelectOptions = computed(() =>
-  toolOptions.value
+const toolSelectOptions = computed(() => {
+  const all = toolOptions.value
     .filter(t => t.enabled)
-    .map(t => ({ label: `${t.displayName || t.id} (${t.id})`, value: t.id })),
-)
+    .map(t => ({ label: `${t.displayName || t.id} (${t.id})`, value: t.id }))
+  // A-4：声明候选收敛到当前 (tenant, kind) 工具集；集成员未加载时退化为全量
+  const kindKey = editForm.value.kind === 'chat' || editForm.value.kind === 'task' ? editForm.value.kind : 'all'
+  const memberIds = toolSetMembers.value[kindKey]
+  if (!memberIds || memberIds.length === 0) return all
+  const memberSet = new Set(memberIds)
+  return all.filter(o => memberSet.has(o.value))
+})
 
 const kbSelectOptions = computed(() =>
   kbOptions.value.map(k => ({ label: `${k.displayName} (${k.kbId})`, value: k.kbId })),
@@ -366,6 +374,20 @@ function loadEditForm(agent: AgentEntry) {
 }
 
 // ---- 数据刷新 ----
+/** A-4：拉取当前租户三类工具集成员（chat/task/all）；接口失败退化为空（候选回退全量） */
+async function loadToolSetMembers() {
+  const kinds = ['chat', 'task', 'all'] as const
+  const tenantParam = tenantId.value === 'default' ? undefined : tenantId.value
+  const results = await Promise.all(
+    kinds.map(k => fetchToolSetToolIds(k, tenantParam).catch(() => null)),
+  )
+  const merged: Record<string, string[]> = {}
+  kinds.forEach((k, i) => {
+    if (results[i]) merged[k] = results[i]
+  })
+  toolSetMembers.value = merged
+}
+
 async function refreshPage() {
   loading.value = true
   try {
@@ -378,6 +400,9 @@ async function refreshPage() {
     agents.value = list
     skillOptions.value = skills
     toolOptions.value = tools
+    loadToolSetMembers().catch(() => {
+      toolSetMembers.value = {}
+    })
     modelSelectOptions.value = catalog
       ? catalogEnabledModelOptions(catalog).map((o) => ({ label: o.label, value: o.value }))
       : []

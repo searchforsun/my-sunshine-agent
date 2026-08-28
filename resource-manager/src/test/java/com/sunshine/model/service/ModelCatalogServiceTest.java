@@ -5,6 +5,7 @@ import com.sunshine.model.entity.ModelProviderEntity;
 import com.sunshine.model.entity.ModelSceneBindingEntity;
 import com.sunshine.model.repo.ModelDefinitionRepository;
 import com.sunshine.model.repo.ModelProviderRepository;
+import com.sunshine.model.repo.ModelRoutePolicyRepository;
 import com.sunshine.model.repo.ModelSceneBindingRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,12 +27,14 @@ class ModelCatalogServiceTest {
     private ModelDefinitionRepository definitionRepository;
     @Mock
     private ModelSceneBindingRepository sceneRepository;
+    @Mock
+    private ModelRoutePolicyRepository routeRepository;
 
     private ModelCatalogService service;
 
     @BeforeEach
     void setUp() {
-        service = new ModelCatalogService(providerRepository, definitionRepository, sceneRepository);
+        service = new ModelCatalogService(providerRepository, definitionRepository, sceneRepository, routeRepository);
     }
 
     @Test
@@ -79,5 +82,6 @@ class ModelCatalogServiceTest {
         var gw = service.gatewayCatalog("default");
         assertThat(gw.providers()).hasSize(1);
         assertThat(gw.providers().get(0).apiKeyEnc()).isEqualTo("enc-secret");
+        assertThat(gw.routes()).isEmpty();
     }
 }

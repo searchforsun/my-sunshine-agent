@@ -151,7 +151,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, null, null, null, null), "").inputs();
+                List.of("injected-ctx"), null, true, null, null, null, null, null, null, null), "").inputs();
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
@@ -272,6 +272,87 @@ class PromptComposerTest {
 
         assertThat(inputs.stream().map(Msg::getTextContent))
                 .anyMatch(t -> t.contains("catalog-skill-overlay"));
+    }
+
+    @Test
+    void composeReactInputs_mainSkipsUserSkillEnvelope() {
+        // MAIN 的 skill 正文已由 SkillInjectionMiddleware 走 onSystemPrompt（SYSTEM 权威层）注入，
+        // composeReactInputs 不得再以 USER 信封重复注入（重复会稀释指令权重）。
+        when(skillCatalogService.overlayOrEmpty("finance-analysis")).thenReturn("HARD-GATE 正文");
+        replaceCatalogTexts(Map.of(
+                "context.layer-prompt", "",
+                "context.usage-rules", "",
+                "mode-overlay.react", ""));
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", null, List.of(), false, null, "chat", null,
+                List.of("finance-analysis")), "").inputs();
+
+        List<String> texts = inputs.stream().map(Msg::getTextContent).filter(t -> t != null).toList();
+        // MAIN 不注入 USER 信封（改走 SYSTEM 通道）
+        assertThat(texts).noneMatch(t -> t.contains("<skill_information>"));
+        assertThat(texts).noneMatch(t -> t.contains("HARD-GATE 正文"));
+    }
+
+    @Test
+    void composeReactInputs_overlaysEachTriggeredSkill() {
+        // S-T：triggered 集多值化——每个已触发 skill 全文 overlay 都注入，不再只取第一个
+        when(skillCatalogService.overlayOrEmpty("skill-a")).thenReturn("OVERLAY-A");
+        when(skillCatalogService.overlayOrEmpty("skill-b")).thenReturn("OVERLAY-B");
+        replaceCatalogTexts(Map.of(
+                "context.layer-prompt", "",
+                "context.usage-rules", "",
+                "mode-overlay.react", ""));
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", null, List.of(), false, null, "chat", null,
+                List.of("skill-a", "skill-b")), "").inputs();
+
+        List<String> texts = inputs.stream().map(Msg::getTextContent).filter(t -> t != null).toList();
+        // 多 trigger 集正文拼接已移至 SkillInjectionMiddleware（SYSTEM 权威层），composeReactInputs 不重复 USER 注入
+        assertThat(texts).noneMatch(t -> t.contains("OVERLAY-A"));
+        assertThat(texts).noneMatch(t -> t.contains("OVERLAY-B"));
+    }
+
+    @Test
+    void composeReactInputs_injectsSkillDirectory_neverFullOverlayForUntriggered() {
+        // S-D：可发现层只注入名+描述目录，不灌未触发 skill 全文
+        when(skillCatalogService.overlayOrEmpty("skill-a")).thenReturn("OVERLAY-A");
+        when(skillCatalogService.renderDiscoverableForPrompt("chat", List.of("skill-a"), List.of(), 20, "default"))
+                .thenReturn("- **policy-qa** 制度问答 — 制度查询");
+        replaceCatalogTexts(Map.of(
+                "context.layer-prompt", "",
+                "context.usage-rules", "",
+                "mode-overlay.react", "",
+                "context.skill-directory", "## 可用技能目录\n{skills}\n- 未加载前禁止臆造技能正文。"));
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", null, List.of(), false, null, "chat", null,
+                List.of("skill-a")), "").inputs();
+
+        List<String> texts = inputs.stream().map(Msg::getTextContent).filter(t -> t != null).toList();
+        assertThat(texts).anyMatch(t -> t.contains("## 可用技能目录"));
+        assertThat(texts).anyMatch(t -> t.contains("policy-qa"));
+        // 未触发 skill 不得出现全文；触发集正文（OVERLAY-A）改走 SYSTEM 通道，不在 USER 目录层
+        assertThat(texts).noneMatch(t -> t.contains("policy-qa") && t.contains("OVERLAY"));
+        assertThat(texts).noneMatch(t -> t.contains("OVERLAY-A"));
+    }
+
+    @Test
+    void composeReactInputs_skipsSkillDirectoryWhenTemplateEmpty() {
+        when(skillCatalogService.overlayOrEmpty("skill-a")).thenReturn("OVERLAY-A");
+        replaceCatalogTexts(Map.of(
+                "context.layer-prompt", "",
+                "context.usage-rules", "",
+                "mode-overlay.react", "",
+                "context.skill-directory", ""));
+
+        List<Msg> inputs = composer.composeReactInputs(PromptComposeRequest.forReact(
+                AssembledContext.empty(), "问", null, List.of(), false, null, "chat", null,
+                List.of("skill-a")), "").inputs();
+
+        assertThat(inputs.stream().map(Msg::getTextContent).filter(t -> t != null))
+                .noneMatch(t -> t.contains("policy-qa"));
     }
 
     @Test
@@ -413,6 +494,7 @@ class PromptComposerTest {
         texts.put("context.layer-prompt", LAYER_PROMPT);
         texts.put("context.usage-rules", USAGE_RULES);
         texts.put("context.current-user-marker", USER_MARKER);
+        texts.put("context.skill-directory", "");
         texts.put("scope-prompt", "");
         texts.put("hitl.agent-prompt", "");
         texts.put("workspace.checkout-hint", "");
@@ -431,6 +513,7 @@ class PromptComposerTest {
                 textEntry("context.layer-prompt", "context", LAYER_PROMPT),
                 textEntry("context.usage-rules", "context", USAGE_RULES),
                 textEntry("context.current-user-marker", "context", USER_MARKER),
+                textEntry("context.skill-directory", "context", ""),
                 textEntry("scope-prompt", "scope", ""),
                 textEntry("hitl.agent-prompt", "hitl", ""),
                 textEntry("workspace.checkout-hint", "scene-overlay", ""));

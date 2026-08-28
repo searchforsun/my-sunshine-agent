@@ -60,6 +60,22 @@ public class ToolSetResolver {
                 .toList();
     }
 
+    /**
+     * 委派工具召集双轨求交（skill-sticky A-1/A-6）：(tenant, kind) 默认工具集 ∩ 声明/自选工具。
+     * 预定义 agent 自动注入与动态 sub agent 的 {@code tool_ids} 均走此约束；
+     * 越界声明运行时剔除（防御工具集变更，可用性唯一控制点 = 工具集配置）。
+     */
+    public List<String> intersectToolSet(List<String> toolIds, String tenantId, String conversationKind) {
+        if (toolIds == null || toolIds.isEmpty()) {
+            return List.of();
+        }
+        Set<String> toolSet = Set.copyOf(resolveDefaultTools(tenantId, conversationKind));
+        return toolIds.stream()
+                .filter(id -> id != null && !id.isBlank() && toolSet.contains(id.strip()))
+                .map(String::strip)
+                .toList();
+    }
+
     private static String normalizeTenant(String tenantId) {
         return tenantId == null || tenantId.isBlank() ? "default" : tenantId.strip();
     }

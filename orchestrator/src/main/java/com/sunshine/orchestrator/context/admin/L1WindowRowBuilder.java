@@ -10,9 +10,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Admin L1 列表：近→中→远，区内新→旧；中窗 user 原文、assistant 用 mid_answers。
+ * 压缩点模式（{@code foldedMsgIds} 非空时）按压缩点分区，与组装路径一致。
  */
 final class L1WindowRowBuilder {
 
@@ -26,15 +28,33 @@ final class L1WindowRowBuilder {
             String farSummary,
             Instant farAt,
             int nearN,
-            int midN) {
+            int midN,
+            Set<String> foldedMsgIds) {
         List<List<SessionTurn>> rounds = L1Compressor.groupRounds(history);
-        int nearCap = Math.max(1, nearN);
-        int midCap = Math.max(0, midN);
-        int size = rounds.size();
-        int nearStart = Math.max(0, size - nearCap);
-        int midStart = Math.max(0, nearStart - midCap);
-        List<List<SessionTurn>> nearRounds = rounds.subList(nearStart, size);
-        List<List<SessionTurn>> midRounds = rounds.subList(midStart, nearStart);
+        List<List<SessionTurn>> nearRounds;
+        List<List<SessionTurn>> midRounds;
+        if (foldedMsgIds != null && !foldedMsgIds.isEmpty()) {
+            List<List<SessionTurn>> farRounds = new ArrayList<>();
+            midRounds = new ArrayList<>();
+            nearRounds = new ArrayList<>();
+            for (List<SessionTurn> round : rounds) {
+                if (L1Compressor.roundFullyFolded(round, foldedMsgIds)) {
+                    farRounds.add(round);
+                } else if (hasMidSummary(round, midAnswers)) {
+                    midRounds.add(round);
+                } else {
+                    nearRounds.add(round);
+                }
+            }
+        } else {
+            int nearCap = Math.max(1, nearN);
+            int midCap = Math.max(0, midN);
+            int size = rounds.size();
+            int nearStart = Math.max(0, size - nearCap);
+            int midStart = Math.max(0, nearStart - midCap);
+            nearRounds = rounds.subList(nearStart, size);
+            midRounds = rounds.subList(midStart, nearStart);
+        }
 
         List<L1WindowRowView> rows = new ArrayList<>();
         appendBand(rows, "near", nearRounds, timesByMsgId, midAnswers, false);
@@ -49,6 +69,20 @@ final class L1WindowRowBuilder {
                     farAt));
         }
         return List.copyOf(rows);
+    }
+
+    private static boolean hasMidSummary(List<SessionTurn> round, Map<String, String> midAnswers) {
+        if (round == null || midAnswers == null || midAnswers.isEmpty()) {
+            return false;
+        }
+        for (SessionTurn turn : round) {
+            if (turn != null && "assistant".equals(turn.role())
+                    && StringUtils.hasText(turn.messageId())
+                    && midAnswers.containsKey(turn.messageId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void appendBand(

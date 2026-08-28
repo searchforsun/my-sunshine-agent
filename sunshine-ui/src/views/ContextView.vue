@@ -16,7 +16,9 @@ import ContextL1Panel from '../components/context/ContextL1Panel.vue'
 import ContextL2Panel from '../components/context/ContextL2Panel.vue'
 import ContextL3Panel from '../components/context/ContextL3Panel.vue'
 import ContextTaskW0Panel from '../components/context/ContextTaskW0Panel.vue'
-import ContextTaskEmptyPanel from '../components/context/ContextTaskEmptyPanel.vue'
+import ContextTaskT0Panel from '../components/context/ContextTaskT0Panel.vue'
+import ContextTaskH1Panel from '../components/context/ContextTaskH1Panel.vue'
+import ContextTaskL3Panel from '../components/context/ContextTaskL3Panel.vue'
 import { CONTEXT_PAGE_KEY, useContextPage } from '../composables/useContextPage'
 import '../utils/stream-markdown/styles.css'
 
@@ -98,15 +100,15 @@ provide(CONTEXT_PAGE_KEY, contextPage)
           </NTabPane>
 
           <NTabPane name="t0" tab="T0 任务进度">
-            <ContextTaskEmptyPanel text="暂无任务进度" />
+            <ContextTaskT0Panel />
           </NTabPane>
 
           <NTabPane name="h1" tab="H1 计划笔记本">
-            <ContextTaskEmptyPanel text="暂无计划笔记本" />
+            <ContextTaskH1Panel />
           </NTabPane>
 
           <NTabPane name="l3" tab="L3 任务检索">
-            <ContextTaskEmptyPanel text="暂无任务检索" />
+            <ContextTaskL3Panel />
           </NTabPane>
         </NTabs>
       </main>

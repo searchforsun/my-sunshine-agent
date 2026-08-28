@@ -36,4 +36,24 @@ public class BizSceneDefinitionEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
+
+    /** description 的 embedding 向量（JSON float[]，由 orchestrator 场景 embedding 服务回填）。 */
+    @Column(name = "description_vector", columnDefinition = "json")
+    private String descriptionVector;
+
+    /** manual=运营预定义 | auto=大模型自动发现（authority §2.1c）。 */
+    @Column(nullable = false, length = 16)
+    private String source = "manual";
+
+    /** auto 场景的首次触发会话（溯源）。 */
+    @Column(name = "source_conversation_id", length = 64)
+    private String sourceConversationId;
+
+    /** 审核人（auto 场景升 active 时记录）。 */
+    @Column(name = "approved_by", length = 64)
+    private String approvedBy;
+
+    /** 审核时间。 */
+    @Column(name = "approved_at")
+    private Instant approvedAt;
 }

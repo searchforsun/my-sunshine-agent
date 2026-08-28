@@ -117,6 +117,11 @@ public final class StepEventBridge {
         return registry.hasSession(bridgeId);
     }
 
+    /** 4.7.7 goal-alignment：per-run 状态（bridgeId 无则懒建，clear 随 bridge 回收；续跑重建即重置） */
+    public static AgentRunState runState(String bridgeId) {
+        return registry.runState(bridgeId);
+    }
+
     public static void bindTokenWrapper(
             String bridgeId,
             Function<StreamToken, List<StreamToken>> wrapper,

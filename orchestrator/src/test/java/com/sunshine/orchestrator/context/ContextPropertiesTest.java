@@ -18,15 +18,12 @@ class ContextPropertiesTest {
     }
 
     @Test
-    void l2_newKindDefaults() {
+    void l2_kindDefaults() {
         ContextProperties.L2 l2 = new ContextProperties().getL2();
         assertThat(l2.getMinConfidence()).isEqualTo(0.75);
-        assertThat(l2.getReasoningMinConfidence()).isEqualTo(0.7);
-        assertThat(l2.getInterimConclusionMinConfidence()).isEqualTo(0.6);
-        assertThat(l2.getReasoningTtlDays()).isEqualTo(7);
-        assertThat(l2.getOptionTtlDays()).isEqualTo(7);
-        assertThat(l2.getInterimConclusionTtlDays()).isEqualTo(7);
-        assertThat(l2.getTopicTtlDays()).isEqualTo(1);
+        assertThat(l2.getProcessNoteMinConfidence()).isEqualTo(0.65);
+        assertThat(l2.getProcessNoteTtlDays()).isEqualTo(7);
+        assertThat(l2.getTodoTtlDays()).isEqualTo(7);
     }
 
     @Test

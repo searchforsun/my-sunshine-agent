@@ -47,12 +47,12 @@ public class L2ConflictMerger {
                 : Decision.REJECT;
     }
 
-    static String normalizeKind(String kind) {
+    public static String normalizeKind(String kind) {
         return kind == null ? "" : kind.strip().toLowerCase(Locale.ROOT);
     }
 
     /** todo 生命周期 status：仅 active/done/void；缺失或非法值默认 active。 */
-    static String normalizeStatus(String status) {
+    public static String normalizeStatus(String status) {
         if (!StringUtils.hasText(status)) {
             return "active";
         }

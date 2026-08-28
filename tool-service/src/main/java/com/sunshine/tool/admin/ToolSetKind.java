@@ -1,6 +1,6 @@
 package com.sunshine.tool.admin;
 
-/** 默认工具集种类（按会话 kind：chat | task） */
+/** 默认工具集种类（按会话 kind：chat | task | all（all=声明候选并集，不进装配面）） */
 public enum ToolSetKind {
     CHAT_DEFAULT(
             "chat",
@@ -15,7 +15,15 @@ public enum ToolSetKind {
             "tenant_task_default",
             "global-task-default",
             "租户 Task 工具集",
-            "tenant-%s-task-default");
+            "tenant-%s-task-default"),
+    /** kind=all：chat ∪ task 并集（仅声明候选/审计，无独立集实体） */
+    ALL_DEFAULT(
+            "all",
+            null,
+            null,
+            null,
+            "租户 All 工具集（chat ∪ task 并集）",
+            null);
 
     private final String path;
     private final String globalType;
@@ -68,6 +76,7 @@ public enum ToolSetKind {
         return switch (kind) {
             case "chat" -> CHAT_DEFAULT;
             case "task" -> TASK_DEFAULT;
+            case "all" -> ALL_DEFAULT;
             default -> throw new IllegalArgumentException("unknown tool set kind: " + kind);
         };
     }

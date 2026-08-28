@@ -107,6 +107,12 @@ const router = createRouter({
           meta: { title: '系统状态' },
         },
         {
+          path: 'ops',
+          name: 'ops',
+          component: () => import('../views/OpsView.vue'),
+          meta: { title: '运营用量' },
+        },
+        {
           path: 'biz-data',
           name: 'biz-data',
           component: () => import('../views/BizDataView.vue'),

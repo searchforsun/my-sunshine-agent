@@ -34,7 +34,7 @@ class L1WindowRowBuilderTest {
         Map<String, String> mid = Map.of("a1", "摘要A1");
 
         List<L1WindowRowView> rows = L1WindowRowBuilder.build(
-                history, times, mid, "远窗总摘要", tFar, 1, 1);
+                history, times, mid, "远窗总摘要", tFar, 1, 1, java.util.Set.of());
 
         assertThat(rows).hasSize(3);
         assertThat(rows.get(0).band()).isEqualTo("near");
@@ -67,7 +67,7 @@ class L1WindowRowBuilderTest {
         Map<String, String> mid = Map.of("a0", "S0");
 
         List<L1WindowRowView> rows = L1WindowRowBuilder.build(
-                history, Map.of(), mid, "", null, 8, 8);
+                history, Map.of(), mid, "", null, 8, 8, java.util.Set.of());
 
         assertThat(rows).hasSize(9);
         assertThat(rows.get(0).band()).isEqualTo("near");

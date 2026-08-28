@@ -12,11 +12,14 @@ import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.processing.ToolArgsHolder;
+import com.sunshine.orchestrator.processing.ToolArgsRenderer;
 import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
 import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxCancelExpand;
 import com.sunshine.orchestrator.sandbox.SandboxEditDiffHolder;
+import com.sunshine.orchestrator.sandbox.SandboxExitCodeHolder;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
 import com.sunshine.orchestrator.sandbox.SandboxTimelineLabelService;
 import com.sunshine.orchestrator.sandbox.SandboxWriteEditPlaceholderSupport;
@@ -39,6 +42,8 @@ import io.agentscope.core.message.ToolResultMessage;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.ToolSchema;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -47,6 +52,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -85,6 +91,12 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     /** RuntimeContext key：实际生效的 maxIters（由 runtime 注入，含 request 覆盖，middleware 读取） */
     public static final String CTX_REACT_MAX_ITERS = "sunshine.react.maxIters";
 
+    /** RuntimeContext key：本 run 的 AgentRole（4.7.7 goal-check / failure-budget 的 MAIN-only 闸门） */
+    public static final String CTX_AGENT_ROLE = "sunshine.agentRole";
+
+    /** RuntimeContext key：本 run 的原始用户问题（4.7.7 goal-check {userQuery} 占位符） */
+    public static final String CTX_USER_QUERY = "sunshine.userQuery";
+
     /** RuntimeContext key：per-call 上下文分组 token 快照（静态组由 composer 记录，动态组 onModelCall 补齐） */
     public static final String CTX_CONTEXT_GROUPS = "sunshine.contextGroups";
 
@@ -96,6 +108,8 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     private final CancellableToolRunRegistry cancellableToolRunRegistry;
     private final PromptCatalogHolder catalogHolder;
     private final ContextGroupEstimator contextGroupEstimator;
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public ProcessingStepMiddleware(
             ToolCatalogService toolCatalogService,
@@ -472,8 +486,10 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             }
             return;
         }
-        String baseStepId = toolCatalogService.timelineStepId(toolName);
+            String baseStepId = toolCatalogService.timelineStepId(toolName);
         String phase = toolCatalogService.timelinePhase(toolName);
+        // 确定性 schema 行数据面（§5.5.8）：开步时暂存白名单标量入参，收口时经 ToolArgsHolder 消费
+        ToolArgsHolder.put(toolUseId, ToolArgsRenderer.render(toolInput));
         final String[] stepHolder = new String[1];
         StepEventBridge.emit(bridgeId, session -> {
             session.noteToolCallPending();
@@ -623,20 +639,48 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
             expandDetail = ToolExpandDetailSupport.resolveExpandDetail(summaryLine, rawText);
             meta = null;
         }
-        final StepMetadata finalMeta = meta;
+        // 确定性 schema 行数据面（§5.5.8）：叠加白名单入参 + exec 退出码（无则透传原 meta）
+        final StepMetadata finalMeta = StepMetadata.withToolSchema(
+                meta, ToolArgsHolder.take(toolUseId), SandboxExitCodeHolder.take(toolUseId));
         final String completedDisplayName = AwaitToolRunTool.NAME.equals(toolName)
                 ? AwaitToolRunLabels.label()
                 : toolCatalogService.displayName(toolName);
+        // 4.7.7 失败预算触发：该 tool 步 after 换「连续失败，需调整方案」文案（spec §5.4，忽略 timelineSummary）
+        String effectiveSummary = summaryLine;
+        AgentRunState budgetState = StepEventBridge.runState(bridgeId);
+        if (budgetState != null && budgetState.isBudgetExceeded(toolUseId)) {
+            effectiveSummary = toolFailureBudgetAfter();
+        }
+        final String finalSummary = effectiveSummary;
         StepEventBridge.emit(bridgeId, session -> {
             if (finalMeta != null) {
-                session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail, finalMeta);
+                session.completeToolStepForToolUse(toolUseId, finalSummary, expandDetail, finalMeta);
             } else {
-                session.completeToolStepForToolUse(toolUseId, summaryLine, expandDetail);
+                session.completeToolStepForToolUse(toolUseId, finalSummary, expandDetail);
             }
             session.recordToolCompleted(completedDisplayName);
             session.noteToolCallDone();
         });
         StepEventBridge.unbindToolUseBridge(toolUseId);
+    }
+
+    /** 失败预算触发的 tool 步 after 文案：Catalog timeline.steps.tool-failure-budget → 缺省「连续失败，需调整方案」 */
+    private String toolFailureBudgetAfter() {
+        Optional<String> json = catalogHolder.snapshot().json("timeline.steps.tool-failure-budget");
+        if (json.isPresent()) {
+            try {
+                JsonNode root = MAPPER.readTree(json.get());
+                if (root != null && root.hasNonNull("after")) {
+                    String after = root.get("after").asText();
+                    if (StringUtils.hasText(after)) {
+                        return after.strip();
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[ProcessingStepMiddleware] timeline.steps.tool-failure-budget JSON 解析失败: {}", e.getMessage());
+            }
+        }
+        return "连续失败，需调整方案";
     }
 
     /**

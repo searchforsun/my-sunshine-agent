@@ -57,7 +57,11 @@ public record StepMetadata(
         /** Planner-Executor worker：异步 runId（前端单独取消 worker 卡） */
         String workerRunId,
         /** harness H1 taskQueue 投影（执行单元 versionedId，如 t1-1/t1-2；与 tasks 同形，前端优先展示并加 T1-1 记号） */
-        List<TaskBoardItemView> taskQueue
+        List<TaskBoardItemView> taskQueue,
+        /** 工具白名单标量入参（「金额=3000 · 单据=报销」；禁整段 payload）— 确定性 schema 行（五层 §5.5.8） */
+        String toolArgs,
+        /** exec 退出码（非 EXEC 工具为 null）— 确定性 schema 行 */
+        Integer toolExitCode
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -148,6 +152,11 @@ public record StepMetadata(
         return StepMetadataAssembler.withWorkerRunId(base, runId);
     }
 
+    /** 工具步确定性 schema 数据：白名单标量入参 + exec 退出码（五层 §5.5.8 / task-scene §6.5） */
+    public static StepMetadata withToolSchema(StepMetadata base, String toolArgs, Integer exitCode) {
+        return StepMetadataAssembler.withToolSchema(base, toolArgs, exitCode);
+    }
+
     @JsonIgnore
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
@@ -178,6 +187,8 @@ public record StepMetadata(
                 && editDiff == null
                 && decision == null
                 && (routingTraces == null || routingTraces.isEmpty())
-                && !StringUtils.hasText(workerRunId);
+                && !StringUtils.hasText(workerRunId)
+                && !StringUtils.hasText(toolArgs)
+                && toolExitCode == null;
     }
 }

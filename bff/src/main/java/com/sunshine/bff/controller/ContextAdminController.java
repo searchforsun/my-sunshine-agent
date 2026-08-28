@@ -51,6 +51,12 @@ public class ContextAdminController {
         return orchestratorClient.getContextL1(convId);
     }
 
+    /** O4 账本重建校验（只读透传）。 */
+    @GetMapping("/api/admin/context/l1/rebuild-check")
+    public Mono<Map<String, Object>> rebuildCheckL1(@RequestParam String convId) {
+        return orchestratorClient.rebuildCheckContextL1(convId);
+    }
+
     @GetMapping("/api/admin/context/l3/status")
     public Mono<Map<String, Object>> l3Status(
             @RequestParam String userId,
@@ -71,5 +77,17 @@ public class ContextAdminController {
     @PostMapping("/api/admin/context/l3/reingest")
     public Mono<Map<String, Object>> reingest(@RequestParam String convId) {
         return orchestratorClient.reingestContextL3(convId);
+    }
+
+    /** T0 任务进度：按会话取最近一次任务板快照（透传 orchestrator task_board）。 */
+    @GetMapping("/api/admin/context/task/{convId}/taskboard")
+    public Mono<Map<String, Object>> taskboard(@PathVariable String convId) {
+        return orchestratorClient.getTaskBoardSnapshot(convId);
+    }
+
+    /** H1 计划笔记本：读 Redis 中的执行态 PlanNotebook（透传 orchestrator）。 */
+    @GetMapping("/api/admin/context/task/{convId}/notebook")
+    public Mono<Map<String, Object>> notebook(@PathVariable String convId) {
+        return orchestratorClient.getH1Notebook(convId);
     }
 }

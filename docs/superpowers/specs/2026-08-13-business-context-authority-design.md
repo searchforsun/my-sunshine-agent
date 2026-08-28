@@ -4,7 +4,7 @@
 > **v2（2026-08-15）**：对齐 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) 与 [task-scene v14](./2026-08-01-task-scene-context-design.md)——会话级执行态 / KV Memory `todo` 与 `business_task` **边界隔离**；装配时序 P3′ 补位；`user_context_state` 表演进随 KV Memory 统一（§2.2 / §2.3 / §3 / §4.3 / §5.1 / §10 / §11）  
 > **v3（2026-08-18）**：**biz_scene 解析补 embedding 回退路径**（§2.1b/§2.2/§4.4/§5.5）——当资源召回未命中时，用 query embedding 检索 `biz_scene_definition` 码表（零 LLM 延迟），使场景偏好/任务板在无 skill/agent 召回时仍可达；写路径同步回退。  
 > **v4（2026-08-18）**：**场景来源双轨**（§2.1c/§4.4/§5.5/§9）——`biz_scene_definition` 增 `source` 列（`manual` 预定义 / `auto` 大模型自动发现）；`auto` 场景初始 `pending_review`，**不可**用于 Policy/任务板装载，仅嵌入检索过渡使用；运营审核后升 `active` 方可正式启用。前端 Lab 拆双 Tab：预定义 / 自动发现。**防污染机制**：`auto` 场景 TTL 自动清理 + 同 tenant 上限 + 相似度去重。  
-> **状态**：⬜ 设计评审中（用户已拍板：任务板 SSOT = 平台自建表 + `external_ticket_ref`；embedding 场景回退 + 场景双轨方案已并入）  
+> **状态**：**M1–M3 ✅ 已实现**（2026-08-26，读侧装载：Policy 缓存装载 + business_task 召回阶梯 + 偏好白名单；`ReactExecutor` 资源召回后注入；Live `verify_business_context_live.py` A–D）· **M4 ✅ 已实现**（2026-08-26，冲突仲裁：`BizContextConflictArbiter` 有 scene ∧ 有 Policy/任务板权威参照 ∧ L3 非空时 LLM 判定并过滤矛盾断言 + 审计，ReactExecutor 注入点接入；Catalog `context.biz-scene.conflict-check`；Nacos `agent.business-context.conflict-check.enabled` 默认关；单测 9 例 + 全量 1355/1355 全绿；Live 多轮积累 L3 → 过滤 1 段冲突摘要 l3=111->0 + 审计送达）· **M5 ✅ 已实现**（2026-08-26，embedding 回退 + 场景双轨：`biz_scene_definition` 加向量/来源/审核列；`SceneEmbeddingService`（DashScope 向量化 + 余弦匹配 + 索引缓存 + 懒回填）；读路径 `ReactExecutor.resolveBizScene` 未命中 → embedding 回退；写路径 `SceneWriteResolver` 路由种子 → embedding → LLM 自动创建三级链；`SceneAutoCreateService` 防污染（≥2 轮/max-pending/rate-limit/相似度抑制）；`pending_review` 仅嵌入检索不装载 Policy/任务板；前端双 Tab + 审核；Live `verify_scene_dual_track_live.py` A–E 全绿）· **M0 ✅ 已实现**（2026-08-26，装配时序拆分 §2.2 方案 A：`AssembleRequest.deferL3` fast×chat 路由前仅底座（`assemble l3=0`），L3 延后由 `ReactExecutor` 资源召回后 `ContextAssembler.attachL3` 装配（分区锚点 `AssembledContext.L3Anchor` 排除 Near/Mid 已覆盖消息 + 剩余预算裁剪，先于 M4 仲裁）；pro/workflow 保持现状；单测 7 例 + 全量 1386/1386 全绿；Live fast×chat 验证路由前零 L3 召回 + attachL3 调用 + Near 覆盖排除）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
 > **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
 
@@ -196,6 +196,8 @@ auto 场景创建 → pending_review（仅嵌入检索可用）
 | **预定义** | `source=manual` 的场景 | 新建/编辑/禁用/挂 Policy |
 | **自动发现** | `source=auto` 的场景（含 pending_review / active / rejected） | 审核（通过/驳回）/ 手动删除 / 查看来源会话 |
 
+> **落地注记（2026-08-26）**：§2.1c 状态机、解析算法 d 步骤（写路径创建）、防污染 ①–⑤ 均由 `BizSceneAdminService`（状态流转 + 审核落库）、`SceneAutoCreateService`（≥2 轮 / max-pending / rate-limit / 相似度 ≥0.85 / 码正则）、前端双 Tab 实现；pending_review 仅嵌入检索的约束由 `SceneEmbeddingService.searchVector`（active + pending_review）与 `BusinessContextAssembler`（仅 active 装载）双端保证。
+
 ### 2.2 装配时序与并行（目标态）
 
 > **现状缺口**：`ChatStreamContextFactory` 在路由**之前**同步跑完 `ContextAssembler`（L1+L2+L3+guide），预召回几乎全串行。本层要求 **先 Skill/Agent，再结构化业务记忆**，必须改时序；并行组用于降延迟，不改变依赖边。
@@ -247,6 +249,8 @@ auto 场景创建 → pending_review（仅嵌入检索可用）
 | B | L3 与意图链部分重叠 | 省墙钟时间；无 scene 时白打或需取消 |
 
 **与现状对照**：把「assemble 整包」拆成「底座 P1」+「路由后 P3+L3」；禁止继续在未知 skill/agent 时预装 Policy/任务板。
+
+> **M0 落地注记（2026-08-26，方案 A）**：`AssembleRequest` 加 `deferL3`（fast×chat 生效），`ContextAssembler.assemble` 路由前仅装配底座（L2+L1+guide，日志 `l3=0`）并挂载 `AssembledContext.L3Anchor`（Near/Mid 排除 ID + Far ID + farSummary 标记）；`ReactExecutor` 在 `resolveBizScene`（P3 业务块注入点）之后调用 `ContextAssembler.attachL3` 按锚点召回 L3——与业务块同一注入点、先于 M4 冲突仲裁；L3 超剩余预算丢弃（保持「L3 最先让位」预算语义）；pro/workflow 保持 `deferL3=false` 现状（无 P3 可并行，装配点不动）。Live 验收：fast×chat 路由前 `assemble ... l3=0`、路由后 `attachL3` 执行（rag-service 收到 L3 检索请求）、Near 已覆盖消息按锚点排除不重复注入。
 
 ### 2.3 与压缩点模式 / chat·task 启用面（正交）
 
@@ -486,6 +490,15 @@ agent:
 
 **不做**：装载时对全部闲聊叙事做 LLM 全量对撞（成本与误杀高）。冲突检测针对**结构化字段 / 可解析断言**。
 
+**M4 落地注记（2026-08-26）**：
+
+- 实现 = `BizContextConflictArbiter`（`orchestrator/biz`）：闸门（`conflict-check.enabled` ∧ scene 非空 ∧ L3 块非空）→ 权威参照 = `BusinessContextAssembler.renderPolicyBlock/renderTaskBlock` 输出（与注入块同源）→ **无 Policy 且无活跃任务板即放行**（仲裁无参照无意义）→ LLM 判定（Catalog `context.biz-scene.conflict-check`，模板含 `=== USER ===` 分隔 system/user 两段，占位符 `{scene}/{policy}/{taskBoard}/{l3}`）。
+- 过滤 = 对 L3 按空行分段，LLM 输出 `{"filter":[{"snippet":"原文片段","reason":"矛盾说明"}]}`，命中 snippet 的段落移除。
+- **失败兜底**：LLM 异常/输出不可解析 → `llm-failure-policy=drop`（默认，整段 L3 丢弃——有权威块时低优先级安全）或 `keep`（原样）；均记审计。
+- **审计**：`AuditPublisher` 事件 `eventType=BIZ_CONTEXT_CONFLICT`，payload 含 scene / hasPolicy / hasTaskBoard / filteredSnippets / 源·过滤长度；`filtered`（命中过滤）/ `llm-error` / `parse-error` / `catalog-missing` 状态。
+- 接入点：`ReactExecutor.executeWithInjected`——`biz_scene` 解析提为局部变量后，`ctx.memory().l3MaterialBlock()` 非空时仲裁，结果经 `AssembledContext.withL3MaterialBlock` 替换后进 `AgentRunRequest.main`；L3 为空直接不调（无 L3 不仲裁）。
+- Nacos `agent.business-context.conflict-check.*`（默认关，含 `max-l3-chars` 截断保护）。单测 9 例 + 全量 1355/1355 全绿；Live 验收见 §8 注记。
+
 ### 5.3 组件与读路径
 
 ```
@@ -583,6 +596,8 @@ ContextWritePath.runAsync 执行 KV Memory 偏好抽取前：
 | 场景创建 | **不创建** | 可创建 auto 场景（§5.5b） |
 | 优先级 | 资源召回 > embedding | 同上 |
 
+> **落地注记（2026-08-26）**：三级链实现 = `SceneWriteResolver.resolve`（① 路由种子 → ② `SceneEmbeddingService.search` → ③ `SceneAutoCreateService.tryCreate`），由 `ContextWritePath.runAsync` 在 L2 偏好抽取前调用，结果经 `L2ExtractService.extract(..., bizSceneScope)` 注入。LLM 判定输入含既有 active 场景表（Catalog `context.biz-scene.auto-create`，`{scenes}` 占位），不确定性输出 `skip` 不创建。
+
 ---
 
 ## 6. 执行流程（端到端）
@@ -631,13 +646,33 @@ Policy 与任务数据在 DB；白名单在 Nacos（改完 `sync_nacos.py` + 重
 
 | 阶段 | 内容 | 验收要点 |
 |------|------|----------|
-| **M0** | 拆分装配时序（§2.2）：路由前仅底座；路由后 P3′/P3+L3；落地 P1/P3′/P3/P4 并行 | 未知 skill 时零 Policy/任务板；L3 不早于资源召回（方案 A） |
-| **M1** | Skill/Agent 增 `biz_scene` + Policy DDL + 有 scene 才注入 | 无资源 scene → 零 Policy/任务板；有则精确命中；不弹选场景 |
-| **M2** | 偏好白名单装载 | 仅随 scene 过滤；无 scene 不灌场景偏好 |
-| **M3** | `business_task` + 同 scene 最近 1 条详情 | 无用户选任务；无 scene 不灌任务板 |
-| **M4** | 有 scene 时 L3 vs Policy/任务冲突过滤 + 审计 | 无 scene 时仅 L3 语义路径 |
-| **M5（v3/v4）** | embedding 场景回退 + 场景双轨：`biz_scene_definition` 向量化 + 读/写路径回退逻辑 + LLM 自动创建场景 + 防污染机制 + 前端双 Tab | 资源未命中时 query 可召回场景；写路径偏好带对 `biz_scene_scope`；auto 场景 pending_review 不装载 Policy/任务板；前端可审核 |
+| **M0** ✅ | 拆分装配时序（§2.2 方案 A）：路由前仅底座（`deferL3` + `L3Anchor`）；路由后 `attachL3` 与 P3 同一注入点 | 未知 skill 时零 Policy/任务板；L3 不早于资源召回 |
+| **M1** ✅ | Skill/Agent 增 `biz_scene` + Policy 装载 + 有 scene 才注入 | 无资源 scene → 零 Policy/任务板；有则精确命中；不弹选场景 |
+| **M2** ✅ | 偏好白名单装载 | 仅随 scene 过滤；无 scene 不灌场景偏好 |
+| **M3** ✅ | `business_task` + 同 scene 最近 1 条详情 | 无用户选任务；无 scene 不灌任务板 |
+| **M4** ✅ | 有 scene 时 L3 vs Policy/任务冲突过滤 + 审计 | 无 scene 时仅 L3 语义路径 |
+| **M5（v3/v4）** ✅ | embedding 场景回退 + 场景双轨：`biz_scene_definition` 向量化 + 读/写路径回退逻辑 + LLM 自动创建场景 + 防污染机制 + 前端双 Tab | 资源未命中时 query 可召回场景；写路径偏好带对 `biz_scene_scope`；auto 场景 pending_review 不装载 Policy/任务板；前端可审核 |
 | **并行** | task-scene 读写闸门、L2 语义 merge、Budget 退役并入 | 见五层 §13.3 / task-scene P1–P2；**不阻塞**本层 M0/M1 |
+
+**M5 落地注记（2026-08-26）**：
+
+- **数据模型**：`biz_scene_definition` 加 `description_vector`（JSON）/`source`（manual\|auto）/`source_conversation_id`/`approved_by`/`approved_at` + `idx_biz_scene_source_status`/`idx_biz_scene_status_created` 索引；`status` 扩展 `pending_review`/`rejected`/`auto_cleaned`。线上 DDL 见 `scripts/migrate_biz_scene_dual_track.sql`。
+- **资源管理器**：`BizSceneAdminService` 扩 source·状态流转（auto 创建即 `pending_review` + 溯源会话；审核升 active 记审核人/时间）、`PUT /{code}/vector` 向量回填、`GET /embedding-index` 检索索引（active + pending_review，排除 auto_cleaned）；BFF 透传。
+- **SceneEmbeddingService**（orchestrator/biz）：DashScope `text-embedding-v4` 向量化（与 rag-service 同厂商）、启动预热 + 5min 定时刷新索引、active 缺向量懒回填、cosine 匹配（min-score 0.7 / top-k 1）。**事件循环线程安全**：embed 的 HTTP 调用统一调度 `boundedElastic` 线程执行 + `Future.get` 等待——读路径 `ReactExecutor.resolveBizScene` 在 reactor-http 事件循环上同步执行，直接 `WebClient.block()` 会触发 Reactor NonBlocking 检查抛异常（写路径普通线程不受影响），回归单测 `embed_inReactorEventLoopThread_returnsVector` 固化。
+- **读路径**：`ReactExecutor.resolveBizScene` 资源召回未命中 → `sceneEmbeddingService.search(query)` → 命中取 scene；`pending_review` 仅嵌入检索可用，Policy/任务板/偏好装载仍要求 `active`。
+- **写路径**：`SceneWriteResolver` 三级链 = ① 路由种子（skill/agent 绑定）→ ② embedding 回退（user+assistant 摘要）→ ③ `SceneAutoCreateService` LLM 自动创建（Catalog `context.biz-scene.auto-create` + 既有 active 场景表注入；防污染：≥2 轮 / max-pending 20 / rate-limit 3 每 10 分钟 / 相似度 ≥0.85 抑制重复创建）；结果注入 `L2ExtractService.extract` 的 `biz_scene_scope`。
+- **前端**：BizScenesView 双 Tab「预定义 / 自动发现」，auto 待审核卡片「通过并启用 / 拒绝」，`reviewBizScene` 记 operator。
+- Nacos `agent.business-context.scene-embedding.*`/`scene-auto.*`（默认关）；单测 10 例（含事件循环线程回归）+ 全量 1379/1379 全绿；Live `verify_scene_dual_track_live.py` A（端点）/ B（懒回填 + 无召回 null）/ C（auto 创建 + 落库）/ B′（读/写路径 embedding 命中 pending_review）/ D（审核落库）/ E（清理还原）全绿。
+
+**M4 落地注记（2026-08-26）**：Live 验收 = 开关开 + 种 Policy（重启预热缓存）+ 活跃任务板 → 同一会话 3 轮普通对话积累 L3（`semantic-batch-turns: 3`）→ 第 4 轮 `/expense-assist` 触发：日志 `[BizContext] loaded scene=expense-assist policy=true task=true` + `[BizConflict] 过滤 1 段冲突摘要 l3=111->0`（LLM 判定与任务板/Policy 直接矛盾的 L3 断言并过滤）+ `[Audit] 已发送` 审计送达；开关还原默认关。验收要点「无 scene 时仅 L3 语义路径」= 仲裁闸门要求 scene 非空 + 权威参照存在 + L3 非空三者同时满足，缺一即原样放行（无 LLM 调用）。
+
+**M1–M3 落地注记（2026-08-26）**：
+
+- 读侧装载 = `BusinessContextAssembler`（`orchestrator/biz`）：闸门（开关 ∧ kind=chat ∧ scene 非空）→ 三块按 policy > task > prefs 序渲染，经 `ReactExecutor` 在**资源召回后**注入 `AgentRunRequest.injectedBlocks`（落点 = L1 上下文层之后、当前 user 消息之前——§5.1 优先级语义）。
+- **Policy**：resource-manager `/api/biz-scenes/policies/active` 全租户 active 快照 → `BizSceneCatalogClient` 启动预热 + 5min 刷新（请求路径零阻塞）→ 消费侧解析「租户精确 > `*` 平台默认 ∧ 生效窗 ∧ 最高 version」。
+- **business_task**：orchestrator 自有表（`sunshine_chat`）；召回阶梯 = 同场景活跃（时间窗）→ 会话绑定锚定 → 最近 1 条详情 + ≤top-k 极简目录；`done`/`archived` 不进 Prompt。
+- **偏好**：`user_context_state` 扩 `biz_scene_scope`/`confirm_status`；装载 = preference 类 ∧ confirmed ∧ 未过期 ∧ key ∈ 白名单（`*` → 全局白名单；`{scene}` → 场景白名单）；写路径 `biz_scene_scope` 回退属 §5.5（M5 范畴）。
+- Nacos `agent.business-context.*`（默认关）；Live `verify_business_context_live.py` A（开关关）/ B（无场景）/ C（三块装载硬证据）/ D（task 隔离）。
 
 > 与 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) M0–M3 并行落地；装配时序统一见 §2.2（P3′ 为其块，不阻塞本层 M0/M1）。
 

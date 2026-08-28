@@ -80,7 +80,11 @@ class RoutingGoldenSetTest {
                         new WorkflowBindingParser(workflowCatalog), skillCatalogService,
                         agentCatalogService, workflowCatalog),
                 skillBindingParser,
-                agentBindingParser);
+                agentBindingParser,
+                new com.sunshine.orchestrator.routing.RoutingStickyService(),
+                new com.sunshine.orchestrator.routing.SkillAdoptionService(
+                        new com.sunshine.orchestrator.config.AgentExecutionProperties(),
+                        skillCatalogService, agentCatalogService));
 
         when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
         when(skillBindingParser.stripSlashMention(anyString())).thenAnswer(inv -> {
@@ -91,7 +95,7 @@ class RoutingGoldenSetTest {
             }
             return msg;
         });
-        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> inv.getArgument(0));
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
@@ -212,7 +216,7 @@ class RoutingGoldenSetTest {
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm matched skill");
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(llmPlan));
-        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> inv.getArgument(0));
 
         ExecutionPlan plan = router.route(query).block();

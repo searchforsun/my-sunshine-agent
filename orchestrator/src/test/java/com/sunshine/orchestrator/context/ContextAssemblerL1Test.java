@@ -18,6 +18,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,6 +38,8 @@ class ContextAssemblerL1Test {
     private L3RecallService l3RecallService;
     @Mock
     private ModelWindowCache modelWindowCache;
+    @Mock
+    private com.sunshine.orchestrator.context.l1.L1Compressor l1Compressor;
     private final TokenEstimator tokenEstimator = new TokenEstimator();
     private ContextProperties properties;
     private ContextAssembler assembler;
@@ -57,7 +60,7 @@ class ContextAssemblerL1Test {
                         new ModelCatalogScene("chat", "deepseek-v4-pro", null, Map.of(), true),
                         new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         assembler = new ContextAssembler(properties, l1Store, l2StateStore, l3RecallService,
-                tokenEstimator, modelWindowCache, null, null, resolver);
+                tokenEstimator, modelWindowCache, null, null, resolver, l1Compressor);
         lenient().when(modelWindowCache.windowFor(any())).thenReturn(256000);
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
         lenient().when(l3RecallService.recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
@@ -97,7 +100,7 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a-near", "assistant", "近窗答"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "current"));
+                "u1", "default", "c1", history, "current", null, "chat", null, "workflow"));
 
         assertThat(ctx.nearTurns()).hasSize(2);
         assertThat(ctx.nearTurns().get(0).content()).isEqualTo("近窗问");
@@ -126,7 +129,7 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a2", "assistant", "A2"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q"));
+                "u1", "default", "c1", history, "q", null, "chat", null, "workflow"));
 
         assertThat(ctx.farSummaryBlock()).isEqualTo("早期对话：用户问了 A，助手答了 B。");
         assertThat(ctx.midTurns()).hasSize(2);
@@ -146,10 +149,36 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a1", "assistant", "A1"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q"));
+                "u1", "default", "c1", history, "q", null, "chat", null, "workflow"));
 
         assertThat(ctx.midTurns()).hasSize(2);
         assertThat(ctx.midTurns().get(1).content()).isEqualTo("A0 full");
         assertThat(ctx.farSummaryBlock()).isBlank();
+    }
+
+    @Test
+    void assemble_chatFast_compressionPoint_partitionsByMidAnswers() {
+        // chat 二期：压缩点分区——有摘要轮进 Mid（user 原文 + assistant 摘要）、其余进 Near（不裁剪）
+        when(l1Store.find("c1")).thenReturn(Optional.of(new ConversationContextL1Entity()));
+        when(l1Store.parseMidAnswers(any())).thenReturn(Map.of("msg-a", "摘要A"));
+        when(l1Store.farSummaryOf(any())).thenReturn("");
+        when(l1Store.parseFarFoldedMsgIds(any())).thenReturn(Set.of());
+
+        List<SessionTurn> history = List.of(
+                SessionTurn.of("u-old", "user", "old Q"),
+                SessionTurn.of("a-old", "assistant", "old A"),
+                SessionTurn.of("u-mid", "user", "用户问题Q"),
+                SessionTurn.of("msg-a", "assistant", "长原文……"),
+                SessionTurn.of("u-near", "user", "近窗问"),
+                SessionTurn.of("a-near", "assistant", "近窗答"));
+
+        AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
+                "u1", "default", "c1", history, "current", null, "chat", null, "fast"));
+
+        assertThat(ctx.midTurns()).hasSize(2);
+        assertThat(ctx.midTurns().get(0).content()).isEqualTo("用户问题Q");
+        assertThat(ctx.midTurns().get(1).content()).isEqualTo("摘要A");
+        // Near = 压缩点后全部非折叠/非 mid 原文，不按轮数窗口裁剪
+        assertThat(ctx.nearTurns()).hasSize(4);
     }
 }

@@ -63,6 +63,21 @@ public class SkillAdminService {
         return catalogRegistry.listEnabledIndex();
     }
 
+    /** 租户过滤的目录摘要：default 全局共享；租户私有仅当前租户可见；tenantId 为空时全量（向后兼容） */
+    public List<SkillCatalogIndexEntry> listCatalogIndex(String tenantId) {
+        return catalogRegistry.listEnabledIndex().stream()
+                .filter(entry -> visibleTo(entry, tenantId))
+                .toList();
+    }
+
+    private static boolean visibleTo(SkillCatalogIndexEntry entry, String tenantId) {
+        String entryTenant = entry.tenantId();
+        if (entryTenant == null || entryTenant.isBlank() || "default".equals(entryTenant)) {
+            return true;
+        }
+        return StringUtils.hasText(tenantId) && entryTenant.equals(tenantId);
+    }
+
     public Optional<SkillCatalogEntry> findCatalogEntry(String skillId) {
         return catalogRegistry.find(skillId);
     }
@@ -84,6 +99,7 @@ public class SkillAdminService {
         def.setActiveVersion(1);
         def.setKind(normalizeKind(request.kind()));
         def.setBizScene(normalizeBizScene(request.bizScene()));
+        def.setTenantId(normalizeTenantId(request.tenantId()));
         definitionRepository.save(def);
 
         SkillVersionEntity version = new SkillVersionEntity();
@@ -428,7 +444,8 @@ public class SkillAdminService {
                         ver.getSandbox() != null ? ver.getSandbox() : "none",
                         SandboxPolicyCodec.parseOrNull(ver.getSandboxPolicyJson()),
                         def.getKind() != null ? def.getKind() : "all",
-                        def.getBizScene()));
+                        def.getBizScene(),
+                        def.getTenantId()));
     }
 
     /** 写入 sandbox + policy；policy 可为 null（docker 时运行时用默认）；非法取值 → BizException */
@@ -482,6 +499,14 @@ public class SkillAdminService {
             case "chat", "task", "all" -> v;
             default -> "all";
         };
+    }
+
+    /** 租户默认值收敛：空回落 default（存量兼容） */
+    static String normalizeTenantId(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return "default";
+        }
+        return tenantId.strip();
     }
 
     /** 业务场景码：空→null；非空必须在业务场景 Lab 且 active，否则拒绝保存（K2） */

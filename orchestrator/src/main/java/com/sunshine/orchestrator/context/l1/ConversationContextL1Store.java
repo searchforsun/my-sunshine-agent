@@ -61,13 +61,29 @@ public class ConversationContextL1Store {
         return entity.getFarSummary();
     }
 
-    /** 已折叠进 far_summary 的消息 id（有序去重）。 */
+    /** 已退役（压缩点之前）的消息 id（有序去重）。 */
     public Set<String> parseFarFoldedMsgIds(ConversationContextL1Entity entity) {
-        if (entity == null || !StringUtils.hasText(entity.getFarFoldedMsgIds())) {
+        return parseIdList(entity == null ? null : entity.getFarFoldedMsgIds(),
+                "far_folded_msg_ids", entity);
+    }
+
+    /**
+     * 已实际折叠进 far_summary 的消息 id（压缩点边界的子集）。
+     * 存量行兼容：列为空时回退 {@code fallback}（旧语义下折叠 = 已退役，两集合一致）。
+     */
+    public Set<String> parseFarSummarizedMsgIds(ConversationContextL1Entity entity, Set<String> fallback) {
+        if (entity == null || !StringUtils.hasText(entity.getFarSummarizedMsgIds())) {
+            return fallback != null ? fallback : Set.of();
+        }
+        return parseIdList(entity.getFarSummarizedMsgIds(), "far_summarized_msg_ids", entity);
+    }
+
+    private Set<String> parseIdList(String json, String column, ConversationContextL1Entity entity) {
+        if (!StringUtils.hasText(json)) {
             return Set.of();
         }
         try {
-            List<String> list = OM.readValue(entity.getFarFoldedMsgIds(), LIST_TYPE);
+            List<String> list = OM.readValue(json, LIST_TYPE);
             if (list == null || list.isEmpty()) {
                 return Set.of();
             }
@@ -79,7 +95,8 @@ public class ConversationContextL1Store {
             }
             return Collections.unmodifiableSet(out);
         } catch (Exception e) {
-            log.warn("[ContextL1] far_folded_msg_ids 解析失败 conv={}: {}", entity.getConvId(), e.getMessage());
+            log.warn("[ContextL1] {} 解析失败 conv={}: {}", column,
+                    entity != null ? entity.getConvId() : null, e.getMessage());
             return Set.of();
         }
     }
@@ -91,6 +108,7 @@ public class ConversationContextL1Store {
             Map<String, String> midAnswers,
             String farSummary,
             Collection<String> farFoldedMsgIds,
+            Collection<String> farSummarizedMsgIds,
             int nearN,
             int midN) {
         ConversationContextL1Entity entity = repository.findById(convId).orElseGet(() -> {
@@ -102,7 +120,8 @@ public class ConversationContextL1Store {
         entity.setTenantId(tenantId != null ? tenantId : "default");
         entity.setMidAnswers(writeMidAnswers(midAnswers));
         entity.setFarSummary(farSummary != null ? farSummary : "");
-        entity.setFarFoldedMsgIds(writeFarFoldedMsgIds(farFoldedMsgIds));
+        entity.setFarFoldedMsgIds(writeIdList(farFoldedMsgIds));
+        entity.setFarSummarizedMsgIds(writeIdList(farSummarizedMsgIds));
         entity.setNearN(nearN > 0 ? nearN : contextProperties.getL1().getNearTurns());
         entity.setMidN(midN > 0 ? midN : contextProperties.getL1().getMidTurns());
         entity.setUpdatedAt(Instant.now());
@@ -118,11 +137,11 @@ public class ConversationContextL1Store {
         }
     }
 
-    private static String writeFarFoldedMsgIds(Collection<String> farFoldedMsgIds) {
+    private static String writeIdList(Collection<String> ids) {
         List<String> list = new ArrayList<>();
-        if (farFoldedMsgIds != null) {
+        if (ids != null) {
             LinkedHashSet<String> seen = new LinkedHashSet<>();
-            for (String id : farFoldedMsgIds) {
+            for (String id : ids) {
                 if (StringUtils.hasText(id) && seen.add(id)) {
                     list.add(id);
                 }
@@ -131,7 +150,7 @@ public class ConversationContextL1Store {
         try {
             return OM.writeValueAsString(list);
         } catch (Exception e) {
-            throw new IllegalStateException("far_folded_msg_ids serialize failed", e);
+            throw new IllegalStateException("far msg id list serialize failed", e);
         }
     }
 }

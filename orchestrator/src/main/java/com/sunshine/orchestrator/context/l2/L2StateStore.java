@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.context.l2;
 
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.ContextWritePolicy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class L2StateStore {
     private final UserContextStateRepository repository;
     private final L2ConflictMerger merger;
     private final ContextProperties contextProperties;
+    private final L2SemanticMergeService semanticMergeService;
 
     public List<UserContextStateEntity> listInjectable(String userId, String tenantId, Instant now) {
         if (!StringUtils.hasText(userId)) {
@@ -124,10 +126,21 @@ public class L2StateStore {
             L2ConflictMerger.Candidate candidate,
             String sourceMsgId,
             Instant now) {
+        upsert(userId, tenantId, candidate, sourceMsgId, now, null);
+    }
+
+    /** user 维度带业务场景作用域落库：scene 非空时偏好打 {@code biz_scene_scope}（authority §5.5 ④）。 */
+    public void upsert(
+            String userId,
+            String tenantId,
+            L2ConflictMerger.Candidate candidate,
+            String sourceMsgId,
+            Instant now,
+            String bizSceneScope) {
         if (!StringUtils.hasText(userId) || candidate == null) {
             return;
         }
-        upsertInternal(null, userId, tenantId, candidate, sourceMsgId, now);
+        upsertInternal(null, userId, tenantId, candidate, sourceMsgId, now, bizSceneScope);
     }
 
     /** workspace scope 落库：workspace_id 维度，冲突/刷新/落库逻辑与 user 路径一致。 */
@@ -140,7 +153,7 @@ public class L2StateStore {
         if (!StringUtils.hasText(workspaceId) || candidate == null) {
             return;
         }
-        upsertInternal(workspaceId, null, tenantId, candidate, sourceMsgId, now);
+        upsertInternal(workspaceId, null, tenantId, candidate, sourceMsgId, now, null);
     }
 
     /**
@@ -209,7 +222,7 @@ public class L2StateStore {
             if (c == null) {
                 continue;
             }
-            upsertInternal(workspaceId, userId, tid, c, sourceMsgId, clock);
+            upsertInternal(workspaceId, userId, tid, c, sourceMsgId, clock, null);
         }
     }
 
@@ -219,7 +232,8 @@ public class L2StateStore {
             String tenantId,
             L2ConflictMerger.Candidate candidate,
             String sourceMsgId,
-            Instant now) {
+            Instant now,
+            String bizSceneScope) {
         if (!StringUtils.hasText(candidate.kind()) || !StringUtils.hasText(candidate.key())) {
             return;
         }
@@ -249,22 +263,154 @@ public class L2StateStore {
                         workspaceId, tid, kind, key, "active")
                 : repository.findByUserIdAndTenantIdAndKindAndStateKeyAndStatus(userId, tid, kind, key, "active");
         UserContextStateEntity existing = existingOpt.orElse(null);
-        if (existing != null && sameValue(existing.getStateValue(), value)) {
-            refreshSameValue(existing, candidate, sourceMsgId, clock);
-            return;
-        }
-        L2ConflictMerger.Decision decision = merger.decide(existing, candidate, contextProperties.getL2());
-        if (decision == L2ConflictMerger.Decision.REJECT) {
-            log.debug("[ContextL2] reject overwrite scope={} kind={} key={} conf={}",
-                    workspaceId != null ? "workspace:" + workspaceId : "user:" + userId,
-                    kind, key, candidate.confidence());
-            return;
-        }
         if (existing != null) {
+            // ① 字面快路径：同 key 命中即返回，不触发语义判定（§6.4）
+            if (sameValue(existing.getStateValue(), value)) {
+                refreshSameValue(existing, candidate, sourceMsgId, clock);
+                return;
+            }
+            if (merger.decide(existing, candidate, contextProperties.getL2()) == L2ConflictMerger.Decision.REJECT) {
+                log.debug("[ContextL2] reject overwrite scope={} kind={} key={} conf={}",
+                        scopeLog(workspaceId, userId), kind, key, candidate.confidence());
+                return;
+            }
             existing.setStatus("superseded");
             existing.setUpdatedAt(clock);
             repository.save(existing);
+            insertNewRow(workspaceId, userId, tid, kind, key, value, candidate.background(),
+                    candidate.confidence(), "active", sourceMsgId, clock, bizSceneScope);
+            return;
         }
+        // ②③ 语义 merge（§6.4）：字面未命中 + 同 kind 有其他 active → LLM 判定；其余正常新增
+        L2SemanticMergeService.Verdict verdict = semanticVerdict(workspaceId, userId, tid, kind, candidate);
+        switch (verdict.action()) {
+            case MERGE -> {
+                applySemanticMerge(verdict, workspaceId, userId, tid, kind, candidate, sourceMsgId, clock);
+                return;
+            }
+            case UPDATE -> {
+                if (markActiveTarget(verdict.targetId(), "superseded", clock)) {
+                    insertNewRow(workspaceId, userId, tid, kind, key, value, candidate.background(),
+                            candidate.confidence(), "active", sourceMsgId, clock, bizSceneScope);
+                    return;
+                }
+                // target 已非 active（竞态）→ 旧条不再构成当前陈述，正常新增
+            }
+            case CONFLICT -> {
+                if (markActiveTarget(verdict.targetId(), "conflict", clock)) {
+                    insertNewRow(workspaceId, userId, tid, kind, key, value, candidate.background(),
+                            candidate.confidence(), "conflict", sourceMsgId, clock, bizSceneScope);
+                    return;
+                }
+                // target 已非 active（竞态）→ 矛盾不成立，正常新增
+            }
+            default -> {
+                // NOOP：与既有语义无关，正常新增
+            }
+        }
+        insertNewRow(workspaceId, userId, tid, kind, key, value, candidate.background(),
+                candidate.confidence(), "active", sourceMsgId, clock, bizSceneScope);
+    }
+
+    /**
+     * ② 语义候选检索 + ③ 判定门控（§6.4）：开关关 / task.* 结构键（M2 导出按字面全量对比管理）不走语义路径；
+     * 全量 active 候选（跨 kind，含同义重复如 fact/travel.origin 与 profile/location.current_city）；
+     * 无 active 候选时零 LLM 成本。任何失败由 {@link L2SemanticMergeService} 回退 NOOP。
+     */
+    private L2SemanticMergeService.Verdict semanticVerdict(
+            String workspaceId, String userId, String tid, String kind, L2ConflictMerger.Candidate candidate) {
+        if (!contextProperties.getL2().isSemanticMergeEnabled()) {
+            return L2SemanticMergeService.Verdict.noop("disabled");
+        }
+        String key = candidate.key().strip();
+        if (key.startsWith("task.")) {
+            return L2SemanticMergeService.Verdict.noop("task.* 结构键");
+        }
+        // 跨 kind 全量 active 候选：同义事实可能落不同 kind（如 fact/travel.origin 与 profile/location.current_city）
+        List<UserContextStateEntity> allActive = workspaceId != null
+                ? repository.findByWorkspaceIdAndTenantIdAndStatus(workspaceId, tid, "active")
+                : repository.findByUserIdAndTenantIdAndStatus(userId, tid, "active");
+        List<UserContextStateEntity> candidates = new ArrayList<>();
+        if (allActive != null) {
+            for (UserContextStateEntity e : allActive) {
+                if (e == null || !StringUtils.hasText(e.getStateKey()) || e.getStateKey().startsWith("task.")) {
+                    continue;
+                }
+                candidates.add(e);
+            }
+        }
+        if (candidates.isEmpty()) {
+            return L2SemanticMergeService.Verdict.noop("无 active 候选");
+        }
+        return semanticMergeService.judge(candidate, candidates);
+    }
+
+    /** MERGE：归一到 target（刷新 key/value/background + 置信取高），不产生 superseded。 */
+    private void applySemanticMerge(
+            L2SemanticMergeService.Verdict verdict,
+            String workspaceId,
+            String userId,
+            String tid,
+            String kind,
+            L2ConflictMerger.Candidate candidate,
+            String sourceMsgId,
+            Instant clock) {
+        Optional<UserContextStateEntity> targetOpt = repository.findById(verdict.targetId());
+        if (targetOpt.isEmpty() || !"active".equals(targetOpt.get().getStatus())) {
+            insertNewRow(workspaceId, userId, tid, kind, candidate.key().strip(), candidate.value().strip(),
+                    candidate.background(), candidate.confidence(), "active", sourceMsgId, clock, null);
+            return;
+        }
+        UserContextStateEntity target = targetOpt.get();
+        if (StringUtils.hasText(verdict.mergedKey())) {
+            target.setStateKey(verdict.mergedKey());
+        }
+        target.setStateValue(StringUtils.hasText(verdict.mergedValue())
+                ? verdict.mergedValue()
+                : candidate.value().strip());
+        if (StringUtils.hasText(verdict.mergedBackground())) {
+            target.setBackground(verdict.mergedBackground());
+        } else if (StringUtils.hasText(candidate.background())) {
+            target.setBackground(candidate.background());
+        }
+        if (candidate.confidence() > target.getConfidence()) {
+            target.setConfidence(candidate.confidence());
+        }
+        target.setUpdatedAt(clock);
+        if (StringUtils.hasText(sourceMsgId)) {
+            target.setSourceMsgId(sourceMsgId);
+        }
+        repository.save(target);
+        log.debug("[ContextL2] semantic MERGE target={} key={} reason={}",
+                target.getId(), target.getStateKey(), verdict.reason());
+    }
+
+    /** 将仍 active 的 target 置为指定状态；返回是否命中（竞态下 target 可能已被置位）。 */
+    private boolean markActiveTarget(String targetId, String status, Instant clock) {
+        Optional<UserContextStateEntity> targetOpt = repository.findById(targetId);
+        if (targetOpt.isEmpty() || !"active".equals(targetOpt.get().getStatus())) {
+            return false;
+        }
+        UserContextStateEntity target = targetOpt.get();
+        target.setStatus(status);
+        target.setUpdatedAt(clock);
+        repository.save(target);
+        return true;
+    }
+
+    private void insertNewRow(
+            String workspaceId,
+            String userId,
+            String tid,
+            String kind,
+            String key,
+            String value,
+            String background,
+            double confidence,
+            String status,
+            String sourceMsgId,
+            Instant clock,
+            String bizSceneScope) {
         UserContextStateEntity neu = new UserContextStateEntity();
         neu.setId(newId());
         neu.setScope(workspaceId != null ? "workspace" : "user");
@@ -274,14 +420,19 @@ public class L2StateStore {
         neu.setKind(kind);
         neu.setStateKey(key);
         neu.setStateValue(value);
-        neu.setBackground(candidate.background());
-        neu.setConfidence(candidate.confidence());
-        neu.setStatus("active");
+        neu.setBackground(background);
+        neu.setConfidence(confidence);
+        neu.setStatus(status);
+        neu.setBizSceneScope(StringUtils.hasText(bizSceneScope) ? bizSceneScope : "*");
         neu.setExpiresAt(expiresAtFor(kind, clock));
         neu.setSourceMsgId(sourceMsgId);
         neu.setCreatedAt(clock);
         neu.setUpdatedAt(clock);
         repository.save(neu);
+    }
+
+    private static String scopeLog(String workspaceId, String userId) {
+        return workspaceId != null ? "workspace:" + workspaceId : "user:" + userId;
     }
 
     /** 同 key 是否存在「void 时间晚于给定时钟」的 void 行（含 workspace/user 双维度）。 */
@@ -313,24 +464,41 @@ public class L2StateStore {
         });
     }
 
-    /** 同 key+value：只刷新时间/背景（及溯源/更高置信），不产生 superseded。 */
+    /**
+     * 同 key+value：零增益（无更高置信 / 无新背景 / 无新溯源）→ **跳过写库**（幂等，§5.5.6 ⑦）。
+     * 有任一增益才刷新 {@code updatedAt} 与对应字段，不产生 superseded。
+     */
     private void refreshSameValue(
             UserContextStateEntity existing,
             L2ConflictMerger.Candidate candidate,
             String sourceMsgId,
             Instant clock) {
-        existing.setUpdatedAt(clock);
+        boolean changed = false;
         if (candidate.confidence() > existing.getConfidence()) {
             existing.setConfidence(candidate.confidence());
+            changed = true;
         }
-        if (StringUtils.hasText(candidate.background())) {
+        if (StringUtils.hasText(candidate.background())
+                && !stripOrEmpty(candidate.background()).equals(stripOrEmpty(existing.getBackground()))) {
             existing.setBackground(candidate.background());
+            changed = true;
         }
-        if (StringUtils.hasText(sourceMsgId)) {
+        if (StringUtils.hasText(sourceMsgId) && !sourceMsgId.equals(existing.getSourceMsgId())) {
             existing.setSourceMsgId(sourceMsgId);
+            changed = true;
         }
+        if (!changed) {
+            log.debug("[ContextL2] skip idempotent same value id={} key={}",
+                    existing.getId(), existing.getStateKey());
+            return;
+        }
+        existing.setUpdatedAt(clock);
         repository.save(existing);
         log.debug("[ContextL2] refresh same value id={} key={}", existing.getId(), existing.getStateKey());
+    }
+
+    private static String stripOrEmpty(String s) {
+        return StringUtils.hasText(s) ? s.strip() : "";
     }
 
     static boolean sameValue(String a, String b) {
@@ -341,32 +509,11 @@ public class L2StateStore {
     }
 
     Instant expiresAtFor(String kind, Instant now) {
-        ContextProperties.L2 l2 = contextProperties.getL2();
-        int days = ttlDays(kind, l2);
+        int days = ContextWritePolicy.l2TtlDays(kind, contextProperties.getL2());
         if (days <= 0) {
             return null;
         }
         return now.plus(days, ChronoUnit.DAYS);
-    }
-
-    static int ttlDays(String kind, ContextProperties.L2 l2) {
-        if (l2 == null) {
-            l2 = new ContextProperties.L2();
-        }
-        return switch (L2ConflictMerger.normalizeKind(kind)) {
-            case "preference", "profile" -> l2.getPreferenceTtlDays();
-            case "agreement" -> l2.getAgreementTtlDays();
-            case "goal" -> l2.getGoalTtlDays();
-            case "decision" -> l2.getDecisionTtlDays();
-            case "fact" -> l2.getFactTtlDays();
-            case "constraint" -> l2.getConstraintTtlDays();
-            case "reasoning" -> l2.getReasoningTtlDays();
-            case "option" -> l2.getOptionTtlDays();
-            case "interim_conclusion" -> l2.getInterimConclusionTtlDays();
-            case "topic" -> l2.getTopicTtlDays();
-            case "todo" -> l2.getTodoTtlDays();
-            default -> l2.getFactTtlDays();
-        };
     }
 
     private static int kindRank(String kind) {

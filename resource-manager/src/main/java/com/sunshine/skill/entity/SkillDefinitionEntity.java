@@ -35,6 +35,9 @@ public class SkillDefinitionEntity {
     @Column(name = "biz_scene", length = 64)
     private String bizScene;
 
+    @Column(name = "tenant_id", length = 32, nullable = false)
+    private String tenantId = "default";
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 

@@ -314,7 +314,7 @@ class ProcessingTimelineSessionTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class);
         org.mockito.Mockito.when(catalog.findIndex("skill-demo")).thenReturn(java.util.Optional.of(
                 new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
-                        "skill-demo", "测试技能", "desc", 1, true, "none", "all", null)));
+                        "skill-demo", "测试技能", "desc", 1, true, "none", "all", null, "default")));
         SkillLoadLabelService labelService = new SkillLoadLabelService(
                 catalog, TimelinePromptCatalog.withDefaults());
         labelService.init();

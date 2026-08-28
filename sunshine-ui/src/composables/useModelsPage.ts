@@ -8,10 +8,13 @@ import {
   createModelProvider,
   deleteModelDefinition,
   deleteModelProvider,
+  deleteModelRoute,
   emptyCapabilities,
   emptyRequestExtrasDraft,
   listModelDefinitions,
   listModelProviders,
+  listModelRouteKeys,
+  listModelRoutes,
   listModelSceneKeys,
   listModelScenes,
   parseRequestExtrasDraft,
@@ -20,10 +23,13 @@ import {
   toggleModelDefinition,
   updateModelDefinition,
   updateModelProvider,
+  upsertModelRoute,
   upsertModelScenes,
   type ModelCapabilities,
   type ModelDefinition,
   type ModelProvider,
+  type ModelRoute,
+  type ModelRouteKeyMeta,
   type ModelScene,
   type ModelSceneKeyMeta,
 } from '../api/models'
@@ -55,6 +61,8 @@ export function useModelsPage() {
   const definitions = ref<ModelDefinition[]>([])
   const scenes = ref<ModelScene[]>([])
   const sceneKeys = ref<ModelSceneKeyMeta[]>([])
+  const routes = ref<ModelRoute[]>([])
+  const routeKeys = ref<ModelRouteKeyMeta[]>([])
 
   const showProviderModal = ref(false)
   const providerEditId = ref<number | null>(null)
@@ -122,8 +130,17 @@ export function useModelsPage() {
     remark: '',
   })
 
+  const showRouteModal = ref(false)
+  const routeEditKey = ref<string | null>(null)
+  const routeDraft = ref({
+    callSite: '',
+    models: [] as string[],
+    enabled: true,
+    remark: '',
+  })
+
   const showDeleteConfirm = ref(false)
-  const deleteTarget = ref<{ kind: 'provider' | 'definition'; id: number; label: string } | null>(null)
+  const deleteTarget = ref<{ kind: 'provider' | 'definition' | 'route'; id: number; label: string } | null>(null)
 
   const providerOptions = computed(() =>
     providers.value.map((p) => ({ label: `${p.displayName} (${p.providerKey})`, value: p.providerKey })),
@@ -161,6 +178,25 @@ export function useModelsPage() {
 
   const canCreateScene = computed(() => availableSceneKeyOptions.value.length > 0)
 
+  /** 新建时仅可选尚未配置策略的枚举调用点 */
+  const availableRouteKeyOptions = computed(() => {
+    const bound = new Set(routes.value.map((r) => r.callSite))
+    return routeKeys.value
+      .filter((k) => !bound.has(k.key))
+      .map((k) => ({
+        label: k.key,
+        value: k.key,
+        description: k.description,
+      }))
+  })
+
+  const canCreateRoute = computed(() => availableRouteKeyOptions.value.length > 0)
+
+  const routeDraftDescription = computed(() => {
+    const key = routeDraft.value.callSite
+    return routeKeys.value.find((k) => k.key === key)?.description ?? ''
+  })
+
   const sceneDraftDescription = computed(() => {
     const key = sceneDraft.value.sceneKey
     const meta = sceneKeys.value.find((k) => k.sceneKey === key)
@@ -172,16 +208,20 @@ export function useModelsPage() {
   async function refreshPage() {
     loading.value = true
     try {
-      const [p, d, s, keys] = await Promise.all([
+      const [p, d, s, keys, r, rk] = await Promise.all([
         listModelProviders(),
         listModelDefinitions(),
         listModelScenes(),
         listModelSceneKeys(),
+        listModelRoutes(),
+        listModelRouteKeys(),
       ])
       providers.value = p
       definitions.value = d
       scenes.value = s
       sceneKeys.value = keys
+      routes.value = r
+      routeKeys.value = rk
     } catch (e) {
       message.error(friendlyErrorMessage(e, '加载失败'))
     } finally {
@@ -429,6 +469,84 @@ export function useModelsPage() {
     showSceneModal.value = true
   }
 
+  function openCreateRoute() {
+    if (!canCreateRoute.value) {
+      message.info('全部枚举调用点均已配置')
+      return
+    }
+    const first = availableRouteKeyOptions.value[0]
+    routeEditKey.value = null
+    routeDraft.value = {
+      callSite: first?.value ?? '',
+      models: [],
+      enabled: true,
+      remark: '',
+    }
+    showRouteModal.value = true
+  }
+
+  function openEditRoute(row: ModelRoute) {
+    routeEditKey.value = row.callSite
+    routeDraft.value = {
+      callSite: row.callSite,
+      models: [...row.models],
+      enabled: row.enabled,
+      remark: row.remark ?? '',
+    }
+    showRouteModal.value = true
+  }
+
+  async function submitRoute() {
+    const d = routeDraft.value
+    if (!d.callSite.trim()) {
+      message.warning('请选择调用点')
+      return
+    }
+    if (!d.models.length) {
+      message.warning('请选择候选模型池')
+      return
+    }
+    const known = routeKeys.value.some((k) => k.key === d.callSite.trim())
+    if (!known) {
+      message.warning('调用点必须为系统枚举值')
+      return
+    }
+    saving.value = true
+    try {
+      await upsertModelRoute({
+        callSite: d.callSite.trim(),
+        models: d.models,
+        enabled: d.enabled,
+        remark: d.remark.trim() || null,
+      })
+      message.success('已保存')
+      showRouteModal.value = false
+      await refreshPage()
+    } catch (e) {
+      message.error(friendlyErrorMessage(e, '保存失败'))
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function handleToggleRoute(row: ModelRoute) {
+    try {
+      await upsertModelRoute({
+        callSite: row.callSite,
+        models: row.models,
+        enabled: !row.enabled,
+      })
+      await refreshPage()
+    } catch (e) {
+      message.error(friendlyErrorMessage(e, '切换失败'))
+    }
+  }
+
+  function askDeleteRoute(row: ModelRoute) {
+    deleteTarget.value = { kind: 'route', id: row.id, label: row.callSite }
+    showDeleteConfirm.value = true
+  }
+
   async function submitScene() {
     const d = sceneDraft.value
     if (!d.sceneKey.trim() || !d.primaryModel.trim()) {
@@ -484,8 +602,10 @@ export function useModelsPage() {
     try {
       if (deleteTarget.value.kind === 'provider') {
         await deleteModelProvider(deleteTarget.value.id)
-      } else {
+      } else if (deleteTarget.value.kind === 'definition') {
         await deleteModelDefinition(deleteTarget.value.id)
+      } else {
+        await deleteModelRoute(deleteTarget.value.id)
       }
       message.success('已删除')
       showDeleteConfirm.value = false
@@ -625,6 +745,48 @@ export function useModelsPage() {
     },
   ])
 
+  const routeColumns = computed<DataTableColumns<ModelRoute>>(() => [
+    {
+      title: '调用点',
+      key: 'callSite',
+      width: 130,
+      ellipsis: { tooltip: true },
+    },
+    {
+      title: '调用点描述',
+      key: 'description',
+      ellipsis: { tooltip: true },
+      render: (row) => row.description || '—',
+    },
+    {
+      title: '候选模型池（按序取首个启用）',
+      key: 'models',
+      minWidth: 220,
+      ellipsis: { tooltip: true },
+      render: (row) => (row.models.length ? row.models.join(' → ') : '—'),
+    },
+    { title: '策略', key: 'strategy', width: 110 },
+    {
+      title: '启用',
+      key: 'enabled',
+      width: 72,
+      render: (row) => h(NSwitch, {
+        size: 'small',
+        value: row.enabled,
+        onUpdateValue: () => { void handleToggleRoute(row) },
+      }),
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 130,
+      render: (row) => h('div', { class: 'row-actions' }, [
+        h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEditRoute(row) }, () => '编辑'),
+        h(NButton, { size: 'tiny', quaternary: true, type: 'error', onClick: () => askDeleteRoute(row) }, () => '删除'),
+      ]),
+    },
+  ])
+
   watch(activeTab, (tab) => {
     routeState.syncQuery({ tab })
   })
@@ -645,14 +807,20 @@ export function useModelsPage() {
     definitions,
     scenes,
     sceneKeys,
+    routes,
+    routeKeys,
     providerOptions,
     modelSelectOptions,
     availableSceneKeyOptions,
     canCreateScene,
     sceneDraftDescription,
+    availableRouteKeyOptions,
+    canCreateRoute,
+    routeDraftDescription,
     providerColumns,
     definitionColumns,
     sceneColumns,
+    routeColumns,
     showProviderModal,
     providerEditId,
     providerDraft,
@@ -667,15 +835,20 @@ export function useModelsPage() {
     showSceneModal,
     sceneEditKey,
     sceneDraft,
+    showRouteModal,
+    routeEditKey,
+    routeDraft,
     showDeleteConfirm,
     deleteTarget,
     refreshPage,
     openCreateProvider,
     openCreateDefinition,
     openCreateScene,
+    openCreateRoute,
     submitProvider,
     submitDefinition,
     submitScene,
+    submitRoute,
     confirmDelete,
   }
 }

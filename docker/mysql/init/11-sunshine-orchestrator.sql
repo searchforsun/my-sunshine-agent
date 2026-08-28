@@ -33,6 +33,8 @@ CREATE TABLE chat_message (
     intent           VARCHAR(32)  NULL,
     workflow_id      VARCHAR(64)  NULL,
     execution_plan_id VARCHAR(36) NULL,
+    routing_skill_ids MEDIUMTEXT  NULL COMMENT '本轮已触发 skill 集（逗号分隔；skill-sticky S-0）',
+    routing_agent_ids MEDIUMTEXT  NULL COMMENT '本轮可调度 agent 集（逗号分隔；skill-sticky S-0）',
     resume_count     INT          NOT NULL DEFAULT 0,
     react_pause_checkpoint MEDIUMTEXT NULL COMMENT 'ReAct 暂停续跑 JSON',
     created_at       DATETIME(3)  NOT NULL,
@@ -68,7 +70,8 @@ CREATE TABLE conversation_context_l1 (
     tenant_id            VARCHAR(32)  NOT NULL DEFAULT 'default',
     mid_answers          MEDIUMTEXT   NULL COMMENT 'JSON map msgId -> answer summary',
     far_summary          MEDIUMTEXT   NULL,
-    far_folded_msg_ids   MEDIUMTEXT   NULL COMMENT 'JSON array of msgIds already folded into far_summary',
+    far_folded_msg_ids   MEDIUMTEXT   NULL COMMENT 'JSON array of msgIds 已退役（压缩点之前；Near 起点=该边界之后）',
+    far_summarized_msg_ids MEDIUMTEXT NULL COMMENT 'JSON array of msgIds 已实际折叠进 far_summary（far_folded 子集；NULL=存量行，视为与 far_folded 一致）',
     near_n               INT          NOT NULL DEFAULT 8,
     mid_n                INT          NOT NULL DEFAULT 8,
     updated_at           TIMESTAMP(3) NOT NULL,
@@ -86,6 +89,8 @@ CREATE TABLE user_context_state (
     state_key       VARCHAR(128) NOT NULL,
     state_value     TEXT         NOT NULL,
     background      VARCHAR(256) NULL COMMENT '成立场景背景（v20）',
+    biz_scene_scope VARCHAR(64)  NULL DEFAULT '*' COMMENT '场景偏好作用域（业务权威层 §4.3）：*=全局 | 具体 biz_scene',
+    confirm_status  VARCHAR(16)  NULL DEFAULT 'confirmed' COMMENT '偏好确认态（业务权威层 §4.3）：confirmed 默认可装载 | inferred 默认不装载',
     confidence      DOUBLE       NOT NULL DEFAULT 0,
     status          VARCHAR(16)  NOT NULL DEFAULT 'active',
     expires_at      TIMESTAMP(3) NULL,
@@ -97,6 +102,30 @@ CREATE TABLE user_context_state (
     INDEX idx_ctx_user_status (user_id, tenant_id, status),
     INDEX idx_ctx_ws_kind_key_status (workspace_id, tenant_id, kind, state_key, status),
     INDEX idx_ctx_expires (expires_at)
+);
+
+-- 业务任务板权威态（业务权威层 §4.1）：跨会话流程状态；与 agent 执行态边界隔离
+CREATE TABLE business_task (
+    task_id                      VARCHAR(32)  NOT NULL PRIMARY KEY,
+    tenant_id                    VARCHAR(32)  NOT NULL DEFAULT 'default',
+    user_id                      VARCHAR(64)  NOT NULL,
+    biz_scene                    VARCHAR(64)  NOT NULL,
+    status                       VARCHAR(24)  NOT NULL DEFAULT 'pending'
+        COMMENT 'pending|running|awaiting_confirm|done|archived|failed',
+    title                        VARCHAR(128) NOT NULL,
+    steps_json                   TEXT         NULL COMMENT '当前步骤骨架（结构化，非散文全文）',
+    pending_confirmations_json   TEXT         NULL COMMENT '待确认项',
+    retry_count                  INT          NOT NULL DEFAULT 0,
+    deadline                     TIMESTAMP(3) NULL,
+    risk_level                   VARCHAR(16)  NULL DEFAULT 'low' COMMENT 'low|medium|high',
+    external_ticket_ref          VARCHAR(128) NULL COMMENT '外系统工单/审批单号指针（不含原文）',
+    evidence_refs_json           TEXT         NULL COMMENT '证据指针列表（OSS key / messageId / ticket）',
+    conversation_id              VARCHAR(64)  NULL COMMENT '最近关联会话',
+    created_at                   TIMESTAMP(3) NOT NULL,
+    updated_at                   TIMESTAMP(3) NOT NULL,
+    INDEX idx_biz_task_user_status (tenant_id, user_id, status, updated_at),
+    INDEX idx_biz_task_scene (tenant_id, user_id, biz_scene, status, updated_at),
+    INDEX idx_biz_task_ticket (tenant_id, external_ticket_ref)
 );
 
 -- 执行计划快照（静态 Workflow 落库 + 暂停续跑检查点；旧动态 Plan-Workflow 已下线）
@@ -162,4 +191,59 @@ CREATE TABLE workspace_project_guide (
     updated_by   VARCHAR(64)  NULL,
     created_at   DATETIME(3)  NOT NULL,
     updated_at   DATETIME(3)  NOT NULL
+);
+
+-- LLM 调用用量记录（phase5 5.2 阶段一：token 全量落库闭环）
+-- 消费端 orchestrator（MQ topic=llm-usage）；call_site/run_id/round_id 为 5.3 链路透传预留
+CREATE TABLE llm_usage_record (
+    id                BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    tenant_id         VARCHAR(64)  NOT NULL DEFAULT 'default',
+    user_id           VARCHAR(64)  NULL COMMENT '链路透传后填充（阶段一预留）',
+    model             VARCHAR(128) NOT NULL,
+    call_site         VARCHAR(32)  NULL COMMENT 'chat|plan|worker|tool-call|rewrite|summarize|subagent（5.3）',
+    run_id            VARCHAR(64)  NULL,
+    round_id          VARCHAR(64)  NULL,
+    stream            TINYINT(1)   NOT NULL DEFAULT 0,
+    prompt_tokens     INT          NOT NULL DEFAULT 0,
+    completion_tokens INT          NOT NULL DEFAULT 0,
+    total_tokens      INT          NOT NULL DEFAULT 0,
+    estimated         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '流式缺失 usage 时按 messages 估算',
+    request_at        DATETIME(3)  NOT NULL,
+    created_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    INDEX idx_usage_request_at (request_at),
+    INDEX idx_usage_model (model),
+    INDEX idx_usage_tenant (tenant_id, request_at)
+);
+
+-- LLM 用量日聚合（phase5 5.2.3）
+-- 聚合任务 UsageDailyAggregationJob 每小时级 upsert（按 stat_date/tenant/model/call_site 重建），
+-- est_cost 按 Nacos llm-usage.price 模型单价估算（元）
+CREATE TABLE llm_usage_daily (
+    id                BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    stat_date         DATE          NOT NULL,
+    tenant_id         VARCHAR(64)   NOT NULL DEFAULT 'default',
+    model             VARCHAR(128)  NOT NULL,
+    call_site         VARCHAR(32)   NULL COMMENT '5.3 链路透传后按调用点聚合（阶段一为 NULL）',
+    calls             INT           NOT NULL DEFAULT 0,
+    prompt_tokens     BIGINT        NOT NULL DEFAULT 0,
+    completion_tokens BIGINT        NOT NULL DEFAULT 0,
+    total_tokens      BIGINT        NOT NULL DEFAULT 0,
+    est_cost          DECIMAL(14,6) NOT NULL DEFAULT 0 COMMENT '估算成本（元）',
+    updated_at        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    UNIQUE KEY uk_usage_daily (stat_date, tenant_id, model, call_site)
+);
+
+-- 租户月用量配额（phase5 5.2.4）
+-- 校验端 orchestrator /api/usage/quota/check（聚合 llm_usage_record 当月用量）；
+-- llm-gateway 请求前切面调用该端点，超限 429（code=quota_exceeded / model_not_allowed）
+CREATE TABLE tenant_quota (
+    id                BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    tenant_id         VARCHAR(64)  NOT NULL,
+    month_token_limit BIGINT       NOT NULL DEFAULT 0 COMMENT '月 token 上限（0=不限额）',
+    model_whitelist   VARCHAR(512) NULL COMMENT '模型白名单 JSON 数组（NULL=不限制）',
+    enabled           TINYINT(1)   NOT NULL DEFAULT 1,
+    remark            VARCHAR(255) NULL,
+    created_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    UNIQUE KEY uk_tenant_quota (tenant_id)
 );

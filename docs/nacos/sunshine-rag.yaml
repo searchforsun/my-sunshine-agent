@@ -73,6 +73,14 @@ rag:
     base-url: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
     input-size: 20
     timeout-seconds: 30
+  tool-index:
+    # 工具语义索引（5.5 tool RAG）：工具目录向量化入 Milvus sunshine_tool_index，
+    # ReAct MAIN 按 query 检索 Top-K 注入。关闭 → 检索端点空返回，orchestrator 回退 full 注入。
+    enabled: true
+    # 工具命中相似度下限（归一化向量近似 cosine），低于该值的工具不计入
+    min-score: 0.30
+    # 请求体未传 topK 时的默认注入数
+    default-top-k: 8
   eval:
     suggest:
       model: deepseek-v4-flash

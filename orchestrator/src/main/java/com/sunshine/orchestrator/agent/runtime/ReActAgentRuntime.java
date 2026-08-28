@@ -8,8 +8,11 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMiddleware;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
+import com.sunshine.orchestrator.agent.SkillInjectionMiddleware;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
+import com.sunshine.orchestrator.agent.ToolRetrievalMiddleware;
+import com.sunshine.orchestrator.agent.ToolRetrievalService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.config.VirtualThreadExecutors;
@@ -86,6 +89,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final ModelWindowCache modelWindowCache;
     private final ModelSceneResolver modelSceneResolver;
     private final ChatMessageRepository messageRepo;
+    private final ToolRetrievalService toolRetrievalService;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -206,7 +210,8 @@ public class ReActAgentRuntime implements AgentRuntime {
                                     request.harnessPromptId(), convKind, workspaceCheckout)
                             : PromptComposeRequest.forReact(
                                     memory, query, request.skillId(), injectedBlocks,
-                                    request.reactRestart(), null, convKind, workspaceCheckout),
+                                    request.reactRestart(), null, convKind, workspaceCheckout,
+                                    request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId()),
                     systemPromptResolver.resolve(request));
             List<Msg> inputs = composed.inputs();
             Map<String, Integer> contextGroups = new ConcurrentHashMap<>(composed.staticGroups());
@@ -241,7 +246,21 @@ public class ReActAgentRuntime implements AgentRuntime {
                     .put(ProcessingStepMiddleware.CTX_BRIDGE_ID, bridgeId)
                     .put(ProcessingStepMiddleware.CTX_REACT_MAX_ITERS, resolveMaxIters(request))
                     .put(ProcessingStepMiddleware.CTX_CONTEXT_GROUPS, contextGroups)
+                    .put(ProcessingStepMiddleware.CTX_AGENT_ROLE, request.role())
+                    .put(SkillInjectionMiddleware.CTX_TRIGGERED_SKILL_IDS, request.triggeredSkillIds())
+                    .put(ProcessingStepMiddleware.CTX_USER_QUERY, query)
+                    .put(ToolRetrievalMiddleware.CTX_TENANT_ID,
+                            request.tenantId() != null ? request.tenantId() : "default")
+                    .put(ToolRetrievalMiddleware.CTX_CONVERSATION_KIND,
+                            convKind != null ? convKind : "")
                     .build();
+            // 5.5 retrieval：首轮预置初始激活组（第一轮 tools schema 在 middleware 之前解析；
+            // 后续轮次由 ToolRetrievalMiddleware 每轮更新）。仅 MAIN，检索失败回退全量。
+            if (request.role() == AgentRole.MAIN
+                    && toolRetrievalService.retrievalEnabled()
+                    && agent.getDelegate() != null) {
+                presetInitialToolGroups(agent, request, agentSessionId, query);
+            }
             return agent.streamEvents(inputs, rt)
                     .flatMap(agentEvent -> {
                         // 不在订阅时捕获 epoch 做流级过滤：恢复续跑会 bumpStreamEpoch 抬高 epoch，
@@ -282,6 +301,11 @@ public class ReActAgentRuntime implements AgentRuntime {
                                 log.error("[AgentRuntime] saveCheckpoint failed userId={} msg={}",
                                         request.userId(), request.assistantMessageId(), e);
                             }
+                            // O1 中断落板：CANCEL/ON_ERROR 中断时任务进度同样落 MySQL 快照，
+                            // 恢复块按「最近快照」召回非终态任务（ledger-view §3.2）。
+                            // COMPLETE 走 finishAnswerStream 落板（doFinally 晚于 GenerationJob
+                            // persistFinal，timeline token 已无流消费者，不可挪）。
+                            finishTaskboardOnInterrupt(sig, request, agent);
                         }
                         try {
                             sandboxSessionLifecycle.closeQuietly(request);
@@ -292,6 +316,9 @@ public class ReActAgentRuntime implements AgentRuntime {
                                 && request.assistantMessageId() != null
                                 && !request.assistantMessageId().isBlank()) {
                             StepEventBridge.unregisterMainRun(request.assistantMessageId(), bridgeId);
+                            // S-C：消息级候选注册表清理，防跨消息残留
+                            com.sunshine.orchestrator.routing.SkillCandidateRegistry.remove(
+                                    request.assistantMessageId());
                         }
                         StepEventBridge.clear(bridgeId);
                     })
@@ -338,6 +365,32 @@ public class ReActAgentRuntime implements AgentRuntime {
         }
         AgentExecutionProperties.React react = executionProperties.getReact();
         return react != null && react.getTaskboard() != null && react.getTaskboard().isEnabled();
+    }
+
+    /**
+     * O1 中断落板：CANCEL/ON_ERROR 时把 tasksContext 快照落 MySQL，
+     * 下一条消息按「最近快照」召回未完成任务（恢复块语义不变：全终态不注入）。
+     * 不碰 timeline——doFinally 晚于 GenerationJob 终态，流与 hookQueue 均已无消费者。
+     */
+    private void finishTaskboardOnInterrupt(
+            reactor.core.publisher.SignalType sig,
+            AgentRunRequest request,
+            HarnessAgent agent) {
+        if (!isTaskboardEnabled(request)) {
+            return;
+        }
+        try {
+            io.agentscope.core.state.AgentState state = agent.getDelegate() != null
+                    ? agent.getDelegate().getAgentState(request.userId(), request.assistantMessageId())
+                    : null;
+            taskBoardService.persistInterruptSnapshot(request, state);
+            log.info("[AgentRuntime] taskboard snapshot saved on {} userId={} msg={}",
+                    sig, request.userId(), request.assistantMessageId());
+        } catch (Exception e) {
+            // 落板失败仅丢恢复块，不影响中断主路径（续跑仍有 checkpoint）
+            log.warn("[AgentRuntime] taskboard snapshot on interrupt failed userId={} msg={}: {}",
+                    request.userId(), request.assistantMessageId(), e.getMessage());
+        }
     }
 
     private GroundingVerdict validateMainGrounding(
@@ -447,9 +500,41 @@ public class ReActAgentRuntime implements AgentRuntime {
         }
     }
 
-    /** 与 ReActAgentFactory.resolveModel 同语义：modelConfigJson.model > modelOverride > scene；解析失败不阻断主流程 */
-    private String resolveModelName(AgentRunRequest request) {
+    /**
+     * 5.5 retrieval：首轮预置初始激活组——第一轮 tools schema 由 AgentScope 在 middleware 链
+     * 之前解析（state 激活组），故在 streamEvents 前按首轮 query 检索并写入 state。
+     * 检索失败回退全量注入；后续轮次由 {@link ToolRetrievalMiddleware} 每轮更新。
+     */
+    private void presetInitialToolGroups(
+            HarnessAgent agent, AgentRunRequest request, String agentSessionId, String query) {
         try {
+            AgentExecutionProperties.React.ToolInject inject = executionProperties.getReact().getToolInject();
+            int topK = inject != null && inject.getTopK() > 0 ? inject.getTopK() : 8;
+            List<String> ids = toolRetrievalService.searchToolIds(
+                    query, request.tenantId(), request.conversationKind(), topK);
+            if (ids.isEmpty() && (inject == null || inject.isFallbackFull())) {
+                ids = toolRetrievalService.fallbackToolIds(request.tenantId(), request.conversationKind());
+            }
+            List<String> groups = ids.stream().map(ToolRetrievalService::groupOf).toList();
+            agent.getDelegate()
+                    .getAgentState(request.userId(), agentSessionId)
+                    .getToolContext()
+                    .setActivatedGroups(groups);
+            log.info("[ToolRetrieval] 首轮预置工具: {}（query={}）", ids, brief(query));
+        } catch (Exception e) {
+            log.warn("[ToolRetrieval] 首轮预置失败（回退全量）: {}", e.getMessage());
+        }
+    }
+
+    private static String brief(String query) {
+        if (query == null) {
+            return "";
+        }
+        return query.length() <= 40 ? query : query.substring(0, 40) + "...";
+    }
+
+    /** 与 ReActAgentFactory.resolveModel 同语义：modelConfigJson.model > modelOverride > scene；解析失败不阻断主流程 */
+    private String resolveModelName(AgentRunRequest request) {        try {
             String fromConfig = ReActAgentFactory.extractModelFromConfigJson(request.modelConfigJson());
             String override = StringUtils.hasText(fromConfig) ? fromConfig : request.modelOverride();
             AgentRole role = request.role();

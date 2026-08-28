@@ -27,7 +27,8 @@ final class StepMetadataAssembler {
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
                 null, null, null,
-                textOrNull(sandboxPath), textOrNull(sandboxSearchRoot), null, null, null, null, null, null, null);
+                textOrNull(sandboxPath), textOrNull(sandboxSearchRoot), null, null, null, null, null, null,
+                null, null, null);
     }
 
     static StepMetadata withEditDiff(StepMetadata base, SandboxEditDiff editDiff) {
@@ -37,7 +38,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, editDiff, null, null, null, null);
+                    null, null, null, null, null, null, null, editDiff, null, null, null, null,
+                    null, null);
         }
         return new StepMetadata(
                 base.hitCount(), base.sources(), base.rewriteApplied(), base.rewriteLatencyMs(),
@@ -46,7 +48,8 @@ final class StepMetadataAssembler {
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
                 base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), base.spawnPrompt(), base.cancellable(),
-                editDiff, base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue());
+                editDiff, base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue(),
+                base.toolArgs(), base.toolExitCode());
     }
 
     static StepMetadata withSpawnPrompt(StepMetadata base, String prompt) {
@@ -57,7 +60,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, p, null, null, null, null, null, null);
+                    null, null, null, null, null, p, null, null, null, null, null, null,
+                    null, null);
         }
         return new StepMetadata(
                 base.hitCount(), base.sources(), base.rewriteApplied(), base.rewriteLatencyMs(),
@@ -66,7 +70,8 @@ final class StepMetadataAssembler {
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
                 base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), p, base.cancellable(), base.editDiff(),
-                base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue());
+                base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue(),
+                base.toolArgs(), base.toolExitCode());
     }
 
     static StepMetadata withWorkerRunId(StepMetadata base, String runId) {
@@ -77,7 +82,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, null, null, r, null);
+                    null, null, null, null, null, null, null, null, null, null, r, null,
+                    null, null);
         }
         return new StepMetadata(
                 base.hitCount(), base.sources(), base.rewriteApplied(), base.rewriteLatencyMs(),
@@ -86,7 +92,8 @@ final class StepMetadataAssembler {
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
                 base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), base.spawnPrompt(), base.cancellable(),
-                base.editDiff(), base.decision(), base.routingTraces(), r, base.taskQueue());
+                base.editDiff(), base.decision(), base.routingTraces(), r, base.taskQueue(),
+                base.toolArgs(), base.toolExitCode());
     }
 
     static StepMetadata withCancellable(StepMetadata base, boolean cancellable) {
@@ -94,7 +101,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, flag, null, null, null, null, null);
+                    null, null, null, null, null, null, flag, null, null, null, null, null,
+                    null, null);
         }
         return new StepMetadata(
                 base.hitCount(), base.sources(), base.rewriteApplied(), base.rewriteLatencyMs(),
@@ -103,7 +111,8 @@ final class StepMetadataAssembler {
                 base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
                 base.tasks(), base.taskRevision(), base.taskProgress(),
                 base.sandboxPath(), base.sandboxSearchRoot(), base.spawnPrompt(), flag, base.editDiff(),
-                base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue());
+                base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue(),
+                base.toolArgs(), base.toolExitCode());
     }
 
     static StepMetadata fromRouting(ExecutionPlan plan) {
@@ -121,7 +130,7 @@ final class StepMetadataAssembler {
                 null, null, null, null, null, null, null, null,
                 textOrNull(skill), textOrNull(mode), textOrNull(reason), null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null,
-                tracesOrNull(plan.routingTraces()), null, null);
+                tracesOrNull(plan.routingTraces()), null, null, null, null);
     }
 
     static StepMetadata fromSkillLoad(String skillId) {
@@ -131,7 +140,7 @@ final class StepMetadataAssembler {
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
                 skillId.strip(), null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
@@ -141,7 +150,8 @@ final class StepMetadataAssembler {
         return new StepMetadata(
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
-                List.copyOf(tasks), revision, progress, null, null, null, null, null, null, null, null, null);
+                List.copyOf(tasks), revision, progress, null, null, null, null, null, null, null, null, null,
+                null, null);
     }
 
     /** harness H1 taskQueue 投影：独立字段下发（前端 taskQueue 优先展示并加执行单元记号），与 ReAct tasks 分离。 */
@@ -154,7 +164,7 @@ final class StepMetadataAssembler {
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
                 List.copyOf(tasks), revision, progress, null, null, null, null, null, null, null, null,
-                List.copyOf(tasks));
+                List.copyOf(tasks), null, null);
     }
 
     static StepMetadata mergeRouting(StepMetadata base, ExecutionPlan plan) {
@@ -178,7 +188,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, hitl, null, null,
-                    null, null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), hitl, base.recovery(),
@@ -203,7 +214,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, List.copyOf(nodeAttempts),
-                    null, null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
@@ -218,7 +230,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, recovery, null,
-                    null, null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), recovery,
@@ -241,7 +254,8 @@ final class StepMetadataAssembler {
                 outcome.scenario(),
                 scenarioLabel.isBlank() ? null : scenarioLabel,
                 null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null);
     }
 
     static StepMetadata withDecision(StepMetadata base, DecisionStepMeta decision) {
@@ -251,7 +265,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, decision, null, null, null);
+                    null, null, null, null, null, null, null, null, decision, null, null, null,
+                    null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 base.rewriteInDetail(), base.expandSectionTitle(), base.hitl(), base.recovery(),
@@ -293,7 +308,8 @@ final class StepMetadataAssembler {
                 base.cancellable(),
                 base.editDiff(),
                 base.decision(),
-                base.routingTraces(), base.workerRunId(), base.taskQueue());
+                base.routingTraces(), base.workerRunId(), base.taskQueue(),
+                base.toolArgs(), base.toolExitCode());
     }
 
     static StepMetadata merge(StepMetadata base, StepMetadata overlay) {
@@ -333,7 +349,9 @@ final class StepMetadataAssembler {
                 overlay.routingTraces() != null && !overlay.routingTraces().isEmpty()
                         ? overlay.routingTraces() : base.routingTraces(),
                 overlay.workerRunId() != null ? overlay.workerRunId() : base.workerRunId(),
-                overlay.taskQueue() != null && !overlay.taskQueue().isEmpty() ? overlay.taskQueue() : base.taskQueue());
+                overlay.taskQueue() != null && !overlay.taskQueue().isEmpty() ? overlay.taskQueue() : base.taskQueue(),
+                overlay.toolArgs() != null ? overlay.toolArgs() : base.toolArgs(),
+                overlay.toolExitCode() != null ? overlay.toolExitCode() : base.toolExitCode());
     }
 
     static StepMetadata withRewriteInDetail(StepMetadata base) {
@@ -350,7 +368,8 @@ final class StepMetadataAssembler {
         if (base == null) {
             return new StepMetadata(null, null, null, null, null, null, null, null,
                     null, null, null, true, RAG_EXPAND_SECTION_TITLE, null, null, null,
-                    null, null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null);
         }
         return copy(base, base.skillId(), base.plannerMode(), base.routingReason(),
                 true, RAG_EXPAND_SECTION_TITLE, base.hitl(), base.recovery(),
@@ -399,7 +418,32 @@ final class StepMetadataAssembler {
                 base.cancellable(),
                 base.editDiff(),
                 decision,
-                tracesOrNull(routingTraces), base.workerRunId(), base.taskQueue());
+                tracesOrNull(routingTraces), base.workerRunId(), base.taskQueue(),
+                base.toolArgs(), base.toolExitCode());
+    }
+
+    /** 工具步收口时叠加确定性 schema 数据（白名单标量入参 + exec 退出码），五层 §5.5.8 */
+    static StepMetadata withToolSchema(StepMetadata base, String toolArgs, Integer exitCode) {
+        String args = textOrNull(toolArgs);
+        if (args == null && exitCode == null) {
+            return base;
+        }
+        if (base == null) {
+            return new StepMetadata(null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null, null, null, null,
+                    args, exitCode);
+        }
+        return new StepMetadata(
+                base.hitCount(), base.sources(), base.rewriteApplied(), base.rewriteLatencyMs(),
+                base.rewriteFrom(), base.rewriteTo(), base.rewriteScenario(), base.rewriteScenarioLabel(),
+                base.skillId(), base.plannerMode(), base.routingReason(), base.rewriteInDetail(),
+                base.expandSectionTitle(), base.hitl(), base.recovery(), base.nodeAttempts(),
+                base.tasks(), base.taskRevision(), base.taskProgress(),
+                base.sandboxPath(), base.sandboxSearchRoot(), base.spawnPrompt(), base.cancellable(),
+                base.editDiff(), base.decision(), base.routingTraces(), base.workerRunId(), base.taskQueue(),
+                args != null ? args : base.toolArgs(),
+                exitCode != null ? exitCode : base.toolExitCode());
     }
 
     private static String textOrNull(String value) {

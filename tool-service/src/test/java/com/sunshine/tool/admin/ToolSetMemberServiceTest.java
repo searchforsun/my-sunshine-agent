@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @Import(ToolSetMemberService.class)
@@ -123,6 +124,40 @@ class ToolSetMemberServiceTest {
                         new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
         assertThat(toolSetMemberService.toolIds(ToolSetKind.CHAT_DEFAULT, null).toolIds())
                 .containsExactly("sdk__sunshine-finance__list_my_expenses");
+    }
+
+    @Test
+    void toolIds_allIsUnionOfChatAndTask() {
+        toolSetMemberService.addMembers(
+                ToolSetKind.CHAT_DEFAULT,
+                null,
+                new ToolSetMemberAddRequest(List.of(
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"))));
+        toolSetMemberService.addMembers(
+                ToolSetKind.TASK_DEFAULT,
+                null,
+                new ToolSetMemberAddRequest(List.of(
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__list_my_expenses"),
+                        new ToolSetMemberAddItem("sdk__sunshine-finance__get_expense_detail"))));
+        assertThat(toolSetMemberService.toolIds(ToolSetKind.ALL_DEFAULT, null).toolIds())
+                .containsExactly(
+                        "sdk__sunshine-finance__list_my_expenses",
+                        "sdk__sunshine-finance__get_expense_detail");
+    }
+
+    @Test
+    void allKind_isReadOnlyUnionView() {
+        assertThat(toolSetMemberService.toolIds(null, null).toolIds()).isEmpty();
+        assertThatThrownBy(() -> toolSetMemberService.pageMembers(ToolSetKind.ALL_DEFAULT, null, 1, 20, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> toolSetMemberService.picker(ToolSetKind.ALL_DEFAULT, null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> toolSetMemberService.addMembers(
+                ToolSetKind.ALL_DEFAULT, null, new ToolSetMemberAddRequest(List.of())))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> toolSetMemberService.removeMembers(
+                ToolSetKind.ALL_DEFAULT, null, new ToolSetMemberRemoveRequest(List.of())))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

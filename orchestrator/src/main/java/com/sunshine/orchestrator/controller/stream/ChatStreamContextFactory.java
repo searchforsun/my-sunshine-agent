@@ -18,6 +18,7 @@ import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
 import com.sunshine.orchestrator.taskboard.TaskBoardRestoreService;
 import lombok.RequiredArgsConstructor;
@@ -59,10 +60,11 @@ public class ChatStreamContextFactory {
 
     public ChatStreamContext prepareNewMessage(ChatMessage msg, String userId, String tenantId) {
         ChatConversationEntity conv = resolveConversation(msg.getConversationId(), userId, tenantId);
+        final String kind = conv.getKind();
         // 先加载历史再落库本轮 user/assistant，避免 history + userContent 重复注入 LLM
         List<SessionTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
                 .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
-                .map(m -> SessionTurn.of(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m)))
+                .map(m -> SessionTurn.fromMessage(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m), m.getSteps(), kind))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
@@ -92,7 +94,10 @@ public class ChatStreamContextFactory {
         }
         AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
                 userId, tenantId, conv.getId(), loadedHistory, executionQuery, modelOverride,
-                conv.getKind(), conv.getWorkspaceId()));
+                conv.getKind(), conv.getWorkspaceId(), preference.wireValue(),
+                // M0（authority §2.2 方案 A）：fast×chat 路由前仅底座，L3 延后到资源召回后
+                // 由 ReactExecutor.attachL3 装配（与业务块并行）；pro/workflow 保持现状。
+                preference == ExecutionMode.FAST && "chat".equals(kind)));
         // fast 跨轮任务板恢复（M0）：仅 fast 会话注入最近快照的未完成任务清单，恢复块由服务端渲染
         if (preference == ExecutionMode.FAST) {
             memory = memory.withTaskListRestoreBlock(
@@ -124,7 +129,9 @@ public class ChatStreamContextFactory {
                 false,
                 msg.getPersonalRules(),
                 conv.getKind(),
-                modelOverride);
+                modelOverride,
+                // S-1：上轮轻 sticky seed（无新触发时继承已触发 skill / 可调度 agent）
+                conversationService.loadRoutingSeed(conv.getId()));
     }
     /**
      * 中断感知（方案 A · 五层 spec §5.5.7 v16）：INTERRUPTED 的 assistant 消息折叠为显式中断注记，
@@ -229,7 +236,7 @@ public class ChatStreamContextFactory {
 
         List<SessionTurn> history = historyEntities.stream()
                 .filter(m -> !m.getId().equals(assistantId))
-                .map(m -> SessionTurn.of(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m)))
+                .map(m -> SessionTurn.fromMessage(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m), m.getSteps(), conv.getKind()))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toCollection(ArrayList::new));
         if (!history.isEmpty()
@@ -240,7 +247,9 @@ public class ChatStreamContextFactory {
 
         AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
                 userId, tenantId, assistant.getConversationId(), history, userContent, conv.getModelName(),
-                conv.getKind(), conv.getWorkspaceId()));
+                conv.getKind(), conv.getWorkspaceId(), conv.getExecutionPreference(),
+                // M0：ReAct 续跑同样走 ReactExecutor（路由后 attachL3），延后 L3；pro 续跑保持现状
+                reactRestartResume && "chat".equals(conv.getKind())));
         // ReAct 继续生成：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
         // Near 仅含更早已完成轮次；本轮进度靠 checkpoint（若有）+ injectedBlocks（skill/tasks/think/tool）。
 
@@ -259,7 +268,19 @@ public class ChatStreamContextFactory {
                 tenantId,
                 kbId,
                 conv.getKind(),
-                conv.getModelName());
+                conv.getModelName(),
+                // S-0：续跑复用该消息已存 RoutingResult（不重跑收集、不重触发决策）
+                new RoutingSeed(csvToList(assistant.getRoutingSkillIds()), csvToList(assistant.getRoutingAgentIds())));
+    }
+
+    private static List<String> csvToList(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     private ChatConversationEntity resolveConversation(String conversationId, String userId, String tenantId) {

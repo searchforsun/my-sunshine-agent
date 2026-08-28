@@ -29,14 +29,21 @@ const {
   providers,
   definitions,
   scenes,
+  sceneKeys,
+  routes,
+  routeKeys,
   providerOptions,
   modelSelectOptions,
   availableSceneKeyOptions,
   canCreateScene,
   sceneDraftDescription,
+  availableRouteKeyOptions,
+  canCreateRoute,
+  routeDraftDescription,
   providerColumns,
   definitionColumns,
   sceneColumns,
+  routeColumns,
   showProviderModal,
   providerEditId,
   providerDraft,
@@ -51,15 +58,20 @@ const {
   showSceneModal,
   sceneEditKey,
   sceneDraft,
+  showRouteModal,
+  routeEditKey,
+  routeDraft,
   showDeleteConfirm,
   deleteTarget,
   refreshPage,
   openCreateProvider,
   openCreateDefinition,
   openCreateScene,
+  openCreateRoute,
   submitProvider,
   submitDefinition,
   submitScene,
+  submitRoute,
   confirmDelete,
 } = useModelsPage()
 
@@ -103,6 +115,15 @@ onMounted(() => {
           <template #icon><NIcon :component="AddOutline" /></template>
           新建
         </NButton>
+        <NButton
+          v-else-if="activeTab === 'routes' && canCreateRoute"
+          round
+          secondary
+          @click="openCreateRoute"
+        >
+          <template #icon><NIcon :component="AddOutline" /></template>
+          新建
+        </NButton>
         <NButton round type="primary" class="action-btn" :loading="loading" @click="refreshPage">
           <template #icon><NIcon :component="RefreshOutline" /></template>
           刷新
@@ -114,6 +135,7 @@ onMounted(() => {
       <NTabPane name="providers" tab="供应商" />
       <NTabPane name="models" tab="模型" />
       <NTabPane name="scenes" tab="场景" />
+      <NTabPane name="routes" tab="路由策略" />
     </NTabs>
 
     <div class="models-panel">
@@ -142,7 +164,7 @@ onMounted(() => {
           />
           <div v-else-if="!loading" class="panel-empty"><NEmpty description="暂无模型" /></div>
         </template>
-        <template v-else>
+        <template v-else-if="activeTab === 'scenes'">
           <NDataTable
             v-if="scenes.length"
             :columns="sceneColumns"
@@ -153,6 +175,18 @@ onMounted(() => {
             class="models-table"
           />
           <div v-else-if="!loading" class="panel-empty"><NEmpty description="暂无场景绑定" /></div>
+        </template>
+        <template v-else>
+          <NDataTable
+            v-if="routes.length"
+            :columns="routeColumns"
+            :data="routes"
+            :bordered="false"
+            size="small"
+            :row-key="(r) => r.id"
+            class="models-table"
+          />
+          <div v-else-if="!loading" class="panel-empty"><NEmpty description="暂无路由策略" /></div>
         </template>
       </NSpin>
     </div>
@@ -400,6 +434,63 @@ onMounted(() => {
         <NSpace>
           <NButton @click="showSceneModal = false">取消</NButton>
           <NButton type="primary" class="action-btn" :loading="saving" @click="submitScene">保存</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal
+      v-model:show="showRouteModal"
+      preset="dialog"
+      :title="routeEditKey ? '编辑路由策略' : '新建路由策略'"
+      class="sunshine-dialog"
+      style="width: 560px"
+    >
+      <NForm label-placement="top" :show-feedback="false" class="modal-form">
+        <NFormItem label="调用点" required>
+          <NSelect
+            v-if="!routeEditKey"
+            v-model:value="routeDraft.callSite"
+            class="sun-field"
+            :options="availableRouteKeyOptions"
+            :menu-props="{ class: 'models-select-menu' }"
+          />
+          <NInput
+            v-else
+            :value="routeDraft.callSite"
+            class="sun-field"
+            disabled
+          />
+        </NFormItem>
+        <NFormItem v-if="routeDraftDescription" label="调用点描述">
+          <NInput
+            :value="routeDraftDescription"
+            class="sun-field"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+            disabled
+          />
+        </NFormItem>
+        <NFormItem label="候选模型池（按序取首个启用）" required>
+          <NSelect
+            v-model:value="routeDraft.models"
+            class="sun-field"
+            multiple
+            filterable
+            :options="modelSelectOptions"
+            :menu-props="{ class: 'models-select-menu' }"
+          />
+        </NFormItem>
+        <NFormItem label="启用">
+          <NSwitch v-model:value="routeDraft.enabled" />
+        </NFormItem>
+        <NFormItem label="备注">
+          <NInput v-model:value="routeDraft.remark" class="sun-field" />
+        </NFormItem>
+      </NForm>
+      <template #action>
+        <NSpace>
+          <NButton @click="showRouteModal = false">取消</NButton>
+          <NButton type="primary" class="action-btn" :loading="saving" @click="submitRoute">保存</NButton>
         </NSpace>
       </template>
     </NModal>

@@ -23,7 +23,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -144,6 +147,50 @@ class ContextMaintenanceServiceTest {
                 .thenThrow(new RuntimeException("db down"));
 
         service.runOnce();
+    }
+
+    @Test
+    void gcL3Expired_appliesTieredTtlPerSceneAndLayer() {
+        when(historyRagClient.deleteExpired(any(), any(), anyLong())).thenReturn(Mono.empty());
+        ContextProperties props = new ContextProperties();
+        props.getMaintenance().setL3ChatTtlDays(30);
+        props.getMaintenance().setL3TaskBodyTtlDays(90);
+        props.getMaintenance().setL3TaskProcessTtlDays(7);
+        props.getMaintenance().setL3TaskSemanticTtlDays(90);
+        service = new ContextMaintenanceService(
+                l2Repository, l1Repository, conversationRepository,
+                messageRepository, historyRagClient, props,
+                org.mockito.Mockito.mock(ContextAuditService.class));
+
+        int count = service.gcL3Expired(now);
+
+        assertThat(count).isEqualTo(4);
+        verify(historyRagClient).deleteExpired("chat", null, now.minus(30, ChronoUnit.DAYS).toEpochMilli());
+        verify(historyRagClient).deleteExpired("task", "body", now.minus(90, ChronoUnit.DAYS).toEpochMilli());
+        verify(historyRagClient).deleteExpired("task", "process", now.minus(7, ChronoUnit.DAYS).toEpochMilli());
+        verify(historyRagClient).deleteExpired("task", "semantic", now.minus(90, ChronoUnit.DAYS).toEpochMilli());
+    }
+
+    @Test
+    void gcL3Expired_zeroTtlSkipsLayer() {
+        when(historyRagClient.deleteExpired(any(), any(), anyLong())).thenReturn(Mono.empty());
+        ContextProperties props = new ContextProperties();
+        props.getMaintenance().setL3ChatTtlDays(0);
+        props.getMaintenance().setL3TaskBodyTtlDays(0);
+        props.getMaintenance().setL3TaskProcessTtlDays(7);
+        props.getMaintenance().setL3TaskSemanticTtlDays(90);
+        service = new ContextMaintenanceService(
+                l2Repository, l1Repository, conversationRepository,
+                messageRepository, historyRagClient, props,
+                org.mockito.Mockito.mock(ContextAuditService.class));
+
+        int count = service.gcL3Expired(now);
+
+        assertThat(count).isEqualTo(2);
+        verify(historyRagClient, never()).deleteExpired(eq("chat"), isNull(), anyLong());
+        verify(historyRagClient, never()).deleteExpired(eq("task"), eq("body"), anyLong());
+        verify(historyRagClient).deleteExpired(eq("task"), eq("process"), anyLong());
+        verify(historyRagClient).deleteExpired(eq("task"), eq("semantic"), anyLong());
     }
 
     private static UserContextStateEntity l2(

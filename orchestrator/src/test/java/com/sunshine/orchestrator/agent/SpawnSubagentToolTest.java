@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -213,7 +214,7 @@ class SpawnSubagentToolTest {
                         null, null, null, "chat", null)));
         when(skillCatalogService.findIndex("compliance-check"))
                 .thenReturn(Optional.of(new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
-                        "compliance-check", "业务合规检查", "desc", 1, true, "none", "all", null)));
+                        "compliance-check", "业务合规检查", "desc", 1, true, "none", "all", null, "default")));
         when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
                 .thenReturn(Flux.just(StreamToken.content("合规结论")));
 
@@ -328,7 +329,9 @@ class SpawnSubagentToolTest {
             return snap != null && snap.status() == AsyncToolRunRegistry.Status.DONE;
         }, 5_000)).isTrue();
         assertThat(asyncToolRunRegistry.peek(runId).result()).isEqualTo("bg-answer");
-        verify(timelineSupport).complete(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("bg-answer"));
+        // 等待式 verify：complete 与 DONE 标记同线程顺序执行，但异步调度存在窗口，避免裸 verify 的时序竞态
+        verify(timelineSupport, timeout(5_000)).complete(
+                eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("bg-answer"));
         assertThat(awaitCondition(() -> spawnRunRegistry.get(runId) == null, 2_000)).isTrue();
     }
 
@@ -430,5 +433,70 @@ class SpawnSubagentToolTest {
             TimeUnit.MILLISECONDS.sleep(50);
         }
         return condition.getAsBoolean();
+    }
+
+    @Test
+    void predefinedAgent_toolsIntersectToolSet() {
+        bindMainSession();
+        when(agentCatalogService.find("compliance-agent"))
+                .thenReturn(Optional.of(new com.sunshine.orchestrator.catalog.AgentCatalogEntry(
+                        "compliance-agent", "业务合规对照智能体", "制度对照",
+                        "system", List.of("compliance-check"), List.of(),
+                        "[\"sdk__sunshine-biz__list_my_expenses\"]", true, "default",
+                        null, null, null, null, 2, 5,
+                        com.sunshine.orchestrator.catalog.AgentCatalogEntry.AgentSource.INTERNAL,
+                        null, null, null, "chat", null)));
+        when(skillCatalogService.toolIds("compliance-check"))
+                .thenReturn(List.of("sdk__compliance__check"));
+        when(toolSetResolver.intersectToolSet(any(), any(), any()))
+                .thenReturn(List.of("sdk__compliance__check"));
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("ok")));
+
+        String out = tool.spawnSubagent("查我的报销", "compliance-agent", null);
+
+        assertThat(out).isEqualTo("ok");
+        // A-1 双轨·预定义 agent：声明工具（toolsJson ∪ skill 工具）经 (tenant,kind) 集求交后注入
+        verify(toolSetResolver).intersectToolSet(
+                eq(List.of("sdk__sunshine-biz__list_my_expenses", "sdk__compliance__check")),
+                eq("default"), any());
+        ArgumentCaptor<com.sunshine.orchestrator.agent.runtime.AgentRunRequest> captor =
+                ArgumentCaptor.forClass(com.sunshine.orchestrator.agent.runtime.AgentRunRequest.class);
+        verify(agentExecutorRouter).dispatch(any(), captor.capture(), any(), any());
+        assertThat(captor.getValue().toolWhitelist()).containsExactly("sdk__compliance__check");
+    }
+
+    @Test
+    void dynamicSub_toolIds_subsetInjected() {
+        bindMainSession();
+        when(toolSetResolver.intersectToolSet(eq(List.of("sdk__a", "sdk__b")), eq("default"), any()))
+                .thenReturn(List.of("sdk__a"));
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("ok")));
+
+        String out = tool.spawnSubagent("子任务", null, null, null, null, List.of("sdk__a", "sdk__b"));
+
+        assertThat(out).isEqualTo("ok");
+        ArgumentCaptor<com.sunshine.orchestrator.agent.runtime.AgentRunRequest> captor =
+                ArgumentCaptor.forClass(com.sunshine.orchestrator.agent.runtime.AgentRunRequest.class);
+        verify(agentExecutorRouter).dispatch(any(), captor.capture(), any(), any());
+        // A-6：主 agent 自选子集（越界剔除）仅注入该子集
+        assertThat(captor.getValue().toolWhitelist()).containsExactly("sdk__a");
+    }
+
+    @Test
+    void dynamicSub_noToolIds_defaultsToSameToolsAsMain() {
+        bindMainSession();
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("ok")));
+
+        String out = tool.spawnSubagent("子任务", null, null);
+
+        assertThat(out).isEqualTo("ok");
+        ArgumentCaptor<com.sunshine.orchestrator.agent.runtime.AgentRunRequest> captor =
+                ArgumentCaptor.forClass(com.sunshine.orchestrator.agent.runtime.AgentRunRequest.class);
+        verify(agentExecutorRouter).dispatch(any(), captor.capture(), any(), any());
+        // 缺省回退主 agent 同款 (tenant,kind) 集全量（现状 sameToolsAsMain 不变）
+        assertThat(captor.getValue().toolWhitelist()).containsExactly("search_knowledge");
     }
 }

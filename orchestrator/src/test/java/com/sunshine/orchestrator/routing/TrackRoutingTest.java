@@ -75,14 +75,18 @@ class TrackRoutingTest {
                         new WorkflowBindingParser(workflowCatalog), skillCatalogService,
                         agentCatalogService, workflowCatalog),
                 skillBindingParser,
-                agentBindingParser);
+                agentBindingParser,
+                new com.sunshine.orchestrator.routing.RoutingStickyService(),
+                new com.sunshine.orchestrator.routing.SkillAdoptionService(
+                        new com.sunshine.orchestrator.config.AgentExecutionProperties(),
+                        skillCatalogService, agentCatalogService));
 
         when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
         when(skillBindingParser.stripSlashMention(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(agentBindingParser.stripAgentMentions(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(agentBindingParser.parse(anyString(), anyString())).thenAnswer(inv ->
                 com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
-        when(skillCatalogService.sanitizeSkillPlan(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(skillCatalogService.sanitizeSkillPlan(any(), any())).thenAnswer(inv -> inv.getArgument(0));
         when(intentRouter.classifyPlan(any(RoutingContext.class)))
                 .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
         when(workflowCatalog.isKnownWorkflow(anyString())).thenReturn(true);
@@ -183,6 +187,6 @@ class TrackRoutingTest {
 
     private static RoutingContext ctx(
             ExecutionMode preference, String query, String workflowId, String kind) {
-        return new RoutingContext(query, null, preference, workflowId, null, null, null, kind);
+        return new RoutingContext(query, null, preference, workflowId, null, null, null, kind, null, null);
     }
 }

@@ -51,6 +51,19 @@ CREATE TABLE IF NOT EXISTS model_scene_binding (
   UNIQUE KEY uk_scene (tenant_id, scene_key)
 );
 
+CREATE TABLE IF NOT EXISTS model_route_policy (
+  id          BIGINT PRIMARY KEY AUTO_INCREMENT,
+  call_site   VARCHAR(64)  NOT NULL COMMENT 'chat|plan|worker|tool-call|rewrite|summarize|subagent；须为 CallSiteKey 枚举',
+  models      JSON         NOT NULL COMMENT '候选模型池（有序，按序取首个 enabled）：["model-a","model-b"]',
+  strategy    VARCHAR(32)  NOT NULL DEFAULT 'first-available' COMMENT 'MVP：first-available（取模型池首个 enabled）',
+  enabled     TINYINT(1)   NOT NULL DEFAULT 1,
+  tenant_id   VARCHAR(64)  NOT NULL DEFAULT 'default',
+  remark      VARCHAR(256) NULL,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_call_site (tenant_id, call_site)
+);
+
 INSERT INTO model_provider (provider_key, display_name, protocol, base_url, path_prefix, api_key_enc, enabled, tenant_id) VALUES
 ('deepseek', 'DeepSeek', 'openai-compatible', 'https://api.deepseek.com', '/v1', 'UNSET', 1, 'default'),
 ('minimax', 'MiniMax', 'openai-compatible', 'https://api.minimaxi.com/v1', '', 'UNSET', 1, 'default'),
@@ -82,3 +95,14 @@ INSERT INTO model_scene_binding (scene_key, primary_model, fallback_model, extra
 ('subagent', 'deepseek-v4-flash', 'qwen-plus', NULL, 1, 'default', 'spawn 缺省')
 ON DUPLICATE KEY UPDATE primary_model = VALUES(primary_model), fallback_model = VALUES(fallback_model),
   extras = VALUES(extras), enabled = VALUES(enabled), remark = VALUES(remark);
+
+INSERT INTO model_route_policy (call_site, models, strategy, enabled, tenant_id, remark) VALUES
+('chat', JSON_ARRAY('deepseek-v4-pro', 'deepseek-v4-flash', 'qwen-plus'), 'first-available', 1, 'default', '对话主循环：强模型优先'),
+('plan', JSON_ARRAY('deepseek-v4-pro', 'deepseek-v4-flash', 'qwen-plus'), 'first-available', 1, 'default', 'Planner：强模型'),
+('worker', JSON_ARRAY('deepseek-v4-flash', 'qwen-plus'), 'first-available', 1, 'default', 'Worker 执行：快模型'),
+('tool-call', JSON_ARRAY('deepseek-v4-flash', 'qwen-plus'), 'first-available', 1, 'default', '工具调用：快模型'),
+('rewrite', JSON_ARRAY('qwen-plus', 'deepseek-v4-flash'), 'first-available', 1, 'default', '意图/改写：轻量模型'),
+('summarize', JSON_ARRAY('qwen-plus', 'deepseek-v4-flash'), 'first-available', 1, 'default', '摘要/内部辅助：轻量模型'),
+('subagent', JSON_ARRAY('deepseek-v4-flash', 'qwen-plus'), 'first-available', 1, 'default', '子代理：快模型')
+ON DUPLICATE KEY UPDATE models = VALUES(models), strategy = VALUES(strategy),
+  enabled = VALUES(enabled), remark = VALUES(remark);

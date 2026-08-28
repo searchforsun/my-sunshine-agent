@@ -107,6 +107,36 @@ public class SandboxSessionLifecycle {
     }
 
     /**
+     * S-C 候选动态加载懒挂：把新触发的 skill 物料挂到当前 run 的沙箱会话。
+     * 会话尚未创建（懒创建场景）→ 只更新 run 上下文 skillId，由后续 {@link #ensureBound} 挂载。
+     *
+     * @return 本次是否新挂载
+     */
+    public boolean mountSkillForBridge(String bridgeId, String skillId) {
+        if (!StringUtils.hasText(bridgeId) || !StringUtils.hasText(skillId)) {
+            return false;
+        }
+        String bid = bridgeId.strip();
+        String id = skillId.strip();
+        RunContext ctx = runContexts.get(bid);
+        if (ctx == null) {
+            return false;
+        }
+        RunContext skillCtx = new RunContext(ctx.userId(), ctx.tenantId(), ctx.conversationId(), id,
+                ctx.runId(), ctx.assistantMessageId(), ctx.workspaceId(), ctx.checkoutPath());
+        SandboxSessionHolder.Binding binding = SandboxSessionHolder.get(bid);
+        if (binding == null || !StringUtils.hasText(binding.sessionId())) {
+            runContexts.put(bid, skillCtx);
+            return false;
+        }
+        MountOutcome mount = mountSkillForContext(binding.sessionId(), skillCtx);
+        if (mount.newlyMounted()) {
+            emitSandboxSessionSse(bid, skillCtx, mount.loadedSkillIds());
+        }
+        return mount.newlyMounted();
+    }
+
+    /**
      * 抽屉 / API：无 run 上下文时按对话 ensure（懒 create）。
      */
     public String ensureConversationSession(

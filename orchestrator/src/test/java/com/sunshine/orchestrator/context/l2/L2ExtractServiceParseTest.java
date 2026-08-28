@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.context.l2;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,7 +16,7 @@ class L2ExtractServiceParseTest {
                 [
                   {"kind":"preference","key":"style","value":"简洁","confidence":0.9},
                   {"kind":"unknown","key":"x","value":"y","confidence":0.99},
-                  {"kind":"reasoning","key":"why-b","value":"成本更低","confidence":0.8},
+                  {"kind":"process_note","key":"why-b","value":"成本更低","confidence":0.8},
                   {"kind":"constraint","key":"budget","value":"单次不超过500","confidence":0.95}
                 ]
                 ```
@@ -24,7 +25,7 @@ class L2ExtractServiceParseTest {
         assertThat(list).hasSize(3);
         assertThat(list.get(0).kind()).isEqualTo("preference");
         assertThat(list.get(0).key()).isEqualTo("style");
-        assertThat(list.get(1).kind()).isEqualTo("reasoning");
+        assertThat(list.get(1).kind()).isEqualTo("process_note");
         assertThat(list.get(2).kind()).isEqualTo("constraint");
     }
 
@@ -110,12 +111,16 @@ class L2ExtractServiceParseTest {
     }
 
     @Test
-    void buildSystemPrompt_replacesScopePlaceholder() {
-        String catalog = "你是 KV Memory 抽取助手。当前 scope={scope}（user=用户级 / workspace=工作区级）。";
-        assertThat(L2ExtractService.buildSystemPrompt(catalog, "user"))
-                .isEqualTo("你是 KV Memory 抽取助手。当前 scope=user（user=用户级 / workspace=工作区级）。");
-        assertThat(L2ExtractService.buildSystemPrompt(catalog, "workspace"))
-                .isEqualTo("你是 KV Memory 抽取助手。当前 scope=workspace（user=用户级 / workspace=工作区级）。");
-        assertThat(L2ExtractService.buildSystemPrompt("", "user")).isEmpty();
+    void buildSystemPrompt_replacesPlaceholders() {
+        String catalog = "你是 KV Memory 抽取助手。当前 scope={scope}（user=用户级 / workspace=工作区级）。"
+                + "当前业务场景：{biz_scene_scope}，今天是 {today}。";
+        LocalDate today = LocalDate.of(2026, 8, 27);
+        assertThat(L2ExtractService.buildSystemPrompt(catalog, "user", null, today))
+                .isEqualTo("你是 KV Memory 抽取助手。当前 scope=user（user=用户级 / workspace=工作区级）。"
+                        + "当前业务场景：*，今天是 2026-08-27。");
+        assertThat(L2ExtractService.buildSystemPrompt(catalog, "workspace", "expense-assist", today))
+                .isEqualTo("你是 KV Memory 抽取助手。当前 scope=workspace（user=用户级 / workspace=工作区级）。"
+                        + "当前业务场景：expense-assist，今天是 2026-08-27。");
+        assertThat(L2ExtractService.buildSystemPrompt("", "user", null, today)).isEmpty();
     }
 }

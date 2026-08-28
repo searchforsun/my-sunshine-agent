@@ -100,4 +100,32 @@ public final class ContextAdminDtos {
             Instant createdAt,
             Instant updatedAt) {
     }
+
+    /**
+     * O4 账本重建校验视图（只读）：以 {@code chat_message} 为账本，用与
+     * {@link com.sunshine.orchestrator.context.l1.L1Compressor} 同源的分区算法
+     * 对账 {@code conversation_context_l1} 视图。Mid/Far 摘要文本为 LLM 输出，
+     * 不做重放重算；仅校验结构不变量（引用存在性 / 折叠链 / 压缩点前缀 / 覆盖）。
+     * {@code verdict}：PASS（允许 WARN）/ ERROR（账本可重建但视图缺失或损坏）。
+     */
+    public record RebuildCheckView(
+            String convId,
+            String kind,
+            String mode,
+            boolean viewExists,
+            boolean shouldCompress,
+            int ledgerMessages,
+            int ledgerRounds,
+            int foldedCount,
+            int midKeys,
+            int farSummaryLength,
+            int nearRounds,
+            int midRounds,
+            int farRounds,
+            int gapRounds,
+            double summaryMatchRate,
+            String verdict,
+            List<String> errors,
+            List<String> warnings) {
+    }
 }

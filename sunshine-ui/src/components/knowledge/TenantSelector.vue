@@ -2,13 +2,17 @@
 import { computed, ref } from 'vue'
 import { NIcon, NPopover } from 'naive-ui'
 import { CheckmarkOutline, ChevronDownOutline, BusinessOutline } from '@vicons/ionicons5'
-import { TENANT_OPTIONS, findTenantOption, type TenantId } from '../../api/tenants'
+import { TENANT_OPTIONS, findTenantOption, type TenantId, type TenantOption } from '../../api/tenants'
 
 const props = defineProps<{
   modelValue: TenantId
   disabled?: boolean
   /** compact：知识库页；block：设置页 */
   variant?: 'compact' | 'block'
+  /** 顶部筛选：菜单首项显示「全部租户」（值 ''） */
+  includeAll?: boolean
+  /** 自定义菜单项（默认 TENANT_OPTIONS），供合并已配置租户 */
+  options?: TenantOption[]
 }>()
 
 const emit = defineEmits<{
@@ -17,7 +21,14 @@ const emit = defineEmits<{
 
 const variant = computed(() => props.variant ?? 'compact')
 const showMenu = ref(false)
-const current = computed(() => findTenantOption(props.modelValue))
+const menuOptions = computed(() => props.options ?? TENANT_OPTIONS)
+const current = computed(() => {
+  if (!props.modelValue) {
+    if (props.includeAll) return { value: '', label: '全部租户', description: '全部租户' }
+    return { value: '', label: '选择租户', description: '' }
+  }
+  return findTenantOption(props.modelValue)
+})
 
 const COMPACT_MENU_WIDTH = 304
 
@@ -65,7 +76,29 @@ function onShowUpdate(next: boolean) {
 
       <div class="tenant-menu" :class="{ 'tenant-menu--compact': variant === 'compact' }" role="listbox" aria-label="租户">
         <button
-          v-for="opt in TENANT_OPTIONS"
+          v-if="includeAll"
+          type="button"
+          role="option"
+          class="tenant-menu-item"
+          :class="{ 'is-selected': modelValue === '' }"
+          :aria-selected="modelValue === ''"
+          @click="select('')"
+        >
+          <NIcon class="tenant-menu-icon" :component="BusinessOutline" :size="18" />
+          <span class="tenant-menu-text">
+            <span class="tenant-menu-title">全部租户</span>
+          </span>
+          <span class="tenant-menu-check-slot" aria-hidden="true">
+            <NIcon
+              v-if="modelValue === ''"
+              class="tenant-menu-check"
+              :component="CheckmarkOutline"
+              :size="18"
+            />
+          </span>
+        </button>
+        <button
+          v-for="opt in menuOptions"
           :key="opt.value"
           type="button"
           role="option"

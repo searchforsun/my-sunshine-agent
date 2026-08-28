@@ -147,6 +147,46 @@ class ProcessingStepMiddlewareTest {
     }
 
     @Test
+    void onActingBudgetExceededUsesFailureTextAsAfter() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+        when(executionProperties.getReact()).thenReturn(null);
+
+        String toolName = "sandbox__exec";
+        String toolUseId = "tu-budget";
+        ToolUseBlock toolUse = mock(ToolUseBlock.class);
+        when(toolUse.getName()).thenReturn(toolName);
+        when(toolUse.getId()).thenReturn(toolUseId);
+        when(toolUse.getInput()).thenReturn(Map.of());
+        when(toolCatalogService.timelineStepId(toolName)).thenReturn("tool-exec");
+        when(toolCatalogService.timelinePhase(toolName)).thenReturn("tool");
+        when(toolCatalogService.displayName(toolName)).thenReturn("执行命令");
+        when(toolCatalogService.isRagTool(toolName)).thenReturn(false);
+        when(toolCatalogService.timelineSummary(eq(toolName), any())).thenReturn("ls -l /tmp");
+        when(sandboxTimelineLabels.isSandboxTool(toolName)).thenReturn(false);
+        when(cancellableToolRunRegistry.isCancellableTool(toolName)).thenReturn(false);
+        when(session.beginToolStep("tool-exec", "tool")).thenReturn("step-budget");
+
+        // 同签名 2 次失败达阈值 → budgetExceededToolUseIds 含该 toolUseId（FailureBudget onActing 先于 PSM 处理事件）
+        AgentRunState state = StepEventBridge.runState(bridgeId);
+        state.recordFailure(toolName + "#f1", 2, toolName, "ls: 无法访问", toolUseId);
+        state.recordFailure(toolName + "#f1", 2, toolName, "ls: 无法访问", toolUseId);
+        assertThat(state.isBudgetExceeded(toolUseId)).isTrue();
+
+        ProcessingStepMiddleware mw = newMiddleware();
+        Function<ActingInput, Flux<AgentEvent>> next = in -> Flux.just(
+                new ToolResultEndEvent("e-b", null, "r-b", toolUseId, toolName, ToolResultState.ERROR));
+
+        ActingInput input = new ActingInput(List.of(toolUse));
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
+                .collectList().block();
+
+        // spec §5.4：预算触发的 tool 步 after 忽略 timelineSummary，换「连续失败，需调整方案」
+        verify(session).completeToolStepForToolUse(eq(toolUseId), eq("连续失败，需调整方案"), any());
+        verify(session).recordToolCompleted("执行命令");
+        verify(session).noteToolCallDone();
+    }
+
+    @Test
     void onActingSkipsTodoWriteToolStep() {
         StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
         when(executionProperties.getReact()).thenReturn(null);

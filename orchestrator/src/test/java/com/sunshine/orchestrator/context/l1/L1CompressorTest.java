@@ -101,6 +101,9 @@ class L1CompressorTest {
         lenient().when(store.parseMidAnswers(any())).thenReturn(Map.of());
         lenient().when(store.farSummaryOf(any())).thenReturn("");
         lenient().when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of());
+        // 存量行兼容：summarized 回退为折叠边界（测试无间隙轮）
+        lenient().when(store.parseFarSummarizedMsgIds(any(), any()))
+                .thenAnswer(inv -> inv.getArgument(1));
         lenient().when(l2StateStore.assembleSystemBlock(anyString(), anyString())).thenReturn("");
         lenient().when(conversationRepo.findById(anyString())).thenReturn(Optional.empty());
     }
@@ -147,7 +150,7 @@ class L1CompressorTest {
         ArgumentCaptor<Collection<String>> foldedCaptor = ArgumentCaptor.forClass(Collection.class);
         verify(store).upsert(
                 eq("u"), eq("default"), eq("c1"),
-                midCaptor.capture(), farCaptor.capture(), foldedCaptor.capture(), eq(2), eq(2));
+                midCaptor.capture(), farCaptor.capture(), foldedCaptor.capture(), anyCollection(), eq(2), eq(2));
         assertThat(midCaptor.getValue()).containsEntry("a1", "摘要A");
         assertThat(midCaptor.getValue()).containsEntry("a2", "摘要A");
         assertThat(midCaptor.getValue()).doesNotContainKey("a0");
@@ -166,7 +169,8 @@ class L1CompressorTest {
         compressor.compress("u", "default", "c1", history);
 
         verify(store, never()).upsert(
-                anyString(), anyString(), anyString(), anyMap(), anyString(), anyCollection(), anyInt(), anyInt());
+                anyString(), anyString(), anyString(), anyMap(), anyString(),
+                anyCollection(), anyCollection(), anyInt(), anyInt());
         verify(llm, never()).complete(anyString(), anyString());
     }
 
@@ -203,7 +207,7 @@ class L1CompressorTest {
         ArgumentCaptor<Map<String, String>> midCaptor = ArgumentCaptor.forClass(Map.class);
         verify(store).upsert(
                 eq("u"), eq("default"), eq("c1"),
-                midCaptor.capture(), anyString(), anyCollection(), eq(2), eq(2));
+                midCaptor.capture(), anyString(), anyCollection(), anyCollection(), eq(2), eq(2));
         assertThat(midCaptor.getValue()).containsEntry("a1", "已有摘要");
         assertThat(midCaptor.getValue()).containsEntry("a2", "已有摘要2");
         verify(llm, never()).complete(eq("mid-system"), anyString());
@@ -261,7 +265,7 @@ class L1CompressorTest {
         ArgumentCaptor<Collection<String>> foldedCaptor = ArgumentCaptor.forClass(Collection.class);
         verify(store).upsert(
                 eq("u"), eq("default"), eq("c1"),
-                midCaptor.capture(), eq("叠加远窗"), foldedCaptor.capture(), eq(2), eq(2));
+                midCaptor.capture(), eq("叠加远窗"), foldedCaptor.capture(), anyCollection(), eq(2), eq(2));
         // mid = r2+r3 → a2 复用, a3 新建；a1 已进 Far
         assertThat(midCaptor.getValue()).doesNotContainKey("a1");
         assertThat(midCaptor.getValue()).containsEntry("a2", "Mid摘要A2");
@@ -295,7 +299,7 @@ class L1CompressorTest {
         ArgumentCaptor<String> farCaptor = ArgumentCaptor.forClass(String.class);
         verify(store).upsert(
                 eq("u"), eq("default"), eq("c1"),
-                anyMap(), farCaptor.capture(), anyCollection(), eq(2), eq(2));
+                anyMap(), farCaptor.capture(), anyCollection(), anyCollection(), eq(2), eq(2));
         assertThat(farCaptor.getValue()).isEqualTo("稳定远窗");
     }
 
@@ -341,7 +345,8 @@ class L1CompressorTest {
             assertThat(maxInCritical.get()).isEqualTo(1);
             verify(store, times(2)).find("c1");
             verify(store, atLeastOnce()).upsert(
-                    anyString(), anyString(), eq("c1"), anyMap(), anyString(), anyCollection(), anyInt(), anyInt());
+                    anyString(), anyString(), eq("c1"), anyMap(), anyString(),
+                    anyCollection(), anyCollection(), anyInt(), anyInt());
         } finally {
             hold.countDown();
             pool.shutdownNow();
@@ -357,7 +362,6 @@ class L1CompressorTest {
         when(conversationRepo.findById("c1")).thenReturn(Optional.of(conv));
         when(l2StateStore.assembleWorkspaceBlock("ws-1", "default"))
                 .thenReturn("[workspace L2] plan/step: 完成");
-        when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
         when(llm.complete(eq("far-system"), anyString())).thenReturn("远窗");
 
         List<SessionTurn> history = List.of(
@@ -380,5 +384,27 @@ class L1CompressorTest {
         ArgumentCaptor<String> farUserCaptor = ArgumentCaptor.forClass(String.class);
         verify(llm).complete(eq("far-system"), farUserCaptor.capture());
         assertThat(farUserCaptor.getValue()).contains("[workspace L2] plan/step: 完成");
+    }
+
+    @Test
+    void extractShortConclusion_twoSentencesZeroLlm() {
+        // §6.5 v9：task Mid 短结论机械截取前 2 句，零 LLM
+        String content = "第一句陈述事实。第二句给出结论！第三句不应出现？还有第四句。";
+        assertThat(L1Compressor.extractShortConclusion(content))
+                .isEqualTo("第一句陈述事实。第二句给出结论！");
+    }
+
+    @Test
+    void extractShortConclusion_noPunctuation_capsLength() {
+        String content = "没有标点的长正文".repeat(30);
+        String result = L1Compressor.extractShortConclusion(content);
+        assertThat(result).endsWith("…");
+        assertThat(result.length()).isLessThanOrEqualTo(121);
+    }
+
+    @Test
+    void extractShortConclusion_blank_returnsEmpty() {
+        assertThat(L1Compressor.extractShortConclusion("  ")).isEmpty();
+        assertThat(L1Compressor.extractShortConclusion(null)).isEmpty();
     }
 }

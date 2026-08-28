@@ -1,10 +1,16 @@
 # ReAct 目标对齐与重规划 Hook（L2 进度追踪 + L3 动态重规划）
 
 > **阶段**：四 · **任务卡**：4.7.7（候选）
-> **状态**：📋 设计评审中（未实现）
+> **状态**：✅ 已实现（2026-08-26：4.7.7a–e 全落地，orchestrator 全量 1331/1331 全绿 + Live 验收通过）
 > **日期**：2026-07-27 · **v2（2026-08-10）**：吸收原 4.7.8 中仍有观察价值的可选项（§12）；4.7.8 全文已归档
 > **前置**：4.7.5 ReAct TaskBoard（原生 `todo_write` + `tasksContext`）、AS 2.0 `TaskReminderMiddleware`、4.5.7 可取消工具（`ToolResultEndEvent.state`）
 > **关联**：[2026-06-24-react-taskboard-design.md](archive/2026-06-24-react-taskboard-design.md)（D11）· `ProcessingStepMiddleware` · `AgentExecutionProperties` · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)
+
+> **落地注记（2026-08-26）**：
+> - 原设计的 `ToolFailureBudgetRegistry` 收敛为 per-run 状态对象 **`AgentRunState`**（挂 `StepEventBridge` bridgeId 生命周期，两中间件无状态共享），`recordFailure/resetFailure/drainPendingBudgetInjections` 语义不变。
+> - **失败契约收口**：`ToolResultState.ERROR` 依赖 AS 2.0 `[ERROR]` 前缀契约，`SandboxAgentTools` 失败/异常路径统一输出 `[ERROR] ` 前缀，使 exec 非零退出在真实链路判为 ERROR（此前工具失败 state 恒为 SUCCESS，预算永不触发）。
+> - **中间件链序（§5.4 修正）**：`GoalAlignmentMiddleware → ProcessingStepMiddleware → FailureBudgetMiddleware`（`ProcessingStepMiddlewareFactory.sharedChain()`）。AS2 `MiddlewareChain` 洋葱序（first=最外层）下 onReasoning 由外到内执行 → goal-check 先注入、budget 后注入（§4.3）；onActing 事件由内到外流出 → FailureBudget 最内层先收到 `ToolResultEndEvent` 并标记 `budgetExceededToolUseIds`，随后 PSM `completeToolStep` 查询到该标记，**达阈值那次 tool 步 after 才换「连续失败，需调整方案」**（初版将 PSM 置于最内层导致标记晚于文案查询、SSE 文案永不生效，Live G2 已回补验证）。
+> - 默认**关**（Nacos `agent.execution.react.goal-check.enabled` / `tool-failure-budget.enabled`），热更新生效无需重启。
 
 ---
 
@@ -223,13 +229,13 @@ agent:
 
 ## 8. 子任务拆分
 
-| 编号 | 内容 | 产出 |
-|------|------|------|
-| 4.7.7a | `AgentRunState` + `StepEventBridge` 扩展 + `AgentExecutionProperties` 配置项 | orchestrator + 单测 |
-| 4.7.7b | `ToolFailureBudgetRegistry` + `FailureBudgetMiddleware` + `completeToolStep` budget 文案 | orchestrator + 单测（含 state 判定矩阵、指纹规范化、成功清零、一次性触发） |
-| 4.7.7c | `GoalAlignmentMiddleware` + 触发条件（间隔/工具闸门/MAIN-only） | orchestrator + 单测 |
-| 4.7.7d | Catalog 两条模板 + Nacos 配置 + timeline 文案 + `sync_nacos.py` | 配置 |
-| 4.7.7e | Live 验收脚本 `verify_goal_alignment_live.py` | scripts + 验收记录 |
+| 编号 | 内容 | 产出 | 状态 |
+|------|------|------|------|
+| 4.7.7a | `AgentRunState` + `StepEventBridge` 扩展 + `AgentExecutionProperties` 配置项 | orchestrator + `AgentRunStateTest` | ✅ |
+| 4.7.7b | `FailureBudgetMiddleware` + `ProcessingStepMiddleware.completeToolStep` budget 文案 | orchestrator + `FailureBudgetMiddlewareTest` | ✅ |
+| 4.7.7c | `GoalAlignmentMiddleware` + 触发条件（间隔/工具闸门/MAIN-only） | orchestrator + `GoalAlignmentMiddlewareTest` | ✅ |
+| 4.7.7d | Catalog 三条模板 + Nacos 配置 + timeline 文案 + `sync_nacos.py` | 配置（`react.goal-check` / `react.tool-failure-budget` / `timeline.steps.tool-failure-budget`） | ✅ |
+| 4.7.7e | Live 验收脚本 `verify_goal_alignment_live.py` | scripts + 验收记录（G1 ✅ · G2 ✅ · G3/G4 ✅） | ✅ |
 
 **建议顺序**：a → b → c → d → e（b 可独立先行验证价值）。
 
@@ -240,7 +246,7 @@ agent:
 ### 9.1 单测
 
 ```bash
-mvn test -pl orchestrator -Dtest=FailureBudgetMiddlewareTest,GoalAlignmentMiddlewareTest,ToolFailureBudgetRegistryTest
+mvn test -pl orchestrator -Dtest=AgentRunStateTest,FailureBudgetMiddlewareTest,GoalAlignmentMiddlewareTest
 ```
 
 | 用例 | 预期 |

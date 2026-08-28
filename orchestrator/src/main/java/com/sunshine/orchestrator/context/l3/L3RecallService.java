@@ -18,6 +18,7 @@ import java.util.Set;
 
 /**
  * L3 按需召回：排除 L1 Near/Mid 已覆盖 msgId；时间衰减；渲染材料块（含 Far 回填）。
+ * v28：chat 召回仅 semantic 摘要层（body 原文层已退役），杜绝正文零散 chunk 注入。
  */
 @Slf4j
 @Service
@@ -49,9 +50,13 @@ public class L3RecallService {
         int topK = Math.max(1, l3.getTopK());
         // 多取一些，过滤 Near/Mid 后仍够 topK
         int fetchK = Math.min(50, Math.max(topK * 4, topK + (excludeMsgIds != null ? excludeMsgIds.size() : 0)));
+        // v26 scene 隔离：chat 自动召回仅 scene=chat（task 消息经 scene 字段隔离，互不召回）
+        // v28 layer 过滤：chat 仅 semantic 摘要层（body 原文层已退役）；process 层是 task 专属，chat 不召回
         List<HistoryRagClient.HistoryHit> raw;
         try {
-            raw = historyRagClient.search(userId, tenantId, query, fetchK).block();
+            raw = historyRagClient.search(userId, tenantId, (String) null, "chat",
+                            List.of("semantic"), query, fetchK)
+                    .block();
         } catch (Exception e) {
             log.warn("[ContextL3] recall search 失败: {}", e.getMessage());
             return "";

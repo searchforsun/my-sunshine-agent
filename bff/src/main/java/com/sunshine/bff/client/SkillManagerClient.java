@@ -256,6 +256,22 @@ public class SkillManagerClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    /** 场景 embedding 索引（authority §4.4）：orchestrator 场景回退服务拉取全量码表+向量。 */
+    public Mono<Map<String, Object>> embeddingIndex() {
+        return get("/api/biz-scenes/embedding-index");
+    }
+
+    /** 场景向量回填（authority §4.4）：orchestrator 计算 description 向量后推送。 */
+    public Mono<Map<String, Object>> updateSceneVector(String code, Map<String, Object> body) {
+        return webClient.put()
+                .uri("/api/biz-scenes/{code}/vector", code)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> listBizScenePolicies(String tenantId) {
         return webClient.get()
                 .uri(uri -> uri.path("/api/biz-scenes/policies").queryParam("tenantId", tenantId).build())

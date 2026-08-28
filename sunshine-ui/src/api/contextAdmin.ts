@@ -90,6 +90,73 @@ export interface ConversationSummary {
   updatedAt?: string
 }
 
+/** T0 任务进度：task_board 快照（后端 TaskBoardItemView） */
+export interface TaskBoardItem {
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  dependsOn?: string[]
+}
+
+export interface TaskBoardSnapshot {
+  boardId: string
+  messageId: string
+  conversationId: string
+  tenantId: string
+  userId: string
+  revision: number
+  items: TaskBoardItem[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** H1 计划笔记本：PlanNotebook 的 Redis 反序列化结构 */
+export interface H1TaskItem {
+  taskId: string
+  label: string
+  status: string
+  dependsOn?: string[]
+  constraints?: string
+  expectedOutput?: string
+  successCriteria?: string
+  baseTaskId?: string
+  retryIndex?: number
+  parentTaskId?: string
+  failReason?: string
+}
+
+export interface H1RoundNodeResult {
+  nodeId: string
+  status: string
+  summary?: string
+}
+
+export interface H1Round {
+  roundIndex: number
+  task?: H1TaskItem | null
+  nodeResults?: H1RoundNodeResult[]
+  roundGoalCompletion: number
+  assessReason?: string
+}
+
+export interface H1Notebook {
+  originalGoal?: string
+  userQuery?: string
+  kind?: string
+  taskQueue?: H1TaskItem[]
+  rounds?: H1Round[]
+  goalCompletion: number
+  nextDirection?: string
+  createdAt?: string
+  currentRound: number
+  totalTasksCompleted: number
+  staleRounds: number
+  replanCount: number
+  sessionId?: string
+  maxRounds?: number
+  maxTotalTasks?: number
+}
+
 export async function listContextConversations(
   userId: string,
   tenantId = 'default',
@@ -155,4 +222,20 @@ export async function reingestContextL3(convId: string): Promise<ReingestResult>
     headers: apiHeaders(),
   })
   return parseApiResponse<ReingestResult>(res)
+}
+
+/** T0 任务进度：按会话取最近一次任务板快照 */
+export async function getTaskBoardSnapshot(convId: string): Promise<TaskBoardSnapshot> {
+  const res = await fetch(apiUrl(`/api/admin/context/task/${encodeURIComponent(convId)}/taskboard`), {
+    headers: apiHeaders(),
+  })
+  return parseApiResponse<TaskBoardSnapshot>(res)
+}
+
+/** H1 计划笔记本：读 Redis 中的执行态 PlanNotebook */
+export async function getH1Notebook(convId: string): Promise<H1Notebook> {
+  const res = await fetch(apiUrl(`/api/admin/context/task/${encodeURIComponent(convId)}/notebook`), {
+    headers: apiHeaders(),
+  })
+  return parseApiResponse<H1Notebook>(res)
 }

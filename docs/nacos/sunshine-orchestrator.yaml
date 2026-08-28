@@ -87,6 +87,40 @@ agent:
       # M3 session_search：task 会话 MAIN 注册 sunshine_session_search（chat/workflow 不注册）
       session-search:
         enabled: true
+        # scope=workspace 跨会话检索的会话数上限（防 convId 列表膨胀；仅最近活跃会话）
+        workspace-max-convs: 20
+      # S-C 双阈值采纳 / 候选动态加载（skill-sticky v3.8）：
+      # skillScores/agentScores 逐项置信 → conf>trigger 且 δ 达标触发；
+      # conf>candidate 进候选（目录提权 + 可动态加载）；agent 可调度池取 Top-K。
+      # 默认关闭：分类器提示词契约（skillScores 输出）升级后再开。
+      skill-adoption:
+        enabled: false
+        trigger: 0.85
+        candidate: 0.5
+        delta: 0.2
+        agent-top-k: 5
+        candidate-top-k: 3
+      # 4.7.7 L2 目标对齐（GoalAlignmentMiddleware）：周期性把原始问题+任务进度摆回模型面前，
+      # 防 compaction 后漂移。MAIN-only；默认关灰度（Live 验收后改回 false）。
+      goal-check:
+        enabled: false
+        every-n-think: 3
+      # 4.7.7 L3 失败预算（FailureBudgetMiddleware）：工具失败达阈值注入强提示防同参数死循环。
+      # ERROR 计数 / SUCCESS 清零；INTERRUPTED（用户取消）不计数（属 4.5.7 硬拒路径）。默认关灰度。
+      tool-failure-budget:
+        enabled: false
+        same-signature-max: 2
+        per-tool-max: 3
+      # 5.5 工具语义检索注入（ToolRetrievalMiddleware）：
+      # mode=full 全量注入（默认，现状）；mode=retrieval 按语义 Top-K 动态注入——
+      # Tier 0 全量名列表进系统提示（目录），Tier 2 每轮经 Milvus 检索激活 topK 个工具 schema。
+      # 恒注入工具（内置/沙箱/HITL 需确认）不受检索影响。默认 full 灰度，验收后按需开启。
+      tool-inject:
+        mode: full
+        top-k: 8
+        min-score: 0.3
+        # 检索失败或空结果时回退全量注入，保证功能不丢
+        fallback-full: true
     harness:
       # true：pro → PlannerHarnessExecutor
       # false：专业模式不可用（显式失败）；禁止静默改 fast，禁止回落旧动态规划
@@ -107,6 +141,50 @@ agent:
         key-prefix: "sunshine:plan:notebook:"
         compression:
           near-keep-rounds: 10
+
+  # 业务上下文权威层（business-context-authority §7）：Policy / business_task / 场景偏好。
+  # 一期主路径 kind=chat；默认关（企业工具/工单类对话手动打开）。
+  # 偏好白名单：改本文件后必跑 sync_nacos.py 并重启 orchestrator。
+  business-context:
+    enabled: false
+    task:
+      active-days: 14
+      top-k: 5
+      detail-max: 1
+    preference:
+      global-keys:
+        - locale.language
+        - locale.timezone
+      # scene → 允许装载的 pref key 白名单
+      whitelist:
+        expense-assist:
+          - refund.notify_channel
+    # 冲突仲裁（authority §5.2）：有 scene 且存在 Policy/活跃任务板时，
+    # 用 LLM 判定 L3 摘要与权威字段的直接矛盾并过滤，决策记审计；默认关。
+    conflict-check:
+      enabled: false
+      max-l3-chars: 3000
+      # LLM 判定失败兜底：drop=丢弃整段 L3（有权威块时低优先级安全）| keep=原样保留
+      llm-failure-policy: drop
+    # 场景 embedding 回退（authority §2.1b/§2.1c/§5.5）：资源召回未命中时，
+    # query/正文向量化与场景 description 余弦匹配；api-key 生产经 Nacos 注入。默认关。
+    scene-embedding:
+      enabled: false
+      min-score: 0.7
+      top-k: 1
+      model: text-embedding-v4
+      dimension: 1024
+      base-url: https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding
+      api-key: ""
+    # LLM 自动场景创建（authority §5.5b）：写路径 embedding 未命中时创建 auto 场景
+    # （pending_review，仅嵌入检索可用；运营审核后升 active）。默认关。
+    scene-auto:
+      enabled: false
+      max-pending: 20
+      create-rate-limit: 3
+      ttl-days: 30
+      similarity-threshold: 0.85
+
   skill:
     # P1 强提示句式 — 须含命名组 skill；P0 / 由 SkillBindingParser 硬编码（与前端 / 补全对齐）
     hint-patterns:
@@ -324,6 +402,21 @@ agent:
       # 窗口来自注册表 ModelSceneResolver；禁止 default-model-window
       token-safety-factor: 1.1
       mid-compress-ratio: 0.15
+      # 压缩点模式（五层 §5.5 / task-scene §4）：启用面 task×fast|pro；
+      # Near 起点=far_folded_msg_ids 之后，溢出走「同步推进压缩点（零 LLM）」
+      # 而非从近窗头部丢轮次；退役轮的 LLM 折叠由轮末写路径异步补（P/S 分离）
+      compression-point:
+        enabled: true
+        # task 压缩后重组：Near 保底原文 2 轮 + Mid 摘要 2 轮（v15：2+2+Far）
+        near-keep-rounds: 2
+        mid-keep-rounds: 2
+        # chat 压缩点二期（§5.5.7 差异表：4+4+Far，2026-08-26 启用）
+        chat-near-keep-rounds: 4
+        chat-mid-keep-rounds: 4
+        # task 压缩后重组硬性总量预算（Near+Mid+Far，token；v15 ⑮）：
+        # 超限先降级最旧 Mid 为折叠、再激进折叠最旧 Near（保底 1 轮）；≤0 关闭；
+        # chat 无硬预算，靠组装侧 Budget 退役并入收敛
+        task-post-compact-budget: 10000
     l2:
       min-confidence: 0.75
       constraint-overwrite-confidence: 0.9
@@ -333,20 +426,29 @@ agent:
       decision-ttl-days: 90
       fact-ttl-days: 30
       constraint-ttl-days: 30
-      # 过程记忆分级置信 + TTL
-      reasoning-min-confidence: 0.7
-      interim-conclusion-min-confidence: 0.6
-      reasoning-ttl-days: 7
-      option-ttl-days: 7
-      interim-conclusion-ttl-days: 7
-      topic-ttl-days: 1
+      # 过程笔记（process_note，原 reasoning/option/interim_conclusion/topic 合并）
+      process-note-min-confidence: 0.65
+      process-note-ttl-days: 7
       todo-ttl-days: 7
+      # §6.4 语义 merge：写路径语义冲突识别（关 → 回退纯字面快路径）
+      semantic-merge-enabled: true
     l3:
       collection: sunshine_chat_history
       top-k: 8
       min-score: 0.45
       time-decay: true
       decay-half-life-days: 90
+      # v26 L3 增强（§7.4）
+      semantic-extract-enabled: true        # 嵌入前语义提取层开关
+      body-gate-enabled: true               # v26.2 body 层非全量（仅 task 生效）：abstain 轮 body 原文也不落库；v28 chat 场景 body 原文层已退役，仅留 semantic 摘要
+      semantic-batch-turns: 3               # 攒批触发轮数
+      semantic-batch-interval-ms: 300000    # 攒批触发间隔 ms（定时兜底）
+      semantic-dedupe-enabled: true         # 语义层入库去重开关
+      dedupe-skip-threshold: 0.95           # cosine > 此值完全重复跳过
+      dedupe-merge-threshold: 0.85          # 0.85~0.95 同义合并（保留旧条）
+      process-layer-enabled: true           # task process 层（工具结果摘要）开关
+      process-result-max-chars: 200         # process 层每条 result 截断字符数
+      maintenance-ttl-days: 365
     maintenance:
       interval-ms: 3600000
       superseded-retention-days: 180
@@ -355,6 +457,11 @@ agent:
       audit-on-extract: true
       audit-max-users-per-tick: 50
       audit-extract-debounce-ms: 30000
+      # v26 L3 过期清理分层 TTL（天；≤0 跳过对应层）
+      l3-chat-ttl-days: 30
+      l3-task-body-ttl-days: 90
+      l3-task-process-ttl-days: 7
+      l3-task-semantic-ttl-days: 90
   memory:
     # 仅 AutoContext（4.6.4）；跨轮上下文见 agent.context + Catalog context.*
     auto-context:
@@ -398,6 +505,22 @@ sunshine:
       enabled: true
       url: http://ecs4c16g:9200
       index: sunshine-audit
+  llm-usage:
+    # phase5 5.2 用量计量消费：topic=llm-usage，落库 llm_usage_record
+    enabled: true
+    topic: llm-usage
+    consumer-group: sunshine-llm-usage-consumer
+    # 5.2.3 日聚合任务（llm_usage_record → llm_usage_daily，删除重建幂等）
+    aggregate-interval-ms: 300000
+    aggregate-lookback-days: 2
+    # 模型单价（元 / 1M tokens）：成本估算 est_cost；未配置模型估算为 0
+    price:
+      deepseek-v4-flash:
+        input-per-1m: 2.0
+        output-per-1m: 8.0
+      qwen-plus:
+        input-per-1m: 0.8
+        output-per-1m: 2.0
 
 rocketmq:
   producer:

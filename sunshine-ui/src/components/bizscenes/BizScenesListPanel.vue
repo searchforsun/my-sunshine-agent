@@ -7,14 +7,25 @@ import type { BizSceneEntry } from '../../api/bizScenes'
 
 const page = inject(BIZ_SCENES_PAGE_KEY) as BizScenesPageApi
 
-const cardMenuOptions = [
-  { label: '编辑', key: 'edit' },
-  { label: '删除', key: 'delete' },
-]
+function cardMenuOptions(scene: BizSceneEntry) {
+  if (scene.status === 'pending_review') {
+    return [
+      { label: '通过并启用', key: 'approve' },
+      { label: '拒绝', key: 'reject' },
+      { label: '删除', key: 'delete' },
+    ]
+  }
+  return [
+    { label: '编辑', key: 'edit' },
+    { label: '删除', key: 'delete' },
+  ]
+}
 
 function handleCardMenuSelect(scene: BizSceneEntry, key: string) {
   page.selectScene(scene.bizScene)
-  if (key === 'edit') page.openEdit(scene)
+  if (key === 'approve') page.reviewScene(scene, true)
+  else if (key === 'reject') page.reviewScene(scene, false)
+  else if (key === 'edit') page.openEdit(scene)
   else if (key === 'delete') page.handleDelete()
 }
 </script>
@@ -54,10 +65,19 @@ function handleCardMenuSelect(scene: BizSceneEntry, key: string) {
           <button type="button" class="scene-card-hit" @click="page.selectScene(scene.bizScene)">
             <div class="scene-card-top">
               <div class="scene-card-names">
-                <span class="scene-title">{{ scene.bizScene }}</span>
+                <div class="scene-card-name-line">
+                  <span class="scene-title">{{ scene.bizScene }}</span>
+                  <NTag v-if="(scene.source ?? 'manual') === 'auto'" :bordered="false" size="tiny" round class="source-tag">
+                    auto
+                  </NTag>
+                  <NTag v-if="scene.status === 'pending_review'" :bordered="false" size="tiny" round type="warning" class="source-tag">
+                    待审核
+                  </NTag>
+                </div>
                 <span v-if="scene.displayName && scene.displayName !== scene.bizScene" class="scene-subtitle">{{ scene.displayName }}</span>
               </div>
               <NSwitch
+                v-if="scene.status !== 'pending_review'"
                 :value="scene.status === 'active'"
                 size="small"
                 :disabled="page.saving"
@@ -70,7 +90,7 @@ function handleCardMenuSelect(scene: BizSceneEntry, key: string) {
           <NDropdown
             trigger="click"
             size="small"
-            :options="cardMenuOptions"
+            :options="cardMenuOptions(scene)"
             @select="(key) => handleCardMenuSelect(scene, String(key))"
           >
             <button type="button" class="scene-card-more-btn" title="场景操作" aria-label="场景操作" @click.stop>
@@ -217,6 +237,17 @@ function handleCardMenuSelect(scene: BizSceneEntry, key: string) {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.scene-card-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.source-tag {
+  flex-shrink: 0;
 }
 
 .scene-title {

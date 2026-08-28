@@ -60,7 +60,7 @@
 | `2026-07-17-autocontext-memory-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` §4 Layer 1 |
 | `2026-07-22-context-optimization-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` |
 | `2026-07-24-dynamic-context-compression-design.md` | **→ 已归档** · 内容整合入 `2026-07-31-unified-context-compression-design.md` §§5-8 |
-| `2026-07-31-unified-context-compression-design.md` | **上下文压缩统一 SSOT** · 五层渐进管道（Layer 1 intra-turn → Layer 2 L1 → Layer 3 L2 → Layer 4 L3 → Layer 5 budget）· **基线管道 ✅** · §5.5 / v2–v15 增强（压缩点 / Tier / scene 隔离等）**⬜ 设计稿** |
+| `2026-07-31-unified-context-compression-design.md` | **上下文压缩统一 SSOT** · 五层渐进管道（Layer 1 intra-turn → Layer 2 L1 → Layer 3 L2 → Layer 4 L3 → Layer 5 budget）· **基线管道 ✅** · **v26 L3 增强 ✅**（语义提取 / 去重 / 分层 TTL / process 层）· §5.5 压缩点模式 **✅ 已落地**（压缩点读/写 + 延后四项 + ②⑤⑦ + 工具轮 schema 行 + task Near 完整过程 + **chat 二期**（chat×fast\|pro 4+4+Far））· 仅剩 ⑩ tools 分层注入（超阈值增强） |
 | `2026-07-09-tool-integration-design.md` | 阶段四 **§4.8 ✅** · SDK + MCP Catalog + `/tools` + 工具集 + HITL · [plan](../plans/2026-07-09-tool-integration.md) |
 | `2026-07-20-prompt-ops-routing-catalog-design.md` | 阶段四 **§4.11 实施中** · Prompt 运营中心 + 统一 Rule Engine（DB SSOT，弃 Nacos 规则/提示词）· `/prompts` · [plan](../plans/2026-07-20-prompt-ops-routing-catalog.md) · Live `verify_prompt_catalog_live.py` |
 | `2026-07-20-timeline-summary-duration-design.md` | Chat 时间线总览行 · 墙钟总耗时 · 整段展开/折叠（终态只留终稿）· **✅** · [plan](../plans/2026-07-20-timeline-summary-duration.md) |
@@ -136,14 +136,15 @@ flowchart TB
 | Spec | 角色 | 硬依赖 | 被谁依赖 |
 |------|------|--------|----------|
 | [unified-routing v6](./2026-07-29-unified-routing-design.md) | 执行模式中枢 | multi-agent（主体 ✅）；**R-0～R-4 ✅** | 4.14 H-5（✅）、task-scene、skill-sticky、biz、stateless 分发 |
-| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-7 代码 ✅**；Live 待部署 [plan](../plans/2026-08-13-planner-h7-live.md)；**阶段 D ✅**；完整 4.7.7 Middleware 仍未做（harness 内薄 GoalAlignment ✅） | D12、stateless B2/B3、phase5 长任务 |
-| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；§5.5 ⬜ · **v25 收敛**（L2+W0→KV Memory；CrossTurnCompact 不做；T0→fast 恢复） | — | task-scene、skill-sticky、biz 挂载纪律 |
-| [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 · **v14 收敛**（T0 作废；W0/L2→KV Memory；session_search 收缩） | routing + 压缩点；pro 边界要 H1 | task-list-memory |
-| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat）；码表/工具集见下行 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体 | **H-0～H-7 代码 ✅ / Live P1–P9 全绿 ✅ / 阶段 D ✅**（PlanWorkflow 源码与读侧兼容已删）；[H-7 live](../plans/2026-08-13-planner-h7-live.md) ✅；4.7.7 完整 Middleware 链随 `ReActAgentFactory.sharedChain()` 覆盖全部角色（含 Planner） | D12、stateless B2/B3、phase5 长任务 |
+| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 基线 ✅；**§5.5 压缩点模式 ✅**（压缩点读/写 + 同步推进 P + Budget 退役并入 + ≤10k 硬预算 + Tier 定序 + ②⑤⑦ + 工具轮 schema 行 + task Near 完整过程装载 + **chat 二期**——chat×fast\|pro 4+4+Far）；⑩ tools 分层注入——工具规模实测启用仅 12，未超阈值 → 暂缓）· **v25 收敛**（L2+W0→KV Memory；CrossTurnCompact 不做；T0→fast 恢复）· **v26 L3 增强 ✅**（语义提取 / layer 隔离去重 / process 层 / 分层 TTL） | — | task-scene、skill-sticky、biz 挂载纪律 |
+| [task-scene-context](./2026-08-01-task-scene-context-design.md) | task×fast/pro 记忆 · **✅ 全部落地（2026-08-26）**：executionMode 写路径裁剪 · 压缩点 2+2+Far ≤10k · 同步推进 P / P/S 分离 · Mid schema 骨架（短结论机械截取）· **Near 完整过程装载**（§6.6 think+tool 原文）· v14 收敛（T0 作废；W0/L2→KV Memory；session_search 收缩） | routing + 压缩点；pro 边界要 H1 | task-list-memory |
+| [business-context-authority](./2026-08-13-business-context-authority-design.md) | 企业任务板/Policy · **M0–M5 ✅（2026-08-26）**：Policy 注入 + 偏好白名单 + business_task 任务板 + 冲突仲裁 + embedding 回退/场景双轨（读侧装载 + 写路径 auto 创建，开关默认关）+ M0 装配时序拆分（`deferL3` + 路由后 `attachL3`） | 命名对齐 routing；读路径挂五层 | 与 task-scene **正交**（一期偏 chat）；码表/工具集见下行 |
 | [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md) | 资源 `kind` 过滤 · 业务场景 Lab · 工具集 chat/task · 退役 react-prompt | routing + business-context + toolset | ✅ K0～K4（`verify_kind_biz_scene_live.py`） |
-| [skill-sticky](./2026-08-12-skill-sticky-process-chain-design.md) | 可发现≠触发；触发保真 + 轻 sticky（v3.1） | routing 轨 A | — |
-| [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 任务清单跨轮/跨会话记忆一体化（**v2 清爽收敛**：两级作用域 = 会话级执行态 + KV Memory 沉淀；fast 跨轮恢复；`kind=todo`；H1 终态导出；**T0 作废**） | task-scene 读写闸门（P1/P2 前置）、planner H1、skill-sticky（换题沉淀同步） | — |
+| [skill-sticky](./2026-08-12-skill-sticky-process-chain-design.md) | 可发现≠触发；触发保真 + 轻 sticky（v3.1） | routing 轨 A | — | **主干 ✅（2026-08-24）**：S-0/S-D/S-T/S-1/A-1/A-5-full/A-6/A-7（Live `verify_skill_sticky_live.py`）· **A-2~A-4 租户 ✅ / S-C 双阈值采纳 ✅**（`SkillAdoptionService`，Nacos `skill-adoption` 默认关）· **v3.6 retrieval 双层**（与统一压缩 ⑩ 同增强；工具规模实测启用仅 12，未超阈值 → 暂缓） |
+| [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 任务清单跨轮/跨会话记忆一体化 · **M0–M3 ✅（2026-08-26）**：M0 fast 跨轮恢复 / M1 KV Memory `todo` 类 + scope 隔离 / M2 pro 终态导出 / M3 session_search 收缩版 + **workspace 扩展 ✅（2026-08-26，scope=workspace 跨会话正文 + `conv_id IN` 检索 + `workspace-max-convs`；Live `verify_session_search_workspace_live.py` W1–W4 全绿）**（**v2 清爽收敛**：两级作用域 = 会话级执行态 + KV Memory 沉淀；`kind=todo`；**T0 作废**） | task-scene 读写闸门（P1/P2 前置）、planner H1、skill-sticky（换题沉淀同步） | — |
 | [goal-alignment](./2026-07-27-react-goal-alignment-design.md) | 机械门禁 | TaskBoard/AS2（已有） | rebuild S6（可同批） |
+| [memory-ledger-view](./2026-08-24-memory-ledger-view-optimization-design.md) | 记忆「账本-视图」治理（O1 fast 中断落板 ✅ / O2 语义 merge ✅（随统一压缩 §6.4）/ O3 写路由收敛 ✅ / O4 重建校验 ✅ / O5 审计与判定修正 ✅）——**O1–O5 全部落地** | 统一压缩 v25/v26 + task-list-memory M0–M3 | — |
 | [orchestrator-stateless](./2026-08-03-orchestrator-stateless-design.md) | 物理无状态 | 波次 A 独立；B2/B3 要 harness | 多实例生产 |
 | [request-decision D12](./archive/2026-08-12-react-request-decision-planner-d12.md) | Planner decision | 4.14 Planner MAIN | — |
 | [phase5](./phase5-operation-openness-design.md) / [observability](./2026-07-27-observability-enhancement-design.md) | 运营/观测 | 部分可前置；5.1 等长任务样本 | — |
@@ -155,13 +156,15 @@ flowchart TB
 3. **第三波**：五层 §5.5 压缩点（优先 task，v25 收敛后仅此一套跨轮压缩）→ **task-list-memory M0（fast 跨轮恢复，成本最低）** → task-scene（v14：KV Memory 统一 + 读写闸门）→ business-context（可与 task-scene 并行）→ [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md)（工具集/Lab/退役 react-prompt，可与 biz 同波）
 4. **刻意后置**：stateless B2/B3/拆进程、phase5 5.1/5.4/5.7、压缩点全面铺 chat
 
-**routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期**：`intent.classifier` Catalog live 版本 bump；H-7 Live；harness `tasks` SSE（TaskBoard H1）。R-4 / 阶段 D **✅**（源码删除完成，Live 回归随 H-7）。
+**routing ↔ 4.14**：H-5 接线互锁 **已解开**（`pro`→harness）。**延期项均已收口（2026-08-26）**：`intent.classifier` Catalog 双 key live 版本 bump ✅（skill-agent v2 / workflow v1，5s 热更新线上生效）；H-7 Live ✅（P1–P9 全绿）；harness `tasks` SSE（TaskBoard H1）✅（`PlannerActionTool.emitTaskBoardSnapshot` 下发 taskQueue）。R-4 / 阶段 D **✅**（源码删除完成）。
 
 **现状提醒（2026-08-14）**：主路径 `fast|pro|workflow`；旧 `PlanWorkflow*` **源码已删**（`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*` 零残留；`PlanMaterializer`/`PlanNormalizer`/`PlanTimeline`/`PendingInteraction` 为静态 Workflow/HITL 复用保留）。CLAUDE「4.14 🟡」= H-0～H-6 ✅ / H-7 代码 ✅ / Live 待部署；阶段 D ✅。
 
 **命名提醒（2026-08-13）**：会话形态用 **`kind`**（废 `scene=chat|task`；Catalog 资源同轴另含 `all`）；LLM 调用点用 **`callSite`/`call_site`**（废 `call_scene`）；业务域保留 **`biz_scene`**（码表 = 业务场景 Lab）；执行模式 **`executionMode`**；默认工具集按会话 `kind`（废 ReAct/Plan-Workflow 集）。详见 [routing v6](./2026-07-29-unified-routing-design.md) · [kind-biz-scene-catalog](./archive/2026-08-13-kind-biz-scene-catalog-design.md)。
 
 **上下文记忆收敛（2026-08-14）**：五层 **v25** / task-scene **v14** / task-list-memory **v2** 三稿对齐——① **L2+W0 统一为 KV Memory**（`user_context_state` + `scope=user|workspace`，同表同模型）；② **T0 全套作废**，会话级任务状态由 fast `react_task_board` 跨轮恢复 / pro H1 承接，失败路径挂任务 item `fail_reason`；③ **`CrossTurnCompactMiddleware` 不做**（run 内 SSOT = AS `CompactionConfig` + tail 裁剪）；④ **L2 语义 merge 二期可选、L3 语义提取延后**；⑤ session_search 一期仅 body+scope=session。任务清单承载见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)。
+
+**账本-视图治理（2026-08-24）**：[memory-ledger-view](./2026-08-24-memory-ledger-view-optimization-design.md) 将「四层 vs 六层」调研收敛为 O1–O5——**O1** fast 中断落板 ✅（信号互斥收口：COMPLETE 走 `finishAnswerStream`，CANCEL/ON_ERROR 走 `doFinally`→`persistInterruptSnapshot`；Live `verify_taskboard_interrupt_live.py`）；**O2** L2 语义 merge ✅（随统一压缩 §6.4 提前落地；候选检索后扩为跨 kind 全量 active）；**O3** `ContextWritePath` 收敛为写路由矩阵（`ContextWritePolicy` 单点）✅；**O4** 账本→视图重建校验 ✅（同源对账端点 `rebuild-check` + `verify_context_rebuild.py`）；**O5** 审计与判定修正 ✅（线上数据实证：抽取全量既有状态参照 `existingStateHints` / 审计载荷补 background / 语义候选跨 kind / 跨 kind 同值去重 / conflict 超期转 void；Catalog `context.memory.extract`+`context.l2.audit` v2，catalog_version 150）。排除项：严格事件溯源 / L6 独立建模 / L5 独立情景载体（防过度设计）。
 
 ---
 

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.agent.remote.GenericRemoteToolFactory;
 import com.sunshine.orchestrator.catalog.AgentToolsJson;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
@@ -45,6 +46,8 @@ public class DynamicToolkitFactory {
     private final AgentExecutionProperties executionProperties;
     private final SandboxAgentTools sandboxAgentTools;
     private final SessionSearchTool sessionSearchTool;
+    private final SkillSearchTool skillSearchTool;
+    private final ToolRetrievalService toolRetrievalService;
 
     /** 主 Agent：按会话 kind 装默认工具集（缺省 chat） */
     public Toolkit build(String userId) {
@@ -129,6 +132,22 @@ public class DynamicToolkitFactory {
         MAIN, SUB, WORKER, PLANNER
     }
 
+    /** 工具组描述：displayName + 一行描述（供 AgentScope 分组元信息展示） */
+    private String toolGroupDescription(String toolName) {
+        ToolCatalogEntry entry = toolCatalogService.find(toolName).orElse(null);
+        if (entry == null) {
+            return toolName;
+        }
+        String name = StringUtils.hasText(entry.displayName()) ? entry.displayName().strip() : toolName;
+        String desc = StringUtils.hasText(entry.description()) ? entry.description().strip() : "";
+        return desc.isBlank() ? name : name + "：" + oneLine(desc);
+    }
+
+    private static String oneLine(String text) {
+        String collapsed = text.replaceAll("\\s+", " ");
+        return collapsed.length() <= 60 ? collapsed : collapsed.substring(0, 60);
+    }
+
     /**
      * 绑 skill 时并入 skill 声明的业务工具（去重）；`["*"]` 为全量哨兵，展开为租户启用池。
      * skillId 为空或 skill 未声明工具 → 原样返回。
@@ -159,14 +178,34 @@ public class DynamicToolkitFactory {
             String userId,
             String tenantId,
             String conversationKind) {
-        // 绑 skill 时并入 skill 声明的业务工具（`["*"]` 展开为租户启用池全量）；skill 为空则原样
-        whitelist = mergeSkillTools(whitelist, skillId, tenantId);
+        // A-5：主 agent（MAIN）T0 恒 = (tenant, kind) 工具集配置，不与 skill 声明并集——skill 声明工具
+        // 只作 schema 召回索引（v3.6）；A-1：SUB/Worker 仍并集 skill 声明工具（`["*"]` 展开为租户启用池全量），
+        // 但结果须 ⊆ 租户启用池求交（skill 声明只声明不决定可用性）。
+        if (scope != ToolkitScope.MAIN) {
+            whitelist = mergeSkillTools(whitelist, skillId, tenantId);
+            whitelist = toolSetResolver.intersectEnabledPool(whitelist, tenantId);
+        }
         // skillId 保留签名兼容；方案 B 不再门控沙箱工具
         // 同轮无依赖 tool_call 并行（须 AgentScope ≥1.0.8：mergeSequential 保序，避免结果错配）
         Toolkit tk = new Toolkit(ToolkitConfig.builder().parallel(true).build());
         List<String> registered = new ArrayList<>();
         Set<String> registeredRemote = new HashSet<>();
         List<String> missing = new ArrayList<>();
+
+        // 5.5 retrieval 分层注入（仅 MAIN）：业务工具按组注册（默认 inactive），
+        // 由 ToolRetrievalMiddleware 每轮按 query 激活 Top-K；恒注入工具（HITL/沙箱/元工具）未分组始终可见。
+        boolean retrieval = scope == ToolkitScope.MAIN && toolRetrievalService.retrievalEnabled();
+        if (retrieval) {
+            for (String toolName : whitelist) {
+                if (toolName == null || toolName.isBlank() || toolRetrievalService.isAlwaysInject(toolName)) {
+                    continue;
+                }
+                tk.createToolGroup(
+                        ToolRetrievalService.groupOf(toolName),
+                        toolGroupDescription(toolName),
+                        false);
+            }
+        }
 
         if (scope == ToolkitScope.MAIN
                 || scope == ToolkitScope.SUB
@@ -201,7 +240,14 @@ public class DynamicToolkitFactory {
             }
             remoteToolFactory.create(toolName, userId, tenantId).ifPresentOrElse(agentTool -> {
                 if (registeredRemote.add(agentTool.getName())) {
-                    tk.registerAgentTool(agentTool);
+                    if (retrieval && !toolRetrievalService.isAlwaysInject(toolName)) {
+                        tk.registration()
+                                .agentTool(agentTool)
+                                .group(ToolRetrievalService.groupOf(toolName))
+                                .apply();
+                    } else {
+                        tk.registerAgentTool(agentTool);
+                    }
                 }
                 registered.add(toolName);
             }, () -> missing.add(toolName));
@@ -232,6 +278,14 @@ public class DynamicToolkitFactory {
                     && react.getSessionSearch().isEnabled()) {
                 tk.registerAgentTool(sessionSearchTool);
                 registered.add(SessionSearchTool.NAME);
+            }
+            // S-C：双阈值采纳开启时向 MAIN 提供候选技能动态加载入口；
+            // 候选集经 SkillCandidateRegistry 消息级承载，无候选时工具调用会明确拒绝
+            if (scope == ToolkitScope.MAIN
+                    && react != null && react.getSkillAdoption() != null
+                    && react.getSkillAdoption().isEnabled()) {
+                tk.registerAgentTool(skillSearchTool);
+                registered.add(SkillSearchTool.NAME);
             }
             // D12：request_decision 用户决策归主链——MAIN 在此注册；PLANNER 走 buildForPlanner 单独注册；
             // WORKER / SUB 不注册（决策不派发子 Agent）

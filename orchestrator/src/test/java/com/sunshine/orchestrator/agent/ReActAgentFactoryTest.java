@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -84,7 +85,11 @@ class ReActAgentFactoryTest {
                         new ModelCatalogScene("planner", "planner-model", null, Map.of(), true),
                         new ModelCatalogScene("default", "deepseek-v4-pro", null, Map.of(), true)));
         factory = new ReActAgentFactory(
-                new ReActSystemPromptResolver(catalogHolder), executionProperties,
+                new ReActSystemPromptResolver(
+                        catalogHolder,
+                        Mockito.mock(ToolRetrievalService.class),
+                        executionProperties),
+                executionProperties,
                 dynamicToolkitFactory, middlewareFactory,
                 stateStore, webClientBuilder, resolver, workerDispatchToolProvider,
                 plannerActionToolProvider);
@@ -153,7 +158,7 @@ class ReActAgentFactoryTest {
         AgentRunRequest req = new AgentRunRequest(
                 AgentRole.SUB, "run-1", null, AssembledContext.empty(), "q", List.of(),
                 "u1", "default", null, null, List.of("sdk__sunshine-finance__list_my_expenses"), null, 4,
-                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null, null, null);
+                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null, null, null, null, null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
     }
 
@@ -227,6 +232,23 @@ class ReActAgentFactoryTest {
         assertThat(factory.resolveMaxIters(fallback)).isEqualTo(100);
     }
 
+    @Test
+    void resolveCallSite_mapsAgentRole() {
+        AgentRunRequest main = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-main");
+        assertThat(ReActAgentFactory.resolveCallSite(main)).isEqualTo("chat");
+        AgentRunRequest planner = AgentRunRequest.planner(
+                "q", "u1", "default", "msg-plan");
+        assertThat(ReActAgentFactory.resolveCallSite(planner)).isEqualTo("plan");
+        AgentRunRequest worker = AgentRunRequest.worker(
+                AssembledContext.forWorker("S", ""),
+                "q", List.of("sandbox__exec"), "u1", "default", "a1", "c1", 5, "parent");
+        assertThat(ReActAgentFactory.resolveCallSite(worker)).isEqualTo("worker");
+        AgentRunRequest sub = subRequest(null, List.of(), null);
+        assertThat(ReActAgentFactory.resolveCallSite(sub)).isEqualTo("subagent");
+        assertThat(ReActAgentFactory.resolveCallSite(null)).isEqualTo("chat");
+    }
+
     private static AgentRunRequest subRequest(String skillId, List<String> tools, String overlay) {
         return new AgentRunRequest(
                 AgentRole.SUB,
@@ -245,6 +267,6 @@ class ReActAgentFactoryTest {
                 TimelineBinding.SUB_COMPRESSED,
                 false,
                 null,
-                null, 0, null, null, null, null, null, null);
+                null, 0, null, null, null, null, null, null, null, null);
     }
 }

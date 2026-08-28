@@ -163,6 +163,30 @@ final class TimelineSessionThinkFlow {
     }
 
     String contentAnchorAfterStepId() {
+        String current = state.currentThinkId;
+        if (current != null && emitter.hasStep(current)) {
+            // 若当前 think 之后（快照插入序）已存在工具步（同轮思考中穿插工具，如先思考后调工具），
+            // 正文须锚定这些工具步**之后**，否则前端按 startedAt 排序后正文被渲染在工具步之前 →
+            // 「时间线放错位置」/「正文最后多一个执行时间线」。
+            java.util.List<ProcessingStep> snap = emitter.snapshot();
+            int thinkIdx = -1;
+            for (int i = 0; i < snap.size(); i++) {
+                if (current.equals(snap.get(i).id())) {
+                    thinkIdx = i;
+                    break;
+                }
+            }
+            if (thinkIdx >= 0) {
+                for (int i = snap.size() - 1; i > thinkIdx; i--) {
+                    ProcessingStep s = snap.get(i);
+                    if (!ThinkStepIds.isThinkStep(s.id())) {
+                        return s.id();
+                    }
+                }
+            }
+            return current;
+        }
+        // 无当前 think（流式中尚未开本轮）：回退最后一个 done think
         String lastDoneThink = null;
         for (ProcessingStep step : emitter.snapshot()) {
             if (ThinkStepIds.isThinkStep(step.id()) && "done".equals(step.lifecycle())) {

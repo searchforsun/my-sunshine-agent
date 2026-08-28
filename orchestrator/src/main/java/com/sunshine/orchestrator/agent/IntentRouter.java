@@ -67,6 +67,7 @@ public class IntentRouter {
         ));
         request.put("max_tokens", 256);
         request.put("temperature", 0);
+        request.put("call_site", LlmGatewayClient.CALL_SITE_REWRITE);
         if (StringUtils.hasText(model.fallbackModel())) {
             request.put("fallback_model", model.fallbackModel());
         }
@@ -78,7 +79,7 @@ public class IntentRouter {
                 .map(plan -> ctx.lockedMode() != null || ctx.preference() != null
                         ? applyLockedMode(plan, ctx.effectiveLockedMode())
                         : workflowCatalog.sanitize(plan))
-                .map(skillCatalogService::sanitizeSkillPlan)
+                .map(plan -> skillCatalogService.sanitizeSkillPlan(plan, ctx.tenantIdOrDefault()))
                 .doOnNext(plan -> log.info(
                         "[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}, locked={}, kind={}",
                         plan.mode(),
@@ -144,8 +145,8 @@ public class IntentRouter {
         if (workflowTrack) {
             return workflowCatalog.renderIntoClassifier(prompt, ctx.kindOrDefault());
         }
-        // 目录按会话 kind 过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A】+ applyLockedMode 约束
-        prompt = skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
+        // 目录按会话 kind + 租户过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A】+ applyLockedMode 约束
+        prompt = skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault(), ctx.tenantIdOrDefault());
         return agentCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
     }
 

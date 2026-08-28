@@ -9,6 +9,7 @@ import com.sunshine.orchestrator.agent.HarnessAgentHolder;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
+import com.sunshine.orchestrator.agent.ToolRetrievalService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.execution.DecisionResumeSteps;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Flux;
@@ -57,6 +59,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -93,12 +96,13 @@ class ReActAgentRuntimeTest {
     private ChatMessageRepository messageRepo;
 
     private ReActAgentRuntime runtime;
+    private AgentExecutionProperties executionProperties;
 
     @BeforeEach
     void setUp() {
         AgentGroundingProperties groundingProperties = new AgentGroundingProperties();
         groundingProperties.setEnabled(false);
-        AgentExecutionProperties executionProperties = new AgentExecutionProperties();
+        executionProperties = new AgentExecutionProperties();
         lenient().when(spawnRunRegistry.getIfAvailable()).thenReturn(null);
         lenient().when(decisionResumeSupport.getIfAvailable()).thenReturn(null);
         lenient().when(systemPromptResolver.resolve(any())).thenReturn("SYS");
@@ -110,7 +114,8 @@ class ReActAgentRuntimeTest {
                 agentHolder, promptComposer, groundingChecker, groundingProperties,
                 taskBoardService, executionProperties, sandboxSessionLifecycle,
                 conversationRepo, spawnRunRegistry, decisionResumeSupport, writeEditPlaceholder,
-                systemPromptResolver, modelWindowCache, modelSceneResolver, messageRepo);
+                systemPromptResolver, modelWindowCache, modelSceneResolver, messageRepo,
+                Mockito.mock(ToolRetrievalService.class));
     }
 
     @Test
@@ -132,7 +137,7 @@ class ReActAgentRuntimeTest {
         AgentRunRequest planner = new AgentRunRequest(
                 AgentRole.PLANNER, "run-p", null, AssembledContext.empty(), "plan",
                 List.of(), "u1", "default", null, null, null, null, 1,
-                TimelineBinding.PLANNER_ONLY, false, null, null, 0, null, null, null, null, null, null);
+                TimelineBinding.PLANNER_ONLY, false, null, null, 0, null, null, null, null, null, null, null, null);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("PLANNER");
@@ -337,6 +342,82 @@ class ReActAgentRuntimeTest {
 
         verify(sandboxSessionLifecycle).prepareRun(req);
         verify(sandboxSessionLifecycle).closeQuietly(req);
+    }
+
+    private io.agentscope.core.state.AgentState agentStateWithTask() {
+        return io.agentscope.core.state.AgentState.builder()
+                .tasksContext(new io.agentscope.core.state.TaskContextState(List.of(
+                        io.agentscope.core.state.Task.builder().id("t1").subject("步骤一").description("d")
+                                .state(io.agentscope.core.state.Task.State.IN_PROGRESS).build())))
+                .build();
+    }
+
+    @Test
+    void run_completeFinalizesTaskboardNotInterruptSnapshot() {
+        executionProperties.getReact().getTaskboard().setEnabled(true);
+        Msg userMsg = Msg.builder().role(MsgRole.USER).content(List.of()).build();
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(userMsg), Map.of()));
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-tb-complete");
+        when(agentHolder.get(req)).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class)))
+                .thenReturn(Flux.<io.agentscope.core.event.AgentEvent>empty());
+        io.agentscope.core.ReActAgent delegate = mock(io.agentscope.core.ReActAgent.class);
+        when(reactAgent.getDelegate()).thenReturn(delegate);
+        when(delegate.getAgentState("u1", "msg-tb-complete")).thenReturn(agentStateWithTask());
+
+        runtime.run(req).collectList().block();
+
+        verify(taskBoardService).finalizeNativeTimeline(any(), eq(req), any());
+        verify(taskBoardService, never()).persistInterruptSnapshot(any(), any());
+    }
+
+    @Test
+    void run_errorPersistsInterruptSnapshotAndCheckpoint() {
+        executionProperties.getReact().getTaskboard().setEnabled(true);
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-tb-err");
+        when(agentHolder.get(req)).thenReturn(reactAgent);
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class)))
+                .thenReturn(Flux.<io.agentscope.core.event.AgentEvent>error(new RuntimeException("boom")));
+        io.agentscope.core.ReActAgent delegate = mock(io.agentscope.core.ReActAgent.class);
+        when(reactAgent.getDelegate()).thenReturn(delegate);
+        when(delegate.getAgentState("u1", "msg-tb-err")).thenReturn(agentStateWithTask());
+
+        assertThatThrownBy(() -> runtime.run(req).collectList().block())
+                .hasMessageContaining("boom");
+
+        // doFinally 在错误投递后异步执行（虚拟线程），用 timeout 轮询避免竞态误判
+        verify(delegate, timeout(2000)).saveAgentState("u1", "msg-tb-err");
+        verify(taskBoardService, timeout(2000)).persistInterruptSnapshot(eq(req), any());
+        verify(taskBoardService, never()).finalizeNativeTimeline(any(), any(), any());
+    }
+
+    @Test
+    void run_cancelPersistsInterruptSnapshot() {
+        executionProperties.getReact().getTaskboard().setEnabled(true);
+        when(promptComposer.composeReactInputs(any(), any()))
+                .thenReturn(new ComposedReactInputs(List.of(), Map.of()));
+        AgentRunRequest req = AgentRunRequest.main(
+                AssembledContext.empty(), "q", "u1", "default", "msg-tb-cancel");
+        when(agentHolder.get(req)).thenReturn(reactAgent);
+        // ModelCallEndEvent 产出一个 usage token，take(1) 拿到后向上游发 CANCEL
+        when(reactAgent.streamEvents(anyList(), any(RuntimeContext.class)))
+                .thenReturn(Flux.just(new ModelCallEndEvent("reply-c",
+                        new ChatUsage(10, 5, 0, 1.0))));
+        io.agentscope.core.ReActAgent delegate = mock(io.agentscope.core.ReActAgent.class);
+        when(reactAgent.getDelegate()).thenReturn(delegate);
+        when(delegate.getAgentState("u1", "msg-tb-cancel")).thenReturn(agentStateWithTask());
+
+        List<StreamToken> tokens = runtime.run(req).take(1)
+                .collectList().block(java.time.Duration.ofSeconds(10));
+
+        assertThat(tokens).hasSize(1);
+        verify(taskBoardService, timeout(2000)).persistInterruptSnapshot(eq(req), any());
+        verify(taskBoardService, never()).finalizeNativeTimeline(any(), any(), any());
     }
 
     @Test

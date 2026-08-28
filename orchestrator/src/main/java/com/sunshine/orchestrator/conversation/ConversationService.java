@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
 import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -464,7 +465,7 @@ public class ConversationService {
         return messageRepo.save(msg);
     }
 
-    /** 保存结构化执行计划（intent 列写 intentLabel 兼容审计） */
+    /** 保存结构化执行计划：intent 列写 intentLabel 兼容审计；routing 列落完整 RoutingResult（S-0） */
     @Transactional
     public ChatMessageEntity updateMessageExecutionPlan(String messageId,
             com.sunshine.orchestrator.routing.ExecutionPlan plan) {
@@ -472,6 +473,30 @@ public class ConversationService {
                 .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setIntent(plan.intentLabel());
         msg.setWorkflowId(plan.workflowId());
+        List<String> skills = plan.triggeredSkillIds();
+        List<String> agents = plan.schedulableAgentIds();
+        msg.setRoutingSkillIds(skills.isEmpty() ? null : String.join(",", skills));
+        msg.setRoutingAgentIds(agents.isEmpty() ? null : String.join(",", agents));
+        msg.setUpdatedAt(Instant.now());
+        return messageRepo.save(msg);
+    }
+
+    /** S-C：候选动态加载升级触发集 — 消息 routing_skill_ids 追加，后续轮次经 sticky 继承 */
+    @Transactional
+    public ChatMessageEntity appendTriggeredSkillId(String messageId, String skillId) {
+        if (!StringUtils.hasText(skillId)) {
+            throw new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND);
+        }
+        ChatMessageEntity msg = messageRepo.findById(messageId)
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
+        String id = skillId.strip();
+        List<String> skills = csvToList(msg.getRoutingSkillIds());
+        if (skills.contains(id)) {
+            return msg;
+        }
+        List<String> appended = new ArrayList<>(skills);
+        appended.add(id);
+        msg.setRoutingSkillIds(String.join(",", appended));
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);
     }
@@ -545,6 +570,32 @@ public class ConversationService {
         return messageRepo.findTopByConversationIdOrderBySeqDesc(convId)
                 .filter(m -> "assistant".equals(m.getRole()))
                 .orElse(null);
+    }
+
+    /**
+     * 最近一条非 STREAMING assistant 消息的 RoutingResult seed（skill-sticky S-1）。
+     * 会话内跨轮轻 sticky：无新触发时继承上轮已触发 skill / 可调度 agent。
+     */
+    @Transactional(readOnly = true)
+    public RoutingSeed loadRoutingSeed(String convId) {
+        List<ChatMessageEntity> recent = messageRepo.findRecentByConversationIdDesc(convId, 10);
+        for (ChatMessageEntity m : recent) {
+            if (!"assistant".equals(m.getRole()) || MessageStatus.STREAMING.equals(m.getStatus())) {
+                continue;
+            }
+            return new RoutingSeed(csvToList(m.getRoutingSkillIds()), csvToList(m.getRoutingAgentIds()));
+        }
+        return RoutingSeed.EMPTY;
+    }
+
+    private static List<String> csvToList(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     @Transactional(readOnly = true)

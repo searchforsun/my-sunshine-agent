@@ -90,7 +90,7 @@ public class AgentAdminService {
         def.setEnabled(true);
         def.setTagsJson("[]");
         def.setToolsJson(serializeToolIds(request.toolIds()));
-        def.setTenantId("default");
+        def.setTenantId(normalizeTenantId(request.tenantId()));
         def.setKbScopeJson(serializeKbScope(request.kbScope()));
         def.setDataScopeJson(trimToEmpty(request.dataScopeJson(), "{}"));
         def.setPermissionsJson(trimToEmpty(request.permissionsJson(), "{}"));
@@ -304,6 +304,14 @@ public class AgentAdminService {
             case "chat", "task", "all" -> v;
             default -> "all";
         };
+    }
+
+    /** 租户默认值收敛：空回落 default（A-3 写侧租户，全局共享缺省） */
+    private static String normalizeTenantId(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return "default";
+        }
+        return tenantId.strip();
     }
 
     /** 业务场景码：空→null；非空必须在业务场景 Lab 且 active，否则拒绝保存（K2） */

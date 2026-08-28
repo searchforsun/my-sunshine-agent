@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +56,7 @@ public class ToolSetMemberService {
 
     public ToolSetMembersPageResponse pageMembers(
             ToolSetKind kind, String tenantId, int page, int size, String query) {
+        requireConcreteSet(kind);
         String effectiveTenant = normalizeTenant(tenantId);
         List<ToolSetMemberItemResponse> all = findSet(kind, tenantId)
                 .map(set -> buildMemberItems(set.getId(), effectiveTenant))
@@ -73,6 +75,7 @@ public class ToolSetMemberService {
     }
 
     public ToolSetPickerResponse picker(ToolSetKind kind, String tenantId, String query) {
+        requireConcreteSet(kind);
         Set<String> memberIds = findSet(kind, tenantId)
                 .map(set -> memberToolIds(set.getId()))
                 .orElse(Set.of());
@@ -113,6 +116,7 @@ public class ToolSetMemberService {
 
     @Transactional
     public ToolSetMemberAddResult addMembers(ToolSetKind kind, String tenantId, ToolSetMemberAddRequest request) {
+        requireConcreteSet(kind);
         WritableSet writable = resolveWritableSet(kind, tenantId);
         List<ToolSetMemberAddItem> items = request != null && request.items() != null ? request.items() : List.of();
         List<String> added = new ArrayList<>();
@@ -159,6 +163,7 @@ public class ToolSetMemberService {
 
     @Transactional
     public void removeMembers(ToolSetKind kind, String tenantId, ToolSetMemberRemoveRequest request) {
+        requireConcreteSet(kind);
         List<String> toolIds = request != null && request.toolIds() != null ? request.toolIds() : List.of();
         if (toolIds.isEmpty()) {
             return;
@@ -176,13 +181,33 @@ public class ToolSetMemberService {
 
     /**
      * Runtime 读：当前 kind 默认集的成员。
+     * kind=all 返回 chat ∪ task 并集（仅用于声明候选/审计，不进任何会话装配面）。
      */
     public ToolSetToolIdsResponse toolIds(ToolSetKind kind, String tenantId) {
-        List<ToolSetMemberEntity> members = findSet(kind, tenantId)
-                .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
-                .orElse(List.of());
-        List<String> toolIds = members.stream().map(ToolSetMemberEntity::getToolId).toList();
+        if (kind == null) {
+            return new ToolSetToolIdsResponse(List.of());
+        }
+        List<String> toolIds = kind == ToolSetKind.ALL_DEFAULT
+                ? unionToolIds(tenantId)
+                : findSet(kind, tenantId)
+                        .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
+                        .orElse(List.of())
+                        .stream()
+                        .map(ToolSetMemberEntity::getToolId)
+                        .toList();
         return new ToolSetToolIdsResponse(toolIds);
+    }
+
+    /** kind=all 并集：chat ∪ task 集成员去重后并序（仅声明候选，不进装配面） */
+    private List<String> unionToolIds(String tenantId) {
+        LinkedHashSet<String> union = new LinkedHashSet<>();
+        for (ToolSetKind k : new ToolSetKind[]{ToolSetKind.CHAT_DEFAULT, ToolSetKind.TASK_DEFAULT}) {
+            findSet(k, tenantId)
+                    .map(set -> toolSetMemberRepository.findBySetIdOrderBySortOrderAsc(set.getId()))
+                    .orElse(List.of())
+                    .forEach(m -> union.add(m.getToolId()));
+        }
+        return new ArrayList<>(union);
     }
 
     private List<ToolSetMemberItemResponse> buildMemberItems(String setId, String tenantId) {
@@ -234,6 +259,13 @@ public class ToolSetMemberService {
             return toolSetRepository.findBySetTypeAndTenantId(kind.tenantType(), tenantId.strip());
         }
         return toolSetRepository.findBySetTypeAndTenantId(kind.globalType(), null);
+    }
+
+    /** all=chat∪task 并集只读视图，无独立集实体：成员管理与 picker 不适用 */
+    private static void requireConcreteSet(ToolSetKind kind) {
+        if (kind == ToolSetKind.ALL_DEFAULT) {
+            throw new IllegalArgumentException("kind=all is a read-only union view, not a manageable tool set");
+        }
     }
 
     private ToolSetEntity createGlobalSet(ToolSetKind kind) {

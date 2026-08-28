@@ -106,6 +106,30 @@ public class ModelRegistryCache {
     }
 
     /**
+     * 按调用点解析路由模型（phase5 5.3）：策略表按序取首个 enabled 且注册表存在的模型。
+     * 无策略或模型池为空/全不可用 → empty。
+     */
+    public Optional<String> routeModelFor(String callSite) {
+        if (callSite == null || callSite.isBlank()) {
+            return Optional.empty();
+        }
+        ModelRoutePolicyView policy = snapshot.routesByCallSite.get(callSite.strip());
+        if (policy == null || !policy.isEnabled() || policy.getModels() == null) {
+            return Optional.empty();
+        }
+        for (String model : policy.getModels()) {
+            if (model == null || model.isBlank()) {
+                continue;
+            }
+            String candidate = model.strip();
+            if (findDefinition(candidate).filter(ModelDefinitionView::isEnabled).isPresent()) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * 按场景绑定解析 fallback：优先 primary_model 命中当前模型的 scene；否则任意 enabled scene 的 primary。
      */
     public Optional<String> fallbackForModel(String model) {
@@ -168,13 +192,21 @@ public class ModelRegistryCache {
                 }
             }
         }
+        Map<String, ModelRoutePolicyView> routes = new LinkedHashMap<>();
+        if (catalog.getRoutes() != null) {
+            for (ModelRoutePolicyView r : catalog.getRoutes()) {
+                if (r.getCallSite() != null) {
+                    routes.put(r.getCallSite(), r);
+                }
+            }
+        }
         boolean providersChanged = !providersEqual(snapshot.providersByKey, providers);
-        this.snapshot = new Snapshot(providers, definitions, scenes);
+        this.snapshot = new Snapshot(providers, definitions, scenes, routes);
         if (providersChanged) {
             webClientFactory.invalidateAll();
         }
-        log.info("[ModelRegistryCache] loaded providers={} definitions={} scenes={}",
-                providers.size(), definitions.size(), scenes.size());
+        log.info("[ModelRegistryCache] loaded providers={} definitions={} scenes={} routes={}",
+                providers.size(), definitions.size(), scenes.size(), routes.size());
     }
 
     private GatewayModelCatalog fetchCatalog() {
@@ -248,9 +280,10 @@ public class ModelRegistryCache {
     private record Snapshot(
             Map<String, ModelProviderView> providersByKey,
             Map<String, ModelDefinitionView> definitionsByName,
-            Map<String, ModelSceneView> scenesByKey) {
+            Map<String, ModelSceneView> scenesByKey,
+            Map<String, ModelRoutePolicyView> routesByCallSite) {
         static Snapshot empty() {
-            return new Snapshot(Map.of(), Map.of(), Map.of());
+            return new Snapshot(Map.of(), Map.of(), Map.of(), Map.of());
         }
     }
 }

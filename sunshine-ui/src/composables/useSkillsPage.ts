@@ -34,7 +34,7 @@ import {
 } from '../api/skills'
 import { friendlyErrorMessage } from '../api/apiError'
 import { listBizScenes, type BizSceneEntry } from '../api/bizScenes'
-import { listToolCatalog, type ToolCatalogEntry } from '../api/tools'
+import { fetchToolSetToolIds, listToolCatalog, type ToolCatalogEntry, type ToolSetKindPath } from '../api/tools'
 import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFileTree'
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import {
@@ -51,6 +51,7 @@ import {
 } from '../utils/skills/skillsVersionUtils'
 import { useSkillFilePreview } from '../composables/useSkillFilePreview'
 import { useSkillsRouteState } from '../composables/useSkillsRouteState'
+import { useTenantPreference } from '../composables/useTenantPreference'
 
 export const SKILLS_PAGE_KEY = Symbol('skillsPage')
 
@@ -58,6 +59,7 @@ export function useSkillsPage() {
   const message = useMessage()
   const router = useRouter()
   const route = useRoute()
+  const { tenantId } = useTenantPreference()
   const { readSkillId, syncSkillId } = useSkillsRouteState()
   const skills = ref<SkillEntry[]>([])
   const loading = ref(false)
@@ -79,6 +81,8 @@ export function useSkillsPage() {
 
   /** 业务工具目录（enabled 过滤做下拉选项） */
   const toolCatalog = ref<ToolCatalogEntry[]>([])
+  /** A-4：(tenant, kind) 工具集成员，声明候选收敛用；kind=all = chat∪task 并集 */
+  const toolSetMemberIds = ref<string[] | null>(null)
   const toolsLoading = ref(false)
   /** 当前选中版本绑定工具的草稿（加载版本时同步） */
   const versionTools = ref<string[]>([])
@@ -91,12 +95,17 @@ export function useSkillsPage() {
     return !!ver?.storagePath && ver.status === 'draft'
   })
 
-  const toolSelectOptions = computed(() =>
-    toolCatalog.value.filter(t => t.enabled).map(t => ({
+  /** A-4：声明候选收敛到当前 skill (tenant, kind) 工具集；成员未加载退化为全量 */
+  const toolSelectOptions = computed(() => {
+    const all = toolCatalog.value.filter(t => t.enabled).map(t => ({
       label: `${t.displayName || t.id} (${t.id})`,
       value: t.id,
-    })),
-  )
+    }))
+    const memberIds = toolSetMemberIds.value
+    if (!memberIds || memberIds.length === 0) return all
+    const memberSet = new Set(memberIds)
+    return all.filter(o => memberSet.has(o.value))
+  })
 
   const bizSceneOptions = computed(() =>
     activeBizScenes.value.map(s => ({ label: s.displayName || s.bizScene, value: s.bizScene })),
@@ -382,6 +391,20 @@ export function useSkillsPage() {
       toolsLoading.value = false
     }
   }
+
+  /** A-4：按当前 skill 的 (tenant, kind) 拉取工具集成员；接口失败置空退化为全量候选 */
+  async function loadToolSetMembers(kind: string | undefined) {
+    const kindKey: ToolSetKindPath = kind === 'chat' || kind === 'task' ? kind : 'all'
+    const tenantParam = tenantId.value === 'default' ? undefined : tenantId.value
+    try {
+      toolSetMemberIds.value = await fetchToolSetToolIds(kindKey, tenantParam)
+    } catch {
+      toolSetMemberIds.value = null
+    }
+  }
+  watch(() => selectedSkill.value?.kind, (kind) => {
+    loadToolSetMembers(kind)
+  }, { immediate: true })
 
   /** 解析版本 toolsJson 为工具 ID 列表（`["*"]` 展开为已启用工具） */
   function parseVersionTools(toolsJson: string | undefined | null): string[] {

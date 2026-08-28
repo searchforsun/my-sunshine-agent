@@ -129,6 +129,34 @@ public class ModelManagerClient {
         return getWithOptionalTenant("/api/models/catalog", tenantId);
     }
 
+    // ---- route policy ----
+
+    public Mono<Map<String, Object>> listRouteKeys() {
+        return get("/api/models/routes/keys");
+    }
+
+    public Mono<Map<String, Object>> listRoutes(String tenantId) {
+        return getWithOptionalTenant("/api/models/routes", tenantId);
+    }
+
+    public Mono<Map<String, Object>> upsertRoute(Map<String, Object> body) {
+        return webClient.put()
+                .uri("/api/models/routes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
+    public Mono<Map<String, Object>> deleteRoute(Long id) {
+        return webClient.delete()
+                .uri("/api/models/routes/{id}", id)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toBizError)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     private Mono<Map<String, Object>> getWithOptionalTenant(String path, String tenantId) {
         if (tenantId == null || tenantId.isBlank()) {
             return get(path);

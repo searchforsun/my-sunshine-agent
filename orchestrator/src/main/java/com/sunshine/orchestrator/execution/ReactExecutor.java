@@ -4,6 +4,9 @@ import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.biz.BizSceneResolver;
+import com.sunshine.orchestrator.biz.BizContextConflictArbiter;
+import com.sunshine.orchestrator.biz.BusinessContextAssembler;
+import com.sunshine.orchestrator.biz.SceneEmbeddingService;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.client.BizSceneCatalogClient;
@@ -11,6 +14,8 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ContextAssembler;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.ThinkStepIds;
@@ -37,11 +42,17 @@ public class ReactExecutor {
     private final AgentCatalogService agentCatalogService;
     private final SkillCatalogService skillCatalogService;
     private final BizSceneCatalogClient bizSceneCatalogClient;
+    private final BusinessContextAssembler businessContextAssembler;
+    private final BizContextConflictArbiter bizContextConflictArbiter;
+    private final SceneEmbeddingService sceneEmbeddingService;
+    private final ContextAssembler contextAssembler;
     private final AgentExecutionProperties executionProperties;
     private final PromptCatalogHolder catalogHolder;
     private final ObjectProvider<GenerationRegistry> generationRegistry;
 
     private static final String PARAM_AGENT_IDS = "agentIds";
+    private static final String PARAM_SKILL_IDS = "skillIds";
+    private static final String PARAM_CANDIDATE_SKILL_IDS = "candidateSkillIds";
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         Map<String, String> params = ctx.plan() != null && ctx.plan().params() != null
@@ -49,10 +60,10 @@ public class ReactExecutor {
         String query = StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY))
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
-        String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
-        // K2 资源召回后解析会话 biz_scene（结构化日志；完整权威层装载见 Task 6 标注的 P3）
-        logResolvedBizScene(skillId, params.get(PARAM_AGENT_IDS));
-        return executeWithInjected(ctx, List.of(), query, skillId);
+        List<String> triggeredSkillIds = resolveTriggeredSkillIds(params);
+        List<String> candidateSkillIds = resolveCandidateSkillIds(params);
+        String skillId = triggeredSkillIds.isEmpty() ? null : triggeredSkillIds.get(0);
+        return executeWithInjected(ctx, List.of(), query, skillId, triggeredSkillIds, candidateSkillIds);
     }
 
     /** 节点失败降级 ReAct - 注入已成功节点上下文 */
@@ -62,15 +73,52 @@ public class ReactExecutor {
         String query = StringUtils.hasText(params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY))
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
+        List<String> triggeredSkillIds = resolveTriggeredSkillIds(params);
+        List<String> candidateSkillIds = resolveCandidateSkillIds(params);
+        String skillId = triggeredSkillIds.isEmpty() ? null : triggeredSkillIds.get(0);
+        return executeWithInjected(ctx, injectedBlocks, query, skillId, triggeredSkillIds, candidateSkillIds);
+    }
+
+    /**
+     * 本轮已触发 skill 集：优先 classifier 输出的多值 skillIds（逗号分隔），
+     * 回退单数 skill；skillId 保留首项以兼容沙箱挂载 / 审计 / SUB 单数语义（skill-sticky S-T）。
+     */
+    private static List<String> resolveTriggeredSkillIds(Map<String, String> params) {
+        String skillIdsRaw = params.get(PARAM_SKILL_IDS);
+        if (StringUtils.hasText(skillIdsRaw)) {
+            List<String> ids = java.util.Arrays.stream(skillIdsRaw.split(","))
+                    .map(String::strip)
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .toList();
+            if (!ids.isEmpty()) {
+                return ids;
+            }
+        }
         String skillId = blankToNull(params.get(SkillBindingOutcome.PARAM_SKILL));
-        return executeWithInjected(ctx, injectedBlocks, query, skillId);
+        return skillId != null ? List.of(skillId) : List.of();
+    }
+
+    /** 本轮候选 skill 集（S-C）：目录提权 + dynamicLoadable，可经 sunshine_search_skills 升级触发 */
+    private static List<String> resolveCandidateSkillIds(Map<String, String> params) {
+        String raw = params.get(PARAM_CANDIDATE_SKILL_IDS);
+        if (!StringUtils.hasText(raw)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(raw.split(","))
+                .map(String::strip)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
     }
 
     private Flux<StreamToken> executeWithInjected(
             ExecutionStreamContext ctx,
             List<String> injectedBlocks,
             String query,
-            String skillId) {
+            String skillId,
+            List<String> triggeredSkillIds,
+            List<String> candidateSkillIds) {
         if (ctx.assistantMsgId() != null) {
             StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
                     ctx.conversationId(),
@@ -90,6 +138,26 @@ public class ReactExecutor {
         if (wrappedRules != null) {
             blocks.add(wrappedRules);
         }
+        // 业务上下文权威层（authority §5.3 P3）：资源召回后解析 biz_scene；
+        // 有 scene 且闸门满足（开关开 + kind=chat）才装载 Policy/任务板/偏好块
+        String scene = resolveBizScene(skillId, allParams(ctx).get(PARAM_AGENT_IDS), query);
+        blocks.addAll(businessContextAssembler.assemble(
+                ctx.tenantId(), ctx.userId(), scene, ctx.conversationId(), ctx.conversationKind()));
+        // M0（authority §2.2 方案 A）：L3 延后装配——资源召回后（resolveBizScene 之后）按
+        // assemble 挂载的分区锚点召回 L3，与业务块（P3）同一注入点并行；随后 M4 冲突仲裁
+        // 对 L3 材料块做权威参照过滤。
+        AssembledContext memory = ctx.memory();
+        if (memory != null) {
+            memory = contextAssembler.attachL3(memory, buildAssembleRequest(ctx, query));
+        }
+        if (memory != null && StringUtils.hasText(memory.l3MaterialBlock())) {
+            String filteredL3 = bizContextConflictArbiter.arbitrate(
+                    ctx.tenantId(), ctx.userId(), scene, ctx.conversationId(),
+                    ctx.assistantMsgId(), memory.l3MaterialBlock());
+            if (filteredL3 != null) {
+                memory = memory.withL3MaterialBlock(filteredL3);
+            }
+        }
         if (injectedBlocks != null) {
             blocks.addAll(injectedBlocks);
         }
@@ -98,8 +166,7 @@ public class ReactExecutor {
             blocks.addAll(ReactResumeContextSupport.buildInjectedBlocks(resumeSteps, false));
         }
         // $A $B 绑定：注入可 spawn 的智能体列表（模板 SSOT：Catalog id=react.spawn-hint）
-        Map<String, String> allParams = ctx.plan() != null && ctx.plan().params() != null
-                ? ctx.plan().params() : Map.of();
+        Map<String, String> allParams = allParams(ctx);
         String agentIdsRaw = allParams.get(PARAM_AGENT_IDS);
         if (StringUtils.hasText(agentIdsRaw)) {
             String template = catalogHolder.snapshot().text("react.spawn-hint")
@@ -130,12 +197,18 @@ public class ReactExecutor {
         if (ctx.reactRestart() && StringUtils.hasText(ctx.assistantMsgId()) && !resumeSteps.isEmpty()) {
             DecisionResumeSteps.bind(ctx.assistantMsgId(), resumeSteps);
         }
+        // S-C：候选集消息级承载——sunshine_search_skills 校验加载目标 ⊆ 本轮采纳候选
+        if (StringUtils.hasText(ctx.assistantMsgId()) && !candidateSkillIds.isEmpty()) {
+            com.sunshine.orchestrator.routing.SkillCandidateRegistry.bind(
+                    ctx.assistantMsgId(), candidateSkillIds);
+        }
         return agentRuntime.run(AgentRunRequest.main(
-                        ctx.memory(), query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
+                        memory, query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
                         blocks, skillId, ctx.reactRestart(),
                         ctx.conversationId(), checkpointThinkIteration,
-                        resolveMaxItersByKind(ctx))
+                        resolveMaxItersByKind(ctx), triggeredSkillIds)
                 .withConversationKind(ctx.conversationKind())
+                .withCandidateSkillIds(candidateSkillIds)
                 .withModelOverride(ctx.modelOverride()));
     }
 
@@ -149,6 +222,20 @@ public class ReactExecutor {
             return react.getTaskMaxIters();
         }
         return 0;
+    }
+
+    /** attachL3 装配请求：history 为空（分区锚点已随 memory 挂载），kind/模型从执行上下文取。 */
+    private ContextAssembler.AssembleRequest buildAssembleRequest(ExecutionStreamContext ctx, String query) {
+        return new ContextAssembler.AssembleRequest(
+                ctx.userId(),
+                ctx.tenantId(),
+                ctx.conversationId(),
+                List.of(),
+                query,
+                ctx.modelOverride(),
+                ctx.conversationKind() != null ? ctx.conversationKind() : "chat",
+                null,
+                null);
     }
 
     /**
@@ -205,15 +292,21 @@ public class ReactExecutor {
         }
     }
 
+    private static Map<String, String> allParams(ExecutionStreamContext ctx) {
+        return ctx.plan() != null && ctx.plan().params() != null
+                ? ctx.plan().params() : Map.of();
+    }
+
     private static String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.strip() : null;
     }
 
     /**
-     * K2：资源召回后解析会话 biz_scene（agent 优先 → skill 第一非空 → null）。
-     * 完整结构化权威层（Policy/任务板/偏好）装载 → 权威层 P3（business-context 后续）。
+     * K2 + 权威层 P3：资源召回后解析会话 biz_scene（agent 优先 → skill 第一非空 → null）。
+     * 资源召回未命中时做 embedding 回退（authority §2.1c）：query 向量化 → 与 active 场景 description
+     * 余弦匹配，最高分 ≥ min-score 采纳。非空返回场景码；空则整层跳过。
      */
-    private void logResolvedBizScene(String skillId, String agentIdsRaw) {
+    private String resolveBizScene(String skillId, String agentIdsRaw, String query) {
         try {
             List<BizSceneResolver.SceneTagged> agents = new ArrayList<>();
             if (StringUtils.hasText(agentIdsRaw)) {
@@ -235,9 +328,20 @@ public class ReactExecutor {
             }
             String scene = BizSceneResolver.resolve(agents, skills, bizSceneCatalogClient.activeCodes())
                     .orElse(null);
+            if (scene == null && sceneEmbeddingService.enabled()) {
+                java.util.Optional<SceneEmbeddingService.SceneMatch> match =
+                        sceneEmbeddingService.search(query);
+                if (match.isPresent()) {
+                    scene = match.get().bizScene();
+                    log.info("[BizScene] embedding 回退命中 scene={} score={}",
+                            scene, String.format("%.2f", match.get().score()));
+                }
+            }
             log.info("[BizScene] resolved scene={} skill={} agents={}", scene, skillId, agentIdsRaw);
+            return scene;
         } catch (Exception e) {
             log.warn("[BizScene] resolve failed: {}", e.getMessage());
+            return null;
         }
     }
 }

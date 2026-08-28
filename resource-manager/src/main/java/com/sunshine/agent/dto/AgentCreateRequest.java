@@ -20,6 +20,7 @@ public record AgentCreateRequest(
         Integer maxIters,
         Integer maxHandoffs,
         String kind,
-        String bizScene
+        String bizScene,
+        String tenantId
 ) {
 }

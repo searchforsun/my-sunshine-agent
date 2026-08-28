@@ -1,8 +1,8 @@
 # 上下文压缩统一设计（五层渐进管道）
 
 > 日期：2026-07-31
-> 状态：**基线管道 ✅**（Layer 1–5 骨架已落地）· **§5.5 / v2–v15 增强 ⬜ 设计稿未落地**（压缩点模式、Tier 0/1/2、scene 隔离、4+4+Far / 2+2+Far、Budget「退役并入」等，见 §13.3）· **v25 收敛**：CrossTurnCompact/T0 已删项、L2+W0→KV Memory、语义 merge 二期、L3 语义提取延后 · **v26 L3 增强重启**：语义提取层 / 相似度去重 / 定期维护 / task process 层向量化 升级为要做（落点见 §7.4 / §9.2 / §13.4）
-> **基线对照（2026-08-10 代码核实）**：Layer 1 = `HarnessAgentFactory` → AgentScope `CompactionConfig`（token 动态触发 + Catalog 摘要保留思考，§4.5）；Layer 2 = `L1Compressor` **滑动窗** Near/Mid/Far + `far_folded_msg_ids` 仅作 Far 增量折叠去重（**非**压缩点边界）；Layer 3/4 = `L2ExtractService` / `L3IngestService`+`L3RecallService`；Layer 5 = `applyBudget` **静默丢弃** L3→Far→Mid。读路径 `ContextAssembler`，写路径 `ContextWritePath`。
+> 状态：**基线管道 ✅**（Layer 1–5 骨架已落地）· **§6.4 语义 merge ✅ 已实现**（2026-08-25）：写路径三阶段（字面快路径 → 跨 kind 全量 active 候选检索（2026-08-26 扩面，防同义跨 kind 漏判） → LLM 判定 NOOP/MERGE/UPDATE/CONFLICT，`L2SemanticMergeService` + Catalog `context.l2.merge`；task.* 结构键与开关关闭走字面回退；失败一律保守回退 NOOP）· **§5.5 压缩点模式 ✅ 主体落地**（2026-08-26）：**task×fast|pro 启用压缩点读/写路径**——`L1Compressor.partitionByPoint` 以 `far_folded_msg_ids` 为界、`ContextAssembler` Near 不从头部丢轮次、压缩重组 2+2+Far（`compression-point.near-keep/mid-keep-rounds`）；**chat 二期 ✅**（2026-08-26）：启用面扩至 `chat×fast|pro`，Near/Mid 参数按 kind 分化（chat 4+4+Far / task 2+2+Far≤10k，`chat-near-keep/mid-keep-rounds`；chat 无 ≤10k 硬预算，靠组装侧 Budget 退役并入收敛）；**§5.5 延后四项 ✅ 收口**：① 同步推进 P（assemble 超预算零 LLM 前移压缩点 + 本轮按新 P 重组）② Budget 退役并入（压缩点模式 applyBudget 丢 L3→退役 Mid 进 P→丢 Far 块，Near/L2 永不丢）③ ≤10k 硬预算（`task-post-compact-budget`，超限先降级最旧 Mid、再折叠最旧 Near 保底 1 轮）④ Tier 定序（scope-prompt 静态前置 / nodePrompt 尾部）；**P/S 分离**（`far_folded_msg_ids`=压缩点边界 / `far_summarized_msg_ids`=已折叠子集，间隙轮写路径异步补折叠；存量行 NULL 回退视为一致）；**workflow 继续滑动窗基线**（chat 二期已启用压缩点，§13.3 ①③⑥✅ ④✅ ⑮✅；**②⑤⑦ ✅**（2026-08-26：②⑤ 架构核实已满足 / ⑦ 幂等增益判定落地）；**⑫⑬⑭⑲ 工具轮 schema 行 ✅ + ⑮ 装载细化 ✅（2026-08-26：`ToolSchemaRenderer`/`TaskProcessRenderer` 确定性渲染 + Near 完整过程）**；余 ⬜ 仅 ⑩ tools 分层注入（超阈值增强）见 §13.3）· **其余 §5.5 / v2–v15 增强 ⬜ 设计稿未落地**（见 §13.3）· **v25 收敛**：CrossTurnCompact/T0 已删项、L2+W0→KV Memory、L3 语义提取延后 · **v26 L3 增强 ✅ 已实现**（2026-08-24）：语义提取层 / 相似度去重 / 定期维护 / task process 层向量化（落点 §7.4 / §9.2 / §13.4）
+> **基线对照（2026-08-10 代码核实 · 2026-08-26 增补）**：Layer 1 = `HarnessAgentFactory` → AgentScope `CompactionConfig`（token 动态触发 + Catalog 摘要保留思考，§4.5）；Layer 2 = `L1Compressor`：task|chat × fast|pro 走**压缩点模式**（`partitionByPoint` 以 `far_folded_msg_ids` 为界，Near 只增不减；**同步推进 P ✅**——assemble 超预算零 LLM 前移压缩点，`far_folded_msg_ids`(P)/`far_summarized_msg_ids`(S) 分离，间隙轮写路径异步补折叠，§8.2；Near/Mid 参数按 kind 分化——task 2+2+Far≤10k / chat 4+4+Far），其余（workflow）走**滑动窗** Near/Mid/Far（`far_folded_msg_ids` 作 Far 增量折叠去重）；Layer 3/4 = `L2ExtractService` / `L3IngestService`+`L3RecallService`；Layer 5 = `applyBudget` 滑动窗**静默丢弃** L3→Far→Mid / 压缩点模式**退役并入** ✅（丢 L3 → 退役 Mid 进 P → 丢 Far 块）。读路径 `ContextAssembler`，写路径 `ContextWritePath`。
 > **v2/v3 优化（2026-08-01 · 设计稿）**：§5.5 压缩点模式（L1 压缩点前移、L3 尾部动态段、Budget「丢」改「退役并入」）；§5.5.3 起 v3 分层修正——**按变化频率 Tier 0/1/2 分层**、幂等 upsert、T0 降频、意图尾部注入（业界调研见 §5.5.5）· 关联 [task-scene-context-design](./2026-08-01-task-scene-context-design.md)
 > **v8（2026-08-02 · 历史）**：曾设想 HIERARCHICAL 下 H1 拆 Tier——**已由 v10/S3 + rebuild S5 v4 作废**；原详设见 [archive/planner-harness](./archive/2026-07-31-planner-harness-loop-design.md)
 > **v9（2026-08-05）**：场景隔离——chat 保留 L3（`scene=chat` 通道）、task 不读不写；task 不读用户 L2（写/读双侧路由，[task-scene §2.1/§6.3](./2026-08-01-task-scene-context-design.md)）；同步 §5.5.3 图注记与 §5.5.7 差异表
@@ -16,10 +16,10 @@
 > - **Near < 4 轮（极致压缩，预算极紧）**：仅保留**最近 1 轮原文**为 Near；其余 Near + 旧 Mid + 旧 Far 全部折叠进 Far
 > 压缩点（`far_folded_msg_ids`）前移到保留 Near 之前 → 该次唯一 prefix 重建（C3）。`near-turns` 语义=压缩后保底原文轮数（默认 4）；两次压缩间 Near 仍涨至 80%/40 轮再触发。压缩本就一次重建，保近期原文边际成本≈0、收益是跨轮修正精确性。同步 §5.5.2 / §5.5.7 差异表 / §13.3 ⑭
 > **v15（2026-08-07 · task 压缩后重组 2+2+Far ≤10k）**：task 场景压缩触发后重组为「**近 2 轮完整过程 + 次 2 轮过程骨架 + 其余折叠**」，并加**硬性总量预算 Near+Mid+Far ≤ 10k**（Nacos `context.l1.task-post-compact-budget`）；**不设单轮上限**（Near 职责是保留上下文，单轮怪物由压缩兜底：总量超限先降级第 2 轮完整过程为骨架、再激进折叠 Far）；工具结果三级分级——**读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文**（AI 产物可精确复述改动细则）。**引用化只约束跨轮记忆块，不约束 Near 短期窗口**（写/改原文在 Near 内留存，滑出后进 Mid 骨架/Far 折叠/终态 T0/process 层仍只存引用+摘要）。详见 [task-scene §6.6](./2026-08-01-task-scene-context-design.md) · 同步 §5.5.7 差异表 / §13.3 ⑮
-> **v17（2026-08-10 · 启用面收窄）**：对齐 [unified-routing v6](./2026-07-29-unified-routing-design.md) 与 [task-scene §2.2 v8](./2026-08-01-task-scene-context-design.md)——压缩点 / W0 / T0 / `session_search` **优先** `kind=task` × (`executionMode=fast`|`pro`)；**workflow 退出**本套增强；**pro 计划态以 H1 为 SSOT、砍重型 T0**；禁止 L3 自判 planMode 进上下文。§5.5.4 ④「chat/task 统一启用」改为「机制同构、落地分期」——chat 可二期跟随，非一期强制。（注：文中 Near「中断感知」已占用 v16 标签，本条用 v17。）
+> **v17（2026-08-10 · 启用面收窄）**：对齐 [unified-routing v6](./2026-07-29-unified-routing-design.md) 与 [task-scene §2.2 v8](./2026-08-01-task-scene-context-design.md)——压缩点 / W0 / T0 / `session_search` **优先** `kind=task` × (`executionMode=fast`|`pro`)；**workflow 退出**本套增强；**pro 计划态以 H1 为 SSOT、砍重型 T0**；禁止 L3 自判 planMode 进上下文。§5.5.4 ④「chat/task 统一启用」改为「机制同构、落地分期」——**chat 二期 2026-08-26 已落地**（`compressionPointActive` 扩至 chat×fast|pro，Near/Mid 参数按 kind 分化 4+4，Live 验收近 9 轮折叠 2/4+4/rebuild-check PASS）。（注：文中 Near「中断感知」已占用 v16 标签，本条用 v17。）
 > **v18（2026-08-10 · 吸收 4.7.8）**：[harness-loop-enhancement](./archive/2026-07-28-harness-loop-enhancement-design.md) **已归档**。其阶段五「全面启用 compaction」相对 §4.5 **方案 A 已落地**为过时/负优化；**run 内压缩 SSOT = 本文 §4.5**；跨轮 Phase 1 / `CrossTurnCompactMiddleware` 仍属本文 §4.6（后续增强），**不**另起 4.7.8 工程。AS 原生 `session_search`（run 内 JSONL）与自研 `sunshine_session_search`（跨轮 L3）撞名约定见 [task-scene §6.4](./2026-08-01-task-scene-context-design.md)——当前仍 `disableMemoryTools()`，放开 AS `session_search` 为可选（须保留禁 `memory_get/search`）。
 > **v19（2026-08-10 · Mid schema 优先）**：对齐 [task-scene §6.5/§6.6 v9](./2026-08-01-task-scene-context-design.md)——task Mid「过程骨架」= **确定性工具 schema 行**（非默认 LLM 散文）；LLM 仅可选补决策句。工具结果压缩行业共识：结构化裁剪/离线 > 语义摘要。
-> **v20（2026-08-10 · 用户状态 L2 宁缺毋滥）**：§6.0 硬原则 + §6.3.4 **key 场景化命名** + **`background` 背景字段**；抽取歧义默认不入库。语义 merge（§6.4）仍为写路径配套（代码 ⬜）。
+> **v20（2026-08-10 · 用户状态 L2 宁缺毋滥）**：§6.0 硬原则 + §6.3.4 **key 场景化命名** + **`background` 背景字段**；抽取歧义默认不入库。语义 merge（§6.4）已落地（2026-08-25，代码 ✅）。
 > **v21（2026-08-10 · 状态保真原则）**：压缩主目标 = **下一轮可续跑的执行状态保真**（§2.1）；省 token / KV 为硬约束非唯一目的。三标签 L-narr / L-state / L-seal **映射现有载体**，不新建平行存储。细则与 task 侧启用面见 [task-scene §2.0](./2026-08-01-task-scene-context-design.md)。
 > **v22（2026-08-10 · L2 值形态自解释）**：结构化结果须 **key + value + background** 三件套均可指认；禁止裸 key / 布尔孤值 / 会话级计划进用户 L2（线上反例见 §6.3.5）。叠加 v20。
 > **v23（2026-08-10 · chat 工具轮 schema）**：chat Near **正文为主**；多工具业务轮次可追加 **确定性 schema 行**（非 LLM 中间摘要、非 task 完整过程窗）；Mid 同口径保留 schema + 结论语义压缩；跨会话关键态仍走 L2（宁缺毋滥）。见 §5.5.8。
@@ -39,6 +39,12 @@
 >
 > §6.4 L2 语义 merge 仍维持 v25「二期可选」不动。
 > 行业参考：Claude Code 五层渐进压缩 · Cursor 单层摘要 · Oracle 双层模式 · Mem0 LLM 记忆管理
+>
+> **v27（2026-08-27 · L2 kind 精简 12→9）**：`reasoning`/`option`/`interim_conclusion`/`topic` 合并为 **`process_note`**（§6.3.1 类别合并落地）——置信 0.65、TTL 7 天；存量四类行清理。代码：`VALID_KINDS`/`ContextWritePolicy`/`ContextProperties.L2` 收敛为 `process-note-min-confidence`/`process-note-ttl-days`；Catalog `context.memory.extract`/`context.l2.extract` kind 白名单同步 9 类。scope=user|workspace 两维不变（§6.3.2 topic 短 TTL 协调议题由合并天然消解）。
+>
+> **v27.1（2026-08-27 · 时间指代归一化）**：`context.memory.extract` 提示词加硬规则——value 中的相对时间指代（今天/明天/下周/最近/上个月/周三 等）必须换算为绝对日期 `YYYY-MM-DD`，当前日期经 `{today}` 占位注入（`L2ExtractService.buildSystemPrompt` 替换为 `LocalDate.now()`）；无法确定具体日期的禁止臆造、改为近似表述。防止跨会话召回读到漂移指代（L2 TTL 7~365 天）。
+>
+> **v28（2026-08-27 · L3 摘要化与 L2 对账）**：解决 L3 语义层与 L2 重复、以及 body 原文零散 chunk（user/assistant 一条一条）无摘要价值的问题。契约：**chat 场景 L3 只保留 semantic 摘要层**（body 原文层退役），task 保留 body+process（`session_search` 深挖原文依赖）。三处落地——① **语义提取摘要化（方案1）**：Catalog `context.l3.semantic-extract` v4，每段为摘要形式（合并同主题连续对话、保留 ID/数字/时间关键细节、每轮 ≤2 段）+ 排除 L2 已结构化覆盖内容；② **L2 写入对账（方案2）**：`LLMSemanticExtractor` 写 semantic 前读该用户 active L2 `stateValue`，语义段整段包含某条 L2 值 → abstain（强命中，查询失败保守不拦截）；③ **chat 召回/展示收敛**：`L3RecallService` layers body+semantic→仅 semantic，`listL3Entries` 面板仅 semantic 且 role 统一「Chunk」，Milvus `listByConv` 透出 layer。详见 §7.4 / §13.4.1。
 
 ---
 
@@ -118,12 +124,12 @@ cross-turn（跨用户问答轮次）:
  │    开销: 触发后含 LLM 摘要（非零）
  │    压缩: intra-turn ReAct 工具 / 消息流
  │
- ├── Layer 2  L1 Near/Mid/Far             ✅ 基线（滑动窗；压缩点模式 ⬜ 见 §5.5 / §13.3）
+ ├── Layer 2  L1 Near/Mid/Far             ✅ 基线（滑动窗）· 压缩点模式 ✅（task×fast|pro：同步推进 P + P/S 分离，见 §5.5 / §13.3）
  │    触发: token > 80% 窗口 OR 轮次 > 40（异步）
- │    开销: 1-2 次 LLM 调用（Mid 摘要 + Far 折叠）
+ │    开销: 1-2 次 LLM 调用（Mid 摘要 + Far 折叠）；同步推进 P 零 LLM
  │    压缩: cross-turn 对话历史 → 三层窗口
  │
- ├── Layer 3  KV Memory 结构化状态        ✅ 基线抽取 · **宁缺毋滥 / key·value 自解释 / background / 语义 merge ⬜ §6（v20/v22/v25）**
+ ├── Layer 3  KV Memory 结构化状态        ✅ 基线抽取 · **宁缺毋滥 / key·value 自解释 / background / 语义 merge ✅ §6（v20/v22/§6.4）**
  │    触发: assistant completed（异步）
  │    开销: 1 次 LLM 调用
  │    压缩: 对话 → 结构化键值对（scope=user|workspace）
@@ -133,10 +139,10 @@ cross-turn（跨用户问答轮次）:
  │    开销: 1 次 embedding + search
  │    压缩: 对话 → 语义 chunk → 按需召回
  │
- └── Layer 5  Budget 读时裁剪             ✅ 基线（静默丢弃；「退役并入」压缩点 ⬜）
+ └── Layer 5  Budget 读时裁剪             ✅ 基线（静默丢弃）· 压缩点模式「退役并入」✅（§8.2：丢 L3 → 退役 Mid 进 P → 丢 Far 块）
       触发: 组装后 token > 80% 窗口
-      开销: 零 LLM 调用
-      顺序: L3 → Far → Mid 从头丢 → Near 永不丢
+      开销: 零 LLM 调用（退役零 LLM，折叠异步）
+      顺序: L3 → Mid 退役进压缩点（P 前移）→ Far 摘要块 → Near 永不丢
 ```
 
 ### 行业对照
@@ -652,7 +658,7 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 
 **③ Budget「丢」改「退役并入」（C3 + 保质量）**：见 §8.2。Mid 头部不再直接丢，先触发 Far 折叠（并入 far_summary、压缩点前移），折叠后仍超预算才丢 Far。让 Budget 成为压缩点推进的触发源之一，保住「原文可查」原则。
 
-**④ 机制同构、落地分期（v17 覆盖原「全域统一启用」）**：压缩点仍是 **L1 通用机制**（chat/task 同构），但 **一期启用面** = `kind=task` × (`fast`|`pro`)（[routing v6](./2026-07-29-unified-routing-design.md) + [task-scene §2.2](./2026-08-01-task-scene-context-design.md)）。chat 可二期跟随；**workflow 退出**本套增强。场景差异：静态层（P0 / KV Memory workspace；fast 任务清单恢复块；pro→H1）+ L3（chat=`scene=chat`；task 写 `scene=task` 不自动注入）+ 写/读双侧 kind 闸门（§2.1）。
+**④ 机制同构、落地分期（v17 覆盖原「全域统一启用」）**：压缩点仍是 **L1 通用机制**（chat/task 同构），但 **一期启用面** = `kind=task` × (`fast`|`pro`)（[routing v6](./2026-07-29-unified-routing-design.md) + [task-scene §2.2](./2026-08-01-task-scene-context-design.md)）。**chat 二期 ✅ 已落地**（2026-08-26：启用面扩至 chat×fast|pro，Near/Mid 参数按 kind 分化——chat 4+4+Far / task 2+2+Far≤10k，无 ≤10k 硬预算、靠 Budget 退役并入收敛）；**workflow 退出**本套增强。场景差异：静态层（P0 / KV Memory workspace；fast 任务清单恢复块；pro→H1）+ L3（chat=`scene=chat`；task 写 `scene=task` 不自动注入）+ 写/读双侧 kind 闸门（§2.1）。
 
 **⑤ 双压缩点衔接**：run 内压缩点（§4.4 Phase 1 后新 prefix 起点）与跨轮压缩点（far_folded_msg_ids）是两条独立线——run 内压缩**不落库、不移动 far_folded_msg_ids**；跨轮压缩在 assistant 完成后异步推进。二者互不干扰，实现时不得混淆（run 内压缩产物经 `ContextWritePath` 只取 user/assistant 角色入 history）。
 
@@ -677,9 +683,11 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 4. **确定性序列化**：所有注入块 JSON 键排序、无时间戳、无 session id、固定字段顺序；否则「相同数据不同字节」依然全 miss。
 5. **Lost-in-Middle 布局**：中间段只放允许模糊的 Far/Mid 摘要；精确记忆（约束/目标/事实）置于头部高注意力区。
 
-#### 5.5.6 幂等 upsert 与定宽隔离（v3 设计稿）
+#### 5.5.6 幂等 upsert 与定宽隔离（v3 设计稿 · ✅ 核心落地 2026-08-26）
 
 > 落实 §5.5.5 约束 3/4 与 vLLM 实证结论：记忆层「低频」必须是工程可保证的，而非假设。
+>
+> **落地差异（2026-08-26）**：以**字段级增益判定**替代 content-hash 列——L2 字面快路径同 key+value 时，`L2StateStore.refreshSameValue` 仅在候选带来实际增益（更高置信 / 新背景 / 新溯源）才刷新 `updatedAt` 写库，否则**零写**；效果等价（重复陈述不产生任何写与时间戳漂移），且省一列一算。确定性序列化无需额外工程：`renderSystemBlock` 本就只渲染 `(kind, key, value, background)` 四元组并按 `(kind, key)` 定序（无时间戳/session id/置信），同数据必同字节。L1 侧 `ConversationContextL1Store.upsert` 仅压缩窗口溢出触发、每轮必新增消息 → 不存在「未变化回写」路径。定宽 appendix 重编译依赖 KV Memory Hub 业务，暂不启用。
 
 - **content-hash 幂等**：L2/W0 抽取服务每次产出结构化块后计算 `sha256(content)`，与 `conversation_context_l1`/`workspace_context_state` 现存块的 `content_hash` 比对；**未变化 → 跳过写库**，`assemble` 读到的字节不变 → 缓存不失效。
 - **版本标签**：块体变更时更新 `content_hash` + `version`；`assemble` 用 `(kind, key, version)` 确定性拼接，避免「数据相同、序列化不同」造成的无效失效。
@@ -762,12 +770,14 @@ assistant: context.l1.mid-compress → 结论优先 1–3 句（只压叙事，�
 
 **明确不做**：chat Near = task 2 轮完整过程；对 chat tool_result 默认 LLM 中间摘要；把会话单据号塞进用户 L2 裸 key（§6.3.5 反例）。
 
+> **✅ 已落地（2026-08-26）**：`ToolSchemaRenderer`（steps JSON → 确定性 schema 行，零 LLM）在四处历史构建点统一装载（`ChatStreamContextFactory` 新建/续跑 · `ContextWritePath` · `ContextAdminService` rebuild/print）——assistant 消息从 `chat_message.steps` 渲染 `[toolName] keyArgs=… status=ok|fail|denied exit=? · result≤200 · refs=[path]`；写/改类工具省略 result（禁止 patch 原文），沙箱路径进 refs。Near/Mid 均以 `SessionTurn.toolSchemaLines` 原样附加（未经 LLM 改写）；`StepMetadata.toolArgs`（白名单标量入参，`ToolArgsRenderer`）+ `toolExitCode`（`SandboxExitCodeHolder`）在工具步收口时落库。落地差异：① `ids=[…]` 未单列——业务 ID 字段（orderId/approvalId/billId/…）并入 `keyArgs` 白名单渲染；② schema 行附于 assistant 内容尾部（user → assistant「摘要/正文 + schema」），未插入独立 tools 消息（独立 role 会被 `appendTurns` 过滤，信息完整性与确定性不受影响）。chat 滑动窗 Mid 保持 LLM 结论压缩；task 压缩点 Mid 改 **机械短结论**（`extractShortConclusion` 前 2 句 ≤120 字，零 LLM，§6.5 决策句 LLM 分支保持默认关）。
+
 ---
 
 ## 6. Layer 3 — KV Memory 结构化状态（cross-session · 原 L2 用户状态）
 
 > **基线 ✅**：`L2ExtractService` + `L2StateStore`（字面同 key 合并 + 置信门禁）。  
-> **增强 ⬜（v20/v22）**：§6.0 宁缺毋滥 · §6.3.4 key/`background` · **§6.3.5 value 自解释** · §6.4 语义 merge · task 写隔离见 [task-scene §2.1](./2026-08-01-task-scene-context-design.md)。
+> **增强 ✅**：§6.0 宁缺毋滥 · §6.3.4 key/`background` · **§6.3.5 value 自解释** · **§6.4 语义 merge（2026-08-25 落地）**；task 写隔离见 [task-scene §2.1](./2026-08-01-task-scene-context-design.md)。
 > **v25（2026-08-14 · L2 与 W0 统一）**：本层扩展为 **KV Memory**——`user_context_state` 加 `scope=user|workspace` 列，workspace 行（原 W0）同表同模型、抽取服务 `context.memory.extract` 按 scope 参数化；`kind` 新增 `todo`（未完成任务清单，见 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）。下方正文以 scope=user 为例，workspace 侧规则一致。
 
 ### 6.0 硬原则：宁缺毋滥（v20）+ 结构自解释（v22）
@@ -827,10 +837,10 @@ ALTER TABLE user_context_state
 | `profile` / `preference` / `agreement` | 稳定画像/偏好/约定 | 0.75 | 365 天 |
 | `goal` / `decision` | 目标/决策 | 0.75 | 90 天 |
 | `fact` / `constraint` | 事实/约束 | 0.75 | 30 天 |
-| `reasoning` | 推理依据 | 0.7 | 7 天 |
-| `option` | 备选方案及取舍 | 0.7 | 7 天 |
-| `interim_conclusion` | 临时结论 | 0.6 | 7 天 |
-| `topic` | 当前话题焦点 | 无 | 1 天 |
+| `process_note` | 过程笔记（v27：原 `reasoning`/`option`/`interim_conclusion`/`topic` 合并） | 0.65 | 7 天 |
+| `todo` | 未完成任务清单（task-list-memory M1） | 0.75 | 7 天 |
+
+> **v27**：当前共 9 类；`reasoning`/`option`/`interim_conclusion`/`topic` 四个旧 kind 已从 `VALID_KINDS` 移除（合并为 `process_note`），存量行清理。
 
 写入：assistant completed → `ContextWritePath` → L2 抽取（异步）。高置信静默入库，低置信丢弃；**v20**：另过 §6.0 / §6.3.4 门禁。
 
@@ -838,28 +848,31 @@ ALTER TABLE user_context_state
 
 ### 6.3 优化方向
 
-**6.3.1 类别合并**
+**6.3.1 类别合并（✅ v27 已落地 2026-08-27）**
 
-`reasoning` / `option` / `interim_conclusion` 三类在 LLM 抽取时边界模糊，错分率较高。建议合并为 `process_note`（过程笔记），统一 7 天 TTL、0.65 置信门禁。
+`reasoning` / `option` / `interim_conclusion` 三类在 LLM 抽取时边界模糊，错分率较高，连同短 TTL 的 `topic` 一并合并为 `process_note`（过程笔记）：统一 7 天 TTL、0.65 置信门禁。
 
 | 当前（v1） | 建议（v2） |
 |------------|-----------|
 | `reasoning`（推理依据） | → `process_note` |
 | `option`（备选方案） | → `process_note` |
 | `interim_conclusion`（临时结论） | → `process_note` |
+| `topic`（话题锚点，v27 追加并入） | → `process_note` |
 
-合并后 L2 从 11 类简化为 **9 类**（7 类基础画像 + `process_note` + `topic`）。
+合并后 L2 从 11 类简化为 **9 类**（7 类基础画像 + `process_note` + `todo`）。落地差异：`topic` 并入使原「无置信门禁 + 1 天 TTL」特性并入 0.65/7 天统一口径；存量四类行清理。
 
 **与 Mem0 对照**：
 - Mem0 采用单一 `ADD/UPDATE/DELETE/NOOP` 管道，不分类
 - 我们的 9 类比 Mem0 粗（有分类价值区分 TTL），比当前 11 类细得合理
 - `process_note` 语义清晰：`profile` 是"用户是谁"，`process_note` 是"对话中怎么想的"
 
-**6.3.2 topic TTL 协调**
+**6.3.2 topic TTL 协调（✅ v27 已消解 2026-08-27）**
 
 当前 `topic` TTL 为 1 天，其他过程记忆 7 天。跨天明会话时推理还在但话题锚点已失效。建议：
 - `topic` TTL 延长至 3 天（覆盖周末空档）
 - 或改为与 `process_note` 统一 7 天，依赖过期机制自然淘汰
+
+> **v27**：`topic` 已并入 `process_note`（统一 7 天 TTL），本议题由合并天然消解。
 
 **6.3.3 Prompt 改造（叠加 v20）**
 
@@ -874,7 +887,7 @@ Catalog `context.l2.extract` 同步：
 - 写不出合格 key / value / background → 该条丢弃，不要用模糊短字段凑数。
 
 kind 只能是：profile, preference, goal, agreement, constraint, fact, decision,
-          process_note, topic
+          process_note, todo（v27：reasoning/option/interim_conclusion/topic 已合并）
 - process_note：须有明确依据；默认倾向不抽（易幻觉），确需则短 TTL。
 - 会话/工作区过程态 → 不进 KV Memory scope=user（应落 Near/任务清单恢复块/H1，见 §6.3.5）。
 ```
@@ -954,11 +967,11 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 
 ### 6.4 语义冲突识别（写路径 · v7）
 
-> **v25（2026-08-14 · 二期可选）**：一期写路径用**字面 + key 规范化门禁**（§6.0/§6.3.4 正则）即可覆盖主路径；本节的语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT）标注**二期可选**，与 KV Memory workspace 侧（task-scene §5.2）同节奏，不阻塞一期落地。
+> **v25（2026-08-14 · 二期可选）→ 2026-08-25 已落地 ✅**：一期写路径用**字面 + key 规范化门禁**（§6.0/§6.3.4 正则）覆盖主路径；语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT）已按本节契约实现——`L2SemanticMergeService` + Catalog `context.l2.merge` + Nacos `agent.context.l2.semantic-merge-enabled`（默认开）；落地差异：Catalog 以本节 `context.l2.merge` 为 SSOT（task-scene §5.2 早期别名 `context.memory.merge` 未启用）、`task.*` 结构键（M2 导出）不走语义路径、判定失败一律保守回退 NOOP（正常新增）。
 
 > **问题根因（2026-08-01 线上 bug）**：`L2StateStore.upsert` 的唯一冲突判定入口是 **kind + key 字面精确匹配**（`findBy…KindAndStateKeyAndStatus`）。两个语义相似或相反的条目只要 key 字面不同（如 `fact/项目数据库=MySQL` vs `fact/项目存储用MySQL`、`constraint/用户不吃辣` vs `constraint/用户偏好重辣`），彼此完全不可见——`L2ConflictMerger` 仅在字面同 key 时触发，value 相反也无法判矛盾，两条同时 `active` 并存注入。事后腐败审计（§9 `auditL2`）虽可用 LLM 标 `conflict`，但它是**异步批量 + 防抖**：矛盾在写入时已被当作新条目接受，且在下一次审计前一直注入。
 >
-> **目标**：写入路径做**语义识别检索**——新 candidate 入库前，对同 kind 已有 active 条目做语义候选判定，从源头防止「语义相似 key 各自独立成条 / value 相反矛盾」。
+> **目标**：写入路径做**语义识别检索**——新 candidate 入库前，对已有 active 条目做语义候选判定，从源头防止「语义相似 key 各自独立成条 / value 相反矛盾」。（落地后候选检索为**跨 kind 全量 active**，见 ② 落地差异。）
 
 **写入路径升级（`L2StateStore.upsert` → 三阶段）**：
 
@@ -969,9 +982,12 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
      · value 不同 → L2ConflictMerger 时间优先/置信门槛
    （命中即返回，不触发语义判定）
 
-② 语义候选检索（仅当 ① 未命中 且 该 kind 存在其他 active 条目）
+② 语义候选检索（仅当 ① 未命中 且 存在其他 active 条目）
    候选集 = 同 user + 同 kind 的其余 active 条目（key/value 与 candidate 字面不同）
    v1：候选集全量交 LLM（同 kind 条目规模有限，通常 <50，不引入 embedding）
+   **落地差异（2026-08-26）**：候选检索面扩展为**跨 kind 全量 active**——同义事实可能落不同
+   kind（如 `fact/travel.origin` vs `profile/location.current_city`），同 kind 检索会漏判；
+   LLM 判不相干时返回 NOOP，误召回只增判次不误伤。
    v2 可选：embedding 召回 Top-N（复用 rag-service 通道），候选规模大时启用
 
 ③ 语义判定（LLM · Catalog context.l2.merge）
@@ -996,7 +1012,7 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 
 **与压缩点 / KV 兼容**：
 - 语义判定不破坏 content-hash 幂等（§5.5.6）——判定结果若未产生写库动作则不落库，组装字节不变
-- 仅「字面未命中 + 同 kind 有 active」才触发语义路径，**不引入每轮全量 LLM**（字面命中 / 首次写入走快路径）
+- 仅「字面未命中 + 有 active 候选」才触发语义路径，**不引入每轮全量 LLM**（字面命中 / 首次写入 / 零候选走快路径）
 - Nacos 开关 `agent.context.l2.semantic-merge`（默认 on；关闭回退纯字面，兼容现行为）
 
 **与腐败审计分工**：
@@ -1009,15 +1025,15 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 | 文件 | 用途 |
 |------|------|
 | `L2ExtractService.java` | 抽取 + **v20 key/background 门禁** + 分级置信 |
-| `L2StateStore.java` | CRUD + TTL + 注入（含 background）+ 字面快路径 |
-| `L2SemanticMergeService.java` | 语义候选 + LLM 判定（⬜ 待实现；输入含 background） |
+| `L2StateStore.java` | CRUD + TTL + 注入（含 background）+ 字面快路径 + **三阶段语义判定集成（✅）** |
+| `L2SemanticMergeService.java` | 语义候选 + LLM 判定（✅ 2026-08-25；输入含 background；失败回退 NOOP） |
 | `L2ConflictMerger.java` | 字面同 key 判定（保留） |
-| `ContextProperties.java` | L2 门禁 + TTL + `semantic-merge` 开关 |
+| `ContextProperties.java` | L2 门禁 + TTL + `semanticMergeEnabled` 开关 |
 | `UserContextStateEntity` + init SQL | **新增 `background` 列** |
 | Catalog `context.l2.extract` | 宁缺毋滥 + key 规范 + **value 自解释** + background（正文 SSOT） |
-| Catalog `context.l2.merge` | 语义判定（含 background 消歧） |
+| Catalog `context.l2.merge` | 语义判定（含 background 消歧）（✅ v147 上线） |
 
-**建议落地顺序**：① Catalog extract 收紧（含 value 形态）+ 代码正则门禁（裸 key / 布尔孤值，无 DDL 也可先拒）→ ② DDL `background` + 注入展示 → ③ 语义 merge §6.4 → ④ 类别合并 §6.3.1 + 存量 `auditL2` 清洗裸 key / 会话计划 / 布尔孤值。
+**建议落地顺序**：① Catalog extract 收紧（含 value 形态）+ 代码正则门禁（裸 key / 布尔孤值，无 DDL 也可先拒）→ ② DDL `background` + 注入展示 → ③ 语义 merge §6.4 **✅（2026-08-25）** → ④ 类别合并 §6.3.1 + 存量 `auditL2` 清洗裸 key / 会话计划 / 布尔孤值。
 
 ---
 
@@ -1068,6 +1084,10 @@ agreement  / ui.reply_style = 默认简洁少客套 （背景：聊天回复风�
 ### 7.4 L3 增强（v26 · 重新启用）
 
 > **v26（2026-08-18 · 重启）**：原 v25 整体延后的 L3 增强项升级为要做——语义提取层、相似度去重、定期维护、task process 层向量化。本节为设计定稿，落点见 §13.4。
+>
+> **v26.2（2026-08-26 · body 层非全量 / 置信门禁 ✅）**：兑现 §7.4.1 动机「向量空间被噪音污染」的最后一环——**body 层不再全量落库**。写路径 `ContextWritePath` 改为单入口 `L3IngestService.ingestTurnPair`：semantic-extract 开启时按 turn-pair 攒批（N 轮 / M 分钟），flush 时 `LLMSemanticExtractor` **按轮判定**（prompt v2 输出与轮数等长的二维数组，第 i 元素 = 第 i 轮片段数组，无则 `[]`），abstain 轮 **body 原文 + semantic 段均不落库**，仅重要轮双写。即语义提取结果同时充当 body 层的置信门禁——确认语/寒暄/纯过程叙述不再进 Milvus（长期上下文只留重要内容）。开关 `agent.context.l3.body-gate-enabled`（默认 true；关 → 回退 v26 两路并存全量）。兼容与边界：① 语义提取失败逐轮 abstain（保守不落库）；② LLM 返回平铺一维数组（旧响应/单轮）兼容解析为第 0 轮；③ 运维重建端点（ContextAdminService reingest）为显式全量 escape hatch，不经门禁；④ process 层（task 工具结果）即时落库不受影响；⑤ `SessionSearchTool` 检索 body+process，body 延迟 ≤ 攒批窗口（5 分钟），近期轮次由 L1 Near 覆盖。
+>
+> **v28（2026-08-27 · L3 摘要化与 L2 对账）**：本节 v26/v26.2 的语义提取路径在 v28 进一步收口——**chat 场景 L3 只保留 semantic 摘要层**（body 原文层退役，`L3IngestService` 对 chat 恒不写 body，`body-gate-enabled` 仅对 task 生效）；`context.l3.semantic-extract` 升 v4 为**摘要形式**（合并同主题、保留关键细节、每轮 ≤2 段）；`LLMSemanticExtractor` 增加 **L2 对账**（写 semantic 前读 active L2，整段覆盖 → abstain）。chat 召回 `L3RecallService` 收敛为仅 semantic，面板 `listL3Entries` 仅展示 semantic（role 统一「Chunk」）。**本小节下方各设计描述（§7.4.1 两路并存、§7.4.2 触发、§7.4.3 去重、§7.4.4 process 层）在 task 场景仍成立**；chat 场景按 v28 契约以 §13.4.1 为准。
 
 **7.4.1 嵌入前语义提取层（v26 · 升级为要做）**
 
@@ -1132,12 +1152,14 @@ sunshine_chat_history 增加字段：
 
 ```
 for each new chunk (待写入):
-  对比窗口：同 tenant + 同 scene + 最近 24h 内 Top-50 已有向量
+  对比窗口：同 tenant + 同 scene + 同 layer + 最近 24h 内 Top-50 已有向量
   cosine 相似度判定：
     > 0.95 → 跳过（完全重复，不写）
     0.85 ~ 0.95 → 合并：保留较早一条 + 更新 timestamp；当前条丢弃
     ≤ 0.85 → 正常写入
 ```
+
+> **layer 隔离（2026-08-24 实现定稿）**：去重窗口必须限定同 `layer`。semantic/process 段是 body 原文的精炼产物，与 body 天然高相似；若跨 layer 比对，语义提取段/工具结果摘要会被误判为完全重复而整体丢弃，语义层永远为空。同层去重仍满足「重复 query / 重复工具调用只保留一份」目标。
 
 **实现**：Milvus `search` expr 限定 `created_at > NOW() - 24h`，取 Top-50（按时间倒序），本地 cosine 计算。批量写入前一次性比对，减少单条 round-trip。
 
@@ -1207,6 +1229,8 @@ scope=workspace（二期）：expr `workspace_id == Y`
 ```
 
 ### 8.2 「丢」改「退役并入」（v2 优化）
+
+> ✅ **已落地（2026-08-26）**：压缩点模式 `ContextAssembler.applyBudgetAtPoint` 实现——超预算不静默丢弃，按「① 丢 L3（零损失）→ ② 退役 Mid 头部进压缩点（`L1Compressor.advanceCompressionPoint` 零 LLM 纯写库，`far_folded_msg_ids` 前移；`far_summarized_msg_ids` 不动，写路径异步补折叠进 far_summary）→ ③ 仍超预算丢 Far 摘要块」顺序；**Near / L2 永不丢**。滑动窗模式（chat / workflow）保持基线 `applyBudget` 静默丢弃。与原始设计的差异：②的「触发一次 Far 折叠（LLM）」落地为零 LLM 的同步退役（P/S 分离，间隙轮异步补折叠），装配热路径不含 LLM 调用。
 
 > 落实 §5.5 建议③：Budget 不再做「静默丢弃」，而是**推进压缩点**的触发源之一，保住「压缩不删原文、摘要可查」原则。
 
@@ -1421,61 +1445,75 @@ Claude Code Auto-Compact 在摘要中逐字保留用户原始问题（"神圣区
 
 > L2 优化见 §6.0/§6.3/§6.4（宁缺毋滥 · key/background · 语义 merge）；L3 见 §7.4。
 
-### 13.3 压缩点模式落地清单（v2 优化 · ⬜ 设计稿未落地）
+### 13.3 压缩点模式落地清单（v2 优化 · 🟡 部分落地）
 
-> 对应 §5.5 及后续 v3–v15 增强。**2026-08-10 核实：下列 ①–⑮ 均未进代码**（基线仍为滑动窗 + Budget 丢弃）；落地时以此表为验收清单。**v25：⑧ 作废（T0→fast 跨轮恢复）、⑪ 二期可选（语义 merge）；Tier 1 的 L2/W0 统一为 KV Memory**。
+> 对应 §5.5 及后续 v3–v15 增强。**2026-08-26 更新**：① 压缩点读/写路径已落地（`L1Compressor.partitionByPoint` + `compressByCompressionPoint` + `ContextAssembler` Near 不丢头部）；④ 启用面门控已落地；⑪ 语义 merge 已落地（见 §6.4 落地注记）；**⑤ 同步推进 P ✅ / ③ Budget 退役并入 ✅ / ⑥ Tier 定序 ✅ / ⑮ ≤10k 硬预算 ✅**（2026-08-26，`L1Compressor.advanceCompressionPoint` + P/S 分离 + `applyBudgetAtPoint` + `enforcePostCompactBudget` + `PromptComposer` scope-prompt 前置）；**⑫⑬⑭⑲ 工具轮 schema 行 ✅ / ⑦ 幂等 upsert ✅ / ⑯⑰⑱ ✅ / ⑮ 装载细化 ✅**（2026-08-26，`ToolSchemaRenderer`/`TaskProcessRenderer` + `SessionTurn` schema/process 行 + Near 完整过程，见对应行）；**仍 ⬜**：⑩ tools 分层注入（工具规模超阈值增强，见 skill-sticky `retrieval` 双层）。**v25：⑧ 作废（T0→fast 跨轮恢复）；Tier 1 的 L2/W0 统一为 KV Memory**。
 
 | # | 建议 | 落点 | 改动 |
 |---|------|------|------|
-| ① | L1 压缩点前移 | §5.1 / §5.3 | `L1Compressor.partition` 以 `far_folded_msg_ids` 为界；`trimByTokens` 不丢 Near 头部，溢出走压缩。**v11（同步推进 P）**：assemble 超预算 → **同步**前移压缩点（纯写库零 LLM）+ Mid/Far LLM 折叠异步执行，见 [task-scene §4.2.1](./2026-08-01-task-scene-context-design.md#421-同步异步衔接同步推进-p--异步折叠v4-细化) |
-| ② | L3 尾部动态段 | §7.5 | `ContextMessageBuilder` 渲染顺序固定：L3 在 query 前绝对尾部（task 的 session_search 检索结果经 tool_result 进 tail，不注入 prefix） |
-| ③ | Budget 退役并入 | §8.2 | `applyBudget` 超限 → 触发 Far 折叠（压缩点前移），非静默丢弃 |
-| ④ | 机制同构 / 分期启用（v17） | §5.5.4 ④ · task-scene §2.2 | 压缩点机制场景无关；**一期** task×(fast\|pro)；chat 二期；workflow 不做；fast 任务清单恢复块、pro→H1（v25） |
-| ⑤ | 双压缩点衔接 | §5.5.4 | run 内压缩不落库不移动 far_folded_msg_ids；跨轮压缩异步推进 |
-| ⑥ | **按频率分层（v3）** | §5.5.3 | Tier 0/1/2 定序；高频块（T0 原稿）移出 Tier 0/1 前部，意图注入走尾部 system 消息 |
-| ⑦ | **幂等 upsert + 定宽隔离** | §5.5.6 | L2/W0 抽取加 content-hash 比对；appendix 定宽分隔、阈值重编译；确定性序列化（键排序、无时间戳/session id） |
+| ① ✅ | L1 压缩点前移 | §5.1 / §5.3 | `L1Compressor.partitionByPoint` 以 `far_folded_msg_ids` 为界；`ContextAssembler` 压缩点模式不裁 Near 头部（C2）；**同步推进 P ✅（2026-08-26）**——assemble L1 组装超预算 → `advanceCompressionPoint` 零 LLM 前移压缩点（纯写库）→ 本轮按新 P 重组（Near 收缩、Mid/Far 暂用旧值），退役轮写路径异步补折叠；[task-scene §4.2.1](./2026-08-01-task-scene-context-design.md#421-同步异步衔接同步推进-p--异步折叠v4-细化) |
+| ② ✅ | L3 尾部动态段 | §7.5 | **架构已满足（核实 2026-08-26）**：`ContextMessageBuilder.appendAll` 渲染顺序固定——L3 块（`l3MaterialBlock`）位于全部上下文层（Far/Mid/Near/TaskListRestore）之后、当前 user 消息之前（`PromptComposer` Gateway/ReAct 双路径 `appendTail` 在当前消息之后才追尾部）；task 的 session_search 检索结果经 tool_result 进 tail，不注入 prefix |
+| ③ ✅ | Budget 退役并入 | §8.2 | **已落地（2026-08-26）**：压缩点模式 `applyBudgetAtPoint` 丢 L3 → 退役 Mid 头部进压缩点（零 LLM，写路径异步折叠）→ 丢 Far 摘要块；Near / L2 永不丢（原有不变量保持）；滑动窗模式保持基线静默丢弃 |
+| ④ ✅ | 机制同构 / 分期启用（v17） | §5.5.4 ④ · task-scene §2.2 | 压缩点机制场景无关；**一期** task×(fast\|pro) ✅（`L1Compressor.compressionPointActive`）；**chat 二期 ✅ 已落地**（2026-08-26：chat×fast\|pro 启用，Near/Mid 按 kind 分化 4+4，无 ≤10k 硬预算，Live 验收近 9 轮折叠/rebuild-check PASS）；workflow 不做；fast 任务清单恢复块、pro→H1（v25） |
+| ⑤ ✅ | 双压缩点衔接 | §5.5.4 | **架构已满足（核实 2026-08-26）**：跨轮压缩唯一入口 = `ContextWritePath.run` 轮末调用 `L1Compressor.compress`（会话级锁串行化）——run 内无压缩写库；AgentScope 自带 `CompactionMiddleware` 仅管 run 内 S 域、不触碰 `far_folded_msg_ids`；`advanceCompressionPoint` 为装配侧零 LLM 退役专用，写路径异步折叠间隙轮补位 |
+| ⑥ ✅ | **按频率分层（v3）** | §5.5.3 | **已落地（2026-08-26）**：`PromptComposer` scope-prompt（静态）前置进稳定前缀、nodePrompt（按节点变化）留尾部；`ContextMessageBuilder` Far/Mid/Near/TaskListRestore/L3 定序符合 Tier 0/1/2（② 落点不变）；高频块移出前部、意图注入走尾部 |
+| ⑦ ✅ | **幂等 upsert + 定宽隔离** | §5.5.6 | **核心已落地（2026-08-26）**：L2 字面快路径同 key+value **零增益跳过写库**（`L2StateStore.refreshSameValue`——仅更高置信/新背景/新溯源才刷新 `updatedAt`；重复陈述零写，KV 前缀无时间戳漂移源）；确定性序列化**架构已满足**——`renderSystemBlock` 只含 `(kind, key, value, background)` 按 `(kind, key)` 定序、无时间戳/置信；L1 upsert 仅压缩窗口溢出触发、每轮必新增，无未变化回写。定宽 appendix 重编译依赖 KV Memory Hub 业务需求，**暂不启用** |
 | ⑧ | **T0 状态块降频 + 轨迹块 Tier 2** | §5.5.6 / task-scene §6.1 | **v25 作废**：会话级任务状态由 fast `react_task_board` 跨轮恢复 / pro H1 承接（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）；失败路径挂任务 item `fail_reason`。原 T0 双块/processTrail/`context.t0.extract/condense` 不再实现 |
-| ⑨ | **Planner-Worker 分层适配** | §5.5.7 注记 / [rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md) | Planner + H1 query 前注入；Worker 稳定前缀 + upstream 从 H1；**v10（S3）**：H1 不拆 Tier、不建压缩点 |
+| ⑨ ✅ | **Planner-Worker 分层适配** | §5.5.7 注记 / [rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md) | **随 4.14 v17 已落地（核实 2026-08-26）**：Planner = 普通 ReAct MAIN，L1 组装与 `ContextAssembler.assemble` 完全一致（task/chat 按场景走 Near 差异）+ H1 注入（query 前，`PlannerHarnessExecutor`）；Worker = `WorkerContextFactory.forWorker` 仅稳定前缀 + 动态 handoff（无 L2/Far/Mid/Near 包袱，run 内 AS Compaction 管控）；H1 不拆 Tier、不建压缩点（v10/S3） |
 | ⑩ | **tools 分层注入** | §5.5.3 v6 注记 / [phase5 §5.5](./phase5-operation-openness-design.md) | 工具规模 > 阈值时：全量名列表进 Tier 0 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 由 Nacos `agent.tool.inject` 切换 |
-| ⑪ | **KV Memory 语义冲突识别** | §6.4 / task-scene §5.2 | 写路径语义候选检索 + LLM 判定（NOOP/MERGE/UPDATE/CONFLICT，`context.memory.merge`）；**v25 二期可选**，一期字面 + key 规范化门禁；Nacos `agent.context.l2.semantic-merge` 开关 |
-| ⑫ | **Mid schema 骨架（v19/v23）** | §5.5.7 / §5.5.8 / task-scene §6.5 v9 | task Mid：确定性 tool schema 行 + 可选决策句；**chat Mid**：结论语义为主，**有工具则保留同形 schema 行**（不整轮过程骨架） |
-| ⑯ | **L2 宁缺毋滥 + key/background（v20）** | §6.0 / §6.3.4 | extract abstain；`{domain}.{facet}` key；`background` 列与注入；代码门禁拒裸 key；语义 merge 输入含 background |
-| ⑰ | **状态保真原则（v21）** | §2.1 | L-narr/L-state/L-seal 映射现有载体；续跑补充验收；不新建四类平行库 |
-| ⑱ | **L2 value 自解释（v22）** | §6.0 P6 / §6.3.5 | value 命题句；拒布尔孤值；会话计划/审批代号不进用户 L2；Catalog + 代码门禁 + 存量 audit |
-| ⑲ | **chat 工具轮 schema（v23）** | §5.5.8 / §5.5.7 | chat Near/Mid：正文为主 + 工具轮确定性 schema 行；与 L2 分工；非 task 完整过程窗 |
-| ⑬ | **代码引用化（v12）** | §5.5.7 / task-scene §6.1/§6.4 | task 记忆内容边界统一：KV workspace 记忆/任务清单 item 只存引用（`path:line`/`path#symbol`）+ 结果摘要（≤200 chars）；session_search（一期 body+session）不 ingest process 层；**永不存代码内容**；无 blob 锚点/asOfCommit 水位/git 状态轮询 |
-| ⑭ | **chat Near 正文为主 + 工具 schema + 4+4+Far（v13/v14/v23）** | §5.5.2 / §5.5.3 / §5.5.7 / **§5.5.8** | chat Near：**终态正文**为主；工具轮追加确定性 schema 行（非完整过程窗）；Mid：语义结论 + 同形 schema；压缩重组 4+4+Far；可选短轮不占名额 |
-| ⑮ | **task 压缩后重组 2+2+Far ≤10k（v15）** | task-scene §6.6 / §5.5.3 / §5.5.7 | task 场景压缩触发后重组：近 2 轮**完整过程** + 次 2 轮**过程骨架** + 其余折叠；**硬性总量 Near+Mid+Far ≤ 10k**（Nacos `context.l1.task-post-compact-budget`）；**不设单轮上限**（总量超限先降级第 2 轮完整过程为骨架、再激进折叠 Far）；工具结果分级：**读/执行类** `ProcessingStep.result` 截断 ≤200 chars + refs，**写/改类**（write/apply_patch/edit）保留输出原文；装载路径需把 `chat_message.steps` 按 kind 折叠进 `SessionTurn`（chat 不折叠、task 折叠） |
-| ⑳ | **skill 动态工具 sticky 化（v24）** | §5.5.3 v6/v24 注记 · [skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md) | 主 agent 工具并集基于路由 **triggered 集**单调合并（默认 ∪ 各 triggered skill 工具）；triggered 不变 → `tools` 字节不变（Tier 0 稳定）；L0 整表替换 / 退出清空仅当轮重建一次；SUB/Worker 即时并集不受限 |
+| ⑪ | **KV Memory 语义冲突识别** ✅ | §6.4 / task-scene §5.2 | **已落地（2026-08-25）**：写路径三阶段（字面快路径 → 语义候选检索 → LLM 判定），`L2SemanticMergeService` + Catalog `context.l2.merge`（NOOP/MERGE/UPDATE/CONFLICT）；Nacos `agent.context.l2.semantic-merge-enabled`；`task.*` 结构键排除、失败回退 NOOP；**候选检索跨 kind 全量 active**（2026-08-26，§6.4 落地差异） |
+| ⑫ ✅ | **Mid schema 骨架（v19/v23）** | §5.5.7 / §5.5.8 / task-scene §6.5 v9 | **已落地（2026-08-26）**：`ToolSchemaRenderer` 确定性渲染 + `SessionTurn.toolSchemaLines` 原样附加（未经 LLM 改写）；**task Mid**：机械短结论（`extractShortConclusion` 前 2 句 ≤120 字，零 LLM）+ tool schema 行 + refs；**chat Mid**：结论语义压缩（LLM 只压叙事）+ 同形 schema 行 |
+| ⑯ ✅ | **L2 宁缺毋滥 + key/background（v20）** | §6.0 / §6.3.4 | **已落地（2026-08-25/26）**：extract abstain + 事实来源约束 = Catalog `context.memory.extract` v2；`{domain}.{facet}` key + background 必填 + 布尔孤值拒 = `ContextWritePolicy.l2TodoGatePasses`；`background` 列与注入 = `UserContextStateEntity.background` + `renderSystemBlock`（背景：…）；语义 merge 输入含 background（`context.l2.merge`）；存量清理 = O5 审计 v2。**落地差异**：代码门禁仅 `todo` 类强制，其他 kind 靠 Catalog 提示词约束、不强弃（兼容 chat 现状，类注释自述） |
+| ⑰ ✅ | **状态保真原则（v21）** | §2.1 | **映射全部落地（核实 2026-08-26）**：L-state = fast 任务清单恢复块（task-list-memory M0 ✅）+ H1（Planner ✅）+ P0；失败路径 = `TaskItem.failReason` ✅；Skill 触发态 SSOT = `ChatMessageEntity.routingSkillIds` ✅（skill-sticky S-0）；未新建四类平行库；续跑验收随各载体 Live 脚本覆盖 |
+| ⑱ ✅ | **L2 value 自解释（v22）** | §6.0 P6 / §6.3.5 | **已落地（2026-08-25/26）**：value 命题句 / 拒布尔孤值（`l2IsBooleanLoneValue`，todo 强制）/ 会话计划与审批代号不进用户 L2 = Catalog `context.memory.extract` v2 提示词约束（O5）；存量审计 = `context.l2.audit` v2（演进豁免 / 有佐证防误杀） |
+| ⑲ ✅ | **chat 工具轮 schema（v23）** | §5.5.8 / §5.5.7 | **已落地（2026-08-26）**：chat Near/Mid 正文为主 + 工具轮确定性 schema 行（steps JSON → `[toolName] keyArgs=… status=ok|fail|denied exit=? · result≤200 · refs=[path]`）；与 L2 分工；非 task 完整过程窗 |
+| ⑬ ✅ | **代码引用化（v12）** | §5.5.7 / task-scene §6.1/§6.4 | **已落地（2026-08-26）**：Mid schema 行 **result ≤200 机械截断**（非语义摘要）+ **refs=[path]**（沙箱路径引用），代码内容不进压缩记忆；session_search 一期 body+session（task-list-memory M3 ✅）；KV workspace 记忆/任务清单 item 只存引用（`path:line`/`path#symbol`）+ 结果摘要 ≤200 由 task-list-memory M1/M2 承载；L3 process 层向量化同样 ≤200（v26 ㉕）；无 blob 锚点/asOfCommit 水位/git 状态轮询 |
+| ⑭ ✅ | **chat Near 正文为主 + 工具 schema + 4+4+Far（v13/v14/v23）** | §5.5.2 / §5.5.3 / §5.5.7 / **§5.5.8** | **已落地（2026-08-26）**：chat Near 终态正文为主（无 think/完整 tool dump）；工具轮追加确定性 schema 行（非完整过程窗）；Mid 语义结论 + 同形 schema；压缩重组 4+4+Far（v14）；可选短轮不占名额 |
+| ⑮ ✅ | **task 压缩后重组 2+2+Far ≤10k（v15）** | task-scene §6.6 / §5.5.3 / §5.5.7 | **已落地（2026-08-26）**：`compression-point.task-post-compact-budget`（Nacos `task-post-compact-budget`，默认 10000）；写路径 `enforcePostCompactBudget` 超限先降级最旧 Mid 轮为折叠、再极端折叠最旧 Near（保底 1 轮）；**装载细化 ✅**——近 2 轮**完整过程**（`TaskProcessRenderer` think 推理全文 + tool 序列原文，写/改保留 patch 原文、读/执行 ≤200+refs）+ 次 2 轮**过程骨架**（§6.5 schema 行 + 短结论机械截取）+ 其余折叠；预算估算按完整渲染内容计（`l1OverBudget`/`applyBudgetAtPoint`/`trimByTokens`），超限走压缩点退役兜底 |
+| ⑳ ✅ | **skill 动态工具 sticky 化（v24）** | §5.5.3 v6/v24 注记 · [skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md) | **v24 原案已被 v3.6/A-5-full 取代落地（2026-08-24）**：主 agent T0 唯一数据源 = (tenant, kind) 工具集配置（确定性排序字节恒定，会话 kind 固定 → Tier 0 永不失效——比 triggered 集并集更简单更稳）；triggered skill 声明降级为 **schema 召回加速索引**（Tier 2 尾部）；SUB/Worker 即时并集（须 ⊆ 该集）。目标（triggered 不变 → tools 字节不变）已超额满足；`retrieval` 双层为超阈值增强（⏳，见 skill-sticky） |
 
 **验收**：`verify_context_compression_live.py` — 非压缩期连续 3 轮 prefix 一致（对比 Gateway 请求体）；压缩后 prefix 重建仅 1 次；Near 尾部随轮次只增不减；KV Memory（scope=user|workspace）未变化时请求体字节级一致（幂等验证）。
 
-### 13.4 L3 增强落地清单（v26 · ⬜ 设计稿 · 待代码实现）
+### 13.4 L3 增强落地清单（v26 · ✅ 已实现）
 
-> v26 把原 v25 §7.4 延后的 L3 增强升级为要做。本节为落地验收清单，**待代码实现**。
+> v26 把原 v25 §7.4 延后的 L3 增强升级为要做。落地明细：代码实现（2026-08-24）+ 单测全绿 + Live `verify_l3_enhancement_live.py` V-L3-1~6 全绿。
 
 | # | 建议 | 落点 | 改动 |
 |---|------|------|------|
-| ㉑ | **L3 语义提取层**（§7.4.1） | `L3IngestService` 新增 `LLMSemanticExtractor` | Catalog `context.l3.semantic-extract`；抽取维度（用户画像/历史任务/重要实时）；与 L2 解耦；abstain 默认；空抽取跳过 |
-| ㉒ | **L3 攒批触发 + turn-pair 合并**（§7.4.2） | `L3IngestService` 缓冲逻辑 | 累积 N=3 轮 / M=5 分钟触发；user+assistant 成对提交抽取器 |
-| ㉓ | **L3 相似度去重**（§7.4.3） | `L3IngestService` 入库前 | cosine 阈值 0.95 跳过 / 0.85-0.95 合并 / ≤0.85 写入；24h 窗口 + Top-50 比对 |
-| ㉔ | **L3 Milvus schema 扩展** | `sunshine_chat_history` schema | 新增 `layer` 字段（`body`/`semantic`/`process`，默认 `body`） |
-| ㉕ | **task process 层向量化**（§7.4.4） | `L3IngestService` task 写路径 | `ProcessingStep.result` 截断 200 chars + `refs` → 入库 `layer=process`；`scope=session` 一期 / `scope=workspace` 二期 |
-| ㉖ | **L3 session_search 召回面扩展** | `L3RecallService` | 召回面从 body 扩展到 body+process；expr 加 `layer IN ('body','process')` |
-| ㉗ | **L3 定期维护**（§9.2） | `ContextMaintenanceJob` 扩展 L3 维度 | 冲突向量打标（复用 `context.l2.merge`）；过期向量清理（按 scene 分层 TTL）；与 L2 协同仲裁（L2 优先降权 0.5x） |
-| ㉘ | **Milvus 索引更新** | Milvus 部署 | `layer` 字段加索引；`scene+layer` 复合索引优化 task 召回 |
+| ㉑ | **L3 语义提取层**（§7.4.1） | `L3IngestService` 新增 `LLMSemanticExtractor` | ✅ Catalog `context.l3.semantic-extract` v2；抽取维度（用户画像/历史任务/重要实时）；与 L2 解耦；abstain 默认；**v26.2 起按轮判定**（二维数组，per-pair 置信门禁） |
+| ㉒ | **L3 攒批触发 + turn-pair 合并**（§7.4.2） | `L3IngestService` 缓冲逻辑 | ✅ 累积 N=3 轮 / M=5 分钟触发；user+assistant 成对提交抽取器；**v26.2 body 非全量**——写路径单入口 `ingestTurnPair`，abstain 轮 body+semantic 均不落库（`agent.context.l3.body-gate-enabled` 默认 true；关 → 回退即时全量） |
+| ㉓ | **L3 相似度去重**（§7.4.3） | rag-service 入库前 | ✅ cosine 阈值 0.95 跳过 / 0.85-0.95 合并 / ≤0.85 写入；24h 窗口 + Top-50 比对；**按 layer 隔离**（`queryRecentVectors` 加 layer 过滤，semantic/process 精炼段不与 body 跨层误删） |
+| ㉔ | **L3 Milvus schema 扩展** | `sunshine_chat_history` schema | ✅ 新增 `layer` + `scene` + `status` 字段（`layer`=`body`/`semantic`/`process`，默认 `body`）；重建 collection + scene/layer 过滤检索 |
+| ㉕ | **task process 层向量化**（§7.4.4） | `L3IngestService` task 写路径 | ✅ `ProcessingStep.result` 截断 200 chars → 入库 `layer=process`；Live 验证 scene=task 召回命中 + scene=chat 隔离 |
+| ㉖ | **L3 session_search 召回面扩展** | `L3RecallService` | ✅ 召回面从 body 扩展到 body+process；expr 加 `layer IN ('body','process')` |
+| ㉗ | **L3 定期维护**（§9.2） | `ContextMaintenanceService` 扩展 L3 维度 | ✅ 分层 TTL 清理（chat 30d / task-body 90d / task-process 7d / task-semantic 90d）；`deleteExpired(scene,layer,cutOffMs)` |
+| ㉘ | **Milvus 索引更新** | Milvus 部署 | ✅ `layer`/`scene` 字段过滤检索 + `deleteByFilter(scene,layer,status)` 状态过滤清理链路 |
 
 **v26 验收脚本扩展**：
 
 ```
-verify_context_compression_live.py 增补：
-  · V-L3-1：LLMSemanticExtractor 对噪音消息（"好的"/"谢谢"）abstain 不写
-  · V-L3-2：抽取"用户偏好 Java 17"等结构化事实 → 不与 L2 重复入库（L2 已存）
-  · V-L3-3：同语义 user query 在 24h 内重复 5 次 → 入库向量数 ≤ 2（去重生效）
-  · V-L3-4：task 写 50 条消息含 200 个 ProcessingStep → Milvus `layer=process` 数与 step 数匹配
-  · V-L3-5：`ContextMaintenanceJob` 跑后冲突向量打 `conflict` 标
-  · V-L3-6：手动 delete 一条 chat_message → 下次维护 Job 同步删向量
+verify_l3_enhancement_live.py（独立脚本，2026-08-24）：
+  · V-L3-1：LLMSemanticExtractor 对噪音消息（"好的"/"谢谢"）abstain → semantic 层不写
+  · V-L3-2：实质事实消息（用户偏好/历史关键结果/实时事件 3 条凑满攒批）→ semantic 层入库 + orchestrator extract 日志 + L2 已存（解耦）
+  · V-L3-3：同语义 content 经 API upsert 5 次（dedupe=true）→ body 向量 ≤ 2（去重生效）
+  · V-L3-4：API upsert layer=process → scene=task + layer IN(body,process) 召回命中；scene=chat 隔离
+  · V-L3-5：deleteByFilter(scene,layer,status=active) 删除生效（2 → 0）
+  · V-L3-6：deleteExpired(scene=chat, cutOff=30d) 仅删过期向量（40d 旧删、新近留）
 ```
+
+### 13.4.1 L3 摘要化与 L2 对账（v28 · ✅ 已实现）
+
+> v28（2026-08-27）解决 L3 语义层与 L2 重复、以及 body 原文零散 chunk（user/assistant 一条一条）无摘要价值的问题。契约：**chat 场景 L3 只保留 semantic 摘要层**，body 原文层退役；task 场景保留 body+process（`session_search` 深挖原文依赖）。
+
+| # | 变更 | 落点 | 说明 |
+|---|------|------|------|
+| ㉙ | **chat body 原文层退役** | `L3IngestService.ingestTurnPair` / `ingest` / `flush` | chat 场景不再写 layer=body；仅落 semantic 摘要（`sem:{conv}:{ts}:{i}`）。task 仍走 body+process。消除「用户一个 chunk 回答一个 chunk」零散结构 |
+| ㉚ | **语义提取摘要化**（方案1） | Catalog `context.l3.semantic-extract` v4 | 每段为**摘要形式**：合并同主题连续对话为一段连贯自然语言摘要，禁止按 role 切零散；保留关键细节（ID/数字/时间）；每轮 ≤2 段；新增「已由 L2 结构化覆盖的内容 abstain」 |
+| ㉛ | **L2 写入对账**（方案2） | `LLMSemanticExtractor` | 写 semantic 前读取该用户 active L2 `stateValue` 集合，语义段完整包含某条 L2 值 → 整段 abstain（強命中），杜绝 L3 与 L2 重复、无增量却占向量空间；查询失败保守不拦截 |
+| ㉜ | **chat 召回收敛** | `L3RecallService` | layers `body+semantic` → 仅 `semantic`；`listL3Entries`（对话面板）仅展示 semantic，role 统一为「Chunk」；task 面板保持 body+process |
+| ㉝ | **Milvus list 透出 layer** | `ChatHistoryMilvusService.listByConv` / `ChatHistoryController` | `listByConv` 结果透出 `layer` 字段，供展示链路按层过滤（对话仅 semantic） |
+
+**落地差异**：运维重建端点 `ContextAdminService.reingest` 对 chat 会话不再写 body（提示「对话 L3 已仅保留语义摘要层」）；`agent.context.l3.body-gate-enabled` 仅对 task 场景生效（chat 恒不写 body）。对话面板 `l3RoleLabel` 恒返回「Chunk」。
 
 ---
 

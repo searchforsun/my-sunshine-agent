@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator;
 
+import com.sunshine.orchestrator.biz.BusinessContextProperties;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.config.GenerationLockProperties;
 import com.sunshine.orchestrator.generation.GenerationController;
@@ -21,7 +22,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @SpringBootApplication(scanBasePackages = "com.sunshine")
 @EnableDiscoveryClient
 @EnableAsync
-@EnableConfigurationProperties({GenerationProperties.class, GenerationLockProperties.class, AgentPromptProperties.class, MemoryProperties.class, ContextProperties.class, AgentExecutionProperties.class, AgentPauseProperties.class})
+@EnableConfigurationProperties({GenerationProperties.class, GenerationLockProperties.class, AgentPromptProperties.class, MemoryProperties.class, ContextProperties.class, AgentExecutionProperties.class, AgentPauseProperties.class, BusinessContextProperties.class, com.sunshine.orchestrator.usage.LlmUsageProperties.class})
 @Import(GlobalExceptionHandler.class)
 @ComponentScan(
         basePackages = "com.sunshine.orchestrator",

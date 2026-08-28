@@ -301,6 +301,12 @@ public final class ProcessingStepSerde {
         if (hasText(metadata.workerRunId())) {
             map.put("workerRunId", metadata.workerRunId());
         }
+        if (hasText(metadata.toolArgs())) {
+            map.put("toolArgs", metadata.toolArgs());
+        }
+        if (metadata.toolExitCode() != null) {
+            map.put("toolExitCode", metadata.toolExitCode());
+        }
         if (metadata.editDiff() != null) {
             map.put("editDiff", editDiffToMap(metadata.editDiff()));
         }

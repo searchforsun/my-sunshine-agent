@@ -63,6 +63,14 @@ public class TaskBoardAuditService {
         return repository.findByMessageId(messageId.strip()).map(this::toView);
     }
 
+    /** 按会话取最近一次任务板快照（T0 任务进度可观测）。 */
+    public Optional<TaskBoardAuditView> findLatestByConversationId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return repository.findFirstByConversationIdOrderByUpdatedAtDesc(conversationId.strip()).map(this::toView);
+    }
+
     private TaskBoardAuditView toView(TaskBoardEntity entity) {
         try {
             List<TaskBoardItemView> items = objectMapper.readValue(

@@ -36,6 +36,13 @@ public class HistoryRagClient {
 
     /** convId 非空 → rag-service 会话级过滤（session_search scope=session 仅本会话正文） */
     public Mono<List<HistoryHit>> search(String userId, String tenantId, String convId, String query, int topK) {
+        return search(userId, tenantId, convId, null, null, query, topK);
+    }
+
+    /** scene 非空按 scene 过滤；layers 非空按 layer IN 过滤（v26：session_search 召回 body+process）。 */
+    public Mono<List<HistoryHit>> search(
+            String userId, String tenantId, String convId, String scene, List<String> layers,
+            String query, int topK) {
         Map<String, Object> body = new HashMap<>();
         body.put("userId", userId);
         body.put("tenantId", tenantId != null ? tenantId : "default");
@@ -44,7 +51,40 @@ public class HistoryRagClient {
         if (convId != null) {
             body.put("convId", convId);
         }
+        if (scene != null) {
+            body.put("scene", scene);
+        }
+        if (layers != null && !layers.isEmpty()) {
+            body.put("layers", layers);
+        }
 
+        return postSearch(body);
+    }
+
+    /** convIds 非空时按会话列表过滤（session_search scope=workspace 跨会话正文）。 */
+    public Mono<List<HistoryHit>> search(
+            String userId, String tenantId, List<String> convIds, String scene, List<String> layers,
+            String query, int topK) {
+        if (convIds == null || convIds.isEmpty()) {
+            return Mono.just(List.of());
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("userId", userId);
+        body.put("tenantId", tenantId != null ? tenantId : "default");
+        body.put("query", query != null ? query : "");
+        body.put("topK", topK);
+        body.put("convIds", convIds);
+        if (scene != null) {
+            body.put("scene", scene);
+        }
+        if (layers != null && !layers.isEmpty()) {
+            body.put("layers", layers);
+        }
+
+        return postSearch(body);
+    }
+
+    private Mono<List<HistoryHit>> postSearch(Map<String, Object> body) {
         return webClient.post()
                 .uri("/api/rag/chat-history/search")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -64,6 +104,20 @@ public class HistoryRagClient {
             String msgId,
             String content,
             long createdAtMs) {
+        return upsert(userId, tenantId, convId, msgId, content, createdAtMs, "chat", "body", false);
+    }
+
+    /** scene=chat|task；layer=body|semantic|process；dedupe=true 时 rag-service 入库前 cosine 去重（v26 语义层）。 */
+    public Mono<Void> upsert(
+            String userId,
+            String tenantId,
+            String convId,
+            String msgId,
+            String content,
+            long createdAtMs,
+            String scene,
+            String layer,
+            boolean dedupe) {
         Map<String, Object> body = new HashMap<>();
         body.put("userId", userId);
         body.put("tenantId", tenantId != null ? tenantId : "default");
@@ -71,6 +125,9 @@ public class HistoryRagClient {
         body.put("msgId", msgId);
         body.put("content", content != null ? content : "");
         body.put("createdAt", createdAtMs);
+        body.put("scene", scene != null ? scene : "chat");
+        body.put("layer", layer != null ? layer : "body");
+        body.put("dedupe", dedupe);
 
         return webClient.post()
                 .uri("/api/rag/chat-history/upsert")
@@ -97,6 +154,29 @@ public class HistoryRagClient {
                 .bodyToMono(Void.class)
                 .timeout(Duration.ofSeconds(10))
                 .doOnError(e -> log.warn("[HistoryRagClient] delete failed msg={}: {}", msgId, e.getMessage()))
+                .onErrorComplete();
+    }
+
+    /** L3 定期维护：按 scene+layer 删除过期向量（分层 TTL）。 */
+    public Mono<Void> deleteExpired(String scene, String layer, long cutOffMs) {
+        Map<String, Object> body = new HashMap<>();
+        if (scene != null) {
+            body.put("scene", scene);
+        }
+        if (layer != null) {
+            body.put("layer", layer);
+        }
+        body.put("cutOffMs", cutOffMs);
+
+        return webClient.post()
+                .uri("/api/rag/chat-history/delete-expired")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(Void.class)
+                .timeout(Duration.ofSeconds(30))
+                .doOnError(e -> log.warn("[HistoryRagClient] deleteExpired failed scene={} layer={}: {}",
+                        scene, layer, e.getMessage()))
                 .onErrorComplete();
     }
 
@@ -182,12 +262,13 @@ public class HistoryRagClient {
         if (createdObj instanceof Number number) {
             createdAt = number.longValue();
         }
-        return new HistoryChunk(convId, msgId, chunkIndex, content, createdAt);
+        String layer = map.get("layer") != null ? map.get("layer").toString() : "";
+        return new HistoryChunk(convId, msgId, chunkIndex, content, createdAt, layer);
     }
 
     public record HistoryHit(String convId, String msgId, String content, float score, long createdAtMs) {
     }
 
-    public record HistoryChunk(String convId, String msgId, int chunkIndex, String content, long createdAtMs) {
+    public record HistoryChunk(String convId, String msgId, int chunkIndex, String content, long createdAtMs, String layer) {
     }
 }

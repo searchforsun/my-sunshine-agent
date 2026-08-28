@@ -7,17 +7,20 @@ import {
   deleteBizScenePolicy,
   listBizScenePolicies,
   listBizScenes,
+  reviewBizScene,
   updateBizScene,
   type BizSceneEntry,
   type BizScenePolicyEntry,
 } from '../api/bizScenes'
 import { friendlyErrorMessage } from '../api/apiError'
+import { useAuthStore } from '../stores/authStore'
 
 export const BIZ_SCENES_PAGE_KEY = Symbol('bizScenesPage')
 
 export function useBizScenesPage() {
   const message = useMessage()
   const dialog = useDialog()
+  const authStore = useAuthStore()
 
   const scenes = ref<BizSceneEntry[]>([])
   const rules = ref<BizScenePolicyEntry[]>([])
@@ -27,15 +30,25 @@ export function useBizScenesPage() {
   const saving = ref(false)
   const savingRule = ref(false)
   const deleting = ref(false)
+  /** 双轨 Tab（authority §2.1c）：manual=运营预定义 | auto=LLM 自动发现 */
+  const activeTab = ref<'manual' | 'auto'>('manual')
 
   const filteredScenes = computed(() => {
+    const tab = activeTab.value
     const q = sceneSearch.value.trim().toLowerCase()
-    if (!q) return scenes.value
-    return scenes.value.filter(s =>
-      s.bizScene.toLowerCase().includes(q)
-      || (s.displayName || '').toLowerCase().includes(q),
-    )
+    return scenes.value.filter(s => {
+      const source = s.source ?? 'manual'
+      if (tab === 'auto' ? source !== 'auto' : source !== 'manual') return false
+      if (!q) return true
+      return s.bizScene.toLowerCase().includes(q)
+        || (s.displayName || '').toLowerCase().includes(q)
+    })
   })
+
+  /** 待审核 auto 场景数（用于「自动发现」Tab 徽标）。 */
+  const pendingCount = computed(() =>
+    scenes.value.filter(s => (s.source ?? 'manual') === 'auto' && s.status === 'pending_review').length,
+  )
 
   const selectedScene = computed(() =>
     scenes.value.find(s => s.bizScene === selectedCode.value) ?? null,
@@ -82,6 +95,22 @@ export function useBizScenesPage() {
       message.success(v ? '已启用' : '已禁用')
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '操作失败'))
+    } finally {
+      saving.value = false
+    }
+  }
+
+  /** auto 场景审核（authority §2.1c）：通过 → active（记录审核人）；拒绝 → rejected。 */
+  async function reviewScene(scene: BizSceneEntry, approve: boolean) {
+    const operator = authStore.user?.nickname || authStore.user?.username || 'operator'
+    saving.value = true
+    try {
+      const updated = await reviewBizScene(scene.bizScene, approve, operator)
+      const idx = scenes.value.findIndex(s => s.bizScene === scene.bizScene)
+      if (idx >= 0) scenes.value[idx] = updated
+      message.success(approve ? `「${scene.displayName}」已通过审核并启用` : '已拒绝该自动发现场景')
+    } catch (e: unknown) {
+      message.error(friendlyErrorMessage(e, '审核失败'))
     } finally {
       saving.value = false
     }
@@ -238,6 +267,8 @@ export function useBizScenesPage() {
     rules,
     sceneSearch,
     selectedCode,
+    activeTab,
+    pendingCount,
     loading,
     saving,
     savingRule,
@@ -257,6 +288,7 @@ export function useBizScenesPage() {
     refreshAll,
     selectScene,
     toggleEnabled,
+    reviewScene,
     handleCreate,
     openEdit,
     handleEdit,

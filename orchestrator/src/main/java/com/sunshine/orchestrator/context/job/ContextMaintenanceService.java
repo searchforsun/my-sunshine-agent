@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.context.job;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.context.ContextProperties;
+import com.sunshine.orchestrator.context.ContextWritePolicy;
 import com.sunshine.orchestrator.context.audit.ContextAuditService;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Entity;
 import com.sunshine.orchestrator.context.l1.ConversationContextL1Repository;
@@ -51,19 +52,56 @@ public class ContextMaintenanceService {
     public void runOnce() {
         try {
             Instant now = Instant.now();
-            int voided = voidExpiredL2(now);
-            int superseded = cleanupLongSuperseded(now);
-            int voidsDeleted = cleanupLongVoid(now);
-            int vectors = gcL3Vectors();
-            int orphanL1 = gcOrphanL1();
-            ContextAuditService.AuditStats audit = contextAuditService.auditRecentUsers();
-            log.info("[ContextMaintenance] done expiredVoided={} supersededDeleted={} voidDeleted={} "
-                            + "vectorDeletes={} orphanL1={} auditVoided={} auditConflicted={} auditL1Patched={}",
-                    voided, superseded, voidsDeleted, vectors, orphanL1,
-                    audit.voided(), audit.conflicted(), audit.l1Patched());
+        int voided = voidExpiredL2(now);
+        int superseded = cleanupLongSuperseded(now);
+        int voidsDeleted = cleanupLongVoid(now);
+        int conflicts = cleanupLongConflict(now);
+        int vectors = gcL3Vectors();
+        int expired = gcL3Expired(now);
+        int orphanL1 = gcOrphanL1();
+        ContextAuditService.AuditStats audit = contextAuditService.auditRecentUsers();
+        log.info("[ContextMaintenance] done expiredVoided={} supersededDeleted={} voidDeleted={} conflictVoided={} "
+                        + "vectorDeletes={} vectorExpired={} orphanL1={} auditVoided={} auditConflicted={} auditL1Patched={}",
+                voided, superseded, voidsDeleted, conflicts, vectors, expired, orphanL1,
+                audit.voided(), audit.conflicted(), audit.l1Patched());
         } catch (Exception e) {
             log.warn("[ContextMaintenance] runOnce failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * L3 过期向量分层清理（v26 §9.2 ②）：scene=chat 全层 / task body / task process / task semantic 分层 TTL。
+     * 与 L2 生命周期解耦；删除前日志，失败不阻断。
+     */
+    int gcL3Expired(Instant now) {
+        ContextProperties.Maintenance m = contextProperties.getMaintenance();
+        Instant clock = now != null ? now : Instant.now();
+        long chatCutoff = ttlCutoff(clock, ContextWritePolicy.l3TtlDays("chat", null, m));
+        long taskBodyCutoff = ttlCutoff(clock, ContextWritePolicy.l3TtlDays("task", "body", m));
+        long taskProcessCutoff = ttlCutoff(clock, ContextWritePolicy.l3TtlDays("task", "process", m));
+        long taskSemanticCutoff = ttlCutoff(clock, ContextWritePolicy.l3TtlDays("task", "semantic", m));
+        int count = 0;
+        if (chatCutoff > 0) {
+            historyRagClient.deleteExpired("chat", null, chatCutoff).block();
+            count++;
+        }
+        if (taskBodyCutoff > 0) {
+            historyRagClient.deleteExpired("task", "body", taskBodyCutoff).block();
+            count++;
+        }
+        if (taskProcessCutoff > 0) {
+            historyRagClient.deleteExpired("task", "process", taskProcessCutoff).block();
+            count++;
+        }
+        if (taskSemanticCutoff > 0) {
+            historyRagClient.deleteExpired("task", "semantic", taskSemanticCutoff).block();
+            count++;
+        }
+        return count;
+    }
+
+    private static long ttlCutoff(Instant now, int days) {
+        return days > 0 ? now.minus(days, ChronoUnit.DAYS).toEpochMilli() : 0L;
     }
 
     /** active + expires_at &lt; now → void（仅改 L2 状态，不触碰 L3 向量）。 */
@@ -135,6 +173,37 @@ public class ContextMaintenanceService {
                 count++;
             } catch (Exception e) {
                 log.warn("[ContextMaintenance] delete void failed id={}: {}",
+                        entity.getId(), e.getMessage());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 超过 retention 的 conflict 行 void（conflict 无澄清入口，长期滞留无意义；
+     * voidRetentionDays 后转 void，再经 void 清理回收）。
+     */
+    int cleanupLongConflict(Instant now) {
+        Instant clock = now != null ? now : Instant.now();
+        int days = contextProperties.getMaintenance().getVoidRetentionDays();
+        if (days <= 0) {
+            return 0;
+        }
+        Instant cutoff = clock.minus(days, ChronoUnit.DAYS);
+        List<UserContextStateEntity> stale =
+                l2Repository.findByStatusAndUpdatedAtBefore("conflict", cutoff);
+        if (stale == null || stale.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (UserContextStateEntity entity : stale) {
+            try {
+                entity.setStatus("void");
+                entity.setUpdatedAt(clock);
+                l2Repository.save(entity);
+                count++;
+            } catch (Exception e) {
+                log.warn("[ContextMaintenance] void conflict failed id={}: {}",
                         entity.getId(), e.getMessage());
             }
         }

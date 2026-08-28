@@ -14,6 +14,11 @@ class ToolSetKindTest {
     }
 
     @Test
+    void fromPath_acceptsAllUnionView() {
+        assertThat(ToolSetKind.fromPath("all")).isEqualTo(ToolSetKind.ALL_DEFAULT);
+    }
+
+    @Test
     void fromPath_rejectsLegacyKinds() {
         assertThatThrownBy(() -> ToolSetKind.fromPath("react-default"))
                 .isInstanceOf(IllegalArgumentException.class);
