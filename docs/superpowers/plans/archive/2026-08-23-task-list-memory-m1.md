@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 17 / Spring Data JPA / JUnit5 + Mockito + AssertJ · MySQL DDL + `scripts/*.sql` 迁移 · Python3 live 脚本（requests）
 
-**Spec:** [task-list-memory-unification-design](../specs/2026-08-14-task-list-memory-unification-design.md) §3 核心设计 / §5.3 KV Memory todo 类 / §6 沉淀通道 / §9 M1 / §10 验收 · [task-scene-context](../specs/2026-08-01-task-scene-context-design.md) §2.1 读写闸门（最小子集） · [unified-context-compression](../specs/2026-07-31-unified-context-compression-design.md) §6.0/§6.3.3–6.3.5（v20/v22 门禁）
+**Spec:** [task-list-memory-unification-design](../specs/archive/2026-08-14-task-list-memory-unification-design.md) §3 核心设计 / §5.3 KV Memory todo 类 / §6 沉淀通道 / §9 M1 / §10 验收 · [task-scene-context](../specs/archive/2026-08-01-task-scene-context-design.md) §2.1 读写闸门（最小子集） · [unified-context-compression](../specs/2026-07-31-unified-context-compression-design.md) §6.0/§6.3.3–6.3.5（v20/v22 门禁）
 
 ## Global Constraints
 

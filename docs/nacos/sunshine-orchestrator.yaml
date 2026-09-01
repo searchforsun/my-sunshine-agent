@@ -232,11 +232,11 @@ agent:
     tools:
       sandbox__read:
         display-name: 读文件
-        description: 读取沙箱内文本文件（/skills/{skillId}/... 或 /workspace；勿对目录调用）；大文件按需用 offset/limit 分段读取，勿一次读全
+        description: 读取沙箱内文本文件（/skills/{skillId}/... 或 /workspace（含实际工作区 /workspace/wt-xxx/...）；勿对目录调用）；大文件按需用 offset/limit 分段读取，勿一次读全
         properties:
           path:
             type: string
-            description: 文件路径（须 /skills/{skillId}/... 或 /workspace/...；禁止旧路径 /skill）
+            description: 文件路径（须 /skills/{skillId}/... 或 /workspace/...（含 /workspace/wt-xxx/...）；禁止旧路径 /skill）
           offset:
             type: integer
             description: 起始行（1-based，可选）；缺省从第 1 行读起
@@ -247,11 +247,11 @@ agent:
           - path
       sandbox__write:
         display-name: 写文件
-        description: 仅新建工作区文件（仅 /workspace；已存在则失败，请改用 edit 或换路径）
+        description: 仅新建工作区文件（仅 /workspace（含 /workspace/wt-xxx/...）；已存在则失败，请改用 edit 或换路径）
         properties:
           path:
             type: string
-            description: 写入路径（仅 /workspace）；仅允许新建，禁止覆盖已有文件
+            description: 写入路径（仅 /workspace（含 /workspace/wt-xxx/...））；仅允许新建，禁止覆盖已有文件
           content:
             type: string
             description: 新建文件全文内容
@@ -260,11 +260,11 @@ agent:
           - content
       sandbox__edit:
         display-name: 编辑文件
-        description: 精确替换已有工作区文件中的唯一子串（仅 /workspace）
+        description: 精确替换已有工作区文件中的唯一子串（仅 /workspace（含 /workspace/wt-xxx/...））
         properties:
           path:
             type: string
-            description: 已有文件路径（仅 /workspace）
+            description: 已有文件路径（仅 /workspace（含 /workspace/wt-xxx/...））
           old_string:
             type: string
             description: 待替换的精确原文（须在文件中唯一出现）
@@ -284,7 +284,7 @@ agent:
             description: glob 模式，如 **/*.py；尽量收窄
           path:
             type: string
-            description: 搜索根（可选）：须为 /skills/{skillId}/... 或 /workspace；禁止 /skill；缺省搜全部 jail
+            description: 搜索根（可选）：须为 /skills/{skillId}/... 或 /workspace（含 /workspace/wt-xxx/...）；禁止 /skill；缺省搜全部 jail
         required:
           - pattern
       sandbox__grep:
@@ -296,7 +296,7 @@ agent:
             description: 搜索正则（必填）；避免空模式
           path:
             type: string
-            description: 搜索路径（可选）：须为 /skills/{skillId}/... 或 /workspace；禁止 /skill
+            description: 搜索路径（可选）：须为 /skills/{skillId}/... 或 /workspace（含 /workspace/wt-xxx/...）；禁止 /skill
           glob:
             type: string
             description: 文件名 glob 过滤（可选）
@@ -311,7 +311,7 @@ agent:
             description: shell 命令；禁止 rm -rf /、管道下载执行、mkfs 等破坏性操作
           cwd:
             type: string
-            description: 工作目录（可选，默认 /workspace；须在 /skills/{skillId}/... 或 /workspace）
+            description: 工作目录（可选，默认 /workspace（含 /workspace/wt-xxx/...）；须在 /skills/{skillId}/... 或 /workspace）
           timeout_sec:
             type: integer
             description: 超时秒数（可选；同步默认约 30；background=true 且未传时与墙钟对齐，约 600）

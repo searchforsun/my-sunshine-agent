@@ -49,7 +49,6 @@ class SkillCatalogServiceTest {
                         "[\"sdk__sunshine-biz__list_my_expenses\"]", 1, true, "none", null, "all", null, "default")));
         service.refresh();
         assertThat(service.find("finance-analysis")).isPresent();
-        assertThat(service.overlayOrEmpty("finance-analysis")).isEqualTo("overlay text");
         assertThat(service.toolIds("finance-analysis"))
                 .containsExactly("sdk__sunshine-biz__list_my_expenses");
         verify(catalogClient).fetchSkillDetail("finance-analysis");

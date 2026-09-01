@@ -64,6 +64,9 @@ class AgentInfraTest {
         when(requestDecisionTool.getName()).thenReturn(RequestDecisionTool.NAME);
         when(awaitToolRunTool.getName()).thenReturn(AwaitToolRunTool.NAME);
         when(asyncStatusTool.getName()).thenReturn(AsyncStatusTool.NAME);
+        SkillSearchTool skillSearchTool = Mockito.mock(SkillSearchTool.class);
+        when(skillSearchTool.getName()).thenReturn(SkillSearchTool.NAME);
+        SessionSearchTool sessionSearchTool = Mockito.mock(SessionSearchTool.class);
         when(remoteToolFactory.create("sdk__sunshine-finance__list_my_expenses", null, "default"))
                 .thenReturn(Optional.of(new CatalogRemoteAgentTool(
                         financeEntry, toolManagerClient, toolAuditService, hitlService, null, "default")));
@@ -84,8 +87,8 @@ class AgentInfraTest {
                 Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class),
                 executionProperties,
                 Mockito.mock(com.sunshine.orchestrator.sandbox.SandboxAgentTools.class),
-                Mockito.mock(SessionSearchTool.class),
-                Mockito.mock(SkillSearchTool.class),
+                sessionSearchTool,
+                skillSearchTool,
                 Mockito.mock(ToolRetrievalService.class));
         Toolkit toolkit = factory.build(null);
 

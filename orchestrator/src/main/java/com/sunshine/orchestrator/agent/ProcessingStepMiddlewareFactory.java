@@ -1,6 +1,5 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.ContextGroupEstimator;
@@ -32,7 +31,6 @@ public class ProcessingStepMiddlewareFactory {
     private final PromptCatalogHolder catalogHolder;
     private final ContextGroupEstimator contextGroupEstimator;
     private final ToolRetrievalMiddleware toolRetrievalMiddleware;
-    private final SkillCatalogService skillCatalogService;
 
     private volatile MiddlewareBase shared;
     private volatile List<MiddlewareBase> sharedChain;
@@ -60,7 +58,7 @@ public class ProcessingStepMiddlewareFactory {
     }
 
     /**
-     * 4.7.7 组合中间件链：GoalAlignment → ProcessingStep → FailureBudget → ToolRetrieval → SkillInjection。
+     * 4.7.7 组合中间件链：GoalAlignment → ProcessingStep → FailureBudget → ToolRetrieval。
      * AS2 {@code MiddlewareChain} 洋葱序：first=最外层。onReasoning 由外到内执行 →
      * goal-check 先注入、budget 后注入（spec §4.3 贴近模型注意力末端）；ToolRetrieval 最内层
      * 在核心 reasoning 前按上下文检索 Top-K 并更新激活组（本轮决定下一轮 tools schema）。
@@ -68,8 +66,10 @@ public class ProcessingStepMiddlewareFactory {
      * budgetExceededToolUseIds，随后 PSM 的 completeToolStep 查询到该标记，达阈值那次
      * tool 步 after 才换「连续失败，需调整方案」（spec §5.4）。若 PSM 置于最内层，
      * completeToolStep 先于预算标记执行，文案替换永不生效。
-     * SkillInjection 置于最内层，onSystemPrompt 最后执行——把触发集 skill 正文追加到 system prompt
-     * （SYSTEM 权威层，AS 2.0 官方通道），替代 USER 信封注入。
+     * C1 修正（方案C）：skill 正文不再经 onSystemPrompt 注入前缀 system（SkillInjectionMiddleware
+     * 已移除）——触发集中途增长会逐轮改变前缀 system 字节，击穿压缩点 C1 前缀稳定；
+     * skill 正文改由 PromptComposer 以尾部 USER 信封注入（Tier 2 动态段），
+     * System 遵循引导由 system-prompt 静态【技能遵循】段承载。
      */
     public List<MiddlewareBase> sharedChain() {
         List<MiddlewareBase> chain = sharedChain;
@@ -80,8 +80,7 @@ public class ProcessingStepMiddlewareFactory {
                             new GoalAlignmentMiddleware(executionProperties, catalogHolder),
                             shared(),
                             new FailureBudgetMiddleware(executionProperties, catalogHolder),
-                            toolRetrievalMiddleware,
-                            new SkillInjectionMiddleware(skillCatalogService));
+                            toolRetrievalMiddleware);
                 }
                 chain = sharedChain;
             }

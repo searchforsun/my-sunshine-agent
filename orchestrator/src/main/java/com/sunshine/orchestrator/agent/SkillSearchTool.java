@@ -1,13 +1,11 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.common.tool.ToolCatalogEntry;
 import com.sunshine.orchestrator.catalog.SkillCatalogEntry;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.catalog.ToolSetResolver;
+import com.sunshine.orchestrator.catalog.TenantVisibility;
 import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.conversation.ConversationService;
-import com.sunshine.orchestrator.routing.SkillCandidateRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
@@ -19,20 +17,18 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * S-C 候选 skill 动态加载元工具（skill-sticky v3.8 §4.6 形态 3）：
- * 模型对本轮目录中标「可动态加载」的候选 skill 显式调用，返回完整正文 + 声明工具 schema。
- * 结果经 tool_result 进 Tier 2 尾部——零 prefix 重建（V17：候选永不进 T0 overlay）。
+ * 技能动态加载元工具（skill-sticky v3.8 §4.6 形态 3）：模型显式加载任一 enabled 技能，
+ * 返回完整正文 + 声明工具 schema（结果经 tool_result 进上下文尾部，零 prefix 重建）。
+ * 同时把技能物料挂载到当前沙箱会话 /skills/{id}/，使模型可在沙箱工作区读取（sandbox__read/glob）。
  *
  * <p>加载即升级 triggered：消息 {@code routing_skill_ids} 追加（后续轮次经 sticky 继承）
- * + 沙箱懒挂物料；同时是动态加载的**唯一入口**，禁止按「提到 skill id」模糊自动注入。
- * 仅注册到开启双阈值采纳的 MAIN（候选只在采纳开启时产生）。
+ * + 沙箱挂载物料；是「运行中加载技能进工作区」的唯一入口。校验 enabled + 租户可见，
+ * 不再限制为采纳候选集（候选集仅用于目录「可动态加载」提权标记）。仅注册 MAIN。
  */
 @Slf4j
 @Component
@@ -42,8 +38,7 @@ public class SkillSearchTool implements AgentTool {
     public static final String NAME = "sunshine_search_skills";
 
     private final SkillCatalogService skillCatalogService;
-    private final ToolCatalogService toolCatalogService;
-    private final ToolSetResolver toolSetResolver;
+    private final SkillBodyRenderer skillBodyRenderer;
     private final ConversationService conversationService;
     private final SandboxSessionLifecycle sandboxSessionLifecycle;
 
@@ -54,8 +49,9 @@ public class SkillSearchTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "动态加载技能目录中标记「可动态加载」的技能：返回该技能的完整操作指引与其声明工具的用法。"
-                + "仅当目录中的候选技能与当前任务相关、且正文尚未加载时调用；已触发的技能无需重复加载。";
+        return "运行中加载指定技能到沙箱工作区：返回该技能的完整操作指引与其声明工具的用法，"
+                + "并把技能物料挂载到沙箱 /skills/{id}/ 供 sandbox__read/glob 读取。"
+                + "仅当技能正文尚未加载、且当前任务确实需要该技能时才调用；已触发的技能无需重复加载。";
     }
 
     @Override
@@ -63,7 +59,7 @@ public class SkillSearchTool implements AgentTool {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("skill_id", Map.of(
                 "type", "string",
-                "description", "要加载的技能 id（取自技能目录中可动态加载项）"));
+                "description", "要加载的技能 id（取自技能目录 / 已启用技能）"));
         return Map.of(
                 "type", "object",
                 "properties", props,
@@ -77,7 +73,6 @@ public class SkillSearchTool implements AgentTool {
     }
 
     private ToolResultBlock execute(ToolCallParam param) {
-        String toolUseId = param.getToolUseBlock() != null ? param.getToolUseBlock().getId() : null;
         String messageId = StepEventBridge.activeMessageId();
         StepEventBridge.ToolAuditContext audit = StringUtils.hasText(messageId)
                 ? StepEventBridge.toolAuditContext(messageId) : null;
@@ -95,18 +90,16 @@ public class SkillSearchTool implements AgentTool {
         if (audit == null || !StringUtils.hasText(audit.messageId())) {
             return result(toolUseId, "调用失败：缺少会话上下文");
         }
-        List<String> candidates = SkillCandidateRegistry.candidates(messageId);
-        if (!candidates.contains(id)) {
-            return result(toolUseId, "技能「" + id + "」不在本轮可动态加载的候选集内，"
-                    + "请仅加载技能目录中标记「可动态加载」的技能");
-        }
         SkillCatalogEntry entry = skillCatalogService.find(id).orElse(null);
         if (entry == null || !entry.enabled()) {
             return result(toolUseId, "技能「" + id + "」不存在或未启用");
         }
+        if (!TenantVisibility.visible(entry.tenantId(), audit.tenantId())) {
+            return result(toolUseId, "技能「" + id + "」对当前租户不可见");
+        }
         promoteTriggered(audit, id);
-        String body = renderLoadedSkill(entry, audit);
-        log.info("[SkillSearchTool] 动态加载候选技能升级 triggered skill={} msg={} conv={}",
+        String body = skillBodyRenderer.renderLoadedSkill(entry, audit.tenantId(), audit.conversationKind());
+        log.info("[SkillSearchTool] 运行中加载技能升级 triggered skill={} msg={} conv={}",
                 id, audit.messageId(), audit.conversationId());
         return result(toolUseId, body);
     }
@@ -127,49 +120,6 @@ public class SkillSearchTool implements AgentTool {
         } catch (Exception e) {
             log.warn("[SkillSearchTool] 沙箱懒挂失败 skill={}: {}", skillId, e.getMessage());
         }
-    }
-
-    /** 正文（原样返回）+ 声明工具 schema（⊆ 当前 (tenant, kind) 集；越界声明标注不可用） */
-    private String renderLoadedSkill(SkillCatalogEntry entry, StepEventBridge.ToolAuditContext audit) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 技能 ").append(entry.id());
-        if (StringUtils.hasText(entry.displayName())) {
-            sb.append(" · ").append(entry.displayName().strip());
-        }
-        sb.append("\n\n");
-        if (StringUtils.hasText(entry.systemOverlay())) {
-            sb.append(entry.systemOverlay().strip()).append("\n\n");
-        } else {
-            sb.append("（该技能无正文指引）\n\n");
-        }
-        List<String> declared = entry.toolIds();
-        if (declared.isEmpty()) {
-            sb.append("该技能未声明专属工具。");
-            return sb.toString();
-        }
-        Set<String> currentSet = new HashSet<>(toolSetResolver.resolveDefaultTools(
-                audit.tenantId(), audit.conversationKind()));
-        sb.append("## 声明工具\n");
-        for (String toolId : declared) {
-            if (!currentSet.contains(toolId)) {
-                sb.append("- ").append(toolId).append("：不在当前会话工具集内，不可调用\n");
-                continue;
-            }
-            ToolCatalogEntry tool = toolCatalogService.find(toolId).orElse(null);
-            if (tool == null) {
-                sb.append("- ").append(toolId).append("\n");
-                continue;
-            }
-            sb.append("- **").append(tool.id()).append("**");
-            if (StringUtils.hasText(tool.displayName())) {
-                sb.append(" ").append(tool.displayName().strip());
-            }
-            if (StringUtils.hasText(tool.description())) {
-                sb.append("：").append(tool.description().strip());
-            }
-            sb.append('\n');
-        }
-        return sb.toString();
     }
 
     private static String stringParam(ToolCallParam param, String key) {

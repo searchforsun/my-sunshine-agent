@@ -4,12 +4,18 @@ import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.TokenWrapperMode;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.processing.ContentSegmentCoordinator;
+import com.sunshine.orchestrator.processing.SkillLoadLabels;
+import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.AgentTool;
@@ -62,6 +68,7 @@ public class WorkerDispatchTool implements AgentTool {
     private final PlannerActionTool plannerActionTool;
     private final AsyncToolRunRegistry asyncToolRunRegistry;
     private final SpawnRunRegistry spawnRunRegistry;
+    private final SkillBodyRenderer skillBodyRenderer;
 
     /** Planner 运行态：notebook + 审计字段；对齐 SpawnSubagent 的 bridge 上下文模式。 */
     public record DispatchSession(
@@ -73,7 +80,23 @@ public class WorkerDispatchTool implements AgentTool {
             String conversationId,
             String parentRunId,
             int maxIters,
-            String conversationKind) {
+            String conversationKind,
+            String skillId) {
+
+        /** 兼容旧 9 参调用：skillId 缺省 null */
+        public DispatchSession(
+                PlanNotebook notebook,
+                List<String> toolWhitelist,
+                String userId,
+                String tenantId,
+                String assistantMessageId,
+                String conversationId,
+                String parentRunId,
+                int maxIters,
+                String conversationKind) {
+            this(notebook, toolWhitelist, userId, tenantId, assistantMessageId,
+                    conversationId, parentRunId, maxIters, conversationKind, null);
+        }
 
         String plannerBridgeId() {
             return StringUtils.hasText(parentRunId) ? "planner-" + parentRunId.strip() : null;
@@ -259,7 +282,8 @@ public class WorkerDispatchTool implements AgentTool {
                 session.assistantMessageId(),
                 session.conversationId(),
                 maxIters,
-                session.parentRunId())
+                session.parentRunId(),
+                session.skillId())
                 .withConversationKind(session.conversationKind());
         final String runId = request.runId();
         final long timeoutMs = harness.getWorker().getTimeoutMs() > 0
@@ -272,6 +296,10 @@ public class WorkerDispatchTool implements AgentTool {
         final String mainBridge = session.plannerBridgeId();
         boolean foldActive = StringUtils.hasText(mainBridge) && StepEventBridge.hasSession(mainBridge);
         final WorkerTimelineBridge workerTimeline = foldActive ? bindTimeline(mainBridge, workerBridgeId, task, runId) : null;
+        // worker 绑定 skill：抽屉渲染「加载技能」步骤（摘要=技能名，detail=完整正文展开），与 spawn/sub 一致
+        if (workerTimeline != null && StringUtils.hasText(request.skillId())) {
+            emitWorkerStep(mainBridge, workerTimeline.wrap(buildSkillStepToken(request)));
+        }
         // 异步 run 注册：await_tool_run 可收集；墙钟超时/用户取消经 onCancel 委托
         if (!asyncToolRunRegistry.tryAcquireSlot(session.assistantMessageId())) {
             if (foldActive) {
@@ -481,6 +509,33 @@ public class WorkerDispatchTool implements AgentTool {
                 || token.isContent() || token.isContentStart() || token.isContentEnd()) {
             emitWorkerStep(mainBridge, bridge.wrap(token));
         }
+    }
+
+    /** worker 绑定技能：构造「加载技能」步骤（摘要=技能名，detail=完整正文展开） */
+    private StreamToken buildSkillStepToken(AgentRunRequest request) {
+        String id = request.skillId().strip();
+        long ts = System.currentTimeMillis();
+        String after = SkillLoadLabels.after(id);
+        String body = skillBodyRenderer.renderById(id, request.tenantId(), request.conversationKind());
+        ProcessingStep step = new ProcessingStep(
+                TimelineStepId.SKILL.id(),
+                TimelineStepId.SKILL.phase(),
+                "done",
+                new StepSummary(SkillLoadLabels.before(), null, after),
+                null,
+                ts,
+                null,
+                body,
+                null,
+                null,
+                body,
+                ts,
+                SkillLoadLabels.before(),
+                StepMetadata.fromSkillLoad(id),
+                null,
+                null,
+                null);
+        return StreamToken.step(step);
     }
 
     /** 折叠后的父步 token 直刷 GenerationJob，前端实时看到 worker 内部 subSteps 累积。 */

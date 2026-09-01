@@ -10,6 +10,7 @@ import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.sandbox.SandboxAgentTools;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
 import io.agentscope.core.tool.AgentTool;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -64,6 +65,12 @@ class DynamicToolkitFactoryTest {
     private ToolRetrievalService toolRetrievalService;
     @InjectMocks
     private DynamicToolkitFactory factory;
+
+    /** 技能加载元工具常驻 MAIN：stub 名称避免注册时报 Tool name cannot be null（lenient：部分测试不进入 MAIN 分支） */
+    @BeforeEach
+    void stubSkillSearchName() {
+        org.mockito.Mockito.lenient().when(skillSearchTool.getName()).thenReturn(SkillSearchTool.NAME);
+    }
 
     @Test
     void build_withTaskboardEnabled_doesNotRegisterManageTasks_nativeTodoWriteOwnedByEnableTaskList() {

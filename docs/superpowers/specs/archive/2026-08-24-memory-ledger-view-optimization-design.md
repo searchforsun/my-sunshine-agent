@@ -1,7 +1,7 @@
 # 记忆系统「账本-视图」治理优化 — 设计方案
 
-> 状态：**O1 中断落板 ✅ 已实现（2026-08-25）** · **O4 重建校验 ✅ 已实现（2026-08-25）** · O2 语义 merge ✅（统一压缩 §6.4 落地） · **O3 写路由收敛 ✅ 已实现（2026-08-25）** · **O5 审计与判定修正 ✅ 代码与 Catalog 已落地（2026-08-26）** — O1–O4 全部落地，O5 为线上数据实证后的根因修正
-> 范围：承接 [unified-context-compression](./2026-07-31-unified-context-compression-design.md) v25/v26 与 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) M0–M3 的后续治理优化；纯后端，无前端改动。
+> 状态：**→ 已归档（2026-08-29）** · **O1 中断落板 ✅ 已实现（2026-08-25）** · **O4 重建校验 ✅ 已实现（2026-08-25）** · O2 语义 merge ✅（统一压缩 §6.4 落地） · **O3 写路由收敛 ✅ 已实现（2026-08-25）** · **O5 审计与判定修正 ✅ 代码与 Catalog 已落地（2026-08-26）** — O1–O4 全部落地，O5 为线上数据实证后的根因修正
+> 范围：承接 [unified-context-compression](../2026-07-31-unified-context-compression-design.md) v25/v26 与 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) M0–M3 的后续治理优化；纯后端，无前端改动。
 > 起源：用户调研「经典四层 vs 生产级六层」记忆架构后逐层对照现状的收敛结论（2026-08-24）。
 
 ## 1. 背景与目标

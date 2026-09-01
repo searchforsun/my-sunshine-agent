@@ -197,7 +197,7 @@ public class ReactExecutor {
         if (ctx.reactRestart() && StringUtils.hasText(ctx.assistantMsgId()) && !resumeSteps.isEmpty()) {
             DecisionResumeSteps.bind(ctx.assistantMsgId(), resumeSteps);
         }
-        // S-C：候选集消息级承载——sunshine_search_skills 校验加载目标 ⊆ 本轮采纳候选
+        // S-C：候选集消息级承载——目录「可动态加载」提权标记（sunshine_search_skills 已放开为任意 enabled 技能）
         if (StringUtils.hasText(ctx.assistantMsgId()) && !candidateSkillIds.isEmpty()) {
             com.sunshine.orchestrator.routing.SkillCandidateRegistry.bind(
                     ctx.assistantMsgId(), candidateSkillIds);

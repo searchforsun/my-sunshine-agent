@@ -4,9 +4,9 @@
 > **v2（2026-08-15）**：对齐 [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) 与 [task-scene v14](./2026-08-01-task-scene-context-design.md)——会话级执行态 / KV Memory `todo` 与 `business_task` **边界隔离**；装配时序 P3′ 补位；`user_context_state` 表演进随 KV Memory 统一（§2.2 / §2.3 / §3 / §4.3 / §5.1 / §10 / §11）  
 > **v3（2026-08-18）**：**biz_scene 解析补 embedding 回退路径**（§2.1b/§2.2/§4.4/§5.5）——当资源召回未命中时，用 query embedding 检索 `biz_scene_definition` 码表（零 LLM 延迟），使场景偏好/任务板在无 skill/agent 召回时仍可达；写路径同步回退。  
 > **v4（2026-08-18）**：**场景来源双轨**（§2.1c/§4.4/§5.5/§9）——`biz_scene_definition` 增 `source` 列（`manual` 预定义 / `auto` 大模型自动发现）；`auto` 场景初始 `pending_review`，**不可**用于 Policy/任务板装载，仅嵌入检索过渡使用；运营审核后升 `active` 方可正式启用。前端 Lab 拆双 Tab：预定义 / 自动发现。**防污染机制**：`auto` 场景 TTL 自动清理 + 同 tenant 上限 + 相似度去重。  
-> **状态**：**M1–M3 ✅ 已实现**（2026-08-26，读侧装载：Policy 缓存装载 + business_task 召回阶梯 + 偏好白名单；`ReactExecutor` 资源召回后注入；Live `verify_business_context_live.py` A–D）· **M4 ✅ 已实现**（2026-08-26，冲突仲裁：`BizContextConflictArbiter` 有 scene ∧ 有 Policy/任务板权威参照 ∧ L3 非空时 LLM 判定并过滤矛盾断言 + 审计，ReactExecutor 注入点接入；Catalog `context.biz-scene.conflict-check`；Nacos `agent.business-context.conflict-check.enabled` 默认关；单测 9 例 + 全量 1355/1355 全绿；Live 多轮积累 L3 → 过滤 1 段冲突摘要 l3=111->0 + 审计送达）· **M5 ✅ 已实现**（2026-08-26，embedding 回退 + 场景双轨：`biz_scene_definition` 加向量/来源/审核列；`SceneEmbeddingService`（DashScope 向量化 + 余弦匹配 + 索引缓存 + 懒回填）；读路径 `ReactExecutor.resolveBizScene` 未命中 → embedding 回退；写路径 `SceneWriteResolver` 路由种子 → embedding → LLM 自动创建三级链；`SceneAutoCreateService` 防污染（≥2 轮/max-pending/rate-limit/相似度抑制）；`pending_review` 仅嵌入检索不装载 Policy/任务板；前端双 Tab + 审核；Live `verify_scene_dual_track_live.py` A–E 全绿）· **M0 ✅ 已实现**（2026-08-26，装配时序拆分 §2.2 方案 A：`AssembleRequest.deferL3` fast×chat 路由前仅底座（`assemble l3=0`），L3 延后由 `ReactExecutor` 资源召回后 `ContextAssembler.attachL3` 装配（分区锚点 `AssembledContext.L3Anchor` 排除 Near/Mid 已覆盖消息 + 剩余预算裁剪，先于 M4 仲裁）；pro/workflow 保持现状；单测 7 例 + 全量 1386/1386 全绿；Live fast×chat 验证路由前零 L3 召回 + attachL3 调用 + Near 覆盖排除）  
+> **状态**：**→ 已归档（2026-08-29）** · **M1–M3 ✅ 已实现**（2026-08-26，读侧装载：Policy 缓存装载 + business_task 召回阶梯 + 偏好白名单；`ReactExecutor` 资源召回后注入；Live `verify_business_context_live.py` A–D）· **M4 ✅ 已实现**（2026-08-26，冲突仲裁：`BizContextConflictArbiter` 有 scene ∧ 有 Policy/任务板权威参照 ∧ L3 非空时 LLM 判定并过滤矛盾断言 + 审计，ReactExecutor 注入点接入；Catalog `context.biz-scene.conflict-check`；Nacos `agent.business-context.conflict-check.enabled` 默认关；单测 9 例 + 全量 1355/1355 全绿；Live 多轮积累 L3 → 过滤 1 段冲突摘要 l3=111->0 + 审计送达）· **M5 ✅ 已实现**（2026-08-26，embedding 回退 + 场景双轨：`biz_scene_definition` 加向量/来源/审核列；`SceneEmbeddingService`（DashScope 向量化 + 余弦匹配 + 索引缓存 + 懒回填）；读路径 `ReactExecutor.resolveBizScene` 未命中 → embedding 回退；写路径 `SceneWriteResolver` 路由种子 → embedding → LLM 自动创建三级链；`SceneAutoCreateService` 防污染（≥2 轮/max-pending/rate-limit/相似度抑制）；`pending_review` 仅嵌入检索不装载 Policy/任务板；前端双 Tab + 审核；Live `verify_scene_dual_track_live.py` A–E 全绿）· **M0 ✅ 已实现**（2026-08-26，装配时序拆分 §2.2 方案 A：`AssembleRequest.deferL3` fast×chat 路由前仅底座（`assemble l3=0`），L3 延后由 `ReactExecutor` 资源召回后 `ContextAssembler.attachL3` 装配（分区锚点 `AssembledContext.L3Anchor` 排除 Near/Mid 已覆盖消息 + 剩余预算裁剪，先于 M4 仲裁）；pro/workflow 保持现状；单测 7 例 + 全量 1386/1386 全绿；Live fast×chat 验证路由前零 L3 召回 + attachL3 调用 + Near 覆盖排除）  
 > **定位**：企业生产 Agent 的**结构化权威底座**——任务板 / 场景偏好白名单 / 场景 Policy；挂载于既有五层读路径之上，**不**替代 L1–L5 压缩管道，**不**新建 context 微服务。  
-> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
+> **关联**：[unified-context-compression](../2026-07-31-unified-context-compression-design.md)（五层 SSOT）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（chat/task 记忆闸门 · v14 KV Memory 统一）· [task-list-memory](./2026-08-14-task-list-memory-unification-design.md)（会话级执行态 + KV Memory `todo`，边界隔离）· [unified-routing v6](../2026-07-29-unified-routing-design.md)（`kind`/`executionMode`/`callSite`/`biz_scene` 四轴）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（业务场景 Lab SSOT · 资源 `kind` · 工具集 chat/task · 退役 react-prompt）
 
 ---
 
@@ -56,7 +56,7 @@
 | Skill | `skill_definition.biz_scene`（可空 VARCHAR） | `19-sunshine-resource.sql` |
 | 子 Agent | `agent_definition.biz_scene`（可空 VARCHAR） | 同上 |
 
-`biz_scene` 取值必须落在 **业务场景 Lab** 闭集码表（与 `biz_scene_policy.biz_scene` 同码空间；见 [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md) §3）；空 = 该资源不触发结构化业务记忆。码表**不**挂在「提示词 / react-prompt」下。
+`biz_scene` 取值必须落在 **业务场景 Lab** 闭集码表（与 `biz_scene_policy.biz_scene` 同码空间；见 [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) §3）；空 = 该资源不触发结构化业务记忆。码表**不**挂在「提示词 / react-prompt」下。
 
 **解析算法（唯一）**：
 
@@ -265,7 +265,7 @@ auto 场景创建 → pending_review（仅嵌入检索可用）
 1. **Policy / 场景偏好**：视为低频结构化块（类 Tier 0/1），**不进** L1 Near/Mid/Far 折叠；渲染顺序固定，禁止每轮重排中段。  
 2. **任务板详情**：随工具回写会变 → 按 **content-hash** 仅在变更时改块（对齐压缩点降频）；或置于 query 前动态尾段，避免无意义打穿整段 KV。  
 3. **L3**：保持「绝对尾部动态段」语义（五层 §7.5）；§2.2 方案 A（路由后再召回）与此一致，优于路由前灌 L3。  
-4. **Skill 触发态轻 sticky**（[v3.1](./2026-08-12-skill-sticky-process-chain-design.md)）：粘的是 **triggered** `skillIds`（非可发现全集）→ `biz_scene` 更稳；换**触发** skill 导致 **biz_scene** 变属**允许的一次 prefix 重建**（C3）。可发现目录变化不视为业务域切换。  
+4. **Skill 触发态轻 sticky**（[v3.1](../2026-08-12-skill-sticky-process-chain-design.md)）：粘的是 **triggered** `skillIds`（非可发现全集）→ `biz_scene` 更稳；换**触发** skill 导致 **biz_scene** 变属**允许的一次 prefix 重建**（C3）。可发现目录变化不视为业务域切换。  
 5. **Budget**：超限时仍 L3→Far→Mid；**Policy 与活跃任务权威字段不因 Budget 静默丢弃**（可截任务目录，不可丢 Policy 红线）。  
 6. **KV `todo` / 会话级恢复块**（[task-list-memory](./2026-08-14-task-list-memory-unification-design.md)）：归属其挂载纪律——KV `todo` Tier 1 幂等、恢复块 Tier 2 尾部；与本层任务板**不混挂、不双写**。
 
@@ -708,7 +708,7 @@ Live 建议：`scripts/verify_business_context_live.py`（M1 起可测 Policy �
 | routing v6 | 产品 `kind` / `executionMode`；本层 `biz_scene` 业务轴 |
 | request_decision | 仅业务工具确认等既有 HITL；**不**用于选场景/选任务板焦点 |
 | Skill / Agent Catalog | `biz_scene` **引用**入口；码表 SSOT = 业务场景 Lab；与路由召回同链路 |
-| [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md) | Lab UI/DDL、资源 `kind` 过滤、工具集 chat/task、退役 react-prompt |
+| [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md) | Lab UI/DDL、资源 `kind` 过滤、工具集 chat/task、退役 react-prompt |
 | [task-list-memory](./2026-08-14-task-list-memory-unification-design.md) | 会话级执行态 + KV Memory `todo` 沉淀；与 `business_task` **边界隔离**、不双写；装配时序对齐 §2.2（P3′） |
 
 ---

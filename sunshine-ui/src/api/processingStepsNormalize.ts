@@ -1,7 +1,7 @@
 /** 时间线步骤排序 */
 import type { ProcessingStep, StepPhase } from './processingSteps'
 
-/** ReAct 设计序：intent → skill → tasks → think* → tool*（skill 固定第二步；tasks 在 think 前） */
+/** ReAct 时间线：intent 恒定最前；skill 作为普通工具步按真实时间戳排；tasks 紧随 intent、think 前 */
 export const STEP_ORDER: StepPhase[] = [
   'intent', 'skill', 'plan', 'node', 'rag', 'tasks', 'think', 'tool', 'agent', 'generate',
 ]
@@ -49,14 +49,11 @@ function movePhaseAfterAnchor(
 }
 
 /**
- * 头部钉扎：skill 固定为第二步（intent 之后）；
- * tasks 紧随 skill（无 skill 则紧随 intent），始终在 think 之前。
+ * 头部钉扎：仅 tasks 紧随 intent（任务清单在 think 前、靠近意图）；skill 作为普通工具步按真实时间戳排。
+ * 用户要求「加载技能当作普通工具行，该在哪里就在哪里」——不把 skill 强行提前到第二步。
  */
 function repositionPinnedHeaderSteps(steps: ProcessingStep[]): ProcessingStep[] {
-  let next = movePhaseAfterAnchor(steps, 'skill', 'intent')
-  const hasSkill = next.some(s => s.phase === 'skill')
-  next = movePhaseAfterAnchor(next, 'tasks', hasSkill ? 'skill' : 'intent')
-  return next
+  return movePhaseAfterAnchor(steps, 'tasks', 'intent')
 }
 
 export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {

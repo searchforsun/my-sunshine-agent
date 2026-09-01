@@ -530,13 +530,6 @@ export function resolveStepExpandBody(step: ProcessingStep): string {
   return resolveStepExpandPanels(step).body
 }
 
-export function parseLoadedSkillLabel(text?: string): string | undefined {
-  if (!text?.trim()) return undefined
-  const match = text.trim().match(/^已加载技能：([^\n]+)/)
-  const label = match?.[1]?.trim()
-  return label || undefined
-}
-
 export function stripLoadedSkillPrefix(text?: string): string {
   if (!text?.trim()) return ''
   return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()

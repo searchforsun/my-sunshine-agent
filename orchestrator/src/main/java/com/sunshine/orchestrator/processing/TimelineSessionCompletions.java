@@ -50,6 +50,11 @@ final class TimelineSessionCompletions {
     }
 
     void completeSkillLoad(String skillId) {
+        completeSkillLoad(skillId, null);
+    }
+
+    /** skill 步完成：expandDetail 承载技能正文（L0 首现与动态加载统一，供前端下拉查看） */
+    void completeSkillLoad(String skillId, String expandDetail) {
         if (skillId == null || skillId.isBlank()) {
             return;
         }
@@ -59,7 +64,7 @@ final class TimelineSessionCompletions {
         startAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), ts);
         String after = SkillLoadLabels.after(skillId.strip());
         StepMetadata metadata = StepMetadata.fromSkillLoad(skillId.strip());
-        emitter.applyAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), EventKind.COMPLETE, after, null, metadata, ts);
+        emitter.applyAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), EventKind.COMPLETE, after, expandDetail, metadata, ts);
         if (TimelineStepId.SKILL.matches(state.activeStepId)) {
             state.activeStepId = null;
         }

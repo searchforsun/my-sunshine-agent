@@ -6,6 +6,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.AgentCatalogEntry;
 import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.ResourceKindFilter;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
@@ -53,6 +54,7 @@ public class SpawnSubagentTool implements AgentTool {
     private final AgentExecutorRouter agentExecutorRouter;
     private final AsyncToolRunRegistry asyncToolRunRegistry;
     private final SkillCatalogService skillCatalogService;
+    private final SkillBodyRenderer skillBodyRenderer;
 
     public SpawnSubagentTool(
             AgentExecutionProperties executionProperties,
@@ -63,7 +65,8 @@ public class SpawnSubagentTool implements AgentTool {
             AgentCatalogService agentCatalogService,
             AgentExecutorRouter agentExecutorRouter,
             AsyncToolRunRegistry asyncToolRunRegistry,
-            SkillCatalogService skillCatalogService) {
+            SkillCatalogService skillCatalogService,
+            SkillBodyRenderer skillBodyRenderer) {
         this.executionProperties = executionProperties;
         this.timelineSupport = timelineSupport;
         this.toolSetResolver = toolSetResolver;
@@ -73,6 +76,7 @@ public class SpawnSubagentTool implements AgentTool {
         this.agentExecutorRouter = agentExecutorRouter;
         this.asyncToolRunRegistry = asyncToolRunRegistry;
         this.skillCatalogService = skillCatalogService;
+        this.skillBodyRenderer = skillBodyRenderer;
     }
 
     @Override
@@ -259,7 +263,8 @@ public class SpawnSubagentTool implements AgentTool {
 
         timelineSupport.begin(emitTarget, runId, displayLabel, promptText);
         if (StringUtils.hasText(resolvedSkillId)) {
-            timelineSupport.fold(emitTarget, subTimeline, skillLoadToken(resolvedSkillId));
+            timelineSupport.fold(emitTarget, subTimeline,
+                    skillLoadToken(resolvedSkillId, audit.tenantId(), audit.conversationKind()));
         }
         spawnRunRegistry.register(runId, messageId, promptText, emitTarget, subTimeline);
         // PASS_THROUGH：wrapper 只 fold；原 token 入队供 Flux（禁止 Flux 再 fold，否则 reasoning 翻倍）
@@ -470,11 +475,15 @@ public class SpawnSubagentTool implements AgentTool {
         return StringUtils.hasText(text) ? text : null;
     }
 
-    /** 子 agent 绑定 skill 时注入「加载技能」步骤（subSteps 首行，与主流程 skill 步骤文案一致） */
-    private StreamToken skillLoadToken(String skillId) {
+    /**
+     * 子 agent 绑定 skill 时注入「加载技能」步骤（subSteps 首行，与主流程 skill 步骤文案一致）；
+     * 摘要取技能名（summary.after），完整正文落 detail（展开下拉，与 sunshine_search_skills 动态加载同款完整正文）。
+     */
+    private StreamToken skillLoadToken(String skillId, String tenantId, String conversationKind) {
         String id = skillId.strip();
         long ts = System.currentTimeMillis();
         String after = SkillLoadLabels.after(id);
+        String body = skillBodyRenderer.renderById(id, tenantId, conversationKind);
         ProcessingStep step = new ProcessingStep(
                 TimelineStepId.SKILL.id(),
                 TimelineStepId.SKILL.phase(),
@@ -483,10 +492,10 @@ public class SpawnSubagentTool implements AgentTool {
                 null,
                 ts,
                 null,
-                after,
+                body,
                 null,
                 null,
-                after,
+                body,
                 ts,
                 SkillLoadLabels.before(),
                 StepMetadata.fromSkillLoad(id),

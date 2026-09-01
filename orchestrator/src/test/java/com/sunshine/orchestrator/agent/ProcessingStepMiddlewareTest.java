@@ -10,6 +10,8 @@ import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.DecisionLabelService;
+import com.sunshine.orchestrator.processing.SkillLoadLabelService;
+import com.sunshine.orchestrator.processing.SkillLoadLabels;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabelService;
 import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
@@ -45,6 +47,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -89,6 +92,7 @@ class ProcessingStepMiddlewareTest {
         SpawnSubagentLabels.bind(null);
         DecisionLabels.bind(null);
         AwaitToolRunLabels.bind(null);
+        SkillLoadLabels.bind(null);
     }
 
     @Test
@@ -208,6 +212,47 @@ class ProcessingStepMiddlewareTest {
         verify(session, never()).beginToolStep(any(), any());
         verify(session, never()).noteToolCallPending();
         verify(session, never()).recordToolCompleted(any());
+    }
+
+    @Test
+    void onActingSunshineSearchSkillsUsesSkillStep() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+        when(executionProperties.getReact()).thenReturn(null);
+        SkillLoadLabelService skillLabels = mock(SkillLoadLabelService.class);
+        when(skillLabels.beforeLine()).thenReturn("加载技能");
+        when(skillLabels.afterLine("writing-plans")).thenReturn("writing-plans");
+        SkillLoadLabels.bind(skillLabels);
+
+        String toolUseId = "tu-skill";
+        String skillId = "writing-plans";
+        ToolUseBlock toolUse = mock(ToolUseBlock.class);
+        when(toolUse.getName()).thenReturn(SkillSearchTool.NAME);
+        when(toolUse.getId()).thenReturn(toolUseId);
+        when(toolUse.getInput()).thenReturn(Map.of("skill_id", skillId));
+        when(toolCatalogService.displayName(SkillSearchTool.NAME)).thenReturn("加载技能");
+        when(toolCatalogService.isRagTool(SkillSearchTool.NAME)).thenReturn(false);
+        when(sandboxTimelineLabels.isSandboxTool(SkillSearchTool.NAME)).thenReturn(false);
+        when(cancellableToolRunRegistry.isCancellableTool(SkillSearchTool.NAME)).thenReturn(false);
+        when(session.beginToolStep("skill", "skill")).thenReturn("step-skill");
+
+        ProcessingStepMiddleware mw = newMiddleware();
+        Function<ActingInput, Flux<AgentEvent>> next = in -> Flux.just(
+                new ToolResultEndEvent("e-skill", null, "r-skill", toolUseId, SkillSearchTool.NAME,
+                        ToolResultState.SUCCESS));
+
+        ActingInput input = new ActingInput(List.of(toolUse));
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
+                .collectList().block();
+
+        // sunshine_search_skills 走 skill 步：开步 phase=skill、绑定「加载技能」label
+        verify(session).noteToolCallPending();
+        verify(session).beginToolStep("skill", "skill");
+        verify(session).bindStepDisplayName("step-skill", "加载技能");
+        // 收步：after=真实技能名 + metadata.skillId
+        verify(session).completeToolStepForToolUse(
+                eq(toolUseId), eq("writing-plans"), any(), argThat(m -> m != null && skillId.equals(m.skillId())));
+        verify(session).recordToolCompleted("加载技能");
+        verify(session).noteToolCallDone();
     }
 
     @Test

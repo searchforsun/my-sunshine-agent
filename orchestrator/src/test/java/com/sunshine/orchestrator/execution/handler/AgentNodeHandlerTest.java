@@ -51,6 +51,9 @@ class AgentNodeHandlerTest {
     private SkillCatalogService skillCatalogService;
 
     @Mock
+    private com.sunshine.orchestrator.catalog.SkillBodyRenderer skillBodyRenderer;
+
+    @Mock
     private com.sunshine.orchestrator.audit.SubAgentAuditService subAgentAuditService;
 
     @Mock

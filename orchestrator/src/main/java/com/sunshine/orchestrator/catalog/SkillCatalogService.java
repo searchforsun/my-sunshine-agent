@@ -77,10 +77,6 @@ public class SkillCatalogService {
         return loaded;
     }
 
-    public String overlayOrEmpty(String skillId) {
-        return find(skillId).map(SkillCatalogEntry::systemOverlay).orElse("");
-    }
-
     /** skill 绑定的工具 Catalog ID 列表（经详情缓存） */
     public List<String> toolIds(String skillId) {
         return find(skillId).map(SkillCatalogEntry::toolIds).orElse(List.of());

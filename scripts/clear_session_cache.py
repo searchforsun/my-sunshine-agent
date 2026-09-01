@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""清空 Sunshine 会话与三层上下文：对话历史 + L1 + L2 + L3。
+"""清空 Sunshine 会话、三层上下文与持久化记忆：对话历史 + L1 + L2 + L3 + 记忆表 + 运行态键。
 
 用法:
   python scripts/clear_session_cache.py --force
@@ -8,8 +8,10 @@
 
 默认范围（不改 Nacos 配置）:
   MySQL  chat_message / chat_conversation / conversation_context_l1(L1) / user_context_state(L2)
+         task_board（任务板终态快照）/ business_task（业务任务板权威态）
   Milvus sunshine_chat_history（L3 对话向量）
   Redis  sunshine:stm:* / sunshine:gen:* / sunshine:user:*
+         sunshine:plan:notebook:* / sunshine:decision:pending:* / sunshine:hitl:pending:*
 
 可选:
   --include-audit     额外 TRUNCATE chat_audit_log
@@ -33,8 +35,15 @@ from sunshine_lib import (
     stop_java_service,
 )
 
-# sunshine:stm:* 仅清遗留 Redis 键（旧 STM 运行时已删除）
-REDIS_PATTERNS = ["sunshine:stm:*", "sunshine:gen:*", "sunshine:user:*"]
+# sunshine:stm:* 仅清遗留 Redis 键（旧 STM 运行时已删除）；运行态键按会话状态一并清理
+REDIS_PATTERNS = [
+    "sunshine:stm:*",
+    "sunshine:gen:*",
+    "sunshine:user:*",
+    "sunshine:plan:notebook:*",
+    "sunshine:decision:pending:*",
+    "sunshine:hitl:pending:*",
+]
 L3_COLLECTION = "sunshine_chat_history"
 
 
@@ -50,6 +59,8 @@ def build_mysql_sql(
         "TRUNCATE TABLE chat_message;",
         "TRUNCATE TABLE chat_conversation;",
         "TRUNCATE TABLE conversation_context_l1;",
+        "TRUNCATE TABLE task_board;",
+        "TRUNCATE TABLE business_task;",
     ]
     if include_audit:
         lines.append("TRUNCATE TABLE chat_audit_log;")
@@ -141,6 +152,7 @@ def main() -> int:
     print(f"  Milvus: {args.milvus_host}:{args.milvus_port}/{L3_COLLECTION}")
     print("  scope : chat_message + chat_conversation")
     print("         + conversation_context_l1 (L1)")
+    print("         + task_board (任务板快照) + business_task (业务任务板)")
     if include_l2:
         print("         + user_context_state (L2)")
     else:
@@ -162,7 +174,7 @@ def main() -> int:
             print("Cancelled.")
             return 0
 
-    print(">> Cleaning MySQL (对话 + L1" + (" + L2" if include_l2 else "") + ")...")
+    print(">> Cleaning MySQL (对话 + L1 + 记忆表" + (" + L2" if include_l2 else "") + ")...")
     run_mysql(
         build_mysql_sql(
             args.mysql_database,

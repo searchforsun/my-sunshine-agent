@@ -10,8 +10,10 @@ import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.DecisionLabels;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
+import com.sunshine.orchestrator.processing.SkillLoadLabels;
 import com.sunshine.orchestrator.processing.SpawnSubagentLabels;
 import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.processing.ToolArgsHolder;
 import com.sunshine.orchestrator.processing.ToolArgsRenderer;
 import com.sunshine.orchestrator.processing.ToolExpandDetailSupport;
@@ -488,18 +490,36 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         }
             String baseStepId = toolCatalogService.timelineStepId(toolName);
         String phase = toolCatalogService.timelinePhase(toolName);
+        // sunshine_search_skills 元工具：时间线走「加载技能」skill 步（skill 徽章图标 + 技能名），
+        // 而非 tool-* 扳手步（否则主行显示「加载技能完成」冗余、图标与 L0 skill 步不一致）。
+        // stepBaseId/stepPhase 独立 final，供下方 lambda 捕获（baseStepId/phase 不可直接重赋值后捕获）。
+        final String stepBaseId;
+        final String stepPhase;
+        if (SkillSearchTool.NAME.equals(toolName)) {
+            stepBaseId = TimelineStepId.SKILL.id();
+            stepPhase = TimelineStepId.SKILL.phase();
+        } else {
+            stepBaseId = baseStepId;
+            stepPhase = phase;
+        }
         // 确定性 schema 行数据面（§5.5.8）：开步时暂存白名单标量入参，收口时经 ToolArgsHolder 消费
         ToolArgsHolder.put(toolUseId, ToolArgsRenderer.render(toolInput));
         final String[] stepHolder = new String[1];
         StepEventBridge.emit(bridgeId, session -> {
             session.noteToolCallPending();
-            stepHolder[0] = session.beginToolStep(baseStepId, phase);
+            stepHolder[0] = session.beginToolStep(stepBaseId, stepPhase);
             if (stepHolder[0] != null) {
-                if (awaitTool) {
-                    session.bindStepDisplayName(stepHolder[0], AwaitToolRunLabels.label());
-                    session.progressCurrentToolStep(AwaitToolRunLabels.active());
-                } else if (backgroundExec) {
-                    session.bindStepDisplayName(stepHolder[0], AwaitToolRunLabels.backgroundExecLabel());
+                if (SkillSearchTool.NAME.equals(toolName)) {
+                    // skill 步 label =「加载技能」（timeline.steps.skill.label；before() 同值），
+                    // 避免 stepId=skill-{ts} 回退显示动态 id
+                    session.bindStepDisplayName(stepHolder[0], SkillLoadLabels.before());
+                } else {
+                    if (awaitTool) {
+                        session.bindStepDisplayName(stepHolder[0], AwaitToolRunLabels.label());
+                        session.progressCurrentToolStep(AwaitToolRunLabels.active());
+                    } else if (backgroundExec) {
+                        session.bindStepDisplayName(stepHolder[0], AwaitToolRunLabels.backgroundExecLabel());
+                    }
                 }
             }
             if (sandboxActive != null) {
@@ -605,6 +625,18 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
                 expandDetail = !raw.isEmpty() ? raw : null;
             }
             meta = sandboxMeta;
+        } else if (SkillSearchTool.NAME.equals(toolName)) {
+            // sunshine_search_skills 元工具：时间线走 skill 步（与 L0 skill 步一致）。
+            // after = 真实技能名（SkillLoadLabels.after），metadata.skillId = 实际加载技能；
+            // expandDetail 保留工具返回的技能正文（含 HARD-GATE/操作指引），供下拉查看。
+            String skillId = stringInput(toolInput(toolUse), "skill_id");
+            summaryLine = StringUtils.hasText(skillId)
+                    ? SkillLoadLabels.after(skillId.strip())
+                    : toolCatalogService.displayName(toolName);
+            expandDetail = ToolExpandDetailSupport.resolveExpandDetail(null, rawText);
+            meta = StringUtils.hasText(skillId)
+                    ? StepMetadata.fromSkillLoad(skillId.strip())
+                    : null;
         } else if (AwaitToolRunTool.NAME.equals(toolName)) {
             // 文案 SSOT = Catalog timeline.steps.await-tool；勿把工具 id / 原始 JSON 当主行
             summaryLine = AwaitToolRunLabels.after();

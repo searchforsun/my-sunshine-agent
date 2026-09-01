@@ -48,6 +48,7 @@ import {
   type SessionState,
 } from './chatSessionRegistry'
 import { bumpAssistantMessage, flushAssistantMessageBump } from './chatSessionMutations'
+import { hasActiveStep, settleRunningSteps } from './processingSteps'
 import { consumeChatSseStream } from './chatSessionSseConsumer'
 import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
 import { getWriteHitlMode } from '../composables/useWriteHitlMode'
@@ -246,6 +247,11 @@ export function useChatSessions(
         }
         if (last?.role === 'assistant' && last.status === 'completed') {
           stampTimelineEnded(last)
+          // 消息级终态收口：completed 到达时若仍有 running 步（done 快照在途丢失），
+          // 统一落定，避免历史已完成消息的耗时仍在实时增长。
+          if (last.steps?.length && hasActiveStep(last.steps)) {
+            last.steps = settleRunningSteps(last.steps, last.timelineEndedAt ?? Date.now())
+          }
           normalizeRestoredInterleavedContent(last)
           notifyCompletedIfNeeded(sessionId, last)
           clearActiveGenerationIfMatch(sessionId)

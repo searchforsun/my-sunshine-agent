@@ -705,6 +705,58 @@ export function shouldShowPendingHintForLastRow(opts: {
   })
 }
 
+export type ContentRowsIndex = {
+  /** 显示步 id → 锚定其后的正文段（顺序与 blocks 一致） */
+  byStep: Map<string, TimelineContentRow[]>
+  /** 无法映射到可见步骤的正文块 */
+  orphan: TimelineContentRow[]
+}
+
+/**
+ * 一次遍历生成正文锚定索引：替代 OperationStack 对每行逐次调用
+ * contentRowsAfterStep（O(rows × blocks × steps)）的流式渲染热点。
+ * 遍历成本与 contentRowsAfterStep 单次相当，但所有显示行共享一次结果。
+ */
+export function buildContentRowsIndex(
+  steps: ProcessingStep[],
+  visibleStepIds: ReadonlySet<string>,
+  blocks: ContentBlock[] | undefined,
+  opts: { live: boolean; lastBlockIndex: number },
+  executionPlanId?: string | null,
+): ContentRowsIndex {
+  const byStep = new Map<string, TimelineContentRow[]>()
+  const orphan: TimelineContentRow[] = []
+  if (!blocks?.length) return { byStep, orphan }
+  const planAnswerText = isPlanDagSteps(steps, executionPlanId)
+    ? steps.find(s => s.id === 'node-answer')?.result?.trim()
+    : ''
+  blocks.forEach((block, idx) => {
+    if (!block.text && !planAnswerText) return
+    if (!shouldRenderPlanMainContentBlock(block, steps, executionPlanId)) return
+    const text = (planAnswerText && (block.afterStepId === 'node-answer' || block.segmentId === 'tail:node-answer'))
+      ? planAnswerText
+      : block.text
+    if (!text) return
+    if (isPlanNodeLeakText(text, steps, executionPlanId)) return
+    const displayAnchor = resolveVisibleContentAnchor(block.afterStepId, steps, visibleStepIds)
+    const row: TimelineContentRow = {
+      kind: 'content',
+      key: displayAnchor === null
+        ? `content-${block.segmentId}-orphan`
+        : `content-${block.segmentId}-${displayAnchor}`,
+      text,
+      streaming: opts.live && idx === opts.lastBlockIndex,
+    }
+    if (displayAnchor === null) orphan.push(row)
+    else {
+      const list = byStep.get(displayAnchor)
+      if (list) list.push(row)
+      else byStep.set(displayAnchor, [row])
+    }
+  })
+  return { byStep, orphan }
+}
+
 /** 无法映射到可见步骤的正文块 */
 export function orphanContentRows(
   steps: ProcessingStep[],

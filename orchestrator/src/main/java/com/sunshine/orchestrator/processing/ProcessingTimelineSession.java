@@ -270,6 +270,11 @@ public final class ProcessingTimelineSession {
         completions.completeSkillLoad(skillId);
     }
 
+    /** 带正文的 skill 步完成（L0 首现/动态加载统一，expandDetail 供前端下拉） */
+    public void completeSkillLoad(String skillId, String expandDetail) {
+        completions.completeSkillLoad(skillId, expandDetail);
+    }
+
     public void updateTaskBoard(String stepId, String phase, String activeSummary, StepMetadata metadata) {
         completions.updateTaskBoard(stepId, phase, activeSummary, metadata);
     }

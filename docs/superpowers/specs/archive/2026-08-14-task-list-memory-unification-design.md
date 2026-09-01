@@ -1,14 +1,14 @@
 # 任务清单记忆一体化（Task List Memory Unification · 清爽收敛版）
 
 > **日期**：2026-08-14（v2 收敛）· **v1**：2026-08-14 初稿
-> **状态**：**M0 ✅ 已实现**（2026-08-23，fast 跨轮任务板恢复；Live `verify_task_list_restore_live.py`）· **M1 ✅ 已实现**（2026-08-23，KV Memory 统一 + `todo` 类 + scope 闸门；Live `verify_kv_memory_todo_live.py` T1–T5 全绿）· **M2 ✅ 已实现**（2026-08-24，pro 终态导出；Live `verify_pro_todo_export_live.py` P1–P6）· **M3 ✅ 已实现**（2026-08-24，session_search 收缩版 body + scope=session；Live `verify_session_search_live.py` P1–P4 全绿）· **M3 扩展 ✅（2026-08-26，scope=workspace 跨会话正文）**：`SessionSearchTool` scope 扩为 `session|workspace`——workspace 时从当前会话反查 workspaceId → `ChatConversationRepository.findTaskIdsByWorkspace` 展开全部 task 会话 id（**排除当前会话**，截断至 `react.session-search.workspace-max-convs` 默认 20）→ rag-service `conv_id IN [...]` 检索；Nacos `react.session-search.workspace-max-convs`；单测 `ChatHistorySearchExprTest` convIds IN + `SessionSearchToolTest` workspace 五例；Live `verify_session_search_workspace_live.py` W1–W4（同工作区 A/B 两会话：A 落 body 标记 → B 命令 `scope=workspace` → 日志 `工作区跨会话检索 convs=1` + 模型复述标记）
+> **状态**：**→ 已归档（2026-08-29）** · **M0 ✅ 已实现**（2026-08-23，fast 跨轮任务板恢复；Live `verify_task_list_restore_live.py`）· **M1 ✅ 已实现**（2026-08-23，KV Memory 统一 + `todo` 类 + scope 闸门；Live `verify_kv_memory_todo_live.py` T1–T5 全绿）· **M2 ✅ 已实现**（2026-08-24，pro 终态导出；Live `verify_pro_todo_export_live.py` P1–P6）· **M3 ✅ 已实现**（2026-08-24，session_search 收缩版 body + scope=session；Live `verify_session_search_live.py` P1–P4 全绿）· **M3 扩展 ✅（2026-08-26，scope=workspace 跨会话正文）**：`SessionSearchTool` scope 扩为 `session|workspace`——workspace 时从当前会话反查 workspaceId → `ChatConversationRepository.findTaskIdsByWorkspace` 展开全部 task 会话 id（**排除当前会话**，截断至 `react.session-search.workspace-max-convs` 默认 20）→ rag-service `conv_id IN [...]` 检索；Nacos `react.session-search.workspace-max-convs`；单测 `ChatHistorySearchExprTest` convIds IN + `SessionSearchToolTest` workspace 五例；Live `verify_session_search_workspace_live.py` W1–W4（同工作区 A/B 两会话：A 落 body 标记 → B 命令 `scope=workspace` → 日志 `工作区跨会话检索 convs=1` + 模型复述标记）
 > **编号**：阶段四增量（上下文记忆 / 长任务执行能力）
 > **一句话**：长任务续跑的关键是**未完成任务清单**。本方案把它统一为**两级作用域**——**会话级执行态**（fast `TaskList` / pro `H1`，跨轮恢复的真相源）+ **KV Memory 沉淀**（终态/显式停下时导出「未完成任务」到一张表，`scope=workspace`（task）/ `scope=user`（chat））。召回按「**先同会话、再跨会话**」装配；执行中**不双写**。
 > **v2 收敛要点（对齐五层 v25 / task-scene v14）**：
 > 1. **砍 T0**（task-scene §6.1 全套双块 + processTrail + extract/condense）——会话级任务状态真相源已有（`AgentState.tasksContext` + `react_task_board` 终态快照），T0 是第三份拷贝且与 taskboard 双写漂移。失败路径保真由**任务 item 自带 `status/fail_reason`** 承接。
 > 2. **L2 + W0 统一为一张 `KV Memory`**（`scope=user|workspace` 列）——同一模型、同一抽取服务（prompt 按 scope 参数化）、同一注入渲染。本方案不再自创「L2 task 类 / W0 todo 类」两套，统一为 KV Memory 的 `kind=todo`。
 > 3. **session_search 收缩**：一期仅 `body 层 + scope=session`（工具结果在 `chat_message.steps` 直接可查，不进向量）；`scope=workspace` 延后。
-> **关联**：[unified-context-compression](./2026-07-31-unified-context-compression-design.md)（五层 SSOT · L-state）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（KV 闸门 · 场景隔离）· [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（H1 SSOT）· [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板，**边界隔离**）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`）
+> **关联**：[unified-context-compression](../2026-07-31-unified-context-compression-design.md)（五层 SSOT · L-state）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（KV 闸门 · 场景隔离）· [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md)（H1 SSOT）· [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板，**边界隔离**）· [unified-routing v6](../2026-07-29-unified-routing-design.md)（`kind`/`executionMode`）
 
 ---
 
@@ -241,11 +241,11 @@ pro（Planner-Executor）会话收束（success / error / cancel 三态，`loop.
 
 | 文件 | 关系 |
 |------|------|
-| [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 五层 SSOT（v25）；L-state 任务清单落地；T0 作废联动 |
+| [unified-context-compression](../2026-07-31-unified-context-compression-design.md) | 五层 SSOT（v25）；L-state 任务清单落地；T0 作废联动 |
 | [task-scene-context](./2026-08-01-task-scene-context-design.md) | KV 闸门与场景隔离（v14）；W0/L2 统一为 KV Memory |
-| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | H1 SSOT；补「会话完成后未完成项出口」 |
+| [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md) | H1 SSOT；补「会话完成后未完成项出口」 |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | `business_task` 边界隔离，不合并 |
-| [unified-routing v6](./2026-07-29-unified-routing-design.md) | `kind`/`executionMode` 正交 |
+| [unified-routing v6](../2026-07-29-unified-routing-design.md) | `kind`/`executionMode` 正交 |
 
 ---
 

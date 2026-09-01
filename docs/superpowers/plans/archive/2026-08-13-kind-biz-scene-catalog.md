@@ -1,7 +1,7 @@
 # Kind · Biz-Scene Lab · Toolset Axis Implementation Plan
 
 > **状态**：✅ 已实现（K0～K4 全绿；Live `scripts/verify_kind_biz_scene_live.py`）  
-> **Spec**：[kind-biz-scene-catalog](../specs/archive/2026-08-13-kind-biz-scene-catalog-design.md) · [business-context-authority](../specs/2026-08-13-business-context-authority-design.md) §2.1（解析算法）  
+> **Spec**：[kind-biz-scene-catalog](../specs/archive/2026-08-13-kind-biz-scene-catalog-design.md) · [business-context-authority](../specs/archive/2026-08-13-business-context-authority-design.md) §2.1（解析算法）  
 > **前置**：routing v6 + H-5 ✅（`fast|pro|workflow`；会话 `kind` 已透传）· H-6 ✅  
 > **本 plan 不做（仍延期）**：H-7 Live；阶段 D / R-4；完整业务权威装载（Policy∥任务板∥偏好注入 Prompt，属 business-context 后续）；Tool/Workflow 挂 `biz_scene`；独立场景分类器 / HITL 选场景  
 >
@@ -280,7 +280,7 @@ EOF
 **Files:**
 - Modify: `19-sunshine-resource.sql`  
   - `CREATE TABLE biz_scene_definition`（`biz_scene` PK 或 `(tenant_id,biz_scene)`、`display_name`、`description`、`status` active|retired、`tenant_id`）  
-  - `CREATE TABLE biz_scene_policy`（按 [authority §4.2](../specs/2026-08-13-business-context-authority-design.md)）
+  - `CREATE TABLE biz_scene_policy`（按 [authority §4.2](../specs/archive/2026-08-13-business-context-authority-design.md)）
 - Create: resource-manager `BizSceneDefinition*` / `BizScenePolicy*` entity · repo · AdminController · Service  
   - CRUD 码表；Policy 按码精确匹配；**禁止**无 Lab 码创建 Policy  
   - `retired` 码：不可绑定到**新**资源保存

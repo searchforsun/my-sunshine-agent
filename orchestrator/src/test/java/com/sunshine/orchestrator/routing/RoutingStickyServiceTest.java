@@ -96,4 +96,19 @@ class RoutingStickyServiceTest {
 
         assertThat(merged.triggeredSkillIds()).containsExactly("finance-analysis");
     }
+
+    @Test
+    @DisplayName("L1 触发含老技能时，seed 里运行中动态加载的新技能并入（不整表替换）")
+    void applySeed_l1Trigger_mergesRuntimeLoadedSeed() {
+        ExecutionPlan plan = new ExecutionPlan(ExecutionMode.FAST, null,
+                Map.of(ExecutionPlan.PARAM_SKILL_IDS, "compliance-review"),
+                "rule:skill-sticky");
+        // seed：上轮经 sunshine_search_skills 运行中动态加载 writing-plans
+        RoutingSeed seed = new RoutingSeed(List.of("writing-plans"), List.of("policy-agent"));
+
+        ExecutionPlan merged = service.applySeed(plan, seed);
+
+        assertThat(merged.triggeredSkillIds()).containsExactly("compliance-review", "writing-plans");
+        assertThat(merged.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("compliance-review");
+    }
 }

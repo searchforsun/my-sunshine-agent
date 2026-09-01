@@ -2,7 +2,7 @@
 
 > **日期**：2026-08-24 · **阶段**：任务清单记忆一体化 §9 M3
 > **状态**：✅ 已实现（2026-08-24；Live `verify_session_search_live.py` P1–P4 全绿）
-> **SSOT spec**：[task-list-memory-unification-design](../specs/2026-08-14-task-list-memory-unification-design.md) §9 M3 · [task-scene-context-design](../specs/2026-08-01-task-scene-context-design.md) §6.3/§6.4 · [unified-context-compression-design](../specs/2026-07-31-unified-context-compression-design.md) §5.5.7 L3 行
+> **SSOT spec**：[task-list-memory-unification-design](../specs/archive/2026-08-14-task-list-memory-unification-design.md) §9 M3 · [task-scene-context-design](../specs/archive/2026-08-01-task-scene-context-design.md) §6.3/§6.4 · [unified-context-compression-design](../specs/2026-07-31-unified-context-compression-design.md) §5.5.7 L3 行
 
 ## 1. 目标
 

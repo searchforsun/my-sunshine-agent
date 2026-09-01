@@ -38,14 +38,14 @@ import {
 } from '../../api/hitlSteps'
 import type { ContentBlock } from '../../api/contentInterleave'
 import {
-  contentRowsAfterStep,
+  buildContentRowsIndex,
   isContentFullyInterleaved,
   isHiddenReactTimelineStep,
-  orphanContentRows,
   resolveCollapsedAnswerText,
   resolveLastContentBlockIndex,
   shouldShowAfterThinkPendingHint,
   shouldShowPendingHintForLastRow,
+  type TimelineContentRow,
 } from '../../api/contentInterleave'
 import OperationCard from './OperationCard.vue'
 import TaskBoardPanel from './TaskBoardPanel.vue'
@@ -188,10 +188,23 @@ function toggleCard(step: ProcessingStep): void {
   cardExpanded.set(step.id, !isCardExpanded(step))
 }
 
-const effectiveSteps = computed(() => ensurePlanTimelineSteps({
-  steps: props.steps,
-  executionPlanId: props.executionPlanId,
-}))
+/** ensurePlanTimelineSteps 在「有 executionPlanId 但 steps 无 plan 步」时每次新建数组；
+ * 加引用缓存：输入引用未变时复用结果，保证依赖它的子组件 props 稳定可跳过更新 */
+let cachedStepsRef: ProcessingStep[] | undefined
+let cachedPlanId: string | null | undefined
+let cachedEffective: ProcessingStep[] | undefined
+const effectiveSteps = computed(() => {
+  if (cachedStepsRef === props.steps && cachedPlanId === props.executionPlanId && cachedEffective) {
+    return cachedEffective
+  }
+  cachedStepsRef = props.steps
+  cachedPlanId = props.executionPlanId
+  cachedEffective = ensurePlanTimelineSteps({
+    steps: props.steps,
+    executionPlanId: props.executionPlanId,
+  })
+  return cachedEffective
+})
 
 const isTimelineProcessing = computed(() =>
   !!(props.live || props.messageStatus === 'streaming'),
@@ -415,6 +428,18 @@ function toolGroupKind(step: ProcessingStep): ToolGroupKind | null {
   return 'tool'
 }
 
+/** 组步骤数组按 id 序列缓存引用：组内步骤元素引用稳定（delta 原地修改）时复用数组，
+ * 保证 ToolGroupCard 的 :steps prop 引用稳定，组内未变化的卡片可跳过更新 */
+const toolGroupStepsCache = new Map<string, ProcessingStep[]>()
+function stableGroupSteps(group: ProcessingStep[]): ProcessingStep[] {
+  let key = ''
+  for (const s of group) key += `${s.id}\u0001`
+  const cached = toolGroupStepsCache.get(key)
+  if (cached) return cached
+  toolGroupStepsCache.set(key, group)
+  return group
+}
+
 /** 将连续同类的 tool / rag 步各分为一组；HITL awaiting 中的工具步单独成行保持内联确认框可见 */
 function groupToolSteps(steps: ProcessingStep[]): DisplayRow[] {
   const rows: DisplayRow[] = []
@@ -438,7 +463,7 @@ function groupToolSteps(steps: ProcessingStep[]): DisplayRow[] {
     } else {
       const allDone = group.every(s => s.lifecycle === 'done' || s.lifecycle === 'skipped' || s.lifecycle === 'error')
       const anyRunning = group.some(s => s.lifecycle === 'running')
-      rows.push({ kind: 'toolGroup', groupKind, steps: group, allDone, anyRunning })
+      rows.push({ kind: 'toolGroup', groupKind, steps: stableGroupSteps(group), allDone, anyRunning })
     }
   }
   return rows
@@ -452,19 +477,18 @@ const displayRows = computed(() => {
   return groupToolSteps(displaySteps.value)
 })
 
-/** 头部钉扎步不进入 roundGroup：intent → skill → tasks */
+/** 头部钉扎步不进入 roundGroup：intent → tasks（skill 按真实时序，勿钉头） */
 function isPinnedHeaderPhase(phase: string | undefined): boolean {
-  return phase === 'intent' || phase === 'skill' || phase === 'tasks'
+  return phase === 'intent' || phase === 'tasks'
 }
 
 function pinnedHeaderOrder(phase: string | undefined): number {
   if (phase === 'intent') return 0
-  if (phase === 'skill') return 1
-  if (phase === 'tasks') return 2
-  return 3
+  if (phase === 'tasks') return 1
+  return 2
 }
 
-/** round-group 预处理：抽出 intent/skill/tasks，剩余步才参与折叠 */
+/** round-group 预处理：抽出 intent/tasks（头部钉扎），剩余步（含按时间序的 skill）才参与折叠 */
 function processRoundSegment(steps: ProcessingStep[]): { separates: DisplayRow[]; remaining: ProcessingStep[] } {
   const separates: DisplayRow[] = []
   const remaining: ProcessingStep[] = []
@@ -475,7 +499,7 @@ function processRoundSegment(steps: ProcessingStep[]): { separates: DisplayRow[]
       remaining.push(s)
     }
   }
-  // 即使输入时间戳乱序，头部仍按 intent → skill → tasks 展示
+  // 即使输入时间戳乱序，头部仍按 intent → tasks 展示；skill（动态加载）留在 remaining 按真实时序
   separates.sort((a, b) => {
     if (a.kind !== 'step' || b.kind !== 'step') return 0
     return pinnedHeaderOrder(a.step.phase) - pinnedHeaderOrder(b.step.phase)
@@ -585,7 +609,7 @@ function pushCollapsedWithSticky(result: DisplayRow[], rows: DisplayRow[]): void
 /** 正文间多轮操作折叠：以 ContentBlock 为段边界；无正文时整段视为单一操作段，
  * 达到折叠条件即收起（不必等首段正文出现）。段内若 grouped 行数 >=2 且 think 不足 2 个时，
  * 折叠除最后一行外的多余行；think >=2 按原有轮次折叠。
- * intent/skill/tasks 与 think1（整个时间线首个 think）始终不进入折叠。
+ * intent/tasks 与 think1（整个时间线首个 think）始终不进入折叠；skill 作为普通工具步按真实时序参与折叠。
  * 折叠区不足 2 行时不包 roundGroup（避免单 toolGroup 双层折叠）。 */
 function roundGroupSteps(inputRows: DisplayRow[]): DisplayRow[] {
   // 收集 contentBlock stepping 信息；无正文 → 空集 → 整段单 segment 仍走折叠
@@ -666,7 +690,11 @@ const roundDisplayRows = computed(() => {
 })
 
 /** exec 步所属轮次 think 摘要（think_summary 工具输出）：exec 步向前取最近 think 步的 stepSummary。
- * 主行显示「执行命令 {摘要} {命令头}」，摘要缺失则仅命令头。 */
+ * 主行显示「执行命令 {摘要} {命令头}」，摘要缺失则仅命令头。
+ * 内容指纹缓存：displaySteps 每 bump 重算时若映射内容未变则复用同一 Map 引用，
+ * 避免 ToolGroupCard 的 :summary-by-step-id prop 每次都是新引用导致全量更新。 */
+let lastThinkSummaryFingerprint = ''
+let lastThinkSummaryMap: Map<string, string> | undefined
 const thinkSummaryByStepId = computed(() => {
   const map = new Map<string, string>()
   let current = ''
@@ -677,6 +705,13 @@ const thinkSummaryByStepId = computed(() => {
       if (current) map.set(s.id, current)
     }
   }
+  let fingerprint = ''
+  for (const [k, v] of map) fingerprint += `${k}\u0001${v}\u0000`
+  if (fingerprint === lastThinkSummaryFingerprint && lastThinkSummaryMap) {
+    return lastThinkSummaryMap
+  }
+  lastThinkSummaryFingerprint = fingerprint
+  lastThinkSummaryMap = map
   return map
 })
 
@@ -751,16 +786,24 @@ const contentRowOpts = computed(() => ({
 
 const visibleStepIds = computed(() => new Set(displaySteps.value.map(s => s.id)))
 
-function rowsAfterStep(stepId: string) {
+/** 空正文常量：避免 v-for 每 render 新建空数组 */
+const EMPTY_CONTENT_ROWS: TimelineContentRow[] = []
+
+/** 正文锚定索引：一次遍历生成 byStep/orphan，渲染时按行 O(1) 取，
+ * 替代逐行 contentRowsAfterStep 的 O(rows × blocks × steps) 流式热点 */
+const contentRowsIndex = computed(() => {
   void props.timelineRevision
-  return contentRowsAfterStep(
-    stepId,
+  return buildContentRowsIndex(
     props.steps,
     visibleStepIds.value,
     props.contentBlocks,
     contentRowOpts.value,
     props.executionPlanId,
   )
+})
+
+function rowsAfterStep(stepId: string): TimelineContentRow[] {
+  return contentRowsIndex.value.byStep.get(stepId) ?? EMPTY_CONTENT_ROWS
 }
 
 /** toolGroup / roundGroup 内步骤也会锚定正文；展开态须在组后穿插，否则终稿只出现在折叠预览 */
@@ -772,25 +815,16 @@ function stepIdsInDisplayRow(row: DisplayRow): string[] {
   return ids
 }
 
-function rowsAfterDisplayRow(row: DisplayRow) {
-  void props.timelineRevision
-  const rows: ReturnType<typeof rowsAfterStep> = []
+function rowsAfterDisplayRow(row: DisplayRow): TimelineContentRow[] {
+  const rows: TimelineContentRow[] = []
   for (const id of stepIdsInDisplayRow(row)) {
-    rows.push(...rowsAfterStep(id))
+    const list = contentRowsIndex.value.byStep.get(id)
+    if (list?.length) rows.push(...list)
   }
   return rows
 }
 
-const orphanContent = computed(() => {
-  void props.timelineRevision
-  return orphanContentRows(
-    props.steps,
-    visibleStepIds.value,
-    props.contentBlocks,
-    contentRowOpts.value,
-    props.executionPlanId,
-  )
-})
+const orphanContent = computed(() => contentRowsIndex.value.orphan)
 
 /** 执行空档占位：中间/终稿空档统一三点，流式静默未满 2s 不显示 */
 const showAfterThinkPendingHint = computed(() => {

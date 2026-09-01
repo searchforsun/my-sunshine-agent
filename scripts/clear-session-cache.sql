@@ -10,6 +10,8 @@ TRUNCATE TABLE chat_message;
 TRUNCATE TABLE chat_conversation;
 TRUNCATE TABLE conversation_context_l1;   -- L1
 TRUNCATE TABLE user_context_state;       -- L2
+TRUNCATE TABLE task_board;               -- 任务板终态快照（M0 任务清单记忆）
+TRUNCATE TABLE business_task;            -- 业务任务板权威态（业务上下文权威层）
 
 -- 可选：审计日志（脚本 --include-audit 时执行）
 -- TRUNCATE TABLE chat_audit_log;

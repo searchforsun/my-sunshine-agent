@@ -1,18 +1,14 @@
 package com.sunshine.orchestrator.agent;
 
-import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.catalog.SkillCatalogEntry;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.conversation.ConversationService;
-import com.sunshine.orchestrator.routing.SkillCandidateRegistry;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -43,9 +38,7 @@ class SkillSearchToolTest {
     @Mock
     private SkillCatalogService skillCatalogService;
     @Mock
-    private ToolCatalogService toolCatalogService;
-    @Mock
-    private ToolSetResolver toolSetResolver;
+    private SkillBodyRenderer skillBodyRenderer;
     @Mock
     private ConversationService conversationService;
     @Mock
@@ -55,14 +48,8 @@ class SkillSearchToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new SkillSearchTool(skillCatalogService, toolCatalogService, toolSetResolver,
+        tool = new SkillSearchTool(skillCatalogService, skillBodyRenderer,
                 conversationService, sandboxSessionLifecycle);
-        SkillCandidateRegistry.bind(MSG, List.of("finance-analysis"));
-    }
-
-    @AfterEach
-    void tearDown() {
-        SkillCandidateRegistry.remove(MSG);
     }
 
     private static StepEventBridge.ToolAuditContext audit() {
@@ -96,11 +83,8 @@ class SkillSearchToolTest {
     @Test
     void loadCandidateSkill_returnsOverlayAndToolSchema_promotesTriggered() {
         when(skillCatalogService.find("finance-analysis")).thenReturn(Optional.of(skill("finance-analysis")));
-        when(toolSetResolver.resolveDefaultTools("default", "chat"))
-                .thenReturn(List.of("sdk__biz__list_expenses"));
-        when(toolCatalogService.find("sdk__biz__list_expenses")).thenReturn(Optional.of(
-                new ToolCatalogEntry("sdk__biz__list_expenses", "查询报销单", "列出报销单",
-                        "chat", "SDK", null, null, null, Map.of(), null, false, true, true, null)));
+        when(skillBodyRenderer.renderLoadedSkill(skill("finance-analysis"), "default", "chat"))
+                .thenReturn("# 技能 finance-analysis\n\n按四步法分析财务数据。\n\n## 声明工具\n- **sdk__biz__list_expenses** 查询报销单：列出报销单");
 
         ToolResultBlock block = tool.execute(param("finance-analysis"), MSG, audit());
 
@@ -113,17 +97,17 @@ class SkillSearchToolTest {
     }
 
     @Test
-    void nonCandidateSkill_rejectedWithoutLoading() {
+    void unknownSkill_returnsUnavailable() {
+        when(skillCatalogService.find("unknown-skill")).thenReturn(Optional.empty());
+
         ToolResultBlock block = tool.execute(param("unknown-skill"), MSG, audit());
 
-        assertThat(toolText(block)).contains("不在本轮可动态加载的候选集内");
-        verify(skillCatalogService, never()).find(anyString());
+        assertThat(toolText(block)).contains("不存在或未启用");
         verify(conversationService, never()).appendTriggeredSkillId(anyString(), anyString());
     }
 
     @Test
     void disabledSkill_returnsUnavailable() {
-        SkillCandidateRegistry.bind(MSG, List.of("off-skill"));
         when(skillCatalogService.find("off-skill")).thenReturn(Optional.of(
                 new SkillCatalogEntry("off-skill", "停用技能", "", "", "[]", 1, false,
                         null, null, "all", null, "default")));
@@ -131,6 +115,18 @@ class SkillSearchToolTest {
         ToolResultBlock block = tool.execute(param("off-skill"), MSG, audit());
 
         assertThat(toolText(block)).contains("不存在或未启用");
+        verify(conversationService, never()).appendTriggeredSkillId(anyString(), anyString());
+    }
+
+    @Test
+    void tenantMismatch_returnsNotVisible() {
+        when(skillCatalogService.find("other-tenant")).thenReturn(Optional.of(
+                new SkillCatalogEntry("other-tenant", "他租户技能", "", "正文", "[]", 1, true,
+                        null, null, "all", null, "other-tenant")));
+
+        ToolResultBlock block = tool.execute(param("other-tenant"), MSG, audit());
+
+        assertThat(toolText(block)).contains("对当前租户不可见");
         verify(conversationService, never()).appendTriggeredSkillId(anyString(), anyString());
     }
 
@@ -151,7 +147,8 @@ class SkillSearchToolTest {
     @Test
     void declaredToolOutsideCurrentSet_markedNotCallable() {
         when(skillCatalogService.find("finance-analysis")).thenReturn(Optional.of(skill("finance-analysis")));
-        when(toolSetResolver.resolveDefaultTools("default", "chat")).thenReturn(List.of("other_tool"));
+        when(skillBodyRenderer.renderLoadedSkill(skill("finance-analysis"), "default", "chat"))
+                .thenReturn("# 技能 finance-analysis\n\n正文\n\n## 声明工具\n- sdk__biz__list_expenses：不在当前会话工具集内，不可调用");
 
         ToolResultBlock block = tool.execute(param("finance-analysis"), MSG, audit());
 
@@ -162,7 +159,8 @@ class SkillSearchToolTest {
     @Test
     void persistFailureDoesNotBlockBodyReturn() {
         when(skillCatalogService.find("finance-analysis")).thenReturn(Optional.of(skill("finance-analysis")));
-        when(toolSetResolver.resolveDefaultTools("default", "chat")).thenReturn(List.of());
+        when(skillBodyRenderer.renderLoadedSkill(skill("finance-analysis"), "default", "chat"))
+                .thenReturn("# 技能 finance-analysis\n\n正文");
         org.mockito.Mockito.doThrow(new RuntimeException("db down"))
                 .when(conversationService).appendTriggeredSkillId(anyString(), anyString());
 

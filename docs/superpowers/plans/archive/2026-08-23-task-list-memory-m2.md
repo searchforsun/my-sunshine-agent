@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 17 / Spring Data JPA / JUnit5 + Mockito + AssertJ · Python3 live 脚本（requests）
 
-**Spec:** [task-list-memory-unification-design](../specs/2026-08-14-task-list-memory-unification-design.md) §3 核心设计 / §5.3 KV Memory todo 类 / §6 沉淀通道 / §9 M2 / §10 验收 · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（H1 SSOT · v17） · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) §6.3（v22 门禁）
+**Spec:** [task-list-memory-unification-design](../specs/archive/2026-08-14-task-list-memory-unification-design.md) §3 核心设计 / §5.3 KV Memory todo 类 / §6 沉淀通道 / §9 M2 / §10 验收 · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（H1 SSOT · v17） · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) §6.3（v22 门禁）
 
 ## Global Constraints
 

@@ -58,6 +58,7 @@ public class ChatStreamExecutor {
     private final GenerationFlushScheduler flushScheduler;
     private final ContextLifecycle contextLifecycle;
     private final com.sunshine.orchestrator.routing.RoutingStickyService routingStickyService;
+    private final com.sunshine.orchestrator.catalog.SkillBodyRenderer skillBodyRenderer;
 
     @Value("${agent.generation.flush-interval-ms:500}")
     private long flushIntervalMs;
@@ -240,13 +241,17 @@ public class ChatStreamExecutor {
                                     .subscribeOn(VirtualThreadExecutors.scheduler())
                                     .then();
                             session.completeIntent(plan);
-                            List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
-                            String skillId = plan.params() != null
-                                    ? plan.params().get(com.sunshine.orchestrator.skill.SkillBindingOutcome.PARAM_SKILL)
-                                    : null;
-                            if (StringUtils.hasText(skillId)) {
-                                session.completeSkillLoad(skillId.strip());
+                            // 统一加载入口：L0/L1 首次绑定技能渲染「加载技能」步骤（与 sunshine_search_skills
+                            // 动态加载一致）；继承技能（已在上一轮 seed 触发集）与动态加载（工具完成步渲染）不在此重复。
+                            List<String> seedSkills = ctx.routingSeed() != null ? ctx.routingSeed().skillIds() : List.of();
+                            for (String skillId : plan.triggeredSkillIds()) {
+                                if (skillId != null && !seedSkills.contains(skillId.trim())) {
+                                    String body = skillBodyRenderer.renderById(
+                                            skillId.trim(), ctx.tenantId(), ctx.conversationKind());
+                                    session.completeSkillLoad(skillId.trim(), body);
+                                }
                             }
+                            List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
                             List<StreamToken> skillDoneTokens = drainStepTokens(stepEmissions);
                             return savePlan.thenMany(Flux.concat(
                                     Flux.fromIterable(intentDoneTokens),

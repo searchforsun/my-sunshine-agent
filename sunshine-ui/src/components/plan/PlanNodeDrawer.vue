@@ -8,7 +8,6 @@ import { isHitlSummaryAwaiting } from '../../api/hitlSteps'
 import HitlStepActions from '../operation/HitlStepActions.vue'
 import {
   formatDuration,
-  parseLoadedSkillLabel,
   resolvePlanStepDetail,
   resolveRewriteDetail,
   resolveStepDurationMs,
@@ -280,31 +279,6 @@ const output = computed(() => {
   if (!raw) return ''
   if (raw === bodyDisplay.value) return ''
   return raw
-})
-
-const loadedSkillId = computed(() => node.value?.skillId?.trim() || undefined)
-
-const loadedSkillLabel = computed(() => {
-  for (const source of [step.value?.detail, body.value, step.value?.output]) {
-    const parsed = parseLoadedSkillLabel(source)
-    if (parsed) return parsed
-  }
-  return node.value?.skillLabel
-})
-
-const showSkillBlock = computed(() => !!(loadedSkillId.value || loadedSkillLabel.value))
-
-const skillDetailText = computed(() => {
-  const id = loadedSkillId.value
-  const label = loadedSkillLabel.value
-  if (id && label && label !== id) return `@${id} ${label}`
-  if (id) return `@${id}`
-  return label || ''
-})
-
-const skillLineText = computed(() => {
-  const detail = skillDetailText.value
-  return detail ? `加载技能 ${detail}` : ''
 })
 
 const subSteps = computed(() => step.value?.subSteps ?? [])
@@ -688,10 +662,6 @@ watch(
         <span v-if="durationText" class="meta-dur">{{ durationText }}</span>
       </div>
 
-      <p v-if="showSkillBlock" class="drawer-meta-line" :title="skillLineText">
-        <span class="meta-line-label">加载技能</span>
-        <span class="meta-line-detail">{{ skillDetailText }}</span>
-      </p>
     </header>
     <div
       ref="bodyRef"
@@ -859,7 +829,7 @@ watch(
         <h4>日志</h4>
         <StaticMarkdown :source="output" compact :streaming="isNodeStreaming" />
       </section>
-      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showAgentBareFinal && !showRecoverySection && !showSpawnPrompt && !output && !showSkillBlock && !displayAttempts?.length" class="drawer-empty">
+      <p v-if="!showHitlSection && !showSummary && !showRewriteDetail && !showStartPlan && !showAnalysisSection && !showBodySection && !showReasoningSection && !showDrawerOperationStack && !showAgentBareFinal && !showRecoverySection && !showSpawnPrompt && !output && !displayAttempts?.length" class="drawer-empty">
         {{ displayStatus === 'running' ? '节点执行中…' : '暂无详情' }}
       </p>
     </div>

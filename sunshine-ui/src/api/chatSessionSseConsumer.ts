@@ -16,7 +16,7 @@ import {
   setPendingHitlConfirmations,
   upsertPendingHitlConfirmationList,
 } from './hitlSteps'
-import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
+import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, hasActiveStep, settleRunningSteps } from './processingSteps'
 import {
   reactivateOtherPausedWorkflowNodes,
   shouldIgnoreResumeStepReplay,
@@ -133,6 +133,11 @@ export async function consumeChatSseStream(
           if (last?.role === 'assistant') {
             last.status = 'completed'
             stampTimelineEnded(last)
+            // 消息级终态收口：后端 done 快照若在途丢失，残余 running 工具步会永续 live 计时。
+            // completed 是权威终态信号，此时的 endedAt 即消息终止时刻，统一落定避免「已完成消息耗时仍走表」。
+            if (last.steps?.length && hasActiveStep(last.steps)) {
+              last.steps = settleRunningSteps(last.steps, last.timelineEndedAt ?? Date.now())
+            }
             setPendingHitlConfirmations(last, undefined)
             normalizeRestoredInterleavedContent(last)
             notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
@@ -422,7 +427,13 @@ export async function consumeChatSseStream(
       continue
     }
 
-    if (events.length > 0) await new Promise(r => setTimeout(r, 0))
+    // 页面隐藏时跳过让出：chunk 分支已因 rAF 挂起跳过等待，此处若仍 await setTimeout，
+    // Chrome 会把后台 tab 的 timer 节流到 ≥1s（隐藏超 5 分钟更达 1 分钟/次），每批事件
+    // 都要等一次节流 → 消费速率低于生产速率 → 网络积压 → TCP 背压使服务端 SSE 写阻塞，
+    // 表现为后台 tab 流式停滞。隐藏时无渲染节奏需求，直接消费即可快速 catch-up。
+    if (events.length > 0 && document.visibilityState === 'visible') {
+      await new Promise(r => setTimeout(r, 0))
+    }
 
     if (done) {
       break

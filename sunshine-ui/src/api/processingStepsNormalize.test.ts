@@ -10,25 +10,25 @@ function step(
   return { id, phase, lifecycle: 'done', ts: startedAt, startedAt } as ProcessingStep
 }
 
-describe('sortSteps skill/tasks 头部钉扎', () => {
-  it('skill 固定为 intent 之后第二步，即使 startedAt 更晚', () => {
+describe('sortSteps skill/tasks 排序', () => {
+  it('skill 作为普通工具行按真实时间戳排，不强制提前', () => {
     const sorted = sortSteps([
       step('intent', 'intent', 100),
       step('think', 'think', 200),
       step('skill', 'skill', 500),
       step('tool-1', 'tool', 300),
     ])
-    expect(sorted.map(s => s.phase)).toEqual(['intent', 'skill', 'think', 'tool'])
+    expect(sorted.map(s => s.phase)).toEqual(['intent', 'think', 'tool', 'skill'])
   })
 
-  it('有 skill 时 tasks 紧随 skill，不再抢第二步', () => {
+  it('tasks 紧随 intent；skill 按真实时间戳在其后', () => {
     const sorted = sortSteps([
       step('intent', 'intent', 100),
       step('tasks', 'tasks', 400),
       step('think', 'think', 200),
       step('skill', 'skill', 500),
     ])
-    expect(sorted.map(s => s.phase)).toEqual(['intent', 'skill', 'tasks', 'think'])
+    expect(sorted.map(s => s.phase)).toEqual(['intent', 'tasks', 'think', 'skill'])
   })
 
   it('无 skill 时 tasks 仍紧随 intent', () => {

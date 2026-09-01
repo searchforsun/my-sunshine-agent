@@ -12,10 +12,14 @@ export interface HitlConfirmationPayload {
   expiresAt: number
 }
 
+/** 无 pending 时的共享空数组：避免每次归一化都新建引用，
+ * 保证 OperationStack 在无 HITL 场景下传给子组件的 pending-list 引用稳定、可跳过更新 */
+export const EMPTY_PENDING_HITL_LIST: HitlConfirmationPayload[] = []
+
 export function normalizePendingHitlList(
   pending?: HitlConfirmationPayload | HitlConfirmationPayload[] | null,
 ): HitlConfirmationPayload[] {
-  if (!pending) return []
+  if (!pending) return EMPTY_PENDING_HITL_LIST
   return Array.isArray(pending) ? pending : [pending]
 }
 

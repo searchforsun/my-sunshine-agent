@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.plan.harness;
 import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.StepEventBridgeRegistry;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
@@ -47,6 +48,9 @@ class WorkerDispatchToolTest {
     @Mock
     private PlannerActionTool plannerActionTool;
 
+    @Mock
+    private SkillBodyRenderer skillBodyRenderer;
+
     private PromptCatalogHolder catalogHolder;
     private WorkerContextFactory contextFactory;
     private AgentExecutionProperties executionProperties;
@@ -70,7 +74,7 @@ class WorkerDispatchToolTest {
         spawnRunRegistry = SpawnRunRegistry.forTest();
         tool = new WorkerDispatchTool(
                 agentRuntime, contextFactory, executionProperties, plannerActionTool,
-                asyncToolRunRegistry, spawnRunRegistry);
+                asyncToolRunRegistry, spawnRunRegistry, skillBodyRenderer);
         registry = new StepEventBridgeRegistry();
         StepEventBridge.bindRegistry(registry);
     }

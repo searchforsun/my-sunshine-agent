@@ -34,7 +34,6 @@ export {
   resolveStepExpandInner,
   resolveStepExpandBody,
   resolveStepExpandPanels,
-  parseLoadedSkillLabel,
   stripLoadedSkillPrefix,
   shouldShiftSummaryOnExpand,
   hasExpandableContent,
@@ -603,6 +602,46 @@ export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {
 
   return !!steps?.some(s => s.lifecycle === 'running')
 
+}
+
+/**
+ * 消息级终态兜底收口：当整条消息到达 completed 终态时，把仍残留在 running 的步统一收为 done。
+ *
+ * <p>背景：步的 done 终态由后端经 SSE type:step 全量快照下发，前端 upsertStep 在收到后必然收敛。
+ * 但若该 done 快照在途丢失（后台 tab SSE 背压 / resume 重放被过滤 / hook 直刷时 queue 与 flush
+ * 均未绑定的空档被 routeHookToken 静默丢弃），步会永远停在 running，live 计时
+ * （liveElapsedMs = now - clientStartedAt）在消息已完成场景下持续增长，表现为「带✓/已完成消息
+ * 的耗时还在实时走表」。
+ *
+ * <p>消息级 completed 是权威终态信号：消息已终止，任何步都不可能再合法 running。此处以
+ * settledAt 作为 endedAt 统一收口，并清掉 clientStartedAt 解除 live 计时锚点。
+ * 已带显式 endedAt / durationMs 的步保持原值，interrupted/failed 等非 completed 终态不调用。
+ */
+export function settleRunningSteps(steps: ProcessingStep[] | undefined, settledAt: number): ProcessingStep[] | undefined {
+  if (steps == null) return undefined
+  if (!steps.length) return steps
+  let changed = false
+  const next = steps.map(step => {
+    let settled: ProcessingStep | undefined
+    if (step.subSteps?.length) {
+      const subs = settleRunningSteps(step.subSteps, settledAt)
+      if (subs !== step.subSteps) {
+        settled = { ...step, subSteps: subs }
+      }
+    }
+    const lc = step.lifecycle ?? 'pending'
+    if (lc === 'running') {
+      settled = {
+        ...(settled ?? step),
+        lifecycle: 'done',
+        endedAt: settledAt,
+        clientStartedAt: undefined,
+      }
+    }
+    if (settled) changed = true
+    return settled ?? step
+  })
+  return changed ? next : steps
 }
 
 export {

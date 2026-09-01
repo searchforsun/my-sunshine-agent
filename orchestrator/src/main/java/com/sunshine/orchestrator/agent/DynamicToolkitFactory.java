@@ -279,11 +279,10 @@ public class DynamicToolkitFactory {
                 tk.registerAgentTool(sessionSearchTool);
                 registered.add(SessionSearchTool.NAME);
             }
-            // S-C：双阈值采纳开启时向 MAIN 提供候选技能动态加载入口；
-            // 候选集经 SkillCandidateRegistry 消息级承载，无候选时工具调用会明确拒绝
-            if (scope == ToolkitScope.MAIN
-                    && react != null && react.getSkillAdoption() != null
-                    && react.getSkillAdoption().isEnabled()) {
+            // 运行中技能加载入口：MAIN 常驻注册（不再依赖双阈值采纳开关），
+            // 允许加载任意 enabled + 租户可见技能并挂载物料到沙箱 /skills/{id}/；
+            // 候选集仅用于目录「可动态加载」提权标记，不影响本工具可用性。
+            if (scope == ToolkitScope.MAIN) {
                 tk.registerAgentTool(skillSearchTool);
                 registered.add(SkillSearchTool.NAME);
             }

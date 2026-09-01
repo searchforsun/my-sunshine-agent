@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.context.ContextGroupEstimator;
@@ -34,6 +35,7 @@ public class PromptComposer {
 
     private final PromptCatalogHolder catalogHolder;
     private final SkillCatalogService skillCatalogService;
+    private final SkillBodyRenderer skillBodyRenderer;
     private final AgentHitlProperties hitlProperties;
     private final ContextGroupEstimator estimator;
 
@@ -72,7 +74,7 @@ public class PromptComposer {
         addGatewaySystem(messages, resolveSceneOverlay(request.kind()));
         addGatewaySystem(messages, resolveWorkspaceCheckoutOverlay(request.workspaceCheckout()));
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
-        addGatewaySystem(messages, resolveSkillOverlays(request.skillId(), request.triggeredSkillIds()));
+        addGatewaySystem(messages, resolveSkillOverlays(request.skillId(), request.triggeredSkillIds(), request.tenantId(), request.kind()));
         addGatewaySystem(messages, resolveSkillDirectory(request.kind(), request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId()));
         // Tier 定序（§5.5.3 ⑥）：scope 边界是静态文本，前置进稳定前缀；
         // nodePrompt 按节点变化（高频）留在上下文层之后的尾部。
@@ -101,7 +103,7 @@ public class PromptComposer {
         String harnessOverlay = resolveHarnessOverlay(request.harnessPromptId());
         String restartOverlay = resolveReactRestartOverlay(request);
         String hitlOverlay = resolveHitlOverlay(request.mode());
-        String skillOverlay = resolveSkillOverlays(request.skillId(), request.triggeredSkillIds());
+        String skillOverlay = resolveSkillOverlays(request.skillId(), request.triggeredSkillIds(), request.tenantId(), request.kind());
         String skillDirectory = resolveSkillDirectory(request.kind(), request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId());
         // 场景覆盖层：根据 kind 注入专属上下文（chat / task）
         String sceneOverlay = resolveSceneOverlay(request.kind());
@@ -110,11 +112,9 @@ public class PromptComposer {
         addReactUser(inputs, harnessOverlay);
         addReactUser(inputs, restartOverlay);
         addReactUser(inputs, hitlOverlay);
-        // MAIN 的 skill 正文已由 SkillInjectionMiddleware 走 onSystemPrompt（SYSTEM 权威层）注入，
-        // 此处不再以 USER 信封重复注入；SUB/WORKER（triggeredSkillIds 为空、仅单数 skillId）仍走 USER 信封。
-        if (request.triggeredSkillIds().isEmpty()) {
-            addReactUser(inputs, wrapSkillEnvelope(skillOverlay, request.skillId(), request.triggeredSkillIds()));
-        }
+        // C1 修正（方案C）：skill 正文信封不在历史轮次之前注入（否则触发集中途增长会位移其后全部
+        // 历史轮次，击穿压缩点 C1 前缀稳定）；改由 appendReactTail 在紧邻 user query 之前注入
+        // （Tier 2 尾部动态段，守 C1）。System 层遵循引导由 system-prompt 静态【技能遵循】段承载。
         addReactUser(inputs, skillDirectory);
         addReactUser(inputs, sceneOverlay);
         addReactUser(inputs, workspaceOverlay);
@@ -171,6 +171,12 @@ public class PromptComposer {
 
     private void appendReactTail(List<Msg> inputs, PromptComposeRequest request) {
         appendReactInjectedContexts(inputs, request.injectedUserContexts());
+        // C1 修正（方案C）：skill 正文信封贴在 user query 之前（Tier 2 尾部）
+        // ——触发集中途增长只影响尾部（信封 + 本轮 user query），历史轮次前缀不位移，
+        // 不击穿压缩点 C1 前缀稳定。System 层遵循引导由 system-prompt 静态【技能遵循】段承载。
+        addReactUser(inputs, wrapSkillEnvelope(
+                resolveSkillOverlays(request.skillId(), request.triggeredSkillIds(), request.tenantId(), request.kind()),
+                request.skillId(), request.triggeredSkillIds()));
         inputs.add(Msg.builder()
                 .role(MsgRole.USER)
                 .textContent(ContextMessageBuilder.formatCurrentUser(
@@ -304,10 +310,11 @@ public class PromptComposer {
     }
 
     /**
-     * 触发集全文 overlay：单数 skillId（SUB/Workflow）与 triggeredSkillIds（主 Agent）合并，
-     * 逐个注入 skill 正文；仅触发集灌 overlay，召回只进目录（skill-sticky S-T）。
+     * 触发集全文 overlay（统一加载入口）：单数 skillId（SUB/Workflow）与 triggeredSkillIds（主 Agent）合并，
+     * 逐个用 {@link SkillBodyRenderer} 渲染<b>完整正文</b>（# 技能·名 + 正文 + 声明工具），
+     * 与 sunshine_search_skills 动态加载返回保持一致；仅触发集灌 overlay，召回只进目录（skill-sticky S-T）。
      */
-    private String resolveSkillOverlays(String skillId, List<String> triggeredSkillIds) {
+    private String resolveSkillOverlays(String skillId, List<String> triggeredSkillIds, String tenantId, String kind) {
         List<String> ids = new ArrayList<>();
         if (StringUtils.hasText(skillId)) {
             ids.add(skillId.strip());
@@ -325,7 +332,7 @@ public class PromptComposer {
         }
         StringBuilder sb = new StringBuilder();
         for (String id : unique) {
-            String fromCatalog = skillCatalogService.overlayOrEmpty(id);
+            String fromCatalog = skillBodyRenderer.renderById(id, tenantId, kind);
             if (StringUtils.hasText(fromCatalog)) {
                 sb.append(fromCatalog.strip()).append("\n\n");
             }

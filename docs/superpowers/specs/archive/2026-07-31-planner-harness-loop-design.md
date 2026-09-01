@@ -518,7 +518,7 @@ H1 每轮 round 结束时**必然追加**（NodeResult + goal 更新），属**�
 | 业务工具 / MCP | Worker 工具集 / spawn 子 Agent | 动态 | 子会话无前缀包袱，不占 Planner 预算 |
 | 工具规模 > 阈值 | **Planner Tier 0 名列表 + Tier 2 schema** | 候选集 | 工具检索（[phase5 §5.5](../phase5-operation-openness-design.md)）由 **Planner 检索生成候选集 → 下发 toolWhitelist 给 Worker**；Worker 不二次检索 |
 
-前端「插件」菜单（关联 [task-scene spec](../2026-08-01-task-scene-context-design.md) §7.4）的 system/user 级标识即对应 Tier 0 / Tier 1 划分：**system 级**=后台统一开启、全局共有（进 Tier 0 前缀）；**user 级**=个人自选或自建（进 Tier 1 幂等块）。Worker 的 `toolWhitelist` 是 Planner 动态下发的（`call_scene=worker` 走 5.3 快模型分层，见 [phase5 §5.3](../phase5-operation-openness-design.md)）。
+前端「插件」菜单（关联 [task-scene spec](./2026-08-01-task-scene-context-design.md) §7.4）的 system/user 级标识即对应 Tier 0 / Tier 1 划分：**system 级**=后台统一开启、全局共有（进 Tier 0 前缀）；**user 级**=个人自选或自建（进 Tier 1 幂等块）。Worker 的 `toolWhitelist` 是 Planner 动态下发的（`call_scene=worker` 走 5.3 快模型分层，见 [phase5 §5.3](../phase5-operation-openness-design.md)）。
 
 #### 2.5 上下文隔离边界：三层模型（v7 细化）
 

@@ -4,7 +4,7 @@
 > - run 内 compaction → [五层 §4.5 方案 A](../2026-07-31-unified-context-compression-design.md)（SSOT）
 > - CompletionGuard / React 瞬态重试（可选）→ [goal-alignment §12](../2026-07-27-react-goal-alignment-design.md)
 > - spawn 回传经济学 → [multi-agent §4.4.1](../2026-07-29-multi-agent-unified-design.md)
-> - `session_search` 撞名 → [task-scene §6.4](../2026-08-01-task-scene-context-design.md)
+> - `session_search` 撞名 → [task-scene §6.4](./2026-08-01-task-scene-context-design.md)
 >
 > **勿再按本文五阶段实施。**
 >
@@ -381,7 +381,7 @@ HarnessAgent harness = HarnessAgent.builder()
 
 当前 `disableMemoryTools()` 关闭了所有 memory 工具。改为**仅关闭 `memory_get`/`memory_search`**（Sunshine 有自己的 L2/L3 跨会话记忆体系，不依赖 AS 的 MEMORY.md），**保留 `session_search`**（本轮会话内已压缩消息的按需检索）。
 
-> **撞名区分（2026-08-07 · 对齐 [task-scene v7](../2026-08-01-task-scene-context-design.md)）**：此处的 `session_search` 是 **AS 2.0 原生工具**（检索本轮 run 内 offload 到 `*.log.jsonl` 的压缩前原始消息，作用域单次 run 内）。Sunshine 自研的 `session_search`（复用 L3 + `scene=task`，作用域跨轮/项目级）是**另一个工具**——见 [task-scene §6.4](../2026-08-01-task-scene-context-design.md#64-task-过程原文恢复session_searchv4-新增--v5-扩展双范围--v7-与-as-原生撞名区分)。实现时自研工具以 `sunshine_session_search` 暴露，两者作用域互补不冲突。
+> **撞名区分（2026-08-07 · 对齐 [task-scene v7](./2026-08-01-task-scene-context-design.md)）**：此处的 `session_search` 是 **AS 2.0 原生工具**（检索本轮 run 内 offload 到 `*.log.jsonl` 的压缩前原始消息，作用域单次 run 内）。Sunshine 自研的 `session_search`（复用 L3 + `scene=task`，作用域跨轮/项目级）是**另一个工具**——见 [task-scene §6.4](./2026-08-01-task-scene-context-design.md#64-task-过程原文恢复session_searchv4-新增--v5-扩展双范围--v7-与-as-原生撞名区分)。实现时自研工具以 `sunshine_session_search` 暴露，两者作用域互补不冲突。
 
 ```java
 // 改前
@@ -451,7 +451,7 @@ agent:
 | `session_search` 检索到已过期信息 | `session_search` 仅检索本轮会话的 `*.log.jsonl`，天然限定在本轮上下文，不跨会话 |
 | `ToolResultEviction` 的 workspace 目录膨胀 | AS 原生按 agentId+sessionId 隔离；Sunshine `HarnessAgentHolder` 按 fingerprint 缓存实例，workspace 生命周期跟随实例。沙箱 purge 机制（4.5）不覆盖 AS workspace，需确认是否需补清理 |
 | 压缩专用模型质量不足 | `compaction-model` 可配；默认 flash 模型已足够（摘要任务比推理简单）。可随时切回主模型 |
-| compaction + L1 压缩双重压缩导致信息损失叠加 | 作用域互补：AS compaction 承接 Phase 0/2（run 内 tail，管 tool 消息流）与 Phase 1 跨轮压缩（run 内 prefix，`CrossTurnCompactMiddleware`）均**不落库**；L1 压缩管跨轮对话轮次（落库压缩点）。Phase 1 与 L1 共享 Near/Mid/Far 语义但 run 内压缩不移动 `far_folded_msg_ids`（[压缩 spec §5.5.4⑤](../2026-07-31-unified-context-compression-design.md)）；L1 history 取法按 kind 分流（[task-scene §6.6](../2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)）——**chat 只取 `user`/`assistant` 正文（tool 摘要不进 L1）；task 经 kind 折叠 steps 进 `SessionTurn`（读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文）**，见 v15 |
+| compaction + L1 压缩双重压缩导致信息损失叠加 | 作用域互补：AS compaction 承接 Phase 0/2（run 内 tail，管 tool 消息流）与 Phase 1 跨轮压缩（run 内 prefix，`CrossTurnCompactMiddleware`）均**不落库**；L1 压缩管跨轮对话轮次（落库压缩点）。Phase 1 与 L1 共享 Near/Mid/Far 语义但 run 内压缩不移动 `far_folded_msg_ids`（[压缩 spec §5.5.4⑤](../2026-07-31-unified-context-compression-design.md)）；L1 history 取法按 kind 分流（[task-scene §6.6](./2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)）——**chat 只取 `user`/`assistant` 正文（tool 摘要不进 L1）；task 经 kind 折叠 steps 进 `SessionTurn`（读/执行类摘要 ≤200 chars + refs、写/改类保留输出原文）**，见 v15 |
 
 ### 6.5.6 验收补充
 
@@ -583,7 +583,7 @@ mvn test -pl orchestrator -Dtest=CompletionGuardMiddlewareTest,ReactToolRetryerT
 | `session_search` 检索到过期信息 | 五 | `session_search` 仅检索本轮 `*.log.jsonl`，不跨会话 |
 | `ToolResultEviction` workspace 目录膨胀 | 五 | AS 按 agentId+sessionId 隔离；需确认沙箱 purge 是否覆盖 AS workspace，必要时补清理 |
 | 压缩专用模型（flash）质量不足 | 五 | `compaction-model` 可配；摘要任务比推理简单，flash 已足够；可随时切回主模型 |
-| compaction + L1 压缩双重信息损失叠加 | 五 | 作用域互补：AS compaction（Phase 0/2 tail）与 Phase 1 跨轮压缩（`CrossTurnCompactMiddleware`，run 内 prefix，不落库）均不碰 L1 落库压缩点；L1 压缩管跨轮轮次。Phase 1 与 L1 共享 Near/Mid/Far 语义，run 内压缩不移动 `far_folded_msg_ids`。AS compaction 产物经 `ContextWritePath` 按 kind 入 L1——chat 只取 user/assistant 正文、tool 摘要不进 L1；task 折叠 steps（读/执行摘要+refs、写/改原文）进 SessionTurn（[task-scene §6.6](../2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)） |
+| compaction + L1 压缩双重信息损失叠加 | 五 | 作用域互补：AS compaction（Phase 0/2 tail）与 Phase 1 跨轮压缩（`CrossTurnCompactMiddleware`，run 内 prefix，不落库）均不碰 L1 落库压缩点；L1 压缩管跨轮轮次。Phase 1 与 L1 共享 Near/Mid/Far 语义，run 内压缩不移动 `far_folded_msg_ids`。AS compaction 产物经 `ContextWritePath` 按 kind 入 L1——chat 只取 user/assistant 正文、tool 摘要不进 L1；task 折叠 steps（读/执行摘要+refs、写/改原文）进 SessionTurn（[task-scene §6.6](./2026-08-01-task-scene-context-design.md#66-task-压缩后保留内容v6-定稿--22far-10k)） |
 
 ---
 

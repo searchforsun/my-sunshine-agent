@@ -1,10 +1,16 @@
 package com.sunshine.orchestrator.execution.handler;
 
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
 import com.sunshine.orchestrator.audit.SubAgentAuditService;
+import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.processing.SkillLoadLabels;
+import com.sunshine.orchestrator.processing.StepMetadata;
+import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
@@ -33,6 +39,7 @@ public class AgentNodeHandler implements StreamingNodeHandler {
 
     private final AgentRuntime agentRuntime;
     private final SkillCatalogService skillCatalogService;
+    private final SkillBodyRenderer skillBodyRenderer;
     private final SubAgentAuditService subAgentAuditService;
     private final AnswerGroundingChecker groundingChecker;
 
@@ -91,10 +98,50 @@ public class AgentNodeHandler implements StreamingNodeHandler {
             return out;
         };
         StepEventBridge.bindTokenWrapper(request.resolveBridgeId(), wrap);
-        return agentRuntime.run(request)
+        // 子 agent（workflow 节点）绑定 skill：抽屉渲染「加载技能」步骤（摘要=技能名，detail=完整正文展开），
+        // 与 spawn/MAIN 的 skill 步骤语义一致；技能正文经 composeReactInputs 已注入本次输入。
+        List<StreamToken> skillHead = buildSkillStepTokens(request, agentCollector);
+        Flux<StreamToken> agentStream = agentRuntime.run(request)
                 .concatMap(token -> Flux.fromIterable(wrap.apply(token)))
                 .doOnError(e -> AgentNodeAuditSupport.auditFailure(
                         subAgentAuditService, spec, streamCtx, request, request.skillId(), e.getMessage()));
+        if (skillHead.isEmpty()) {
+            return agentStream;
+        }
+        return Flux.concat(Flux.fromIterable(skillHead), agentStream);
+    }
+
+    /**
+     * workflow agent 节点绑定技能：构造「加载技能」步骤并 fold 到 node-{id}.subSteps（抽屉），
+     * 返回作为流首下发的 node 更新 token；技能未绑定/正文为空 → 空列表（不渲染该步骤）。
+     */
+    private List<StreamToken> buildSkillStepTokens(AgentRunRequest request, AgentStreamCollector collector) {
+        if (!StringUtils.hasText(request.skillId())) {
+            return List.of();
+        }
+        String id = request.skillId().strip();
+        String after = SkillLoadLabels.after(id);
+        String body = skillBodyRenderer.renderById(id, request.tenantId(), request.conversationKind());
+        long ts = System.currentTimeMillis();
+        ProcessingStep step = new ProcessingStep(
+                TimelineStepId.SKILL.id(),
+                TimelineStepId.SKILL.phase(),
+                "done",
+                new StepSummary(SkillLoadLabels.before(), null, after),
+                null,
+                ts,
+                null,
+                body,
+                null,
+                null,
+                body,
+                ts,
+                SkillLoadLabels.before(),
+                StepMetadata.fromSkillLoad(id),
+                null,
+                null,
+                null);
+        return collector.ingest(StreamToken.step(step));
     }
 
     @Override

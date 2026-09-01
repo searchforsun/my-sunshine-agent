@@ -8,7 +8,6 @@ import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMiddleware;
 import com.sunshine.orchestrator.agent.ReActAgentFactory;
 import com.sunshine.orchestrator.agent.ReActSystemPromptResolver;
-import com.sunshine.orchestrator.agent.SkillInjectionMiddleware;
 import com.sunshine.orchestrator.agent.SpawnRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.agent.ToolRetrievalMiddleware;
@@ -247,7 +246,6 @@ public class ReActAgentRuntime implements AgentRuntime {
                     .put(ProcessingStepMiddleware.CTX_REACT_MAX_ITERS, resolveMaxIters(request))
                     .put(ProcessingStepMiddleware.CTX_CONTEXT_GROUPS, contextGroups)
                     .put(ProcessingStepMiddleware.CTX_AGENT_ROLE, request.role())
-                    .put(SkillInjectionMiddleware.CTX_TRIGGERED_SKILL_IDS, request.triggeredSkillIds())
                     .put(ProcessingStepMiddleware.CTX_USER_QUERY, query)
                     .put(ToolRetrievalMiddleware.CTX_TENANT_ID,
                             request.tenantId() != null ? request.tenantId() : "default")

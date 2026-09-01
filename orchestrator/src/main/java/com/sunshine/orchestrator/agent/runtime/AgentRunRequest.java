@@ -411,7 +411,7 @@ public record AgentRunRequest(
     /** Planner-Executor harness overlay id（机制层；PromptComposer 仅接受 kind=planner） */
     public static final String HARNESS_PROMPT_ID = "planner.harness";
 
-    /** Planner-Executor Worker — forWorker 记忆 + 工具白名单 + WORKER_NESTED Timeline */
+    /** Planner-Executor Worker — forWorker 记忆 + 工具白名单 + WORKER_NESTED Timeline；skillId=null 兼容旧调用 */
     public static AgentRunRequest worker(
             AssembledContext memory,
             String query,
@@ -422,6 +422,22 @@ public record AgentRunRequest(
             String conversationId,
             int maxIters,
             String parentRunId) {
+        return worker(memory, query, toolWhitelist, userId, tenantId, assistantMessageId,
+                conversationId, maxIters, parentRunId, null);
+    }
+
+    /** Planner-Executor Worker — 含 skillId（Planner 会话/任务可指定技能，同 SUB 统一加载正文 + 抽屉步骤） */
+    public static AgentRunRequest worker(
+            AssembledContext memory,
+            String query,
+            List<String> toolWhitelist,
+            String userId,
+            String tenantId,
+            String assistantMessageId,
+            String conversationId,
+            int maxIters,
+            String parentRunId,
+            String skillId) {
         return new AgentRunRequest(
                 AgentRole.WORKER,
                 UUID.randomUUID().toString(),
@@ -432,7 +448,7 @@ public record AgentRunRequest(
                 userId,
                 tenantId,
                 assistantMessageId,
-                null,
+                skillId,
                 toolWhitelist,
                 null,
                 maxIters,
@@ -449,5 +465,15 @@ public record AgentRunRequest(
                 null,
                 null,
                 null);
+    }
+
+    /** 替换 Worker skillId（Planner 会话/任务指定技能；现状默认 null） */
+    public AgentRunRequest withSkillId(String skillId) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride,
+                conversationKind, triggeredSkillIds, candidateSkillIds);
     }
 }

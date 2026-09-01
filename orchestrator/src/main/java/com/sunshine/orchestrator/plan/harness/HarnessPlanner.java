@@ -61,7 +61,7 @@ public class HarnessPlanner {
         // D12：Planner 续跑存在 awaiting/paused decision 卡时 bind steps，
         // ReActAgentRuntime bridge bind 后 re-await 同问卷（契约同 Chat MAIN，见 DecisionResumeSupport）
         bindDecisionResumeIfNeeded(ctx);
-        WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, request.runId());
+        WorkerDispatchTool.DispatchSession session = bindDispatchSession(notebook, ctx, request.runId(), request.skillId());
         // session 保持绑定到 Planner run 结束；Worker dispatch 工具按 toolUse 解析 session
         return agentRuntime.run(request)
                 .doFinally(sig -> WorkerDispatchTool.clearSession(session));
@@ -150,7 +150,7 @@ public class HarnessPlanner {
     }
 
     private WorkerDispatchTool.DispatchSession bindDispatchSession(
-            PlanNotebook notebook, ExecutionStreamContext ctx, String parentRunId) {
+            PlanNotebook notebook, ExecutionStreamContext ctx, String parentRunId, String skillId) {
         String tenantId = ctx != null ? ctx.tenantId() : null;
         List<String> whitelist = toolSetResolver.resolveDefaultTools(tenantId, resolveConversationKind(notebook, ctx));
         WorkerDispatchTool.DispatchSession session = new WorkerDispatchTool.DispatchSession(
@@ -162,7 +162,8 @@ public class HarnessPlanner {
                 ctx != null ? ctx.conversationId() : null,
                 parentRunId,
                 0,
-                resolveConversationKind(notebook, ctx));
+                resolveConversationKind(notebook, ctx),
+                skillId);
         WorkerDispatchTool.bindSession(session);
         return session;
     }
