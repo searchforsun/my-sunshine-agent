@@ -235,7 +235,8 @@ public class ReactExecutor {
                 ctx.modelOverride(),
                 ctx.conversationKind() != null ? ctx.conversationKind() : "chat",
                 null,
-                null);
+                null,
+                false);
     }
 
     /**

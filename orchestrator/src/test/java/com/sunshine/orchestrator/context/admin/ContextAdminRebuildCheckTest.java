@@ -10,9 +10,6 @@ import com.sunshine.orchestrator.context.l1.ConversationContextL1Store;
 import com.sunshine.orchestrator.context.l2.L2ConflictMerger;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.context.l2.UserContextStateRepository;
-import com.sunshine.orchestrator.context.job.ContextMaintenanceService;
-import com.sunshine.orchestrator.context.l3.HistoryRagClient;
-import com.sunshine.orchestrator.context.l3.L3IngestService;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
@@ -38,7 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
- * O4 账本重建校验（{@link ContextAdminService#verifyRebuild}）：
+ * 账本重建校验（{@link ContextRebuildVerifier#verifyRebuild}）：
  * 滑动窗/压缩点两模式下的结构不变量与判定分级（ERROR/WARN/PASS）。
  */
 @ExtendWith(MockitoExtension.class)
@@ -56,27 +53,20 @@ class ContextAdminRebuildCheckTest {
     @Mock
     private ChatMessageRepository messageRepository;
     @Mock
-    private L3IngestService l3IngestService;
-    @Mock
-    private HistoryRagClient historyRagClient;
-    @Mock
-    private ContextMaintenanceService maintenanceService;
-    @Mock
     private ModelWindowCache modelWindowCache;
     @Mock
     private ModelSceneResolver modelSceneResolver;
 
     private ContextProperties properties;
-    private ContextAdminService service;
+    private ContextRebuildVerifier verifier;
 
     @BeforeEach
     void setUp() {
         properties = new ContextProperties();
         ConversationContextL1Store l1Store = new ConversationContextL1Store(l1Repository, properties);
         L2StateStore l2StateStore = new L2StateStore(l2Repository, new L2ConflictMerger(), properties, null);
-        service = new ContextAdminService(
-                l2Repository, l1Repository, l1Store, conversationRepository, messageRepository,
-                l3IngestService, historyRagClient, maintenanceService, properties,
+        verifier = new ContextRebuildVerifier(
+                l1Repository, l1Store, conversationRepository, messageRepository, properties,
                 new TokenEstimator(), modelWindowCache, l2StateStore, modelSceneResolver);
         when(modelSceneResolver.resolve(any(), any()))
                 .thenReturn(new ResolvedModelScene("m", null, Map.of(), 100, 0, null, false));
@@ -141,7 +131,7 @@ class ContextAdminRebuildCheckTest {
         givenL1View(entity("{\"a2\":\"S2\",\"a3\":\"S3\"}", "远窗摘要",
                 "[\"u0\",\"a0\",\"u1\",\"a1\"]", 2, 2));
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("PASS");
         assertThat(view.errors()).isEmpty();
@@ -160,7 +150,7 @@ class ContextAdminRebuildCheckTest {
         givenLedgerRounds(6);
         givenL1View(null);
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("ERROR");
         assertThat(view.viewExists()).isFalse();
@@ -175,7 +165,7 @@ class ContextAdminRebuildCheckTest {
         givenLedgerRounds(2);
         givenL1View(null);
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("PASS");
         assertThat(view.shouldCompress()).isFalse();
@@ -189,7 +179,7 @@ class ContextAdminRebuildCheckTest {
         givenL1View(entity("{\"a2\":\"S2\",\"a3\":\"S3\"}", "",
                 "[\"u0\",\"a0\",\"u1\",\"a1\"]", 2, 2));
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("ERROR");
         assertThat(view.errors()).anyMatch(e -> e.startsWith("H4"));
@@ -203,7 +193,7 @@ class ContextAdminRebuildCheckTest {
         givenL1View(entity("{\"a2\":\"S2\",\"a3\":\"S3\"}", "远窗摘要",
                 "[\"u0\",\"a0\",\"a5\"]", 2, 2));
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("ERROR");
         assertThat(view.errors()).anyMatch(e -> e.startsWith("H3"));
@@ -216,7 +206,7 @@ class ContextAdminRebuildCheckTest {
         // 压缩点模式：折叠链 = 头部连续前缀 r0
         givenL1View(entity("{}", "远窗摘要", "[\"u0\",\"a0\"]", 2, 2));
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("PASS");
         assertThat(view.mode()).isEqualTo("compression-point");
@@ -232,7 +222,7 @@ class ContextAdminRebuildCheckTest {
         // r0 未折叠而 r1 已折叠 → 前缀不变量破坏
         givenL1View(entity("{}", "远窗摘要", "[\"u1\",\"a1\"]", 2, 2));
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("ERROR");
         assertThat(view.errors()).anyMatch(e -> e.startsWith("H6"));
@@ -246,7 +236,7 @@ class ContextAdminRebuildCheckTest {
         // near=1 mid=1 → mid 仅 r4；a0 摘要已滑入远窗（WARN），且远窗未折叠（S3）
         givenL1View(entity("{\"a0\":\"S0\"}", "远窗摘要", "[]", 1, 1));
 
-        RebuildCheckView view = service.verifyRebuild(CONV);
+        RebuildCheckView view = verifier.verifyRebuild(CONV);
 
         assertThat(view.verdict()).isEqualTo("PASS");
         assertThat(view.errors()).isEmpty();

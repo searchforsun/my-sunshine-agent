@@ -76,7 +76,7 @@ class ContextAssemblerL1Test {
         when(l1Store.farSummaryOf(null)).thenReturn("");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(SessionTurn.of("user", "hi")), "q"));
+                "u1", "default", "c1", List.of(SessionTurn.of("user", "hi")), "q", null, "chat", null, null, false));
 
         assertThat(ctx.l2SystemBlock()).contains("preference/style: 简洁");
     }
@@ -100,7 +100,7 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a-near", "assistant", "近窗答"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "current", null, "chat", null, "workflow"));
+                "u1", "default", "c1", history, "current", null, "chat", null, "workflow", false));
 
         assertThat(ctx.nearTurns()).hasSize(2);
         assertThat(ctx.nearTurns().get(0).content()).isEqualTo("近窗问");
@@ -129,7 +129,7 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a2", "assistant", "A2"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null, "chat", null, "workflow"));
+                "u1", "default", "c1", history, "q", null, "chat", null, "workflow", false));
 
         assertThat(ctx.farSummaryBlock()).isEqualTo("早期对话：用户问了 A，助手答了 B。");
         assertThat(ctx.midTurns()).hasSize(2);
@@ -149,7 +149,7 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a1", "assistant", "A1"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null, "chat", null, "workflow"));
+                "u1", "default", "c1", history, "q", null, "chat", null, "workflow", false));
 
         assertThat(ctx.midTurns()).hasSize(2);
         assertThat(ctx.midTurns().get(1).content()).isEqualTo("A0 full");
@@ -173,7 +173,7 @@ class ContextAssemblerL1Test {
                 SessionTurn.of("a-near", "assistant", "近窗答"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "current", null, "chat", null, "fast"));
+                "u1", "default", "c1", history, "current", null, "chat", null, "fast", false));
 
         assertThat(ctx.midTurns()).hasSize(2);
         assertThat(ctx.midTurns().get(0).content()).isEqualTo("用户问题Q");

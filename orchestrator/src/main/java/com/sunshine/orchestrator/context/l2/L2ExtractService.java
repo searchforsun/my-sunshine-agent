@@ -17,13 +17,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 /**
  * 每轮 completed 后静默抽取 L2 状态：LLM + Catalog {@code context.memory.extract}（scope 参数化）→ 置信门禁 → Merger upsert。
  * todo 类叠加 v22 门禁（key 场景化 / background 必填 / value 非布尔孤值）；其他 kind 不强弃，兼容 chat 现状。
- * <p>O3：置信门禁与 v22 门禁的判定标准收敛至 {@link ContextWritePolicy}（写路由策略单点），本类仅执行。
+ * <p>置信门禁与 v22 门禁的判定标准在 {@link ContextWritePolicy}（写路由策略单点），本类仅执行。
  * 成功后触发轻量腐败/矛盾审计（异步、可防抖）。失败仅日志，不阻断用户路径。
  */
 @Slf4j
@@ -32,10 +30,6 @@ import java.util.Set;
 public class L2ExtractService {
 
     public static final String EXTRACT_PROMPT = "context.memory.extract";
-
-    private static final Set<String> VALID_KINDS = Set.of(
-            "profile", "preference", "goal", "agreement", "constraint", "fact", "decision",
-            "process_note", "todo");
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -135,7 +129,7 @@ public class L2ExtractService {
         Instant now = msgAt != null ? msgAt : Instant.now();
         int accepted = 0;
         for (L2ConflictMerger.Candidate c : candidates) {
-            // O3：kind 级置信门禁由写路由策略单点定义
+            // kind 级置信门禁由写路由策略单点定义
             double minConf = ContextWritePolicy.l2MinConfidenceFor(c.kind(), l2);
             if (c.confidence() < minConf) {
                 log.debug("[ContextL2] drop low confidence kind={} key={} conf={}",
@@ -262,10 +256,11 @@ public class L2ExtractService {
                 if (!StringUtils.hasText(kind) || !StringUtils.hasText(key) || !StringUtils.hasText(value)) {
                     continue;
                 }
-                kind = kind.strip().toLowerCase(Locale.ROOT);
-                if (!VALID_KINDS.contains(kind)) {
+                ContextKind ctxKind = ContextKind.fromWire(kind);
+                if (ctxKind == null) {
                     continue;
                 }
+                kind = ctxKind.wire();
                 double confidence = node.path("confidence").asDouble(Double.NaN);
                 if (Double.isNaN(confidence)) {
                     continue;
@@ -274,8 +269,9 @@ public class L2ExtractService {
                 String strippedValue = value.strip();
                 String background = text(node, "background").strip();
                 // status 生命周期仅 todo 类：其他 kind 固定 active，模型误产 done/void 不会静默 void 既有 chat 行
-                String status = isTodo(kind) ? L2ConflictMerger.normalizeStatus(text(node, "status")) : "active";
-                if (isTodo(kind) && !ContextWritePolicy.l2TodoGatePasses(
+                String status = ctxKind == ContextKind.TODO
+                        ? L2ConflictMerger.normalizeStatus(text(node, "status")) : "active";
+                if (ctxKind == ContextKind.TODO && !ContextWritePolicy.l2TodoGatePasses(
                         strippedKey, strippedValue, background, status)) {
                     continue;
                 }
@@ -287,10 +283,6 @@ public class L2ExtractService {
         } catch (Exception e) {
             return List.of();
         }
-    }
-
-    private static boolean isTodo(String kind) {
-        return "todo".equals(kind);
     }
 
     static String extractJsonArray(String raw) {

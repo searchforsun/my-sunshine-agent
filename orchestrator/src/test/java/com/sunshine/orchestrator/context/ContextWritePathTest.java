@@ -48,7 +48,7 @@ class ContextWritePathTest {
     void setUp() {
         writePath = new ContextWritePath(
                 conversationService, l1Compressor, l2ExtractService, l3IngestService,
-                new ContextWritePolicy(new ContextProperties()), sceneWriteResolver);
+                new ContextWritePolicy(), sceneWriteResolver);
     }
 
     private ChatConversationEntity conv(String kind, String executionPreference) {

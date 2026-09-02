@@ -1,34 +1,27 @@
 package com.sunshine.orchestrator.context;
 
-import com.sunshine.orchestrator.context.l2.L2ConflictMerger;
+import com.sunshine.orchestrator.context.l2.ContextKind;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * O3（memory-ledger-view §5.2）：上下文记忆写路由单点策略。
- * <p>收敛此前分散在 {@code ContextWritePath}（kind 闸门 if/else）、{@code L2ExtractService}（scope 双入口、
- * 置信门禁、v22 门禁）、{@code L2StateStore}（L2 TTL 表）、{@code ContextMaintenanceService}（L3 分层 TTL）的写决策面：
+ * 上下文记忆写路由单点策略（memory-ledger-view §5.2）。
+ * <p>聚合上下文写决策面，统一路由与门禁：
  * <ul>
  *   <li><b>写路由矩阵</b>：kind × executionMode → KV/L3 写入开关、scope（user/workspace）、scene（chat/task）；</li>
- *   <li><b>写入门禁</b>：L2 置信分级门禁（{@link #l2MinConfidenceFor}）+ todo 类 v22 门禁
+ *   <li><b>写入门禁</b>：L2 置信分级门禁（{@link #l2MinConfidenceFor}）+ todo 类门禁
  *       （key 场景化 / background 必填 / 布尔孤值，{@link #l2TodoGatePasses}）；</li>
  *   <li><b>TTL 表</b>：L2 按 kind 分级（{@link #l2TtlDays}）、L3 按 scene/layer 分层（{@link #l3TtlDays}），
  *       数值对齐 Nacos {@code agent.context.*}，不新增配置面；</li>
  *   <li><b>决策记录</b>：{@link WriteDecision#reason()} 携带可读理由，写路径落 info 日志，写/不写/丢弃可审计。</li>
  * </ul>
- * 纯策略组件：不触库、不调 LLM，路由结果与收敛前现状完全一致。
+ * 纯策略组件：不触库、不调 LLM。
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
 public class ContextWritePolicy {
 
     /** v22：key 必须 {domain}.{facet}（todo 类强制）。 */
@@ -38,8 +31,6 @@ public class ContextWritePolicy {
     /** v22：布尔孤值禁止（todo 类强制）。 */
     private static final Set<String> L2_BOOLEAN_LONE_VALUES =
             Set.of("true", "false", "yes", "no", "1", "0");
-
-    private final ContextProperties contextProperties;
 
     /**
      * 单轮写路由决策。
@@ -74,11 +65,11 @@ public class ContextWritePolicy {
         if (l2 == null) {
             l2 = new ContextProperties.L2();
         }
-        return switch (L2ConflictMerger.normalizeKind(kind)) {
-            case "process_note" -> l2.getProcessNoteMinConfidence();
-            case "todo" -> l2.getMinConfidence();
-            default -> l2.getMinConfidence();
-        };
+        ContextKind ck = ContextKind.fromWire(kind);
+        if (ck == ContextKind.PROCESS_NOTE) {
+            return l2.getProcessNoteMinConfidence();
+        }
+        return l2.getMinConfidence();
     }
 
     /**
@@ -96,31 +87,25 @@ public class ContextWritePolicy {
         return L2_BOOLEAN_LONE_VALUES.contains(value.strip().toLowerCase(java.util.Locale.ROOT));
     }
 
-    /** L2 TTL 表：kind 分级（天）；≤0 表示不过期。 */
+    /** L2 TTL 表：kind 分级（天）；≤0 表示不过期；未知 kind 按 fact 档。 */
     public static int l2TtlDays(String kind, ContextProperties.L2 l2) {
         if (l2 == null) {
             l2 = new ContextProperties.L2();
         }
-        return switch (L2ConflictMerger.normalizeKind(kind)) {
-            case "preference", "profile" -> l2.getPreferenceTtlDays();
-            case "agreement" -> l2.getAgreementTtlDays();
-            case "goal" -> l2.getGoalTtlDays();
-            case "decision" -> l2.getDecisionTtlDays();
-            case "fact" -> l2.getFactTtlDays();
-            case "constraint" -> l2.getConstraintTtlDays();
-            case "process_note" -> l2.getProcessNoteTtlDays();
-            case "todo" -> l2.getTodoTtlDays();
-            default -> l2.getFactTtlDays();
-        };
-    }
-
-    /** L2 过期时间：TTL≤0 → null（永不过期）。 */
-    public Instant l2ExpiresAtFor(String kind, Instant now) {
-        int days = l2TtlDays(kind, contextProperties.getL2());
-        if (days <= 0) {
-            return null;
+        ContextKind ck = ContextKind.fromWire(kind);
+        if (ck == null) {
+            return l2.getFactTtlDays();
         }
-        return now.plus(days, ChronoUnit.DAYS);
+        return switch (ck) {
+            case PREFERENCE, PROFILE -> l2.getPreferenceTtlDays();
+            case AGREEMENT -> l2.getAgreementTtlDays();
+            case GOAL -> l2.getGoalTtlDays();
+            case DECISION -> l2.getDecisionTtlDays();
+            case FACT -> l2.getFactTtlDays();
+            case CONSTRAINT -> l2.getConstraintTtlDays();
+            case PROCESS_NOTE -> l2.getProcessNoteTtlDays();
+            case TODO -> l2.getTodoTtlDays();
+        };
     }
 
     /**

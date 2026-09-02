@@ -119,8 +119,6 @@ public class ContextProperties {
         private boolean processLayerEnabled = true;
         /** process 层每条 result 截断字符数。 */
         private int processResultMaxChars = 200;
-        /** 定期维护：过期向量清理按 scene/layer 分层 TTL（天）。 */
-        private int maintenanceTtlDays = 365;
     }
 
     @Getter

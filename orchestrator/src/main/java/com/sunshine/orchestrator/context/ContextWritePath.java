@@ -21,8 +21,8 @@ import java.util.List;
 /**
  * 对话完成后的上下文写路径：先 L2 抽取，再 L1 压缩（Far 可读本轮 L2），再 L3 ingest。
  * 独立 Bean + {@code @Async}，避免 Lifecycle 自调用导致异步失效。
- * <p>O3：kind/scope/scene 路由决策已收敛到 {@link ContextWritePolicy}（写路由矩阵单点），
- * 本类只负责编排执行顺序与账本过滤。
+ * <p>kind/scope/scene 路由决策在 {@link ContextWritePolicy}（写路由矩阵单点），
+ * 本类负责编排执行顺序与账本过滤。
  */
 @Slf4j
 @Service

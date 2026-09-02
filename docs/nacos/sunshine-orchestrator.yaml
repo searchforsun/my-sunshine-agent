@@ -448,7 +448,6 @@ agent:
       dedupe-merge-threshold: 0.85          # 0.85~0.95 同义合并（保留旧条）
       process-layer-enabled: true           # task process 层（工具结果摘要）开关
       process-result-max-chars: 200         # process 层每条 result 截断字符数
-      maintenance-ttl-days: 365
     maintenance:
       interval-ms: 3600000
       superseded-retention-days: 180

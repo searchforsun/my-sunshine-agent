@@ -5,15 +5,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * L2 同 key 冲突：时间优先；constraint/fact 需达到更高覆盖置信门槛。
  */
 @Component
 public class L2ConflictMerger {
-
-    private static final Set<String> ELEVATED_KINDS = Set.of("constraint", "fact");
 
     public enum Decision {
         ACCEPT,
@@ -36,8 +33,8 @@ public class L2ConflictMerger {
             return Decision.ACCEPT;
         }
         ContextProperties.L2 l2 = props != null ? props : new ContextProperties.L2();
-        String kind = normalizeKind(incoming.kind());
-        if (ELEVATED_KINDS.contains(kind)) {
+        ContextKind kind = ContextKind.fromWire(incoming.kind());
+        if (kind != null && kind.elevatedOverwriteConfidence()) {
             double bar = Math.max(l2.getConstraintOverwriteConfidence(), existingActive.getConfidence());
             return incoming.confidence() >= bar ? Decision.ACCEPT : Decision.REJECT;
         }
@@ -45,10 +42,6 @@ public class L2ConflictMerger {
         return incoming.confidence() >= existingActive.getConfidence()
                 ? Decision.ACCEPT
                 : Decision.REJECT;
-    }
-
-    public static String normalizeKind(String kind) {
-        return kind == null ? "" : kind.strip().toLowerCase(Locale.ROOT);
     }
 
     /** todo 生命周期 status：仅 active/done/void；缺失或非法值默认 active。 */
@@ -61,9 +54,5 @@ public class L2ConflictMerger {
             case "done", "void" -> s;
             default -> "active";
         };
-    }
-
-    static boolean isElevatedKind(String kind) {
-        return ELEVATED_KINDS.contains(normalizeKind(kind));
     }
 }

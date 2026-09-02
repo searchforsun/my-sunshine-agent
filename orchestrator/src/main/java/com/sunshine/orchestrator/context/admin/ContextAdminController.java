@@ -37,6 +37,7 @@ import java.util.List;
 public class ContextAdminController {
 
     private final ContextAdminService contextAdminService;
+    private final ContextRebuildVerifier rebuildVerifier;
     private final TaskBoardAuditService taskBoardAuditService;
     private final PlanNotebookStore planNotebookStore;
 
@@ -74,7 +75,7 @@ public class ContextAdminController {
     /** O4 账本重建校验（只读）：对账结果含 ERROR 时 HTTP 仍 200，由脚本按 verdict 分级。 */
     @GetMapping("/l1/rebuild-check")
     public Mono<R<RebuildCheckView>> rebuildCheck(@RequestParam String convId) {
-        return ReactiveBlocking.call(() -> R.ok(contextAdminService.verifyRebuild(convId)));
+        return ReactiveBlocking.call(() -> R.ok(rebuildVerifier.verifyRebuild(convId)));
     }
 
     @GetMapping("/l3/status")

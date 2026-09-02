@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.plan.harness;
 
+import com.sunshine.orchestrator.context.l2.ContextKind;
 import com.sunshine.orchestrator.context.l2.L2ConflictMerger;
 import com.sunshine.orchestrator.context.l2.L2StateStore;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
@@ -50,7 +51,7 @@ public class H1TodoExportService {
                 .filter(t -> t != null && UNFINISHED.contains(t.status()))
                 .filter(t -> StringUtils.hasText(t.label()))
                 .map(t -> new L2ConflictMerger.Candidate(
-                        "todo",
+                        ContextKind.TODO.wire(),
                         KEY_PREFIX + goalHash + "." + TaskItem.stripRetrySuffix(t.taskId()),
                         t.label(),
                         1.0,

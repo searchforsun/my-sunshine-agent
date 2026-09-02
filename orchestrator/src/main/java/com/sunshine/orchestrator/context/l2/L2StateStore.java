@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -26,9 +25,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class L2StateStore {
-
-    private static final List<String> KIND_ORDER = List.of(
-            "profile", "preference", "goal", "agreement", "constraint", "fact", "decision");
 
     private final UserContextStateRepository repository;
     private final L2ConflictMerger merger;
@@ -241,19 +237,20 @@ public class L2StateStore {
             return;
         }
         String tid = tenantId != null ? tenantId : "default";
-        String kind = L2ConflictMerger.normalizeKind(candidate.kind());
+        ContextKind ctxKind = ContextKind.fromWire(candidate.kind());
+        String kind = ContextKind.normalizeWire(candidate.kind());
         String key = candidate.key().strip();
         String value = candidate.value().strip();
         Instant clock = now != null ? now : Instant.now();
         String status = L2ConflictMerger.normalizeStatus(candidate.status());
         // status 生命周期仅 todo 类：done/void 对既有 active 行显式失效；其他 kind 固定 active 走正常合并
-        if ("todo".equals(kind) && ("done".equals(status) || "void".equals(status))) {
+        if (ctxKind == ContextKind.TODO && ("done".equals(status) || "void".equals(status))) {
             voidActiveRow(workspaceId, userId, tid, kind, key, clock);
             return;
         }
         // 乱序保护（仅 todo，其他 kind 无 done/void 生命周期）：异步抽取乱序时，
         // 若同 key 已被更晚消息 void（void 时间晚于本候选消息），不得复活
-        if ("todo".equals(kind) && isVoidedAfter(workspaceId, userId, tid, kind, key, clock)) {
+        if (ctxKind == ContextKind.TODO && isVoidedAfter(workspaceId, userId, tid, kind, key, clock)) {
             log.debug("[ContextL2] skip resurrect scope={} kind={} key={}（已被更晚消息 void）",
                     workspaceId != null ? "workspace:" + workspaceId : "user:" + userId, kind, key);
             return;
@@ -508,6 +505,7 @@ public class L2StateStore {
         return a.strip().equals(b.strip());
     }
 
+    /** L2 过期时间：委托 {@link ContextWritePolicy#l2TtlDays}；TTL≤0 → null（永不过期）。 */
     Instant expiresAtFor(String kind, Instant now) {
         int days = ContextWritePolicy.l2TtlDays(kind, contextProperties.getL2());
         if (days <= 0) {
@@ -517,9 +515,7 @@ public class L2StateStore {
     }
 
     private static int kindRank(String kind) {
-        String k = kind != null ? kind.toLowerCase(Locale.ROOT) : "";
-        int idx = KIND_ORDER.indexOf(k);
-        return idx >= 0 ? idx : KIND_ORDER.size();
+        return ContextKind.rankOf(kind);
     }
 
     private static String newId() {

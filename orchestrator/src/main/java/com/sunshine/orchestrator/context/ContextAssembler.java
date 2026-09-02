@@ -455,52 +455,5 @@ public class ContextAssembler {
             /** L3 延后装配（M0 · authority §2.2 方案 A）：路由前仅底座，L3 由路由后 attachL3 召回 */
             boolean deferL3
     ) {
-        /** 兼容既有调用：executionMode 缺省（不做模式裁剪）、deferL3=false（L3 随 assemble 召回）。 */
-        public AssembleRequest(
-                String userId,
-                String tenantId,
-                String conversationId,
-                List<SessionTurn> history,
-                String currentUserQuery,
-                String modelName,
-                String kind,
-                String workspaceId,
-                String executionMode) {
-            this(userId, tenantId, conversationId, history, currentUserQuery, modelName, kind, workspaceId,
-                    executionMode, false);
-        }
-
-        /** 兼容既有调用：executionMode 缺省（不做模式裁剪）。 */
-        public AssembleRequest(
-                String userId,
-                String tenantId,
-                String conversationId,
-                List<SessionTurn> history,
-                String currentUserQuery,
-                String modelName,
-                String kind,
-                String workspaceId) {
-            this(userId, tenantId, conversationId, history, currentUserQuery, modelName, kind, workspaceId, null);
-        }
-
-        /** 兼容既有调用：kind 缺省 chat（user scope），workspaceId 缺省 null。 */
-        public AssembleRequest(
-                String userId,
-                String tenantId,
-                String conversationId,
-                List<SessionTurn> history,
-                String currentUserQuery,
-                String modelName) {
-            this(userId, tenantId, conversationId, history, currentUserQuery, modelName, "chat", null, null);
-        }
-
-        public AssembleRequest(
-                String userId,
-                String tenantId,
-                String conversationId,
-                List<SessionTurn> history,
-                String currentUserQuery) {
-            this(userId, tenantId, conversationId, history, currentUserQuery, null);
-        }
     }
 }

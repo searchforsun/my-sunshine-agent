@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.context.audit;
 
+import com.sunshine.orchestrator.context.l2.ContextKind;
 import com.sunshine.orchestrator.context.l2.UserContextStateEntity;
 import com.sunshine.orchestrator.context.l2.UserContextStateRepository;
 import lombok.RequiredArgsConstructor;
@@ -106,17 +107,10 @@ public class L2RuleAuditor {
         return voided;
     }
 
-    /** kind 语义具体性：profile 最具体（身份属性），fact 次之，preference 更泛；其他居中。 */
+    /** kind 语义具体性：见 {@link ContextKind#specificity()}。 */
     static int kindSpecificity(String kind) {
-        if (kind == null) {
-            return 0;
-        }
-        return switch (kind.toLowerCase(Locale.ROOT)) {
-            case "profile" -> 3;
-            case "fact" -> 2;
-            case "preference" -> 1;
-            default -> 0;
-        };
+        ContextKind ck = ContextKind.fromWire(kind);
+        return ck != null ? ck.specificity() : 0;
     }
 
     public int voidJunk(String userId, String tenantId, Instant now) {

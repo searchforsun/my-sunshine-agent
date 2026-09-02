@@ -137,7 +137,8 @@ public class HarnessPlanner {
                         ctx.tenantId(),
                         ctx.conversationId(),
                         List.of(),
-                        ctx.userContent()));
+                        ctx.userContent(),
+                        null, "chat", null, null, false));
                 if (assembled != null) {
                     return assembled;
                 }

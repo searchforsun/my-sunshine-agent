@@ -1,5 +1,6 @@
 import type { L1WindowRow } from '../../api/contextAdmin'
 
+/** L2 kind 展示文案；kind 集合 SSOT = orchestrator `context/l2/ContextKind`，两处须同步。 */
 export const KIND_META: Record<string, { label: string; type: 'default' | 'info' | 'success' | 'warning' | 'error' }> = {
   profile: { label: '画像', type: 'info' },
   preference: { label: '偏好', type: 'success' },
@@ -8,6 +9,8 @@ export const KIND_META: Record<string, { label: string; type: 'default' | 'info'
   constraint: { label: '限制', type: 'error' },
   fact: { label: '事实', type: 'default' },
   decision: { label: '方案', type: 'success' },
+  process_note: { label: '过程记录', type: 'default' },
+  todo: { label: '待办', type: 'warning' },
 }
 
 export const STATUS_LABEL: Record<string, string> = {

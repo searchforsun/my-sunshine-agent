@@ -83,7 +83,7 @@ class ContextAssemblerTest {
                 .toList();
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "current query", null, "chat", null, "workflow"));
+                "u1", "default", "c1", history, "current query", null, "chat", null, "workflow", false));
 
         assertThat(ctx.nearTurns()).hasSize(4);
         assertThat(ctx.nearTurns().get(0).content()).isEqualTo("m16");
@@ -112,7 +112,7 @@ class ContextAssemblerTest {
                 SessionTurn.of("user", "cc"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null, "chat", null, "workflow"));
+                "u1", "default", "c1", history, "q", null, "chat", null, "workflow", false));
 
         assertThat(ctx.nearTurns()).hasSize(2);
         assertThat(ctx.nearTurns().get(0).content()).isEqualTo("bbbb");
@@ -128,7 +128,7 @@ class ContextAssemblerTest {
                 SessionTurn.of("assistant", longReply));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "follow up"));
+                "u1", "default", "c1", history, "follow up", null, "chat", null, null, false));
 
         assertThat(ctx.nearTurns().get(1).content()).hasSize(2000);
     }
@@ -141,7 +141,7 @@ class ContextAssemblerTest {
                 SessionTurn.of("assistant", "  "));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "again"));
+                "u1", "default", "c1", history, "again", null, "chat", null, null, false));
 
         assertThat(ctx.nearTurns()).hasSize(1);
         assertThat(ctx.nearTurns().get(0).role()).isEqualTo("user");
@@ -153,7 +153,7 @@ class ContextAssemblerTest {
         List<SessionTurn> history = List.of(SessionTurn.of("user", "hi"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q"));
+                "u1", "default", "c1", history, "q", null, "chat", null, null, false));
 
         assertThat(ctx.hasAnyLayer()).isFalse();
     }
@@ -161,7 +161,7 @@ class ContextAssemblerTest {
     @Test
     void assemble_emptyHistory_returnsEmptyNear() {
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q"));
+                "u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx.nearTurns()).isEmpty();
         assertThat(ctx.midTurns()).isEmpty();
@@ -171,7 +171,7 @@ class ContextAssemblerTest {
     @Test
     void assemble_nullHistory_returnsEmpty() {
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", null, "q"));
+                "u1", "default", "c1", null, "q", null, "chat", null, null, false));
 
         assertThat(ctx.hasAnyLayer()).isFalse();
     }
@@ -184,7 +184,7 @@ class ContextAssemblerTest {
         history.add(SessionTurn.of("assistant", "cpp code full content"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "写 py 快排"));
+                "u1", "default", "c1", history, "写 py 快排", null, "chat", null, null, false));
 
         assertThat(ctx.nearTurns()).hasSize(2);
         assertThat(ctx.nearTurns().get(0).content()).isEqualTo("写 cpp 快排");
@@ -197,7 +197,7 @@ class ContextAssemblerTest {
                 .thenReturn("[workspace L2] plan/step: 完成");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1"));
+                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1", null, false));
 
         assertThat(ctx.l2SystemBlock()).isEqualTo("[workspace L2] plan/step: 完成");
         verify(l2StateStore).assembleWorkspaceBlock("ws-1", "default");
@@ -209,7 +209,7 @@ class ContextAssemblerTest {
         // M3：task 会话不自动注入 L3（只写不自动注入），由 sunshine_session_search 按需恢复；
         // chat 会话保留自动召回。
         assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1"));
+                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1", null, false));
 
         verify(l3RecallService, never()).recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean());
     }
@@ -217,7 +217,7 @@ class ContextAssemblerTest {
     @Test
     void assemble_chatKind_keepsAutomaticL3Recall() {
         assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "chat", null));
+                "u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         verify(l3RecallService).recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean());
     }
@@ -228,7 +228,7 @@ class ContextAssemblerTest {
                 .thenReturn("[user L2] preference/style: 简洁");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "chat", null));
+                "u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx.l2SystemBlock()).isEqualTo("[user L2] preference/style: 简洁");
         verify(l2StateStore).assembleSystemBlock("u1", "default");
@@ -242,7 +242,7 @@ class ContextAssemblerTest {
                 .thenReturn("[workspace L2] plan/step: 完成");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1", "workflow"));
+                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1", "workflow", false));
 
         assertThat(ctx.l2SystemBlock()).isBlank();
         assertThat(ctx.projectGuideBlock()).isBlank();
@@ -256,7 +256,7 @@ class ContextAssemblerTest {
                 .thenReturn("[workspace L2] plan/step: 完成");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1", "fast"));
+                "u1", "default", "c1", List.of(), "q", null, "task", "ws-1", "fast", false));
 
         assertThat(ctx.l2SystemBlock()).isEqualTo("[workspace L2] plan/step: 完成");
         verify(l2StateStore).assembleWorkspaceBlock("ws-1", "default");
@@ -269,7 +269,7 @@ class ContextAssemblerTest {
                 .thenReturn("[user L2] preference/style: 简洁");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null, "chat", null, "workflow"));
+                "u1", "default", "c1", List.of(), "q", null, "chat", null, "workflow", false));
 
         assertThat(ctx.l2SystemBlock()).isEqualTo("[user L2] preference/style: 简洁");
     }
@@ -297,7 +297,7 @@ class ContextAssemblerTest {
                 SessionTurn.of("a1", "assistant", "dddd"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null, "task", "ws-1", "fast"));
+                "u1", "default", "c1", history, "q", null, "task", "ws-1", "fast", false));
 
         // Near = 压缩点后全部原文（u1/a1），即使单条超预算也不丢头部轮次
         assertThat(ctx.nearTurns()).extracting(ChatTurn::content).containsExactly("cc", "dddd");
@@ -328,7 +328,7 @@ class ContextAssemblerTest {
                 SessionTurn.of("a3", "assistant", "latest answer body"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null, "task", "ws-1", "fast"));
+                "u1", "default", "c1", history, "q", null, "task", "ws-1", "fast", false));
 
         // 按新 P 重组：r0/r1 进远窗边界，Near 仅剩 r2/r3 原文
         assertThat(ctx.nearTurns()).extracting(ChatTurn::content)
@@ -348,22 +348,10 @@ class ContextAssemblerTest {
                 SessionTurn.of("a1", "assistant", "a1"));
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null, "task", "ws-1", "workflow"));
+                "u1", "default", "c1", history, "q", null, "task", "ws-1", "workflow", false));
 
         assertThat(ctx.nearTurns()).extracting(ChatTurn::content).containsExactly("q1", "a1");
         assertThat(ctx.midTurns()).extracting(ChatTurn::content).containsExactly("q0", "a0");
-    }
-
-    @Test
-    void assemble_legacyConstructorDefaultsToChatScope() {
-        when(l2StateStore.assembleSystemBlock("u1", "default")).thenReturn("[user L2] legacy");
-
-        AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", List.of(), "q", null));
-
-        assertThat(ctx.l2SystemBlock()).isEqualTo("[user L2] legacy");
-        verify(l2StateStore).assembleSystemBlock("u1", "default");
-        verify(l2StateStore, never()).assembleWorkspaceBlock(anyString(), anyString());
     }
 
     @Test
@@ -446,14 +434,14 @@ class ContextAssemblerTest {
     }
 
     @Test
-    void assemble_nonDefer_keepsLegacyL3Behavior() {
-        // deferL3 缺省（false）：L3 随 assemble 召回，anchor 为空
+    void assemble_nonDefer_recallsL3WithAssemble() {
+        // deferL3=false：L3 随 assemble 召回，anchor 为空
         List<SessionTurn> history = List.of(SessionTurn.of("u0", "user", "q0"));
         when(l3RecallService.recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
                 .thenReturn("[历史材料] 早期报销记录");
 
         AssembledContext ctx = assembler.assemble(new ContextAssembler.AssembleRequest(
-                "u1", "default", "c1", history, "q", null));
+                "u1", "default", "c1", history, "q", null, "chat", null, null, false));
 
         assertThat(ctx.l3MaterialBlock()).isEqualTo("[历史材料] 早期报销记录");
         assertThat(ctx.l3Anchor()).isEqualTo(AssembledContext.L3Anchor.EMPTY);
@@ -468,7 +456,7 @@ class ContextAssemblerTest {
                 .thenReturn("[历史材料] 报销规则摘要");
 
         AssembledContext ctx = assembler.attachL3(base,
-                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null));
+                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx.l3MaterialBlock()).isEqualTo("[历史材料] 报销规则摘要");
     }
@@ -479,7 +467,7 @@ class ContextAssemblerTest {
         AssembledContext base = AssembledContext.empty();
 
         AssembledContext ctx = assembler.attachL3(base,
-                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null));
+                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx).isSameAs(base);
         assertThat(ctx.l3MaterialBlock()).isEmpty();
@@ -494,7 +482,7 @@ class ContextAssemblerTest {
                 .withL3Anchor(new AssembledContext.L3Anchor(Set.of("u0"), Set.of(), false));
 
         AssembledContext ctx = assembler.attachL3(base,
-                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null));
+                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx.l3MaterialBlock()).isEqualTo("[历史材料] 已有");
         verify(l3RecallService, never()).recall(anyString(), anyString(), anyString(), any(), any(), anyBoolean());
@@ -510,7 +498,7 @@ class ContextAssemblerTest {
                 .thenReturn("[历史材料] 一段足够长的 L3 摘要内容，超预算时应被丢弃");
 
         AssembledContext ctx = assembler.attachL3(base,
-                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null));
+                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx.l3MaterialBlock()).isEmpty();
     }
@@ -523,7 +511,7 @@ class ContextAssemblerTest {
                 .thenThrow(new RuntimeException("rag down"));
 
         AssembledContext ctx = assembler.attachL3(base,
-                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null));
+                new ContextAssembler.AssembleRequest("u1", "default", "c1", List.of(), "q", null, "chat", null, null, false));
 
         assertThat(ctx).isSameAs(base);
     }

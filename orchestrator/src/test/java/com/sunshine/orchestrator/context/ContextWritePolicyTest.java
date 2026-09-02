@@ -3,19 +3,15 @@ package com.sunshine.orchestrator.context;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * O3 写路由策略单点：矩阵（kind×mode → scope/scene/开关）+ 门禁 + TTL 表。
- * 路由结果必须与收敛前 ContextWritePath 现状一致（task-scene §2.2 / task-list-memory M1）。
+ * 写路由策略单点：矩阵（kind×mode → scope/scene/开关）+ 门禁 + TTL 表。
+ * 路由结果与 task-scene §2.2 / task-list-memory M1 语义一致。
  */
 class ContextWritePolicyTest {
 
-    private final ContextProperties properties = new ContextProperties();
-    private final ContextWritePolicy policy = new ContextWritePolicy(properties);
+    private final ContextWritePolicy policy = new ContextWritePolicy();
 
     private static ChatConversationEntity conv(String kind, String mode, String workspaceId) {
         ChatConversationEntity c = new ChatConversationEntity();
@@ -137,18 +133,4 @@ class ContextWritePolicyTest {
         assertThat(ContextWritePolicy.l3TtlDays("task", null, m)).isEqualTo(m.getL3TaskBodyTtlDays());
     }
 
-    @Test
-    void l2ExpiresAtFor_appliesTtlFromProperties() {
-        Instant now = Instant.parse("2026-08-25T00:00:00Z");
-        assertThat(policy.l2ExpiresAtFor("constraint", now))
-                .isEqualTo(now.plus(properties.getL2().getConstraintTtlDays(), ChronoUnit.DAYS));
-        assertThat(policy.l2ExpiresAtFor("todo", now))
-                .isEqualTo(now.plus(properties.getL2().getTodoTtlDays(), ChronoUnit.DAYS));
-    }
-
-    @Test
-    void l2ExpiresAtFor_zeroTtl_neverExpires() {
-        properties.getL2().setFactTtlDays(0);
-        assertThat(policy.l2ExpiresAtFor("fact", Instant.now())).isNull();
-    }
 }

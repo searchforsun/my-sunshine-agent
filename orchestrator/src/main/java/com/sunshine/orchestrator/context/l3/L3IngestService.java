@@ -76,17 +76,8 @@ public class L3IngestService {
     }
 
     /** 运维重建路径（ContextAdminService reingest）：显式全量 body 落库（escape hatch，不经过语义门禁）。
-     *  v28：chat 场景 body 原文层退役——重建也不写 body（仅 task 场景写，供 session_search 深挖原文）。 */
-    public void ingest(
-            String userId,
-            String tenantId,
-            String convId,
-            String msgId,
-            String content,
-            long createdAtMs) {
-        ingest(userId, tenantId, convId, msgId, content, createdAtMs, "chat");
-    }
-
+     *  v28：chat 场景 body 原文层退役——重建也不写 body（仅 task 场景写，供 session_search 深挖原文）。
+     *  scene 传会话 kind（chat/task）；调用方已按 task 过滤，此处对 chat 仍防御性短路。 */
     public void ingest(
             String userId,
             String tenantId,
