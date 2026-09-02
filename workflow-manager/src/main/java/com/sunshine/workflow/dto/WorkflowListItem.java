@@ -6,6 +6,7 @@ public record WorkflowListItem(
         String id,
         String displayName,
         String description,
+        String kind,
         boolean enabled,
         int activeVersion,
         String source,

@@ -1,10 +1,13 @@
 package com.sunshine.orchestrator.hitl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
+import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,11 +20,11 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -43,8 +46,11 @@ class HitlConfirmationServiceTest {
     private ValueOperations<String, String> valueOps;
     @Mock
     private com.sunshine.orchestrator.generation.GenerationJob generationJob;
+    @Mock
+    private com.sunshine.orchestrator.client.SandboxClient sandboxClient;
 
     private AgentHitlProperties properties;
+    private AgentSandboxProperties sandboxProperties;
     private HitlConfirmationService service;
 
     @BeforeEach
@@ -52,16 +58,18 @@ class HitlConfirmationServiceTest {
         properties = new AgentHitlProperties();
         properties.setEnabled(true);
         properties.setTimeoutSec(5);
+        sandboxProperties = new AgentSandboxProperties();
         lenient().when(generationJob.getGenerationId()).thenReturn("gen-test");
         HitlTokenRegistry tokenRegistry = new HitlTokenRegistry(properties, redis, new ObjectMapper());
         HitlTimelineBridge timelineBridge = new HitlTimelineBridge(
                 generationRegistry, flushScheduler, toolCatalogService);
         service = new HitlConfirmationService(
-                properties, toolCatalogService, tokenRegistry, timelineBridge, new HitlWriteToolSerialGate());
+                properties, toolCatalogService, tokenRegistry, timelineBridge, new HitlWriteToolSerialGate(),
+                sandboxClient, sandboxProperties);
         com.sunshine.orchestrator.processing.TimelineLabelTestSupport.bindDefaults();
         com.sunshine.orchestrator.processing.ToolNodeLabels.bind(
                 new com.sunshine.orchestrator.processing.ToolNodeLabelService(
-                        new com.sunshine.orchestrator.config.AgentPromptProperties(), toolCatalogService));
+                        com.sunshine.orchestrator.prompt.TimelinePromptCatalog.withDefaults(), toolCatalogService));
         com.sunshine.orchestrator.processing.StepLabels.bind(toolCatalogService);
         com.sunshine.orchestrator.agent.StepEventBridge.bindHitl("msg-1", true);
     }
@@ -159,6 +167,7 @@ class HitlConfirmationServiceTest {
                 null,
                 meta,
                 null,
+                null,
                 null);
     }
 
@@ -201,6 +210,51 @@ class HitlConfirmationServiceTest {
 
         service.confirm(extractToken(), true);
         assertThat(future.get(2, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void awaitConfirmation_withStepId_progressesExactStep() throws Exception {
+        when(toolCatalogService.displayName(anyString())).thenReturn("审批 OA 待办");
+        when(generationRegistry.findByMessageId("msg-1")).thenReturn(Optional.of(generationJob));
+        when(flushScheduler.metaConfirmation(anyString(), anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn("{\"type\":\"confirmation\"}");
+        when(redis.opsForValue()).thenReturn(valueOps);
+
+        // 一轮多 tool_calls：currentToolStepId 指向其它工具，HITL 必须精确挂到 exec 步
+        ProcessingTimelineSession session =
+                com.sunshine.orchestrator.processing.ProcessingTimelineSupport.newSession();
+        session.bindTraceMessageId("msg-1");
+        String execStepId = session.beginToolStep("tool-sandbox__exec", "tool");
+        String globStepId = session.beginToolStep("tool-sandbox__glob", "tool");
+        assertThat(session.currentToolStepId()).isEqualTo(globStepId);
+
+        // 用 toolUse→stepId 精确绑定（模拟 ProcessingStepMiddleware.beginToolStep 的 bindToolUseStep）
+        com.sunshine.orchestrator.agent.StepEventBridge.bind("msg-1", session,
+                new ConcurrentLinkedQueue<>());
+        com.sunshine.orchestrator.agent.StepEventBridge.bindToolUseStep("toolUse-exec", execStepId);
+
+        CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(
+                () -> service.awaitConfirmation(
+                        "msg-1", "msg-1", "sdk__sunshine-oa__approve_oa_task",
+                        Map.of("taskId", "T1001"), execStepId));
+
+        Thread.sleep(200);
+        assertThat(service.confirm(extractToken(), true)).isTrue();
+        assertThat(future.get(2, TimeUnit.SECONDS)).isTrue();
+
+        // exec 步收到 HITL metadata（approved），glob 步不被误挂
+        ProcessingStep execStep = session.snapshot().stream()
+                .filter(s -> execStepId.equals(s.id()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(execStep.metadata()).isNotNull();
+        assertThat(execStep.metadata().hitl()).isNotNull();
+        assertThat(execStep.metadata().hitl().status()).isEqualTo("approved");
+        ProcessingStep globStep = session.snapshot().stream()
+                .filter(s -> globStepId.equals(s.id()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(globStep.metadata()).isNull();
     }
 
     private String extractToken() {

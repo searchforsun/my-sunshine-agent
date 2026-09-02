@@ -43,7 +43,8 @@ public class ToolAuditService {
                 payload.put("planId", planId);
             }
             payload.put("params", scrubParams(params));
-            payload.put("outputSummary", outputSummary != null ? outputSummary : "");
+            String scrubbedOutput = outputSummary != null ? desensitizeClient.scrub(outputSummary) : "";
+            payload.put("outputSummary", scrubbedOutput);
             String payloadJson = objectMapper.writeValueAsString(payload);
             auditPublisher.publish(new AuditEvent(
                     UUID.randomUUID().toString().replace("-", ""),
@@ -57,8 +58,8 @@ public class ToolAuditService {
                     outputSummary != null ? outputSummary.length() : 0,
                     payloadJson,
                     Instant.now()));
-        } catch (Exception e) {
-            log.warn("[ToolAudit] 事件构建失败 toolId={}: {}", toolId, e.getMessage());
+        } catch (Throwable e) {
+            log.warn("[ToolAudit] 事件构建失败 toolId={}: {}", toolId, e.toString());
         }
     }
 

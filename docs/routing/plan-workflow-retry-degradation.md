@@ -64,7 +64,7 @@
 | tool | 2 | 仅 TIMEOUT / 5xx 等可重试 |
 | agent | 1 | 子 Agent 内部 `max-iters` |
 | answer | 2 | 默认 `on-failure: fail_fast` |
-| critical tool | — | `list_finance_messages` 等 → `fail_fast` |
+| critical tool | — | `list_my_expenses` 等 → `fail_fast` |
 
 ## 7. 验收提示词
 
@@ -125,7 +125,7 @@
 
 ## 8. 用户确认（Plan Approval）
 
-> SSOT：[2026-06-27-plan-user-approval-design.md](../superpowers/specs/2026-06-27-plan-user-approval-design.md)
+> SSOT：[2026-06-27-plan-user-approval-design.md](../superpowers/specs/archive/2026-06-27-plan-user-approval-design.md)
 
 | 项 | 说明 |
 |----|------|

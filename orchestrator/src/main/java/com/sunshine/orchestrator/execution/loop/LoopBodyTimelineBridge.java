@@ -100,7 +100,8 @@ public final class LoopBodyTimelineBridge {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                step.subSteps());
+                step.subSteps(),
+                step.stepSummary());
     }
 
     private StreamToken loopStepUpdate() {
@@ -121,7 +122,8 @@ public final class LoopBodyTimelineBridge {
                 loopLabel,
                 null,
                 null,
-                List.copyOf(subSteps));
+                List.copyOf(subSteps),
+                null);
         return StreamToken.step(node);
     }
 }

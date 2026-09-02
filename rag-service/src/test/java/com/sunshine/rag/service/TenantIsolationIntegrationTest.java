@@ -37,9 +37,11 @@ class TenantIsolationIntegrationTest {
 
     private static final String QUERY = "差旅报销管理办法";
     private static final RetrievalCandidate TENANT_A_HIT = new RetrievalCandidate(
-            "travel#0", "差旅报销管理办法", "tenant-a 语料", 0.82f, RetrievalCandidate.SOURCE_VECTOR);
+            "travel#0", "差旅报销管理办法", "tenant-a 语料", 0.82f, RetrievalCandidate.SOURCE_VECTOR,
+            RetrievalCandidate.LEVEL_CHUNK, null);
     private static final RetrievalCandidate TENANT_A_BM25 = new RetrievalCandidate(
-            "travel#0", "差旅报销管理办法", "tenant-a 语料", 9.1f, RetrievalCandidate.SOURCE_BM25);
+            "travel#0", "差旅报销管理办法", "tenant-a 语料", 9.1f, RetrievalCandidate.SOURCE_BM25,
+            RetrievalCandidate.LEVEL_CHUNK, null);
 
     @Mock
     private VectorSearchService vectorSearchService;
@@ -47,6 +49,8 @@ class TenantIsolationIntegrationTest {
     private Bm25SearchService bm25SearchService;
     @Mock
     private EffectiveConfigResolver effectiveConfigResolver;
+    @Mock
+    private ChunkContentLookup chunkContentLookup;
 
     private RetrievalService retrievalService;
 
@@ -66,7 +70,8 @@ class TenantIsolationIntegrationTest {
                 .thenReturn(ConfigBundlePayload.toResolvedKbConfig(ConfigBundleTestFixtures.fullPayload()));
         retrievalService = new RetrievalService(
                 vectorSearchService, bm25SearchService, hybrid, rerank, effectiveConfigResolver,
-                searchProps, rerankProps, new RagSearchMetrics(new SimpleMeterRegistry()));
+                searchProps, rerankProps, new RagSearchMetrics(new SimpleMeterRegistry()),
+                chunkContentLookup);
         stubTenantAwareSearch();
     }
 

@@ -43,7 +43,8 @@ public class WorkflowNodeLabelService {
                 continue;
             }
             if (WorkflowNodeType.TOOL.matches(spec.type()) && spec.params() != null) {
-                String tool = spec.params().get("tool");
+                Object toolObj = spec.params().get("tool");
+                String tool = toolObj != null ? toolObj.toString() : null;
                 if (StringUtils.hasText(tool)) {
                     tools.put(entry.getKey(), tool.strip());
                 }
@@ -107,6 +108,8 @@ public class WorkflowNodeLabelService {
             case JOIN -> WorkflowTimelineLabels.TYPE_JOIN;
             case PARALLEL_GATEWAY -> WorkflowTimelineLabels.TYPE_PARALLEL_GATEWAY;
             case EXCLUSIVE_GATEWAY -> WorkflowTimelineLabels.TYPE_EXCLUSIVE_GATEWAY;
+            case VARIABLE_ASSIGNMENT -> WorkflowTimelineLabels.TYPE_VARIABLE_ASSIGNMENT;
+            case PARAMETER_EXTRACTOR -> WorkflowTimelineLabels.TYPE_PARAMETER_EXTRACTOR;
             default -> type.id();
         };
         return StringUtils.hasText(raw) ? raw.strip() : type.id();

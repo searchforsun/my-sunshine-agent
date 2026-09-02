@@ -18,7 +18,9 @@ public enum WorkflowNodeType {
     JOIN("join"),
     PARALLEL_GATEWAY("parallel-gateway"),
     EXCLUSIVE_GATEWAY("exclusive-gateway"),
-    LOOP("loop");
+    LOOP("loop"),
+    VARIABLE_ASSIGNMENT("variable-assignment"),
+    PARAMETER_EXTRACTOR("parameter-extractor");
 
     private final String id;
 
@@ -50,7 +52,8 @@ public enum WorkflowNodeType {
     public static Set<String> studioTypeIds() {
         return Set.of(
                 START.id, RAG.id, LLM.id, AGENT.id, ANSWER.id, TOOL.id, JOIN.id,
-                PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id, LOOP.id);
+                PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id, LOOP.id,
+                VARIABLE_ASSIGNMENT.id, PARAMETER_EXTRACTOR.id);
     }
 
     /**
@@ -63,18 +66,31 @@ public enum WorkflowNodeType {
     }
 
     /** Planner 允许产出的业务 type */
-    public static Set<String> plannerTypeIds() {
+    public static Set<String> plannerBusinessTypeIds() {
         return Set.of(RAG.id, TOOL.id, AGENT.id);
+    }
+
+    /** Planner 允许产出的路由 type（与 Studio BPMN 网关/loop 同构） */
+    public static Set<String> plannerRoutingTypeIds() {
+        return Set.of(JOIN.id, PARALLEL_GATEWAY.id, EXCLUSIVE_GATEWAY.id, LOOP.id);
+    }
+
+    /** Planner 允许产出的全部 type（业务 + 路由；start/answer 由引擎固定） */
+    public static Set<String> plannerTypeIds() {
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>(plannerBusinessTypeIds());
+        ids.addAll(plannerRoutingTypeIds());
+        return Set.copyOf(ids);
     }
 
     /** 业务节点（含遗留 llm） */
     public static Set<String> businessTypeIds() {
-        return Set.of(RAG.id, TOOL.id, AGENT.id, LLM.id);
+        return Set.of(RAG.id, TOOL.id, AGENT.id, LLM.id,
+                VARIABLE_ASSIGNMENT.id, PARAMETER_EXTRACTOR.id);
     }
 
     /** loop 容器内允许的 body type */
     public static Set<String> loopBodyTypeIds() {
-        return Set.of(RAG.id, TOOL.id, AGENT.id);
+        return Set.of(RAG.id, TOOL.id, AGENT.id, VARIABLE_ASSIGNMENT.id);
     }
 
     /** 无业务输出的路由节点（不可作 {{node.output}} 源） */
@@ -84,7 +100,8 @@ public enum WorkflowNodeType {
 
     /** 可作为 {{node.output}} / {{node.answer}} 引用源 */
     public static Set<String> outputTypeIds() {
-        return Set.of(RAG.id, TOOL.id, JOIN.id, LLM.id, AGENT.id, LOOP.id);
+        return Set.of(RAG.id, TOOL.id, JOIN.id, LLM.id, AGENT.id, LOOP.id,
+                VARIABLE_ASSIGNMENT.id, PARAMETER_EXTRACTOR.id);
     }
 
     /** plan 摘要链：排除 start、answer、join 与 BPMN 网关 */

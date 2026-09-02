@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.generation;
 
+import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
@@ -13,12 +14,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
@@ -37,11 +40,15 @@ class GenerationRegistryTest {
     @Mock
     private WorkflowPauseService workflowPauseService;
 
+    @Mock
+    private AsyncToolRunRegistry asyncToolRunRegistry;
+
     private GenerationRegistry registry;
 
     @BeforeEach
     void setUp() {
         registry = new GenerationRegistry(workflowPauseService);
+        ReflectionTestUtils.setField(registry, "asyncToolRunRegistry", asyncToolRunRegistry);
     }
 
     @AfterEach
@@ -52,6 +59,7 @@ class GenerationRegistryTest {
         StepEventBridge.clear("msg-a");
         StepEventBridge.clear("msg-b");
         StepEventBridge.clear("msg-stale");
+        StepEventBridge.clear("msg-async");
     }
 
     private GenerationJob newJob(String generationId, String messageId) {
@@ -87,9 +95,36 @@ class GenerationRegistryTest {
 
         assertThat(registry.get("gen-2")).isEmpty();
         assertThat(registry.tryLockMessage("msg-2", "gen-3")).isTrue();
+        verify(asyncToolRunRegistry).cancelByMessage("msg-2");
         // persistFinal 在 boundedElastic 异步落库，须等待 commitFinal
         verify(flushScheduler, timeout(5000))
-                .commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null, null);
+                .commitFinal("msg-2", "", "", MessageStatus.INTERRUPTED, null, null, null);
+    }
+
+    @Test
+    @DisplayName("cancel 调用 asyncToolRunRegistry.cancelByMessage")
+    void cancel_invokesAsyncCancelByMessage() {
+        GenerationJob job = newJob("gen-async", "msg-async");
+        registry.register(job);
+
+        registry.cancel("gen-async");
+
+        verify(asyncToolRunRegistry).cancelByMessage("msg-async");
+        assertThat(registry.get("gen-async")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("releaseBlockingWaitsForMessage 调用 cancelByMessage（orphan stop）")
+    void releaseBlockingWaitsForMessage_cancelsAsyncRuns() {
+        registry.releaseBlockingWaitsForMessage("msg-orphan");
+        verify(asyncToolRunRegistry).cancelByMessage("msg-orphan");
+    }
+
+    @Test
+    @DisplayName("cancel 未知 id 不调用 cancelByMessage")
+    void cancel_unknownId_doesNotCancelAsync() {
+        registry.cancel("missing");
+        verify(asyncToolRunRegistry, never()).cancelByMessage(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -120,9 +155,9 @@ class GenerationRegistryTest {
         assertThat(registry.get("gen-a")).isEmpty();
         assertThat(registry.get("gen-b")).isEmpty();
         verify(flushScheduler, timeout(5000))
-                .commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull());
+                .commitFinal(eq("msg-a"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull());
         verify(flushScheduler, timeout(5000))
-                .commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull());
+                .commitFinal(eq("msg-b"), eq(""), eq(""), eq(MessageStatus.INTERRUPTED), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull());
     }
 
     @Test

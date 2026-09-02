@@ -21,7 +21,6 @@ const { sidebarVisible, toggleSidebar } = useSidebar()
     @click="toggleSidebar"
   >
     <svg
-      v-if="sidebarVisible"
       width="18"
       height="18"
       viewBox="0 0 24 24"
@@ -33,22 +32,6 @@ const { sidebarVisible, toggleSidebar } = useSidebar()
     >
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <line x1="9" y1="3" x2="9" y2="21" />
-      <polyline points="14 8 11 12 14 16" />
-    </svg>
-    <svg
-      v-else
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="9" y1="3" x2="9" y2="21" />
-      <polyline points="10 8 13 12 10 16" />
     </svg>
   </button>
 </template>

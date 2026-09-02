@@ -3,22 +3,37 @@ package com.sunshine.orchestrator.conversation;
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.audit.AuditService;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.conversation.dto.ConversationPageDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationDetailDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationSearchDto;
+import com.sunshine.orchestrator.conversation.dto.ConversationSummaryDto;
+import com.sunshine.orchestrator.conversation.dto.MessagePageDto;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.conversation.repo.ChatConversationRepository;
 import com.sunshine.orchestrator.conversation.repo.ChatMessageRepository;
+import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 import com.sunshine.orchestrator.sandbox.SandboxSessionLifecycle;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConversationService {
@@ -37,12 +52,24 @@ public class ConversationService {
 
     @Transactional
     public ChatConversationEntity create(String userId, String tenantId) {
+        return create(userId, tenantId, "chat", null, null);
+    }
+
+    public ChatConversationEntity create(String userId, String tenantId,
+                                          String kind, String workspaceId, String checkoutPath) {
+        String resolvedKind = kind != null && !kind.isBlank() ? kind : "chat";
+        String tid = tenantId != null ? tenantId : "default";
+        // chat 会话创建时不绑定工作区；仅当模型首次调用沙箱工具（执行脚本）时由
+        // SandboxSessionLifecycle 懒绑定该租户第一个 active 工作区。task 会话工作区由前端显式传参
         Instant now = Instant.now();
         ChatConversationEntity entity = new ChatConversationEntity();
         entity.setId(newId());
         entity.setUserId(userId);
-        entity.setTenantId(tenantId != null ? tenantId : "default");
+        entity.setTenantId(tid);
         entity.setTitle("新对话");
+        entity.setKind(resolvedKind);
+        entity.setWorkspaceId(workspaceId);
+        entity.setCheckoutPath(checkoutPath);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
         return conversationRepo.save(entity);
@@ -52,6 +79,128 @@ public class ConversationService {
     public List<ChatConversationEntity> list(String userId, String tenantId) {
         return conversationRepo.findByUserIdAndTenantIdOrderByUpdatedAtDesc(
                 userId, tenantId != null ? tenantId : "default");
+    }
+
+    /**
+     * 侧栏分页：kind=chat 排除 task；kind=task 须带 workspaceId。
+     * 多取 1 条判定 hasMore；offset 按 limit 对齐（page = offset/limit）。
+     */
+    @Transactional(readOnly = true)
+    public ConversationPageDto listPage(
+            String userId,
+            String tenantId,
+            String kind,
+            String workspaceId,
+            int offset,
+            int limit) {
+        String tid = tenantId != null ? tenantId : "default";
+        int pageSize = Math.max(1, Math.min(limit <= 0 ? 30 : limit, 100));
+        int off = Math.max(0, offset);
+        int page = off / pageSize;
+        var pageable = PageRequest.of(page, pageSize + 1);
+        List<ChatConversationEntity> rows;
+        String normalizedKind = kind == null ? "" : kind.strip().toLowerCase();
+        if ("task".equals(normalizedKind)) {
+            if (!StringUtils.hasText(workspaceId)) {
+                return ConversationPageDto.builder().items(List.of()).hasMore(false).build();
+            }
+            rows = conversationRepo.findTaskPageByWorkspace(userId, tid, workspaceId.strip(), pageable);
+        } else {
+            // chat / 缺省：对话侧栏
+            rows = conversationRepo.findChatPage(userId, tid, pageable);
+        }
+        boolean hasMore = rows.size() > pageSize;
+        List<ConversationSummaryDto> items = (hasMore ? rows.subList(0, pageSize) : rows).stream()
+                .map(ConversationSummaryDto::from)
+                .toList();
+        return ConversationPageDto.builder().items(items).hasMore(hasMore).build();
+    }
+
+    /**
+     * 聚合搜索：按标题命中 + 消息正文命中取并集，按更新时间倒序返回。
+     * 使用 LOCATE 做包含匹配，关键词按字面处理，天然规避 LIKE 通配符转义。
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationSearchDto> search(String userId, String tenantId, String keyword) {
+        String kw = keyword == null ? "" : keyword.strip();
+        if (kw.isEmpty()) {
+            return List.of();
+        }
+        Map<String, ChatConversationEntity> byId = new LinkedHashMap<>();
+        for (ChatConversationEntity conv : conversationRepo.searchByTitle(userId, tenantId, kw)) {
+            byId.put(conv.getId(), conv);
+        }
+        List<ChatConversationEntity> contentMatches =
+                conversationRepo.searchByMessageContent(userId, tenantId, kw);
+        for (ChatConversationEntity conv : contentMatches) {
+            byId.put(conv.getId(), conv);
+        }
+
+        List<ConversationSearchDto> results = byId.values().stream()
+                .map(conv -> ConversationSearchDto.builder()
+                        .id(conv.getId())
+                        .title(conv.getTitle())
+                        .kind(conv.getKind())
+                        .workspaceId(conv.getWorkspaceId())
+                        .createdAt(conv.getCreatedAt())
+                        .updatedAt(conv.getUpdatedAt())
+                        .build())
+                .sorted(Comparator.comparing(ConversationSearchDto::getUpdatedAt).reversed())
+                .toList();
+
+        if (contentMatches.isEmpty()) {
+            return results;
+        }
+        Map<String, String> latestHitByConv = latestMessageContentHits(
+                contentMatches.stream().map(ChatConversationEntity::getId).toList(), kw);
+        return results.stream()
+                .map(dto -> {
+                    String hit = latestHitByConv.get(dto.getId());
+                    if (hit == null) {
+                        return dto;
+                    }
+                    dto.setSnippet(buildSnippet(hit, kw));
+                    return dto;
+                })
+                .toList();
+    }
+
+    /** 各内容命中会话取最新一条命中消息正文（msg seq 倒序，首个即最新） */
+    private Map<String, String> latestMessageContentHits(List<String> convIds, String keyword) {
+        Map<String, String> latest = new HashMap<>();
+        for (Object[] row : messageRepo.findLatestMatchByConversationIds(convIds, keyword)) {
+            String convId = String.valueOf(row[0]);
+            if (!latest.containsKey(convId)) {
+                latest.put(convId, row[1] == null ? "" : String.valueOf(row[1]));
+            }
+        }
+        return latest;
+    }
+
+    /** 命中正文摘要：压缩空白后取关键词前后片段，控制在 120 字内便于列表展示 */
+    static String buildSnippet(String content, String keyword) {
+        if (content == null || content.isEmpty()) {
+            return "";
+        }
+        String text = content.replaceAll("\\s+", " ").strip();
+        int maxLen = 120;
+        if (text.length() <= maxLen) {
+            return text;
+        }
+        int idx = text.toLowerCase().indexOf(keyword.toLowerCase());
+        if (idx < 0) {
+            return text.substring(0, maxLen) + "…";
+        }
+        int start = Math.max(0, idx - 40);
+        int end = Math.min(text.length(), idx + keyword.length() + 60);
+        String snippet = text.substring(start, end);
+        if (start > 0) {
+            snippet = "…" + snippet;
+        }
+        if (end < text.length()) {
+            snippet += "…";
+        }
+        return snippet;
     }
 
     @Transactional(readOnly = true)
@@ -79,13 +228,48 @@ public class ConversationService {
         return messageRepo.findByConversationIdOrderBySeqAsc(conversationId);
     }
 
-    private static final String DEFAULT_TITLE = "新对话";
-    private static final int AUTO_TITLE_MAX_LEN = 28;
+    /**
+     * 会话消息游标分页：beforeSeq<=0 时取最近 limit 条（IM 首屏），否则取 seq<beforeSeq 的最近 limit 条。
+     * 返回升序，hasMore 表示更早历史仍存在。
+     */
+    @Transactional
+    public MessagePageDto getMessagesPage(String conversationId, String userId, String tenantId,
+            int beforeSeq, int limit) {
+        getOwned(conversationId, userId, tenantId);
+        int pageSize = Math.max(1, Math.min(limit <= 0 ? 30 : limit, 100));
+        List<ChatMessageEntity> rows = beforeSeq > 0
+                ? messageRepo.findPageBeforeSeqDesc(conversationId, beforeSeq, pageSize)
+                : messageRepo.findRecentByConversationIdDesc(conversationId, pageSize);
+        for (ChatMessageEntity msg : rows) {
+            messagePersistenceReconciler.reconcileStreamingAssistant(msg);
+        }
+        rows.sort(Comparator.comparingInt(ChatMessageEntity::getSeq));
+        int oldestSeq = rows.stream()
+                .mapToInt(ChatMessageEntity::getSeq)
+                .min().orElse(beforeSeq > 0 ? beforeSeq : 0);
+        boolean hasMore = messageRepo.countByConversationIdAndSeqLessThan(conversationId, oldestSeq) > 0;
+        return MessagePageDto.builder()
+                .messages(rows.stream().map(ConversationDetailDto.MessageDto::from).toList())
+                .hasMore(hasMore)
+                .build();
+    }
+
+    public static final String DEFAULT_TITLE = "新对话";
+    public static final int AUTO_TITLE_MAX_LEN = 15;
 
     @Transactional
     public ChatConversationEntity updateTitle(String id, String userId, String tenantId, String title) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
         conv.setTitle(title);
+        conv.setUpdatedAt(Instant.now());
+        return conversationRepo.save(conv);
+    }
+
+    /** 切换分支后重绑定会话工作区 checkout 目录（task 会话 checkoutPath 随发送时的分支切换更新） */
+    @Transactional
+    public ChatConversationEntity updateCheckoutPath(String id, String userId, String tenantId, String checkoutPath) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        conv.setCheckoutPath(checkoutPath);
         conv.setUpdatedAt(Instant.now());
         return conversationRepo.save(conv);
     }
@@ -110,11 +294,11 @@ public class ConversationService {
                 : trimmed;
     }
 
-    /** 记录本会话最近一次用户指定的 executionPreference（auto 也落库便于恢复） */
+    /** 记录本会话最近一次用户指定的执行模式（列名 execution_preference；取值 fast|pro|workflow） */
     @Transactional
     public void updateExecutionPreference(String id, String userId, String tenantId, String preference) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
-        conv.setExecutionPreference(preference);
+        conv.setExecutionPreference(ExecutionMode.toStoredWire(preference));
         conv.setUpdatedAt(Instant.now());
         conversationRepo.save(conv);
     }
@@ -124,6 +308,15 @@ public class ConversationService {
     public void updateKbId(String id, String userId, String tenantId, String kbId) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
         conv.setKbId(kbId);
+        conv.setUpdatedAt(Instant.now());
+        conversationRepo.save(conv);
+    }
+
+    /** 记录本会话绑定的模型名（空则清除，走 chat scene） */
+    @Transactional
+    public void updateModelName(String id, String userId, String tenantId, String modelName) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        conv.setModelName(StringUtils.hasText(modelName) ? modelName.strip() : null);
         conv.setUpdatedAt(Instant.now());
         conversationRepo.save(conv);
     }
@@ -160,8 +353,11 @@ public class ConversationService {
         msg.setRole(role);
         msg.setContent(content != null ? content : "");
         msg.setStatus(status);
-        if ("user".equals(role) && executionPreference != null && !executionPreference.isBlank()) {
-            msg.setExecutionPreference(executionPreference.strip());
+        if ("user".equals(role)) {
+            String wire = ExecutionMode.toStoredWire(executionPreference);
+            if (wire != null) {
+                msg.setExecutionPreference(wire);
+            }
         }
         msg.setCreatedAt(now);
         msg.setUpdatedAt(now);
@@ -177,16 +373,14 @@ public class ConversationService {
     }
 
     /**
-     * 流式 partial 落库 — 若消息已终态则跳过，避免异步 flush 覆盖 completed 状态。
+     * 流式 partial 增量落库 — 若消息已终态则跳过，避免异步 flush 覆盖 completed 状态。
      */
     @Transactional
-    public ChatMessageEntity updateMessageContentIfStreaming(String messageId, String content) {
-        ChatMessageEntity msg = messageRepo.findById(messageId)
-                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
-        if (!MessageStatus.STREAMING.equals(msg.getStatus())) {
-            return msg;
+    public void appendStreamingDelta(String messageId, String delta) {
+        if (delta == null || delta.isEmpty()) {
+            return;
         }
-        return updateMessageContent(messageId, content, MessageStatus.STREAMING);
+        messageRepo.appendStreamingContent(messageId, delta, Instant.now());
     }
 
     /** HITL/Recovery 待确认：续跑阻塞期间增量落库 steps，避免刷新仍见暂停快照 */
@@ -226,6 +420,18 @@ public class ConversationService {
             String status,
             String stepsJson,
             String contentBlocksJson) {
+        return updateMessage(messageId, content, reasoning, status, stepsJson, contentBlocksJson, null);
+    }
+
+    @Transactional
+    public ChatMessageEntity updateMessage(
+            String messageId,
+            String content,
+            String reasoning,
+            String status,
+            String stepsJson,
+            String contentBlocksJson,
+            String usageJson) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setContent(content != null ? content : "");
@@ -237,6 +443,10 @@ public class ConversationService {
         }
         if (contentBlocksJson != null) {
             msg.setContentBlocks(contentBlocksJson);
+        }
+        // 仅终态携带 usage 时写入；null（如续跑 streaming 落库）保留旧值，避免起算基准丢失
+        if (usageJson != null) {
+            msg.setUsageJson(usageJson);
         }
         msg.setStatus(status);
         msg.setUpdatedAt(Instant.now());
@@ -255,15 +465,38 @@ public class ConversationService {
         return messageRepo.save(msg);
     }
 
-    /** 保存结构化执行计划（intent 列写 intentLabel 兼容审计） */
+    /** 保存结构化执行计划：intent 列写 intentLabel 兼容审计；routing 列落完整 RoutingResult（S-0） */
     @Transactional
     public ChatMessageEntity updateMessageExecutionPlan(String messageId,
             com.sunshine.orchestrator.routing.ExecutionPlan plan) {
         ChatMessageEntity msg = messageRepo.findById(messageId)
                 .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
         msg.setIntent(plan.intentLabel());
-        msg.setExecutionMode(plan.mode().name().toLowerCase().replace('_', '-'));
         msg.setWorkflowId(plan.workflowId());
+        List<String> skills = plan.triggeredSkillIds();
+        List<String> agents = plan.schedulableAgentIds();
+        msg.setRoutingSkillIds(skills.isEmpty() ? null : String.join(",", skills));
+        msg.setRoutingAgentIds(agents.isEmpty() ? null : String.join(",", agents));
+        msg.setUpdatedAt(Instant.now());
+        return messageRepo.save(msg);
+    }
+
+    /** S-C：候选动态加载升级触发集 — 消息 routing_skill_ids 追加，后续轮次经 sticky 继承 */
+    @Transactional
+    public ChatMessageEntity appendTriggeredSkillId(String messageId, String skillId) {
+        if (!StringUtils.hasText(skillId)) {
+            throw new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND);
+        }
+        ChatMessageEntity msg = messageRepo.findById(messageId)
+                .orElseThrow(() -> new BizException(OrchestratorErrorCode.MESSAGE_NOT_FOUND));
+        String id = skillId.strip();
+        List<String> skills = csvToList(msg.getRoutingSkillIds());
+        if (skills.contains(id)) {
+            return msg;
+        }
+        List<String> appended = new ArrayList<>(skills);
+        appended.add(id);
+        msg.setRoutingSkillIds(String.join(",", appended));
         msg.setUpdatedAt(Instant.now());
         return messageRepo.save(msg);
     }
@@ -339,6 +572,32 @@ public class ConversationService {
                 .orElse(null);
     }
 
+    /**
+     * 最近一条非 STREAMING assistant 消息的 RoutingResult seed（skill-sticky S-1）。
+     * 会话内跨轮轻 sticky：无新触发时继承上轮已触发 skill / 可调度 agent。
+     */
+    @Transactional(readOnly = true)
+    public RoutingSeed loadRoutingSeed(String convId) {
+        List<ChatMessageEntity> recent = messageRepo.findRecentByConversationIdDesc(convId, 10);
+        for (ChatMessageEntity m : recent) {
+            if (!"assistant".equals(m.getRole()) || MessageStatus.STREAMING.equals(m.getStatus())) {
+                continue;
+            }
+            return new RoutingSeed(csvToList(m.getRoutingSkillIds()), csvToList(m.getRoutingAgentIds()));
+        }
+        return RoutingSeed.EMPTY;
+    }
+
+    private static List<String> csvToList(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public List<ChatMessageEntity> loadHistory(String convId, int maxMessages) {
         List<ChatMessageEntity> recent = messageRepo.findRecentByConversationIdDesc(convId, maxMessages);
@@ -387,6 +646,7 @@ public class ConversationService {
         getOwned(msg.getConversationId(), userId, tenantId);
 
         if (!"assistant".equals(msg.getRole())) {
+            log.warn("[Resume] 拒绝：非 assistant 消息 msg={} role={}", msg.getId(), msg.getRole());
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
@@ -395,14 +655,20 @@ public class ConversationService {
 
         String status = assistant.getStatus();
         if (MessageStatus.STREAMING.equals(status)) {
+            log.warn("[Resume] 拒绝：消息仍为 STREAMING msg={} updatedAt={} orphanTimeoutSec={}",
+                    assistant.getId(), assistant.getUpdatedAt(), orphanTimeoutSec);
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
         if (!MessageStatus.isResumable(status)) {
+            log.warn("[Resume] 拒绝：状态不可续传 msg={} status={}", assistant.getId(), status);
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
         ChatMessageEntity lastAssistant = findLastAssistantMessage(assistant.getConversationId());
         if (lastAssistant == null || !lastAssistant.getId().equals(assistant.getId())) {
+            log.warn("[Resume] 拒绝：非最后一条 assistant msg={} conv={} lastId={}",
+                    assistant.getId(), assistant.getConversationId(),
+                    lastAssistant == null ? null : lastAssistant.getId());
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
 
@@ -414,11 +680,15 @@ public class ConversationService {
                     .toList();
             boolean hasNewUser = after.stream().anyMatch(m -> "user".equals(m.getRole()));
             if (hasNewUser) {
+                log.warn("[Resume] 拒绝：assistant 之后有新 user 消息 msg={} conv={} afterCount={}",
+                        assistant.getId(), assistant.getConversationId(), after.size());
                 throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
             }
         }
 
         if (assistant.getResumeCount() >= maxResumeAttempts) {
+            log.warn("[Resume] 拒绝：超过最大续传次数 msg={} resumeCount={} max={}",
+                    assistant.getId(), assistant.getResumeCount(), maxResumeAttempts);
             throw new BizException(OrchestratorErrorCode.RESUME_NOT_ALLOWED);
         }
     }

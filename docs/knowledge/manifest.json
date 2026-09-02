@@ -1,0 +1,402 @@
+[
+  {
+    "docId": "c50-hr-leave",
+    "displayName": "员工假期与休假管理制度",
+    "domain": "hr",
+    "path": "员工假期与休假管理制度.md",
+    "chars": 2254,
+    "anchor": "满 3 年工龄员工每年额外享有名为「青松假」的 12 天带薪特别假，须提前 10 个工作日在假勤系统申请。"
+  },
+  {
+    "docId": "c50-hr-expense",
+    "displayName": "费用报销与票据核销制度",
+    "domain": "finance",
+    "path": "费用报销与票据核销制度.md",
+    "chars": 1910,
+    "anchor": "市内网约车单日报销上限为 168 元；超限部分须附「紧急外勤说明」并由中心负责人电子签。"
+  },
+  {
+    "docId": "c50-hr-attendance",
+    "displayName": "工时考勤与加班补偿规定",
+    "domain": "hr",
+    "path": "工时考勤与加班补偿规定.md",
+    "chars": 1903,
+    "anchor": "连续迟到折算：当月迟到满 4 次记为 0.5 个旷工日，记入「霜降考勤」异常台账。"
+  },
+  {
+    "docId": "c50-hr-onboard",
+    "displayName": "新人入职与试用期指引",
+    "domain": "hr",
+    "path": "新人入职与试用期指引.md",
+    "chars": 2039,
+    "anchor": "入职第 1 个工作日须完成「晨星清单」：工卡、邮箱、VPN、安全培训测验四项全部打勾方可开通业务系统。"
+  },
+  {
+    "docId": "c50-fin-approval",
+    "displayName": "财务签批与授权矩阵",
+    "domain": "finance",
+    "path": "财务签批与授权矩阵.md",
+    "chars": 1908,
+    "anchor": "非标采购金额 ≥ 8800 元须走「银杏签批」链路：业务负责人 → 财务 BP → CFO。"
+  },
+  {
+    "docId": "c50-fin-invoice",
+    "displayName": "发票合规与进项管理手册",
+    "domain": "finance",
+    "path": "发票合规与进项管理手册.md",
+    "chars": 1773,
+    "anchor": "电子发票查重窗口为开票日起 180 天；重复提交触发「重影票」拦截并通知财务共享中心。"
+  },
+  {
+    "docId": "c50-fin-budget",
+    "displayName": "部门费用预算控制办法",
+    "domain": "finance",
+    "path": "部门费用预算控制办法.md",
+    "chars": 1861,
+    "anchor": "季度滚动预测偏差超过 7% 须提交「秋分预警」说明，否则冻结非刚性招待科目。"
+  },
+  {
+    "docId": "c50-hr-remote",
+    "displayName": "混合办公与远程协作规范",
+    "domain": "hr",
+    "path": "混合办公与远程协作规范.md",
+    "chars": 1637,
+    "anchor": "远程办公每周上限 2.5 天，申请单备注须填写「云栖日」编码，核心站会禁止关闭摄像头。"
+  },
+  {
+    "docId": "c50-sec-data",
+    "displayName": "数据分级与保密操作规程",
+    "domain": "security",
+    "path": "数据分级与保密操作规程.md",
+    "chars": 1774,
+    "anchor": "机密级文件外发须使用「锁钥通道」并双人复核；禁止微信/个人网盘传输。"
+  },
+  {
+    "docId": "c50-fin-travel",
+    "displayName": "差旅预订与补助标准",
+    "domain": "finance",
+    "path": "差旅预订与补助标准.md",
+    "chars": 1757,
+    "anchor": "一线城市差旅住宿上限 620 元/晚；餐补固定 95 元/天，出差满 3 天另发通讯补助 25 元/天。"
+  },
+  {
+    "docId": "c50-hr-scenario",
+    "displayName": "跨制度场景处理速查",
+    "domain": "hr",
+    "path": "跨制度场景处理速查.md",
+    "chars": 1913,
+    "anchor": "出差途中突发疾病：先按差旅中止，再按病假补单，系统标记场景码「旅病交叉-09」。"
+  },
+  {
+    "docId": "c50-hr-perf",
+    "displayName": "绩效目标与复盘管理办法",
+    "domain": "hr",
+    "path": "绩效目标与复盘管理办法.md",
+    "chars": 1959,
+    "anchor": "绩效周期为自然半年；强制分布仅作校准参考，禁止以「末位淘汰」名义单方解除。"
+  },
+  {
+    "docId": "c50-hr-pay",
+    "displayName": "薪酬福利与调薪窗口制度",
+    "domain": "hr",
+    "path": "薪酬福利与调薪窗口制度.md",
+    "chars": 2001,
+    "anchor": "常规调薪窗口为每年 4 月与 10 月；窗口外调薪须 CEO 签批「破窗单」。"
+  },
+  {
+    "docId": "c50-hr-recruit",
+    "displayName": "招聘面试与录用规范",
+    "domain": "hr",
+    "path": "招聘面试与录用规范.md",
+    "chars": 1963,
+    "anchor": "社招技术岗至少 3 轮：专业面、协作面、价值观面；价值观面不通过不得发 offer。"
+  },
+  {
+    "docId": "c50-hr-train",
+    "displayName": "培训学分与外训申请制度",
+    "domain": "hr",
+    "path": "培训学分与外训申请制度.md",
+    "chars": 1837,
+    "anchor": "正式员工年度必修学分 24 分；外训单次超过 3000 元须培训委员会预审。"
+  },
+  {
+    "docId": "c50-hr-conduct",
+    "displayName": "职业道德与利益冲突准则",
+    "domain": "hr",
+    "path": "职业道德与利益冲突准则.md",
+    "chars": 1823,
+    "anchor": "员工及其直系亲属与供应商存在利益关系须 5 个工作日内申报「晴空表」。"
+  },
+  {
+    "docId": "c50-hr-discipline",
+    "displayName": "奖惩与听证处理办法",
+    "domain": "hr",
+    "path": "奖惩与听证处理办法.md",
+    "chars": 1804,
+    "anchor": "拟记大过及以上处分须启动听证，员工可于 3 个工作日内提交书面申辩。"
+  },
+  {
+    "docId": "c50-adm-asset",
+    "displayName": "固定资产领用与报废规定",
+    "domain": "admin",
+    "path": "固定资产领用与报废规定.md",
+    "chars": 1739,
+    "anchor": "单台价值 ≥ 2000 元设备须贴「资产橙标」并录入资产系统，离职未归还不得办结。"
+  },
+  {
+    "docId": "c50-adm-procure",
+    "displayName": "采购比价与供应商准入",
+    "domain": "admin",
+    "path": "采购比价与供应商准入.md",
+    "chars": 1775,
+    "anchor": "常规采购须至少 3 家比价；战略供应商须通过「澄江准入」安全与合规评估。"
+  },
+  {
+    "docId": "c50-adm-meeting",
+    "displayName": "会议议程与纪要规范",
+    "domain": "admin",
+    "path": "会议议程与纪要规范.md",
+    "chars": 1769,
+    "anchor": "超过 8 人会议须提前 24 小时发布议程；纪要 2 个工作日内归档并指定决议负责人。"
+  },
+  {
+    "docId": "c50-adm-visitor",
+    "displayName": "访客预约与门禁管理",
+    "domain": "admin",
+    "path": "访客预约与门禁管理.md",
+    "chars": 1920,
+    "anchor": "访客须提前预约并获取当日「岚通行证」；无陪同不得进入研发区。"
+  },
+  {
+    "docId": "c50-it-account",
+    "displayName": "账号开通与权限回收规范",
+    "domain": "it",
+    "path": "账号开通与权限回收规范.md",
+    "chars": 1922,
+    "anchor": "调岗 3 个工作日内须完成权限复核；离职日 18:00 前关闭全部生产账号。"
+  },
+  {
+    "docId": "c50-it-change",
+    "displayName": "生产变更与发布窗口",
+    "domain": "it",
+    "path": "生产变更与发布窗口.md",
+    "chars": 1888,
+    "anchor": "常规变更窗口为周二/周四 21:00–23:00；无回滚预案的变更禁止进入「星轨发布」。"
+  },
+  {
+    "docId": "c50-it-incident",
+    "displayName": "故障分级与应急响应",
+    "domain": "it",
+    "path": "故障分级与应急响应.md",
+    "chars": 1860,
+    "anchor": "P0 故障须 15 分钟内拉起战时群，4 小时内给出用户影响说明。"
+  },
+  {
+    "docId": "c50-sec-retain",
+    "displayName": "日志留存与数据销毁",
+    "domain": "security",
+    "path": "日志留存与数据销毁.md",
+    "chars": 1840,
+    "anchor": "安全审计日志至少留存 210 天；销毁须双人在场并签署「灰烬单」。"
+  },
+  {
+    "docId": "c50-sec-privacy",
+    "displayName": "个人信息保护操作指南",
+    "domain": "security",
+    "path": "个人信息保护操作指南.md",
+    "chars": 1800,
+    "anchor": "敏感个人信息存储须字段级加密；对外共享须最小必要并记录「澄明台账」。"
+  },
+  {
+    "docId": "c50-sec-vendor",
+    "displayName": "外包与第三方安全管理",
+    "domain": "security",
+    "path": "外包与第三方安全管理.md",
+    "chars": 1822,
+    "anchor": "外包人员接入生产网络须签署「外岸承诺」并使用专用堡垒机账号。"
+  },
+  {
+    "docId": "c50-sec-llm",
+    "displayName": "生成式AI使用与泄密防控",
+    "domain": "security",
+    "path": "生成式AI使用与泄密防控.md",
+    "chars": 1881,
+    "anchor": "禁止将机密/客户原始数据粘贴至外部大模型；对外生成内容须人工审核后发布。"
+  },
+  {
+    "docId": "c50-it-api",
+    "displayName": "API 版本与限流治理",
+    "domain": "it",
+    "path": "API 版本与限流治理.md",
+    "chars": 1805,
+    "anchor": "破坏性变更须保留旧主版本至少 90 天；默认租户 QPS 配额 120。"
+  },
+  {
+    "docId": "c50-it-alert",
+    "displayName": "告警分级与值班轮转",
+    "domain": "it",
+    "path": "告警分级与值班轮转.md",
+    "chars": 1836,
+    "anchor": "P1 告警值班须 10 分钟内确认；未确认自动升级至值班经理。"
+  },
+  {
+    "docId": "c50-it-capacity",
+    "displayName": "容量规划与成本回收",
+    "domain": "it",
+    "path": "容量规划与成本回收.md",
+    "chars": 2045,
+    "anchor": "闲置计算资源连续 14 天 CPU < 5% 触发「枯枝回收」工单。"
+  },
+  {
+    "docId": "c50-it-qa",
+    "displayName": "发布准入与质量门禁",
+    "domain": "it",
+    "path": "发布准入与质量门禁.md",
+    "chars": 1884,
+    "anchor": "生产发布前冒烟用例通过率须 100%，且近 30 天回滚演练记录有效。"
+  },
+  {
+    "docId": "c50-legal-contract",
+    "displayName": "合同审查与用印流程",
+    "domain": "legal",
+    "path": "合同审查与用印流程.md",
+    "chars": 1902,
+    "anchor": "非模板合同须法务审核；电子章「云玺」仅授权合同管理员使用。"
+  },
+  {
+    "docId": "c50-legal-ip",
+    "displayName": "知识产权与开源合规",
+    "domain": "legal",
+    "path": "知识产权与开源合规.md",
+    "chars": 1823,
+    "anchor": "引入 GPL 类许可证须开源委员会批准；职务发明知识产权归属公司。"
+  },
+  {
+    "docId": "c50-legal-report",
+    "displayName": "合规举报与调查保护",
+    "domain": "legal",
+    "path": "合规举报与调查保护.md",
+    "chars": 1826,
+    "anchor": "提供匿名举报渠道「听潮热线」；禁止对善意举报人打击报复。"
+  },
+  {
+    "docId": "c50-adm-crisis",
+    "displayName": "舆情与对外口径管理",
+    "domain": "admin",
+    "path": "舆情与对外口径管理.md",
+    "chars": 1832,
+    "anchor": "媒体问询统一由品牌对外官回复；员工个人账号禁止擅自代表公司表态。"
+  },
+  {
+    "docId": "c50-adm-esg",
+    "displayName": "ESG 与供应链责任纲要",
+    "domain": "admin",
+    "path": "ESG 与供应链责任纲要.md",
+    "chars": 1836,
+    "anchor": "范围三排放按年披露；一级供应商须签署「青链承诺」。"
+  },
+  {
+    "docId": "c50-adm-safety",
+    "displayName": "消防应急与疏散演练",
+    "domain": "admin",
+    "path": "消防应急与疏散演练.md",
+    "chars": 1834,
+    "anchor": "全员疏散演练每年至少 1 次；集合点为东门「梧桐广场」。"
+  },
+  {
+    "docId": "c50-hr-health",
+    "displayName": "职业健康与 EAP 服务",
+    "domain": "hr",
+    "path": "职业健康与 EAP 服务.md",
+    "chars": 1805,
+    "anchor": "EAP 心理援助热线「暖泉」7×12 小时；年度体检须在入职满 6 个月内完成。"
+  },
+  {
+    "docId": "c50-adm-archive",
+    "displayName": "电子归档与借阅规则",
+    "domain": "admin",
+    "path": "电子归档与借阅规则.md",
+    "chars": 1853,
+    "anchor": "合同类档案须在签署后 15 个工作日内归档；借阅机密档须二级负责人批准。"
+  },
+  {
+    "docId": "c50-pmo-project",
+    "displayName": "立项评审与阶段门禁",
+    "domain": "pmo",
+    "path": "立项评审与阶段门禁.md",
+    "chars": 1957,
+    "anchor": "立项须通过「澄波门」评审；未过门禁止占用研发人力超过 2 人周。"
+  },
+  {
+    "docId": "c50-pmo-rd",
+    "displayName": "需求变更与冻结窗口",
+    "domain": "pmo",
+    "path": "需求变更与冻结窗口.md",
+    "chars": 1927,
+    "anchor": "迭代冻结窗口前 48 小时停止非紧急需求变更；紧急变更走「破冰通道」。"
+  },
+  {
+    "docId": "c50-biz-sla",
+    "displayName": "客户SLA与升级路径",
+    "domain": "biz",
+    "path": "客户SLA与升级路径.md",
+    "chars": 1918,
+    "anchor": "企业版 P1 工单响应时限 30 分钟；超时自动升级至客户成功总监。"
+  },
+  {
+    "docId": "c50-biz-sales",
+    "displayName": "销售折扣与返点审批",
+    "domain": "biz",
+    "path": "销售折扣与返点审批.md",
+    "chars": 1917,
+    "anchor": "折扣低于目录价 85 折须销售 VP 批准；返点方案须合规预审。"
+  },
+  {
+    "docId": "c50-biz-partner",
+    "displayName": "渠道伙伴分级与分润",
+    "domain": "biz",
+    "path": "渠道伙伴分级与分润.md",
+    "chars": 1879,
+    "anchor": "伙伴分金/银/铜三级；金级分润上限 18%，冲突客户以先报备为准。"
+  },
+  {
+    "docId": "c50-biz-market",
+    "displayName": "市场活动预算与核销",
+    "domain": "biz",
+    "path": "市场活动预算与核销.md",
+    "chars": 1811,
+    "anchor": "单场活动预算超 5 万元须品牌委员会立项；物料须过「观象审核」。"
+  },
+  {
+    "docId": "c50-legal-disclose",
+    "displayName": "对外披露与禁发清单",
+    "domain": "legal",
+    "path": "对外披露与禁发清单.md",
+    "chars": 1813,
+    "anchor": "未公开财报数据列入禁发清单；对外演讲稿须提前 3 个工作日送审。"
+  },
+  {
+    "docId": "c50-it-bc",
+    "displayName": "业务连续性与灾备切换",
+    "domain": "it",
+    "path": "业务连续性与灾备切换.md",
+    "chars": 1855,
+    "anchor": "核心交易系统 RTO ≤ 2 小时、RPO ≤ 15 分钟；每年至少一次切换演练。"
+  },
+  {
+    "docId": "c50-adm-space",
+    "displayName": "工位申请与会议室预约",
+    "domain": "admin",
+    "path": "工位申请与会议室预约.md",
+    "chars": 1823,
+    "anchor": "固定工位申请须部门编制内；会议室「听雨」可预约最长 2 小时，超时自动释放。"
+  },
+  {
+    "docId": "c50-hr-intern",
+    "displayName": "实习与兼职用工管理",
+    "domain": "hr",
+    "path": "实习与兼职用工管理.md",
+    "chars": 1809,
+    "anchor": "实习最长连续周期 6 个月；转正评估须导师与用人经理双签「青苗表」。"
+  }
+]

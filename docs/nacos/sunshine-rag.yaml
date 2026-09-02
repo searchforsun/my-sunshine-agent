@@ -19,10 +19,16 @@ spring:
       port: 6379
       password: redis123
   datasource:
-    url: jdbc:mysql://ecs4c16g:3306/sunshine_rag?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    url: jdbc:mysql://ecs4c16g:3306/sunshine_rag?useSSL=false&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=utf8
     username: root
     password: root123
   jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        timezone:
+          default_storage: NORMALIZE_UTC
     hibernate:
       ddl-auto: validate
     open-in-view: false
@@ -48,7 +54,6 @@ rag:
     index: sunshine_rag_chunks
   desensitize:
     enabled: true
-    base-url: http://127.0.0.1:8600
     fail-on-error: true
   ingest:
     confidence-threshold: 0.65
@@ -68,6 +73,14 @@ rag:
     base-url: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
     input-size: 20
     timeout-seconds: 30
+  tool-index:
+    # 工具语义索引（5.5 tool RAG）：工具目录向量化入 Milvus sunshine_tool_index，
+    # ReAct MAIN 按 query 检索 Top-K 注入。关闭 → 检索端点空返回，orchestrator 回退 full 注入。
+    enabled: true
+    # 工具命中相似度下限（归一化向量近似 cosine），低于该值的工具不计入
+    min-score: 0.30
+    # 请求体未传 topK 时的默认注入数
+    default-top-k: 8
   eval:
     suggest:
       model: deepseek-v4-flash
@@ -91,7 +104,7 @@ rag:
         - POSITIVE_RECALL_MISS / RECALL_AT_*_LOW：命中错误制度/交叉文档 → 优先 textSuggestions 改 rewrite.rag/hyde，绑定目标制度名
         - 禁止建议 rerank.minRelevance（bundle 未接入运行时，见 configRuntimeNotes）
         ## 输出约束
-        suggestions.path 仅限：search.minScore / search.hybridPoolSize / search.rrfK / rerank.minScore / chunk.maxSize
+        suggestions.path 仅限：search.minScore / search.hybridPoolSize / search.rrfK / rerank.minScore
         textSuggestions.kind 取 prompt / eval_query；Prompt 类须给出完整替换文本
         禁止无关参数；每条建议须引用具体 badcase 或 gateFailures 条目
   nacos:
@@ -107,7 +120,6 @@ rag:
       secret-key: minioadmin123
       bucket: sunshine-rag
   llm:
-    base-url: http://127.0.0.1:8300/v1
     api-key: ${LLM_GATEWAY_API_KEY:}
     default-model: deepseek-v4-flash
 

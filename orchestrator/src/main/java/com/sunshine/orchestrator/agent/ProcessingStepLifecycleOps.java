@@ -1,12 +1,14 @@
 package com.sunshine.orchestrator.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.NodeRecoveryMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.processing.TimelineStepId;
 import com.sunshine.orchestrator.plan.PendingInteraction;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -76,35 +78,20 @@ public final class ProcessingStepLifecycleOps {
             if (isAwaitingInteractionStep(step)) {
                 continue;
             }
+            // 中断可能发生在意图路由 / skill 加载 / RAG 检索 / TaskBoard 等前置或并行阶段（尚无 think 步），一并落 paused，
+            // 否则停止后时间线残留 running 步（A6 验收场景）；intent 中断后重新识别、直接换新步，不在此列
             if (TimelineStepId.THINK.matches(phase) || TimelineStepId.AGENT.matches(phase)
                     || TimelineStepId.GENERATE.matches(phase)
+                    || TimelineStepId.SKILL.matches(phase)
+                    || TimelineStepId.RAG.matches(phase) || TimelineStepId.PLAN.matches(phase)
+                    || TimelineStepId.TASKS.matches(phase)
                     || phase.startsWith("think") || phase.startsWith("tool")) {
                 steps.set(i, toPaused(step));
             }
         }
     }
 
-    /** 多专家协作停止：expert / expert-convene running 步标 paused */
-    public static void pauseRunningExpertSteps(List<ProcessingStep> steps) {
-        if (steps == null || steps.isEmpty()) {
-            return;
-        }
-        for (int i = 0; i < steps.size(); i++) {
-            ProcessingStep step = steps.get(i);
-            if (step == null || step.id() == null) {
-                continue;
-            }
-            String phase = step.phase();
-            if (!isRunning(step)) {
-                continue;
-            }
-            if ("expert".equals(phase) || "expert-convene".equals(phase) || step.id().startsWith("expert-")) {
-                steps.set(i, toPaused(step));
-            }
-        }
-    }
-
-    /** ReAct 暂停续跑：仅保留意图识别步，从规划推理重新开始 */
+    /** 历史软续跑工具：仅保留意图识别步（无感续跑路径已不再调用） */
     public static List<ProcessingStep> retainIntentStepsOnly(List<ProcessingStep> steps) {
         if (steps == null || steps.isEmpty()) {
             return List.of();
@@ -130,6 +117,40 @@ public final class ProcessingStepLifecycleOps {
             if (isAwaitingInteractionStep(step)) {
                 return step;
             }
+        }
+        return null;
+    }
+
+    /**
+     * ReAct 待决策步：自尾向前；跳过 {@code node-*}；
+     * {@code phase=decision} 或 id {@code decision-*}；lifecycle ∈ {awaiting,paused}
+     * 且 metadata.decision 仍无终态 outcome。
+     */
+    public static ProcessingStep findReactAwaitingDecisionStep(List<ProcessingStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return null;
+        }
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep step = steps.get(i);
+            if (step == null || step.id() == null || step.id().startsWith("node-")) {
+                continue;
+            }
+            boolean decisionPhase = "decision".equals(step.phase()) || step.id().startsWith("decision-");
+            if (!decisionPhase) {
+                continue;
+            }
+            String lifecycle = step.lifecycle();
+            if (!"awaiting".equals(lifecycle) && !"paused".equals(lifecycle)) {
+                continue;
+            }
+            DecisionStepMeta decision = step.metadata() != null ? step.metadata().decision() : null;
+            if (decision == null) {
+                continue;
+            }
+            if (StringUtils.hasText(decision.outcome())) {
+                continue;
+            }
+            return step;
         }
         return null;
     }
@@ -221,7 +242,8 @@ public final class ProcessingStepLifecycleOps {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                subSteps);
+                subSteps,
+                step.stepSummary());
     }
 
     public static String findLastRunningWorkflowNodeId(List<ProcessingStep> steps) {
@@ -268,6 +290,7 @@ public final class ProcessingStepLifecycleOps {
                 step.label(),
                 step.metadata(),
                 step.contentBlocks(),
-                step.subSteps());
+                step.subSteps(),
+                step.stepSummary());
     }
 }

@@ -22,6 +22,6 @@ public class LoopNodeHandler implements NodeHandler {
 
     @Override
     public Mono<NodeResult> run(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
-        return Mono.just(NodeResult.ok(Map.of("status", "looping")));
+        return Mono.just(NodeResult.okString(Map.of("status", "looping")));
     }
 }

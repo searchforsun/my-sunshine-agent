@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.routing;
 
+import com.sunshine.orchestrator.catalog.ResourceKindFilter;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import lombok.RequiredArgsConstructor;
@@ -16,20 +17,23 @@ public class WorkflowCatalog {
     private final WorkflowCatalogRegistry catalogRegistry;
     private final WorkflowManagerClient workflowManagerClient;
 
-    public String renderForPrompt() {
+    /** 按会话 kind 过滤渲染（保留 all + 同 kind）；kind 为空渲染全部 */
+    public String renderForPrompt(String sessionKind) {
         if (catalogRegistry.entries().isEmpty()) {
             return "(无 workflow 目录配置)";
         }
         return catalogRegistry.entries().stream()
+                .filter(e -> !StringUtils.hasText(sessionKind)
+                        || ResourceKindFilter.matches(e.kind(), sessionKind))
                 .map(this::formatEntry)
                 .collect(Collectors.joining("\n"));
     }
 
-    public String renderIntoClassifier(String classifierPrompt) {
+    public String renderIntoClassifier(String classifierPrompt, String sessionKind) {
         if (!StringUtils.hasText(classifierPrompt)) {
             return classifierPrompt;
         }
-        return classifierPrompt.replace("{{workflow-catalog}}", renderForPrompt());
+        return classifierPrompt.replace("{{workflow-catalog}}", renderForPrompt(sessionKind));
     }
 
     public boolean isKnownWorkflow(String workflowId) {

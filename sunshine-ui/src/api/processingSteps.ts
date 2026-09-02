@@ -5,11 +5,11 @@
  */
 
 import { relocateAgentNodeHitl } from './hitlSteps'
-import type { PlanApprovalRoundView } from './planApprovalSteps'
 import type { PlanGraph } from './executionPlans'
 import type { ContentBlock } from './contentInterleave'
+import type { SandboxEditDiffMeta } from './sandboxEditDiff'
 import { mergeStepMetadata } from './processingStepsParse'
-import { resolveStepDurationMs } from './processingStepsDisplay'
+import { resolveStepDurationMs, stepLifecycle } from './processingStepsDisplay'
 import { sortSteps, isWorkflowNodeStepId, isThinkStepId } from './processingStepsNormalize'
 
 export { normalizeStep, parseContentBlocks } from './processingStepsParse'
@@ -18,7 +18,7 @@ export {
   isWorkflowNodeStepId,
   STEP_ORDER,
 } from './processingStepsNormalize'
-export type { RewriteDetailView } from './processingStepsDisplay'
+export type { TimelineMessageStatus } from './processingStepsDisplay'
 export {
   formatStepLabel,
   formatDuration,
@@ -34,18 +34,23 @@ export {
   resolveStepExpandInner,
   resolveStepExpandBody,
   resolveStepExpandPanels,
-  parseLoadedSkillLabel,
   stripLoadedSkillPrefix,
   shouldShiftSummaryOnExpand,
   hasExpandableContent,
   isStepSummaryTruncated,
   isSandboxToolStep,
   isSandboxExecStep,
+  isSandboxReadStep,
+  isSandboxFetchStep,
+  isCancellableSandboxTool,
   extractSandboxExecCommand,
+  formatExecCommandHeader,
+  formatExecCommandHeaderText,
   extractSandboxWorkspacePath,
   extractSandboxSearchRoot,
   inferSandboxSearchRoot,
   resolveSandboxFocusPath,
+  resolveSandboxReadLineRange,
   parseSandboxPathList,
   isSandboxPathListOutput,
   sandboxBasename,
@@ -53,6 +58,11 @@ export {
   totalDuration,
   summarizeSteps,
   isWorkflowAnswerStep,
+  formatElapsedClock,
+  resolveRunningChildStepBody,
+  resolveTimelineElapsedMs,
+  resolveTimelineSummaryPrefix,
+  formatTimelineSummaryText,
 } from './processingStepsDisplay'
 
 export {
@@ -62,22 +72,92 @@ export {
 } from './processingStepsPlan'
 export type { PlanStepDetailView } from './processingStepsPlan'
 
-/** ReAct TaskBoard 清单项（SSE metadata.tasks） */
+/** ReAct / harness TaskBoard 清单项（SSE metadata.tasks；一级可带 dependsOn + secondary） */
 export interface TaskBoardItemView {
   id: string
   content: string
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  /** 一级 H1：依赖其它一级 id；用于波次分组（不画边） */
+  dependsOn?: string[]
+  /** 一级下可选二级 todolist；空/缺省不渲染二级区 */
+  secondary?: TaskBoardItemView[]
 }
 
-/** 已收到 manage_tasks 落库后的真实清单（占位步无 revision/items） */
+/** 看板展示用一级 items：优先 metadata.taskQueue（harness H1），否则 metadata.tasks */
+export function resolveTaskBoardPrimaryItems(step: ProcessingStep): TaskBoardItemView[] {
+  const queue = step.metadata?.taskQueue
+  if (queue && queue.length > 0) return queue
+  return step.metadata?.tasks ?? []
+}
+
+/** 路由链路可观测：mode → track → L0 → rule → L3 → final（intent 步抽屉） */
+export interface RoutingTrace {
+  layer?: string
+  label?: string
+  detail?: string
+}
+
+/** intent 步路由过程（完整 traces；老消息返回空数组） */
+export function resolveIntentRoutingTraces(step: ProcessingStep): RoutingTrace[] {
+  if (step.phase !== 'intent') return []
+  return step.metadata?.routingTraces ?? []
+}
+
+/** 已收到 todo_write / H1 投影后的真实清单（占位步无 revision/items） */
 export function hasRealTaskBoardItems(step: ProcessingStep): boolean {
-  const tasks = step.metadata?.tasks ?? []
-  return tasks.length > 0 && (step.metadata?.taskRevision ?? 0) >= 1
+  const tasks = resolveTaskBoardPrimaryItems(step)
+  if (tasks.length === 0) return false
+  // harness taskQueue 投影可无 revision；ReAct todo_write 仍要求 revision≥1
+  if ((step.metadata?.taskQueue?.length ?? 0) > 0) return true
+  return (step.metadata?.taskRevision ?? 0) >= 1
+}
+
+/** ReAct spawn_subagent 主时间线卡片（phase 或 id 前缀） */
+export function isSubagentStep(step: { id?: string; phase?: string }): boolean {
+  return step.phase === 'subagent' || !!step.id?.startsWith('subagent-')
+}
+
+/** ReAct request_decision 主时间线卡片（phase 或 id 前缀） */
+export function isDecisionStep(step: { id?: string; phase?: string }): boolean {
+  return step.phase === 'decision' || !!step.id?.startsWith('decision-')
+}
+
+/** 是否存在等待用户填写的决策问卷（与 HITL 同属「待用户操作」） */
+export function stepsHaveAwaitingDecision(steps: ProcessingStep[] | undefined): boolean {
+  if (!steps?.length) return false
+  return steps.some(step => isDecisionStep(step) && stepLifecycle(step) === 'awaiting')
+}
+
+export interface DecisionOptionView {
+  id: string
+  label: string
+}
+
+export interface DecisionQuestionView {
+  id: string
+  prompt: string
+  options: DecisionOptionView[]
+  allowMultiple?: boolean
+}
+
+export interface DecisionAnswerView {
+  questionId: string
+  selectedOptionIds: string[]
+  customInput?: string
+}
+
+export interface DecisionMeta {
+  token?: string
+  title?: string
+  questions?: DecisionQuestionView[]
+  expiresAt?: number
+  outcome?: string
+  answers?: DecisionAnswerView[]
 }
 
 export type StepPhase = 'intent' | 'rag' | 'agent' | 'think' | 'generate' | string
 
-export type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
+export type StepStatus = 'pending' | 'running' | 'awaiting' | 'done' | 'error' | 'skipped' | 'paused' | 'terminated'
 
 export type StepLifecycle = StepStatus
 
@@ -124,22 +204,31 @@ export interface StepMetadata {
   recoveryExpiresAt?: number
   /** Workflow 节点执行 attempt（重试过程 SSE 实时下发） */
   nodeAttempts?: import('./executionPlans').PlanNodeAttempt[]
-  /** 动态 Plan 用户确认 */
-  planApproval?: {
-    status?: 'awaiting' | 'approved'
-    token?: string
-    expiresAt?: number
-    rounds?: PlanApprovalRoundView[]
-    planGraph?: PlanGraph
-  }
-  /** ReAct TaskBoard */
+  /** ReAct TaskBoard / harness H1 投影（同结构；含 dependsOn/secondary 时走波次+嵌套） */
   tasks?: TaskBoardItemView[]
   taskRevision?: number
   taskProgress?: string
+  /**
+   * harness H1 taskQueue 投影（与 tasks 同形；优先于 tasks）。
+   * 后端补 SSE 前可缺省——见 H-6 Task4 DONE_WITH_CONCERNS。
+   */
+  taskQueue?: TaskBoardItemView[]
   /** 沙箱 read/write/edit 完整容器路径 */
   sandboxPath?: string
   /** 沙箱 glob 搜索根 */
   sandboxSearchRoot?: string
+  /** ReAct spawn_subagent：传入子 Agent 的 prompt */
+  spawnPrompt?: string
+  /** Planner-Executor worker：异步 runId（单独取消 worker 卡） */
+  workerRunId?: string
+  /** 沙箱可单工具取消（后端 Nacos cancellable-tools） */
+  cancellable?: boolean
+  /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
+  editDiff?: SandboxEditDiffMeta
+  /** ReAct request_decision（SSE metadata.decision，勿截断 title/questions） */
+  decision?: DecisionMeta
+  /** 路由链路可观测：mode → track → L0 → rule → L3 → final（intent 步抽屉） */
+  routingTraces?: RoutingTrace[]
 }
 
 
@@ -160,6 +249,9 @@ export interface ProcessingStep {
 
   durationMs?: number
 
+  /** 前端墙钟：收到 running 步时记本地时刻，避免与服务端 startedAt 时钟差导致 live 计时偏移 */
+  clientStartedAt?: number
+
   detail?: string
 
   /** V3：步骤内流式思考 */
@@ -170,6 +262,9 @@ export interface ProcessingStep {
 
   /** V3：步骤结果摘要 */
   result?: string
+
+  /** think 步本轮摘要（由 think_summary 元工具结构化输出，经 step_summary 通道下发） */
+  stepSummary?: string
 
   ts?: number
 
@@ -196,12 +291,46 @@ function mergeSummary(
   if (!prev && !incoming) return undefined
   if (!prev) return incoming
   if (!incoming) return prev
-  const terminal = lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped'
+  const terminal = isHardTerminalLifecycle(lifecycle)
+    || (lifecycle === 'paused' && !!(incoming.after ?? prev.after))
   return {
     before: incoming.before ?? prev.before,
     active: terminal ? undefined : (incoming.active ?? prev.active),
     after: incoming.after ?? prev.after,
   }
+}
+
+/** done/error/skipped/terminated；paused+after 为用户取消终态（HITL 中途 paused 无 after 可续跑） */
+function isHardTerminalLifecycle(lifecycle?: StepLifecycle): boolean {
+  return lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'terminated'
+}
+
+function isCancelTerminalStep(step: ProcessingStep): boolean {
+  return step.lifecycle === 'paused' && !!step.summary?.after?.trim()
+}
+
+function resolveMergedLifecycle(
+  prev: ProcessingStep,
+  incoming: ProcessingStep,
+): StepLifecycle {
+  const next = (incoming.lifecycle ?? prev.lifecycle) as StepLifecycle
+  // think 步例外：ReAct 最后一轮 reasoning 输出 todo_write 后被 endReasoningRound 置 done，
+  // 继续第二轮 reasoning 时 beginReasoningRound 走复用分支发 resume（running）——后端有意复用
+  // 同一 think 卡片续写（TimelineSessionThinkFlow.beginReasoningRound）。此处放行 done→running，
+  // 让计时器/摘要随复用连续，否则硬终态保护会冻结在首个 done（如 9.2s）直到终态跳变。
+  if (next === 'running' && isThinkStepId(incoming.id)) {
+    return 'running'
+  }
+  if (
+    (isHardTerminalLifecycle(prev.lifecycle) || isCancelTerminalStep(prev))
+    && (next === 'running' || next === 'pending')
+  ) {
+    return prev.lifecycle as StepLifecycle
+  }
+  return next
 }
 
 
@@ -248,8 +377,14 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
     const prev = next[idx]
 
-    const lifecycle = incoming.lifecycle ?? prev.lifecycle
+    const lifecycle = resolveMergedLifecycle(prev, incoming)
 
+    // 后端 step 事件从不携带增量 reasoning（aggregator 不落 reasoning，reasoning 仅经 step_delta 下发），
+    // 故 running 快照 incoming.reasoning 恒为 null，无法据此区分「中断续传」与「同 id 复用」。
+    // 中断恢复的清理由 resetStepsForReactResume（resume 时重置 pending + 清 reasoning）保证；
+    // 此处统一 longerText：复用（如 planner 连续推理 resume running）prev 非空、incoming null →
+    // 保留 prev，后续 step_delta 经 concatText 续写累加，不覆盖。禁止对复用 think 清空 reasoning——
+    // 后端 resume 后只下发新内容增量（不回放旧段），清空会把 think 前半段思考内容永久丢失。
     const merged: ProcessingStep = {
 
       ...prev,
@@ -262,9 +397,14 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       output: longerText(prev.output, incoming.output),
 
-      result: longerText(prev.result, incoming.result),
+      // done/error 终稿覆盖流式累积（对齐后端 ProcessingStepMerger.mergeResult）
+      result: mergeStepResult(prev.result, incoming.result, lifecycle),
 
       detail: incoming.detail ?? prev.detail,
+
+      // stepSummary 由 think_summary 经 step_delta(step_summary) 写入，后端 think 步
+      // complete 快照同样携带；incoming 缺失（历史/早期版本）时保留 prev，避免覆盖成兜底。
+      stepSummary: incoming.stepSummary ?? prev.stepSummary,
 
       metadata: mergeStepMetadata(prev.metadata, incoming.metadata, lifecycle),
 
@@ -272,23 +412,53 @@ export function upsertStep(steps: ProcessingStep[], incoming: ProcessingStep): P
 
       contentBlocks: incoming.contentBlocks?.length ? incoming.contentBlocks : prev.contentBlocks,
 
-      durationMs: incoming.durationMs ?? prev.durationMs,
+    durationMs: lifecycle === 'running' && isThinkStepId(incoming.id)
+      ? undefined
+      : (incoming.durationMs ?? prev.durationMs),
 
-      startedAt: incoming.startedAt ?? prev.startedAt,
+    // think 复用（done→running）：清 endedAt，避免 resolveStepDurationMs 用旧 endedAt-startedAt
+    // 冻结在首个 done 的时长（如 9.2s），导致计时器不连续
+    startedAt: incoming.startedAt ?? prev.startedAt,
 
-      endedAt: incoming.endedAt ?? prev.endedAt,
+    endedAt: lifecycle === 'running' && isThinkStepId(incoming.id)
+      ? undefined
+      : (incoming.endedAt ?? prev.endedAt),
 
-      lifecycle,
+    lifecycle,
 
     }
 
+    // think 复用后无 endedAt，resolveStepDurationMs 返回 undefined → 回退 incoming.durationMs
+    // （running 快照无 durationMs）→ prev.durationMs（旧 9.2s）残留；此处显式清空，
+    // 让 live 计时走 clientStartedAt 而非残留 durationMs
+    if (lifecycle === 'running' && isThinkStepId(merged.id)) {
+      merged.durationMs = undefined
+    }
+
     merged.durationMs = resolveStepDurationMs(merged) ?? merged.durationMs
+
+    // live 计时用客户端墙钟：首次 running 记本地时刻；离开 running（done/paused/error）清空，
+    // 避免与服务端 startedAt 时钟差导致 live 计时偏移（完成后回归服务端 durationMs）。
+    // think 步例外：done 时保留 clientStartedAt（可能随后 resume 复用），running 时仅在无锚点
+    // 时才记新时刻——复用场景锚点延续，计时器从 think 最初起点连续递增，不从 0 重计。
+    const isThinkResume = isThinkStepId(incoming.id)
+    if (lifecycle === 'running' && merged.clientStartedAt == null) {
+      merged.clientStartedAt = Date.now()
+    } else if (lifecycle !== 'running' && !isThinkResume) {
+      merged.clientStartedAt = undefined
+    }
 
     next[idx] = merged.id.startsWith('node-') ? relocateAgentNodeHitl(merged) : merged
 
   } else {
 
-    next.push(incoming)
+    // 新步直接 running 且无 clientStartedAt（applyStepDelta 的 base 已从 steps[idx] 拷贝，
+    // 不会进此分支；仅真正新步打时间戳）
+    if (incoming.lifecycle === 'running' && incoming.clientStartedAt == null) {
+      next.push({ ...incoming, clientStartedAt: Date.now() })
+    } else {
+      next.push(incoming)
+    }
 
   }
 
@@ -311,57 +481,61 @@ export interface StepDelta {
 
 
 export function applyStepDelta(steps: ProcessingStep[], delta: StepDelta): ProcessingStep[] {
-
   const idx = steps.findIndex(s => s.id === delta.stepId)
-
   if (idx < 0 && isWorkflowNodeStepId(delta.stepId)) {
     return steps
   }
-
-  const base: ProcessingStep = idx >= 0 ? { ...steps[idx] } : {
+  // 已存在步骤：原地追加文本，复用数组引用，避免每 token filter+upsert+sort
+  if (idx >= 0) {
+    const base = steps[idx]
+    applyDeltaChannel(base, delta)
+    if (base.lifecycle == null) base.lifecycle = 'running'
+    if (base.lifecycle === 'running') {
+      if (base.startedAt == null) base.startedAt = Date.now()
+      if (base.clientStartedAt == null) base.clientStartedAt = Date.now()
+    }
+    return steps
+  }
+  const base: ProcessingStep = {
     id: delta.stepId,
-    phase: delta.stepId.startsWith('expert-') ? 'expert' : (delta.stepId as StepPhase),
+    phase: delta.stepId as StepPhase,
     lifecycle: 'running',
     summary: { active: delta.stepId },
   }
-
-  switch (delta.channel) {
-
-    case 'reasoning':
-
-      base.reasoning = concatText(base.reasoning, delta.text)
-
-      break
-
-    case 'output':
-
-      base.output = concatText(base.output, delta.text)
-
-      break
-
-    case 'result':
-
-      base.result = concatText(base.result, delta.text)
-
-      break
-
-    default:
-
-      base.output = concatText(base.output, delta.text)
-
-  }
-
+  applyDeltaChannel(base, delta)
   if (base.lifecycle == null) base.lifecycle = 'running'
-
-  if (base.lifecycle === 'running' && base.startedAt == null) {
-
-    base.startedAt = Date.now()
-
+  if (base.lifecycle === 'running') {
+    if (base.startedAt == null) {
+      base.startedAt = Date.now()
+    }
+    // live 计时锚点与 upsertStep 对齐：running 步首见即记 clientStartedAt，之后 delta 不再重置，
+    // 避免 think 的 step_delta(reasoning) 流与 step 事件交错时计时器反复归零跳变
+    if (base.clientStartedAt == null) {
+      base.clientStartedAt = Date.now()
+    }
   }
-
-  return upsertStep(steps.filter(s => s.id !== delta.stepId), base)
-
+  return upsertStep(steps, base)
 }
+
+function applyDeltaChannel(base: ProcessingStep, delta: StepDelta): void {
+  switch (delta.channel) {
+    case 'reasoning':
+      base.reasoning = concatText(base.reasoning, delta.text)
+      break
+    case 'step_summary':
+      base.stepSummary = delta.text
+      break
+    case 'output':
+      base.output = concatText(base.output, delta.text)
+      break
+    case 'result':
+      base.result = concatText(base.result, delta.text)
+      break
+    default:
+      base.output = concatText(base.output, delta.text)
+  }
+}
+
 
 
 
@@ -412,10 +586,62 @@ function longerText(a?: string, b?: string): string | undefined {
 
 }
 
+/** 终态 result 全量覆盖；运行中仍用前缀合并 */
+function mergeStepResult(
+  prev?: string,
+  incoming?: string,
+  lifecycle?: StepLifecycle,
+): string | undefined {
+  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'paused') {
+    if (incoming != null && incoming !== '') return incoming
+  }
+  return longerText(prev, incoming)
+}
+
 export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {
 
   return !!steps?.some(s => s.lifecycle === 'running')
 
+}
+
+/**
+ * 消息级终态兜底收口：当整条消息到达 completed 终态时，把仍残留在 running 的步统一收为 done。
+ *
+ * <p>背景：步的 done 终态由后端经 SSE type:step 全量快照下发，前端 upsertStep 在收到后必然收敛。
+ * 但若该 done 快照在途丢失（后台 tab SSE 背压 / resume 重放被过滤 / hook 直刷时 queue 与 flush
+ * 均未绑定的空档被 routeHookToken 静默丢弃），步会永远停在 running，live 计时
+ * （liveElapsedMs = now - clientStartedAt）在消息已完成场景下持续增长，表现为「带✓/已完成消息
+ * 的耗时还在实时走表」。
+ *
+ * <p>消息级 completed 是权威终态信号：消息已终止，任何步都不可能再合法 running。此处以
+ * settledAt 作为 endedAt 统一收口，并清掉 clientStartedAt 解除 live 计时锚点。
+ * 已带显式 endedAt / durationMs 的步保持原值，interrupted/failed 等非 completed 终态不调用。
+ */
+export function settleRunningSteps(steps: ProcessingStep[] | undefined, settledAt: number): ProcessingStep[] | undefined {
+  if (steps == null) return undefined
+  if (!steps.length) return steps
+  let changed = false
+  const next = steps.map(step => {
+    let settled: ProcessingStep | undefined
+    if (step.subSteps?.length) {
+      const subs = settleRunningSteps(step.subSteps, settledAt)
+      if (subs !== step.subSteps) {
+        settled = { ...step, subSteps: subs }
+      }
+    }
+    const lc = step.lifecycle ?? 'pending'
+    if (lc === 'running') {
+      settled = {
+        ...(settled ?? step),
+        lifecycle: 'done',
+        endedAt: settledAt,
+        clientStartedAt: undefined,
+      }
+    }
+    if (settled) changed = true
+    return settled ?? step
+  })
+  return changed ? next : steps
 }
 
 export {

@@ -1,8 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.config.AgentRewriteProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
 import com.sunshine.orchestrator.client.WorkflowManagerClient;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
@@ -20,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -55,7 +53,8 @@ class ProcessingTimelineSessionTest {
         assertEquals("pending", emitted.get(0).lifecycle());
         assertEquals("running", emitted.get(1).lifecycle());
         assertEquals("done", emitted.get(2).lifecycle());
-        assertThat(emitted.get(2).summary().after()).contains("年假政策");
+        assertThat(emitted.get(2).summary().after()).isEqualTo("已完成意图识别");
+        assertThat(emitted.get(2).summary().after()).doesNotContain("年假政策");
         assertTrue(session.lastChanged().isPresent());
         assertEquals("done", session.lastChanged().get().lifecycle());
     }
@@ -74,7 +73,7 @@ class ProcessingTimelineSessionTest {
     void beginEndReasoningRound_closesRunningThink() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         assertThat(session.snapshot().stream().filter(s -> "think".equals(s.id())).findFirst().orElseThrow().lifecycle())
                 .isEqualTo("done");
@@ -121,11 +120,11 @@ class ProcessingTimelineSessionTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         assertThat(session.snapshot().stream().filter(s -> ThinkStepIds.isThinkStep(s.id())).count())
                 .isEqualTo(1);
@@ -133,16 +132,67 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
+    void beginReasoningRound_reusePreservesReasoning_concatAppends() {
+        // 复用 think-N（无业务 tool 间隔，如 todo_write 建板后再推理）发 RESUME：
+        // 翻回 running 但保留既有 reasoning，新 reasoning 经 concat 续写在旧内容后，不覆盖。
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("规划后建板再推理");
+        session.beginReasoningRound();
+        session.ensureThinkOpen();        session.appendDelta("think", "reasoning", "规划内容第一段");
+        session.endReasoningRound();
+
+        // todo_write 建板：非业务 tool，toolCompletedSinceLastThink 仍 false → 复用同一 think
+        session.beginReasoningRound();
+        session.ensureThinkOpen();        session.appendDelta("think", "reasoning", "第二段续写");
+        session.endReasoningRound();
+
+        ProcessingStep think = session.snapshot().stream()
+                .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think.reasoning()).isEqualTo("规划内容第一段第二段续写");
+        assertThat(session.snapshot().stream().filter(s -> ThinkStepIds.isThinkStep(s.id())).count())
+                .isEqualTo(1);
+    }
+
+    @Test
     void contentAnchorAfterStepId_returnsLastDoneThinkAfterTool() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.recordToolCompleted("统计财务消息");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         assertThat(session.contentAnchorAfterStepId()).isEqualTo("think-2");
+    }
+
+    @Test
+    void finalAnswerRoundWithoutThinking_opensOwnThinkForSummaryAndContentAnchor() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        session.bindUserQuery("写文件并运行");
+        // 轮1：思考 + 写文件工具
+        session.beginReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
+        session.recordToolCompleted("写文件");
+        // 轮2：思考 + 执行命令工具
+        session.beginReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
+        session.recordToolCompleted("执行命令");
+        // 最终轮：无 ThinkingBlock，模型直接 think_summary + 正文作答
+        session.beginReasoningRound();
+        session.ingestStreamingContentDelta("快速排序文件已创建并验证通过。");
+        session.endReasoningRound();
+        session.applyThinkStepSummary("完整回答用户问题");
+
+        // 终态轮必须补开独立 think（位于最后一个工具之后），正文锚定到该 think，
+        // 而非污染上一轮 think-2（否则 think-2 摘要被覆盖、正文跑到最后一个工具前面）
+        assertThat(session.contentAnchorAfterStepId()).isEqualTo("think-3");
+        ProcessingStep think3 = session.snapshot().stream()
+                .filter(s -> "think-3".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think3.stepSummary()).isEqualTo("完整回答用户问题");
+        ProcessingStep think2 = session.snapshot().stream()
+                .filter(s -> "think-2".equals(s.id())).findFirst().orElseThrow();
+        assertThat(think2.stepSummary()).isNull();
     }
 
     @Test
@@ -152,14 +202,14 @@ class ProcessingTimelineSessionTest {
 
         // 规划推理 → 工具1
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         session.noteToolCallPending();
         session.recordToolCompleted("统计财务消息");
         session.noteToolCallDone();
 
         // 工具1 返回后综合分析
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think2 = session.snapshot().stream()
                 .filter(s -> "think-2".equals(s.id())).findFirst().orElseThrow();
         assertThat(think2.lifecycle()).isEqualTo("done");
@@ -173,7 +223,7 @@ class ProcessingTimelineSessionTest {
 
         // 工具2 返回后综合分析
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think3 = session.snapshot().stream()
                 .filter(s -> "think-3".equals(s.id())).findFirst().orElseThrow();
         assertThat(think3.summary().after()).contains("查询财务消息详情");
@@ -185,7 +235,7 @@ class ProcessingTimelineSessionTest {
 
         // 最后一轮综合分析
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think4 = session.snapshot().stream()
                 .filter(s -> "think-4".equals(s.id())).findFirst().orElseThrow();
         assertThat(think4.summary().after()).contains("检索知识库");
@@ -224,11 +274,6 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeIntent_exposesRewriteDetailWhenProvided() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("待审批");
         session.pending("intent", "intent");
@@ -236,36 +281,31 @@ class ProcessingTimelineSessionTest {
 
         QueryRewriteOutcome rewrite = QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 15L);
         session.completeIntent(
-                new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "test"),
+                new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "test"),
                 rewrite);
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
-        assertThat(intent.detail()).contains("补全问句");
         assertThat(intent.detail()).contains("原问题：待审批");
+        assertThat(intent.detail()).doesNotContain("补全问句");
         assertThat(intent.metadata().rewriteApplied()).isTrue();
         assertThat(intent.metadata().rewriteLatencyMs()).isEqualTo(15L);
-        assertThat(intent.metadata().rewriteScenarioLabel()).isEqualTo("补全问句");
-        RewriteTimelineLabels.bind(null);
     }
 
     @Test
-    void completeIntent_skill5B_exposesRoutingMetadata() {
+    void completeIntent_skillBinding_exposesRoutingMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
-        session.bindUserQuery("@finance-analysis 先查制度再分析");
+        session.bindUserQuery("/finance-analysis 先查制度再分析");
         session.pending("intent", "intent");
         session.start("intent", "intent");
-        Map<String, String> params = Map.of(
-                SkillBindingOutcome.PARAM_SKILL, "finance-analysis",
-                SkillBindingOutcome.PARAM_PLANNER_MODE, SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
+        Map<String, String> params = Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
         session.completeIntent(new ExecutionPlan(
-                ExecutionMode.PLAN_WORKFLOW, null, params, "skill:@mention:5b-skill-plan"));
+                ExecutionMode.PRO, null, params, "skill:/mention"));
 
         ProcessingStep intent = session.snapshot().stream()
                 .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
         assertThat(intent.metadata().skillId()).isEqualTo("finance-analysis");
-        assertThat(intent.metadata().plannerMode()).isEqualTo("skill-driven");
-        assertThat(intent.metadata().routingReason()).contains("5b-skill-plan");
+        assertThat(intent.metadata().routingReason()).contains("skill:/mention");
     }
 
     @Test
@@ -274,9 +314,9 @@ class ProcessingTimelineSessionTest {
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.SkillCatalogService.class);
         org.mockito.Mockito.when(catalog.findIndex("skill-demo")).thenReturn(java.util.Optional.of(
                 new com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry(
-                        "skill-demo", "测试技能", "desc", 1, true, "none")));
+                        "skill-demo", "测试技能", "desc", 1, true, "none", "all", null, "default")));
         SkillLoadLabelService labelService = new SkillLoadLabelService(
-                catalog, new com.sunshine.orchestrator.config.AgentPromptProperties());
+                catalog, TimelinePromptCatalog.withDefaults());
         labelService.init();
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.completeSkillLoad("skill-demo");
@@ -284,7 +324,7 @@ class ProcessingTimelineSessionTest {
                 .filter(s -> "skill".equals(s.id())).findFirst().orElseThrow();
         assertThat(skill.phase()).isEqualTo("skill");
         assertThat(skill.label()).isEqualTo("加载技能");
-        assertThat(skill.summary().after()).isEqualTo("@skill-demo 测试技能");
+        assertThat(skill.summary().after()).isEqualTo("skill-demo 测试技能");
         assertThat(skill.metadata().skillId()).isEqualTo("skill-demo");
         SkillLoadLabels.bind(null);
     }
@@ -310,11 +350,6 @@ class ProcessingTimelineSessionTest {
 
     @Test
     void completeAt_workflowRagNode_mergesRewriteAndHitDetail() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("报差旅");
         session.bindTraceMessageId("msg-2");
@@ -341,7 +376,6 @@ class ProcessingTimelineSessionTest {
         assertThat(rag.metadata().expandSectionTitle()).isEqualTo("检索过程");
         assertThat(rag.summary().after()).contains("2 条");
         QueryRewriteTrace.clear("msg-2");
-        RewriteTimelineLabels.bind(null);
     }
 
     @Test
@@ -438,28 +472,12 @@ class ProcessingTimelineSessionTest {
 
         ExecutionPlan plan = new ExecutionPlan(
                 ExecutionMode.WORKFLOW, "finance-smart", Map.of(), "test");
-        WorkflowCatalogRegistry registry = org.mockito.Mockito.mock(WorkflowCatalogRegistry.class);
-        WorkflowManagerClient client = org.mockito.Mockito.mock(WorkflowManagerClient.class);
-        WorkflowManagerClient.WorkflowCatalogEntryDto entry =
-                new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "finance-smart", "workflow", "财务智能分析", "财务分析", List.of(), List.of(), null);
-        org.mockito.Mockito.when(registry.entries()).thenReturn(List.of(entry));
-        org.mockito.Mockito.when(registry.find("finance-smart")).thenReturn(entry);
-        WorkflowCatalog workflowCatalog = new WorkflowCatalog(registry, client);
-        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
-                workflowCatalog,
-                org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class));
-        WorkflowNodeLabels.bind(workflowLabels);
-        IntentLabels.bind(new IntentLabelService(
-                new AgentPromptProperties(),
-                workflowCatalog,
-                registry,
-                workflowLabels));
+        IntentLabels.bind(new IntentLabelService(TimelinePromptCatalog.withDefaults()));
         try {
             session.completeIntent(plan);
             ProcessingStep intent = session.snapshot().stream()
                     .filter(s -> "intent".equals(s.id())).findFirst().orElseThrow();
-            assertThat(intent.summary().after()).contains("财务智能分析");
+            assertThat(intent.summary().after()).isEqualTo("已完成意图识别");
             assertThat(intent.detail()).isNull();
         } finally {
             IntentLabels.bind(null);
@@ -467,13 +485,13 @@ class ProcessingTimelineSessionTest {
     }
 
     @Test
-    void completePlanAt_attachesPlannerRewriteMetadata() {
+    void completePlanAt_attachesRewriteMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("帮我查报销");
         session.bindTraceMessageId("msg-plan");
         QueryRewriteTrace.bind("msg-plan");
         QueryRewriteTrace.record("msg-plan",
-                QueryRewriteOutcome.of("planner", "帮我查报销", "请规划差旅报销合规审查流程", 120L));
+                QueryRewriteOutcome.of("intent", "帮我查报销", "请规划差旅报销合规审查流程", 120L));
         session.pending("plan", "plan");
         session.start("plan", "plan");
         session.completePlanAt("检索 → 查询 → 分析", "planId=p1|chain=检索 → 查询", System.currentTimeMillis());
@@ -481,7 +499,7 @@ class ProcessingTimelineSessionTest {
                 .filter(s -> "plan".equals(s.id())).findFirst().orElseThrow();
         assertThat(plan.metadata()).isNotNull();
         assertThat(plan.metadata().rewriteApplied()).isTrue();
-        assertThat(plan.metadata().rewriteScenario()).isEqualTo("planner");
+        assertThat(plan.metadata().rewriteScenario()).isEqualTo("intent");
         assertThat(plan.metadata().rewriteFrom()).isEqualTo("帮我查报销");
         assertThat(plan.metadata().rewriteTo()).isEqualTo("请规划差旅报销合规审查流程");
         QueryRewriteTrace.clear("msg-plan");
@@ -508,7 +526,7 @@ class ProcessingTimelineSessionTest {
     void ensurePlaceholderAfterFirstThink_emitsTasksStepImmediately() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
@@ -526,14 +544,14 @@ class ProcessingTimelineSessionTest {
     void ensurePlaceholderAfterFirstThink_skipsAfterSecondThink() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
 
-        session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
+        session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
         session.completeToolStep("3 条");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         support.ensurePlaceholderAfterFirstThink(session);
 
         long tasksCount = session.snapshot().stream()
@@ -566,12 +584,12 @@ class ProcessingTimelineSessionTest {
     void updateTaskBoard_anchorsAfterThinkEvenWhenManageTasksLate() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingStep think = session.snapshot().stream()
                 .filter(s -> "think".equals(s.id())).findFirst().orElseThrow();
         long thinkEnd = think.endedAt() != null ? think.endedAt() : think.startedAt();
 
-        session.beginToolStep("tool-sdk__sunshine-finance__list_finance_messages", "tool");
+        session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
         session.completeToolStep("命中 3 条");
 
         StepMetadata metadata = StepMetadata.withTasks(
@@ -583,7 +601,7 @@ class ProcessingTimelineSessionTest {
         ProcessingStep tasks = session.snapshot().stream()
                 .filter(s -> TimelineStepId.TASKS.id().equals(s.id())).findFirst().orElseThrow();
         assertThat(tasks.startedAt()).isLessThanOrEqualTo(session.snapshot().stream()
-                .filter(s -> s.id().startsWith("tool-sdk__sunshine-finance__list_finance"))
+                .filter(s -> s.id().startsWith("tool-sdk__sunshine-finance__list_my_expenses"))
                 .findFirst().orElseThrow().startedAt());
         assertThat(tasks.startedAt()).isGreaterThanOrEqualTo(thinkEnd);
     }
@@ -609,7 +627,7 @@ class ProcessingTimelineSessionTest {
     void dismissEmptyPlaceholder_completesTasksStepWithoutMetadata() {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         TaskBoardTimelineSupport support = new TaskBoardTimelineSupport();
         support.ensurePlaceholderAfterFirstThink(session);
 
@@ -625,13 +643,13 @@ class ProcessingTimelineSessionTest {
     void repeatedToolInvocation_createsSeparateStepsWithTimestampId() throws InterruptedException {
         com.sunshine.orchestrator.catalog.ToolCatalogService catalogService =
                 org.mockito.Mockito.mock(com.sunshine.orchestrator.catalog.ToolCatalogService.class);
-        org.mockito.Mockito.when(catalogService.displayName("sdk__sunshine-finance__summarize_finance_by_status"))
+        org.mockito.Mockito.when(catalogService.displayName("sdk__sunshine-finance__summarize_my_expenses"))
                 .thenReturn("统计财务消息");
-        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), catalogService));
+        ToolNodeLabels.bind(new ToolNodeLabelService(TimelinePromptCatalog.withDefaults(), catalogService));
         StepLabels.bind(catalogService);
         try {
             ProcessingTimelineSession session = new ProcessingTimelineSession();
-            String base = "tool-sdk__sunshine-finance__summarize_finance_by_status";
+            String base = "tool-sdk__sunshine-finance__summarize_my_expenses";
 
             session.beginToolStep(base, "tool");
             session.completeToolStep("pending 3 条，合计 ¥124140.5");
@@ -653,5 +671,17 @@ class ProcessingTimelineSessionTest {
             StepLabels.bind(null);
             ToolNodeLabels.bind(null);
         }
+    }
+
+    @Test
+    void parallelToolBegin_doesNotPrematurelyCompleteSibling() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        String first = session.beginToolStep("tool-sdk__sunshine-finance__list_my_expenses", "tool");
+        String second = session.beginToolStep("tool-sdk__sunshine-finance__summarize_my_expenses", "tool");
+
+        assertThat(session.snapshot().stream().filter(s -> first.equals(s.id())).findFirst().orElseThrow()
+                .lifecycle()).isEqualTo("running");
+        assertThat(session.snapshot().stream().filter(s -> second.equals(s.id())).findFirst().orElseThrow()
+                .lifecycle()).isEqualTo("running");
     }
 }

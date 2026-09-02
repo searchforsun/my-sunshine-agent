@@ -119,12 +119,25 @@ public class WorkflowAdminSupport {
                 def.workflowId(),
                 def.getDisplayName(),
                 def.getDescription(),
+                normalizeKind(def.getKind()),
                 def.isEnabled(),
                 def.getActiveVersion(),
                 def.getSource(),
                 def.getUpdatedAt(),
                 activeCreatedAt,
                 activePublished);
+    }
+
+    /** 会话形态 kind 收敛：chat|task|all；空/非法回落 all（与 Skill/Agent 一致） */
+    static String normalizeKind(String kind) {
+        if (kind == null) {
+            return "all";
+        }
+        String v = kind.strip();
+        return switch (v) {
+            case "chat", "task", "all" -> v;
+            default -> "all";
+        };
     }
 
     public Map<String, Object> readMap(String json) {

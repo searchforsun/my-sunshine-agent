@@ -1,7 +1,6 @@
 package com.sunshine.orchestrator.client;
 
 import com.sunshine.common.core.result.R;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -16,18 +15,14 @@ import java.util.Map;
 @Component
 public class DesensitizeClient {
 
-    @Value("${desensitize.base-url:http://localhost:8600}")
-    private String baseUrl;
+    private final WebClient webClient;
 
     @Value("${desensitize.enabled:true}")
     private boolean enabled;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder().baseUrl(baseUrl).build();
-        log.info("[DesensitizeClient] enabled={} baseUrl={}", enabled, baseUrl);
+    public DesensitizeClient(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
+        log.info("[DesensitizeClient] baseUrl=http://sunshine-resource-manager");
     }
 
     public String scrub(String text) {

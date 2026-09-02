@@ -14,6 +14,50 @@ import static org.mockito.Mockito.mock;
 class ProcessingStepSerdeTest {
 
     @Test
+    void currentPhaseSummary_paused_emitsAfter() {
+        ProcessingStep step = new ProcessingStep(
+                "tool-sandbox__exec@1",
+                "tool",
+                "paused",
+                new StepSummary("准备执行命令", "已取消", "已取消"),
+                1L,
+                2L,
+                1000L,
+                "sleep 120",
+                null,
+                null,
+                null,
+                2L,
+                "执行命令",
+                null,
+                null,
+                null,
+                null);
+        StepSummary phase = ProcessingStepSerde.currentPhaseSummary(step);
+        assertThat(phase).isNotNull();
+        assertThat(phase.after()).isEqualTo("已取消");
+        assertThat(phase.active()).isNull();
+        assertThat(phase.before()).isNull();
+    }
+
+    @Test
+    void metadataToMap_includesSpawnPrompt() {
+        StepMetadata metadata = StepMetadata.withSpawnPrompt(null, "检索差旅制度并摘要");
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);
+        assertThat(map.get("spawnPrompt")).isEqualTo("检索差旅制度并摘要");
+    }
+
+    @Test
+    void metadataToMap_includesWorkerRunId() {
+        StepMetadata metadata = StepMetadata.withWorkerRunId(
+                StepMetadata.withSpawnPrompt(null, "检索制度"), "run-abc");
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);
+
+        assertThat(map.get("workerRunId")).isEqualTo("run-abc");
+        assertThat(map.get("spawnPrompt")).isEqualTo("检索制度");
+    }
+
+    @Test
     void metadataToMap_includesTaskBoardFields() {
         StepMetadata metadata = StepMetadata.withTasks(
                 List.of(
@@ -52,6 +96,7 @@ class ProcessingStepSerdeTest {
                         1,
                         "1/1 已完成"),
                 null,
+                null,
                 null);
         String json = new com.sunshine.orchestrator.conversation.GenerationFlushScheduler(mock(), mock())
                 .metaStep(step);
@@ -59,5 +104,21 @@ class ProcessingStepSerdeTest {
         assertThat(json).contains("\"phase\":\"tasks\"");
         assertThat(json).contains("\"tasks\"");
         assertThat(json).contains("检索制度");
+    }
+
+    @Test
+    void metadataToMap_includesHarnessTaskQueueWithProgress() {
+        StepMetadata metadata = StepMetadata.withTaskQueue(
+                List.of(new TaskBoardItemView("t1-1", "调研收件箱待办", "pending")),
+                1,
+                "0/1");
+        Map<String, Object> map = ProcessingStepSerde.metadataToMap(metadata);
+
+        assertThat(map.get("taskRevision")).isEqualTo(1);
+        assertThat(map.get("taskProgress")).isEqualTo("0/1");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> queue = (List<Map<String, Object>>) map.get("taskQueue");
+        assertThat(queue).hasSize(1);
+        assertThat(queue.get(0).get("id")).isEqualTo("t1-1");
     }
 }

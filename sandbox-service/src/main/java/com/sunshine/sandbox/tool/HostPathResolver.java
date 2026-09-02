@@ -13,7 +13,7 @@ public final class HostPathResolver {
     public static Path toHost(SandboxSession session, String containerPath, boolean forWrite) {
         Path jailed = forWrite ? PathJail.resolveWrite(containerPath) : PathJail.resolveRead(containerPath);
         Path hostSkills = session.hostRoot().resolve("skills").toAbsolutePath().normalize();
-        Path hostWorkspace = session.hostRoot().resolve("workspace").toAbsolutePath().normalize();
+        Path hostWorkspace = session.workspaceHostDir().toAbsolutePath().normalize();
         if (jailed.startsWith(PathJail.SKILLS)) {
             Path rel = PathJail.SKILLS.relativize(jailed);
             Path host = hostSkills.resolve(rel.toString()).normalize();
@@ -37,7 +37,7 @@ public final class HostPathResolver {
     public static String toContainer(SandboxSession session, Path host) {
         Path abs = host.toAbsolutePath().normalize();
         Path hostSkills = session.hostRoot().resolve("skills").toAbsolutePath().normalize();
-        Path hostWorkspace = session.hostRoot().resolve("workspace").toAbsolutePath().normalize();
+        Path hostWorkspace = session.workspaceHostDir().toAbsolutePath().normalize();
         if (abs.startsWith(hostSkills)) {
             Path rel = hostSkills.relativize(abs);
             if (rel.toString().isEmpty()) {

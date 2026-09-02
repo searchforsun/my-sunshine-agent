@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
 public class AgentHitlProperties {
 
     private boolean enabled = true;
-    /** 用户确认等待超时（秒） */
-    private int timeoutSec = 120;
+    /** 用户确认等待超时（秒）；<=0 表示无限等待，仅用户确认/取消/停止会话结束 */
+    private int timeoutSec = 0;
     /** 拒绝/超时后返回给模型的工具结果 */
     private String rejectionMessage = "用户未确认执行该写操作，已跳过。";
     /** ReAct 模式下注入 system 层：写工具须直接调用、由平台 HITL 确认 */

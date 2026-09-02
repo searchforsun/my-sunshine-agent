@@ -16,10 +16,6 @@ public final class IntentLabels {
         service = labelService;
     }
 
-    public static String intentDetail(ExecutionPlan plan) {
-        return requireService().intentDetail(plan);
-    }
-
     /** 根据已写入 step.detail 还原用户向摘要（重连 / 回放） */
     public static String intentAfterSummary(String clippedQuery, String detail) {
         return requireService().intentAfterSummary(clippedQuery, detail);

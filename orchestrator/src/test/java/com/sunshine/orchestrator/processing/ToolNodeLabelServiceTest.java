@@ -1,7 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ class ToolNodeLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        ToolNodeLabels.bind(new ToolNodeLabelService(new AgentPromptProperties(), catalogService));
+        ToolNodeLabels.bind(new ToolNodeLabelService(TimelinePromptCatalog.withDefaults(), catalogService));
     }
 
     @AfterEach
@@ -38,9 +38,11 @@ class ToolNodeLabelServiceTest {
     }
 
     @Test
-    void nodeBefore_withQuery_usesBeforeWithQueryTemplate() {
+    void nodeBefore_withQuery_omitsUserQuery() {
         String q = StepSummarizer.clipQuery("预算审批");
         assertThat(ToolNodeLabels.nodeBefore("node-n1", q, "检索制度"))
-                .isEqualTo("准备处理「预算审批」的「检索制度」环节");
+                .isEqualTo("准备「检索制度」环节");
+        assertThat(ToolNodeLabels.nodeBefore("node-n1", q, "检索制度"))
+                .doesNotContain("预算审批");
     }
 }

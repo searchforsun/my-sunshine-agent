@@ -23,13 +23,14 @@ public record StreamToken(
     public static final String KIND_STEP = "step";
     public static final String KIND_STEP_DELTA = "step_delta";
     public static final String KIND_SANDBOX_SESSION = "sandbox_session";
+    public static final String KIND_USAGE = "usage";
 
-    /** simple-llm：无分段，正文落消息底部 */
+    /** 直连 Gateway / DIRECT：无分段，正文落消息底部 */
     public static StreamToken content(String text) {
         return content(text, null);
     }
 
-    /** @param afterStepId simple-llm 穿插锚点；ReAct 分段请用 {@link #contentInSegment} */
+    /** @param afterStepId 直连 Gateway / DIRECT 穿插锚点；ReAct 分段请用 {@link #contentInSegment} */
     public static StreamToken content(String text, String afterStepId) {
         return new StreamToken(KIND_CONTENT, text, null, afterStepId, null, null);
     }
@@ -72,6 +73,11 @@ public record StreamToken(
         return new StreamToken(KIND_SANDBOX_SESSION, conversationId, null, loaded, currentSkillId, null);
     }
 
+    /** LLM usage 计量帧 — text 承载 wire JSON（metaUsage 原样下发，不写正文） */
+    public static StreamToken usage(String usageJson) {
+        return new StreamToken(KIND_USAGE, usageJson, null, null, null, null);
+    }
+
     public StreamToken withScopeNodeStepId(String nodeStepId) {
         return new StreamToken(kind, text, step, stepId, channel, nodeStepId);
     }
@@ -102,7 +108,7 @@ public record StreamToken(
         return null;
     }
 
-    /** content_start 的穿插锚点；legacy content 的 afterStepId */
+    /** content_start 的穿插锚点；未分段 plain content 的 afterStepId */
     public String afterStepId() {
         if (isContentStart()) {
             return stepId;
@@ -127,6 +133,10 @@ public record StreamToken(
 
     public boolean isSandboxSession() {
         return KIND_SANDBOX_SESSION.equals(kind);
+    }
+
+    public boolean isUsage() {
+        return KIND_USAGE.equals(kind);
     }
 
     public boolean isContentLifecycle() {

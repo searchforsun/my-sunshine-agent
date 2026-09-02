@@ -29,11 +29,16 @@ public class AuditPublisher {
                 rocketMQClientTemplate.syncSendNormalMessage(properties.getTopic(), json);
                 log.info("[Audit] 已发送 topic={} msgId={}", properties.getTopic(), event.messageId());
                 return;
-            } catch (Exception e) {
-                log.warn("[Audit] MQ 发送失败，降级直写 msgId={}: {}", event.messageId(), e.getMessage());
+            } catch (Throwable e) {
+                // ServiceConfigurationError 等是 Error，不能只 catch Exception，否则会冲垮工具调用 / 终态落库
+                log.warn("[Audit] MQ 发送失败，降级直写 msgId={}: {}", event.messageId(), e.toString());
             }
         }
-        auditPersistService.persist(event);
-        log.info("[Audit] 直写落库 msgId={}", event.messageId());
+        try {
+            auditPersistService.persist(event);
+            log.info("[Audit] 直写落库 msgId={}", event.messageId());
+        } catch (Throwable e) {
+            log.warn("[Audit] 直写落库也失败 msgId={}: {}", event.messageId(), e.toString());
+        }
     }
 }

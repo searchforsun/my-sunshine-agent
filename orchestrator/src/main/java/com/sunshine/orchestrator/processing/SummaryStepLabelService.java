@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -25,7 +26,7 @@ public class SummaryStepLabelService {
     private static final Pattern RAG_SOURCE = Pattern.compile("来源[：:](.+)");
     private static final int RAG_SOURCE_CLIP = 80;
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
     private final ToolCatalogService toolCatalogService;
 
     @PostConstruct
@@ -53,18 +54,18 @@ public class SummaryStepLabelService {
             return textOrDefault(cfg.getAfterNoContext(), "完成问题分析，开始生成回复");
         }
         if (detail == null) {
-            return apply(textOrDefault(cfg.getAfterOutline(), "已梳理{query}的作答要点"), vars(q, null, null));
+            return apply(textOrDefault(cfg.getAfterOutline(), "已梳理作答要点"), vars(q, null, null));
         }
         if (detail.contains("0 条")) {
-            return apply(textOrDefault(cfg.getAfterZeroHits(), "知识库暂无{query}的匹配内容，将结合通用知识作答"),
+            return apply(textOrDefault(cfg.getAfterZeroHits(), "知识库暂无匹配内容，将结合通用知识作答"),
                     vars(q, null, null));
         }
         Matcher matcher = HIT_COUNT.matcher(detail);
         if (matcher.find()) {
-            return apply(textOrDefault(cfg.getAfterWithHits(), "已从 {hitCount} 条文档中提取与{query}相关的关键信息"),
+            return apply(textOrDefault(cfg.getAfterWithHits(), "已从 {hitCount} 条文档中提取关键信息"),
                     vars(q, matcher.group(1), null));
         }
-        return apply(textOrDefault(cfg.getAfterDefault(), "已完成对{query}的分析，开始生成回复"), vars(q, null, null));
+        return apply(textOrDefault(cfg.getAfterDefault(), "已完成分析，开始生成回复"), vars(q, null, null));
     }
 
     public String ragAfter(String clippedQuery, String detail, StepMetadata metadata) {
@@ -75,7 +76,7 @@ public class SummaryStepLabelService {
                 return apply(textOrDefault(cfg.getHitsWithSources(), "找到 {hitCount} 条参考片段，来源：{sources}"),
                         vars(clippedQuery, String.valueOf(metadata.hitCount()), sources));
             }
-            return apply(textOrDefault(cfg.getHitsWithQuery(), "找到 {hitCount} 条与{query}相关的参考文档"),
+            return apply(textOrDefault(cfg.getHitsWithQuery(), "找到 {hitCount} 条相关参考文档"),
                     vars(clippedQuery, String.valueOf(metadata.hitCount()), null));
         }
         String input = detail != null ? detail : "";
@@ -90,12 +91,12 @@ public class SummaryStepLabelService {
         }
         String summary = summarized.summary();
         if (summarized.zeroHit() || summarized.empty()) {
-            return apply(textOrDefault(cfg.getZeroHits(), "未找到与{query}直接相关的制度或文档"),
+            return apply(textOrDefault(cfg.getZeroHits(), "未找到直接相关的制度或文档"),
                     vars(clippedQuery, null, null));
         }
         Matcher countMatcher = RAG_HIT.matcher(summary);
         if (!countMatcher.find()) {
-            return apply(textOrDefault(cfg.getGenericDone(), "已完成针对{query}的知识库检索"),
+            return apply(textOrDefault(cfg.getGenericDone(), "已完成知识库检索"),
                     vars(clippedQuery, null, null));
         }
         String hitCount = countMatcher.group(1);
@@ -105,18 +106,16 @@ public class SummaryStepLabelService {
             return apply(textOrDefault(cfg.getHitsWithSources(), "找到 {hitCount} 条参考片段，来源：{sources}"),
                     vars(clippedQuery, hitCount, docNames));
         }
-        return apply(textOrDefault(cfg.getHitsWithQuery(), "找到 {hitCount} 条与{query}相关的参考文档"),
+        return apply(textOrDefault(cfg.getHitsWithQuery(), "找到 {hitCount} 条相关参考文档"),
                 vars(clippedQuery, hitCount, null));
     }
 
     private AgentPromptProperties.AgentTimeline agentTimeline() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getAgent() != null ? timeline.getAgent() : new AgentPromptProperties.AgentTimeline();
+        return timelinePromptCatalog.agent();
     }
 
     private AgentPromptProperties.RagAfterTimeline ragAfterTimeline() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getRagAfter() != null ? timeline.getRagAfter() : new AgentPromptProperties.RagAfterTimeline();
+        return timelinePromptCatalog.ragAfter();
     }
 
     private static String clipRagSource(String raw) {
@@ -133,7 +132,7 @@ public class SummaryStepLabelService {
             line = line.substring(0, newline).trim();
         }
         if (line.length() > RAG_SOURCE_CLIP) {
-            return line.substring(0, RAG_SOURCE_CLIP) + "…";
+            return line.substring(0, RAG_SOURCE_CLIP);
         }
         return line;
     }

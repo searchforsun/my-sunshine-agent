@@ -7,11 +7,20 @@ public record SkillCatalogIndexEntry(
         String description,
         int version,
         boolean enabled,
-        String sandbox
+        String sandbox,
+        String kind,
+        String bizScene,
+        String tenantId
 ) {
     public SkillCatalogIndexEntry {
         if (sandbox == null || sandbox.isBlank()) {
             sandbox = "none";
+        }
+        if (kind == null || kind.isBlank()) {
+            kind = "all";
+        }
+        if (tenantId == null || tenantId.isBlank()) {
+            tenantId = "default";
         }
     }
 }

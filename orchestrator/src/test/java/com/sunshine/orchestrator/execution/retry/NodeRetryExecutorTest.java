@@ -25,7 +25,7 @@ class NodeRetryExecutorTest {
             if (calls[0] < 2) {
                 return Mono.just(NodeResult.fail("调用超时"));
             }
-            return Mono.just(NodeResult.ok(java.util.Map.of("output", "ok")));
+            return Mono.just(NodeResult.ok(java.util.Map.of("output", com.sunshine.orchestrator.execution.TypedValue.scalar("ok"))));
         }).block();
         assertThat(outcome).isNotNull();
         assertThat(outcome.result().success()).isTrue();

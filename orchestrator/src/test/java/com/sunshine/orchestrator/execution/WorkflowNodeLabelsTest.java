@@ -31,7 +31,7 @@ class WorkflowNodeLabelsTest {
     void setUp() {
         lenient().when(workflowCatalog.findEntry("finance-list")).thenReturn(
                 new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "finance-list", "workflow", "财务待办查询", "财务待办", List.of(), List.of(), null));
+                        "finance-list", "workflow", "财务待办查询", "财务待办", "all", List.of(), List.of(), null));
         labelService = new WorkflowNodeLabelService(workflowCatalog, toolCatalogService);
         WorkflowNodeLabels.bind(labelService);
     }
@@ -54,7 +54,7 @@ class WorkflowNodeLabelsTest {
     void planChainSkipsStartAndAnswer() {
         WorkflowDefinition def = WorkflowDefinition.from("finance-list", List.of(
                 new NodeSpec("start", "start", Map.of()),
-                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"),
+                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_my_expenses"),
                         "查询待审批财务消息"),
                 new NodeSpec("answer", "answer", Map.of(), "生成回答")
         ), List.of("start", "finance-list", "answer"));

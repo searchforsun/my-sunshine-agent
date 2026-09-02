@@ -2,9 +2,12 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import 'katex/dist/katex.min.css'
 import '../utils/stream-markdown/styles.css'
-import { theme } from '../composables/useTheme'
 import { renderStaticMarkdown } from '../utils/markdown/renderStaticMarkdown'
-import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
+import { enhanceStaticMarkdown } from '../utils/stream-markdown/StaticEnhancer'
+import {
+  hasOpenMermaidFenceAtEnd,
+  stripTrailingOpenMermaidFence,
+} from '../utils/stream-markdown/mermaidFence'
 
 const props = withDefaults(defineProps<{
   source: string
@@ -14,45 +17,124 @@ const props = withDefaults(defineProps<{
   scrollable?: boolean
   /** Skills 文件预览同款样式（msg-md skill-md-preview） */
   skillPreview?: boolean
+  /** 流式输出中：未闭合 mermaid 用稳定占位，闭合后立即渲染 */
+  deferMermaid?: boolean
+  /** 流式输出中：标记容器为 streaming，路径增强暂缓到流式结束，避免重建闪烁 */
+  streaming?: boolean
+  /** 文件预览场景：当前文件容器路径，用于解析 markdown 内相对链接 */
+  basePath?: string
 }>(), {
   compact: false,
   scrollable: false,
   skillPreview: false,
+  deferMermaid: false,
+  streaming: false,
+  basePath: '',
 })
+
+/** 流式大文本降级阈值：超过该长度不再每次 chunk 跑 markdown-it/hljs 全量解析，
+ * 以纯文本 pre-wrap 渲染（只更新文本节点），流式结束切回完整渲染，避免正文流式输出卡顿。
+ * 16KB 约为 8000 个中文字符，覆盖绝大多数单次流式回答；低于该阈值 markdown-it 解析足够快。 */
+const STREAM_LARGE_SOURCE_LEN = 16 * 1024
 
 const rootRef = ref<HTMLElement | null>(null)
 
-const html = computed(() => renderStaticMarkdown(props.source))
+/** 流式且文末 mermaid 未闭合：裁掉该块，改用下方稳定占位，避免 v-html 抖动 */
+const openMermaidPending = computed(() =>
+  props.deferMermaid && hasOpenMermaidFenceAtEnd(props.source),
+)
+
+/** 流式期间超大文本：跳过 markdown 解析与 DOM 重建，纯文本展示 */
+const isStreamingLarge = computed(() =>
+  (props.streaming || props.deferMermaid) && props.source.length > STREAM_LARGE_SOURCE_LEN,
+)
+
+const renderSource = computed(() =>
+  openMermaidPending.value
+    ? stripTrailingOpenMermaidFence(props.source)
+    : props.source,
+)
+
+/** 穿插正文不做节流：50ms 合并会导致整段 v-html 间歇替换，观感跳动 */
+const html = computed(() =>
+  isStreamingLarge.value ? '' : renderStaticMarkdown(renderSource.value),
+)
+
+const mdClass = computed(() => ({
+  'static-md': !props.skillPreview,
+  'skill-md-preview': props.skillPreview,
+  'static-md-compact': props.compact,
+  'static-md-scroll': props.scrollable,
+  streaming: props.streaming || props.deferMermaid,
+}))
 
 async function enhanceDom() {
   await nextTick()
-  if (rootRef.value) enhanceStaticMarkdown(rootRef.value)
+  if (rootRef.value) {
+    enhanceStaticMarkdown(rootRef.value, {
+      deferMermaid: props.deferMermaid,
+      source: props.source,
+      basePath: props.basePath,
+    })
+  }
 }
 
 watch(html, () => { void enhanceDom() }, { flush: 'post' })
-watch(theme, async () => {
-  await nextTick()
-  reRenderStaticMermaids()
+watch(() => props.deferMermaid, (defer, prev) => {
+  if (prev && !defer) void enhanceDom()
+})
+watch(() => props.streaming, (now, prev) => {
+  // 流式结束：容器移除 streaming 标记后重新增强（路径高亮在流式中已暂缓）
+  if (prev && !now) void enhanceDom()
 })
 onMounted(() => { void enhanceDom() })
 </script>
 
 <template>
-  <div
-    v-if="html"
-    ref="rootRef"
-    class="msg-md"
-    :class="{
-      'static-md': !skillPreview,
-      'skill-md-preview': skillPreview,
-      'static-md-compact': compact,
-      'static-md-scroll': scrollable,
-    }"
-    v-html="html"
-  />
+  <!-- shell 仅承载流式 mermaid 占位；compact/scroll 必须落在 .msg-md 上，
+       否则 OperationCard 等 :deep(.static-md-compact) 灰色样式被 .msg-md { color: sun-text } 盖掉 -->
+  <div class="static-md-shell">
+    <!-- 流式大文本降级：不跑 markdown-it/hljs 全量解析，纯文本 pre-wrap 渲染，避免大文件生成卡顿 -->
+    <div
+      v-if="isStreamingLarge"
+      class="msg-md stream-large-text"
+      :class="mdClass"
+    >{{ source }}</div>
+    <template v-else>
+      <div
+        v-if="html"
+        ref="rootRef"
+        class="msg-md"
+        :class="mdClass"
+        v-html="html"
+      />
+      <!-- 未闭合围栏：Vue 节点稳定，不随 chunk 重建 -->
+      <div v-if="openMermaidPending" class="smd-mermaid-wrapper smd-mermaid-streaming-pending">
+        <div class="smd-mermaid-header">
+          <span class="smd-mermaid-label">mermaid</span>
+        </div>
+        <div class="smd-mermaid-loading">
+          <div class="smd-loading-spinner" />
+          <p>正在生成图表…</p>
+        </div>
+      </div>
+    </template>
+  </div>
 </template>
 
 <style scoped>
+.static-md-shell {
+  min-width: 0;
+}
+
+/* 流式大文本降级：保持换行、防超长行撑破；其余继承 .msg-md 排版 */
+.stream-large-text {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-height: 1.5em;
+}
+
 .static-md-compact {
   font-size: var(--sun-font-base);
   line-height: 1.55;

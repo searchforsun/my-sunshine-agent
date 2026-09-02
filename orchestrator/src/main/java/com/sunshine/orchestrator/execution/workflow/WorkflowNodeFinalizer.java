@@ -5,6 +5,7 @@ import com.sunshine.orchestrator.config.AgentGroundingProperties;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeResult;
 import com.sunshine.orchestrator.execution.NodeSpec;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.WorkflowContext;
 import com.sunshine.orchestrator.execution.WorkflowNodeCompletionLabels;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
@@ -69,7 +70,7 @@ public class WorkflowNodeFinalizer {
         int attemptCount = attemptRecords != null ? attemptRecords.size() : 1;
         List<PlanNodeAttempt> attempts = toPlanAttempts(attemptRecords);
         if (!result.success()) {
-            String err = result.safeOutputs().getOrDefault("error", WorkflowNodeCompletionLabels.nodeFailed());
+            String err = renderScalar(result.safeOutputs(), "error", WorkflowNodeCompletionLabels.nodeFailed());
             String summary = formatFailureSummary(err, attemptCount);
             runSession.noteNodeFailure(nodeId);
             wfCtx.putNodeFailure(nodeId, err, attemptCount);
@@ -82,7 +83,7 @@ public class WorkflowNodeFinalizer {
             }
             return Flux.empty();
         }
-        Map<String, String> outs = result.safeOutputs();
+        Map<String, TypedValue> outs = result.safeOutputs();
         if (WorkflowNodeType.ANSWER.matches(rawSpec.type())) {
             GroundingVerdict grounding = validateAnswerGrounding(outs, wfCtx);
             if (grounding != null && !grounding.passed()) {
@@ -108,15 +109,15 @@ public class WorkflowNodeFinalizer {
         }
         // loop 壳：仅占位 running；迭代与终态由 WorkflowExecutor.loopCompleteToken 驱动
         if (WorkflowNodeType.LOOP.matches(rawSpec.type())
-                && "looping".equalsIgnoreCase(outs.getOrDefault("status", ""))) {
+                && "looping".equalsIgnoreCase(renderScalar(outs, "status", ""))) {
             List<StreamToken> looping = new ArrayList<>(result.timelineTokens());
             looping.addAll(result.contentTokens());
             return Flux.fromIterable(looping);
         }
-        boolean userSkipped = "true".equalsIgnoreCase(outs.get("skipped"));
+        boolean userSkipped = "true".equalsIgnoreCase(renderScalar(outs, "skipped", ""));
         String summaryLine = resolveNodeDetail(rawSpec, outs);
         if (userSkipped) {
-            String err = outs.getOrDefault("detail", outs.getOrDefault("output", summaryLine));
+            String err = renderScalarFirst(outs, "detail", "output", summaryLine);
             summaryLine = StringUtils.hasText(err)
                     ? WorkflowNodeCompletionLabels.skippedWithReason(err.strip())
                     : WorkflowNodeCompletionLabels.skipped();
@@ -130,7 +131,7 @@ public class WorkflowNodeFinalizer {
         if (tracksNodeStep && isStreamingOutputNode(rawSpec.type())) {
             // answer 已在流式阶段 step_delta(result)+content 下发；llm 仍 finalize 补全
             if (WorkflowNodeType.LLM.matches(rawSpec.type())) {
-                String answer = outs.getOrDefault("answer", outs.get("output"));
+                String answer = renderScalarFirst(outs, "answer", "output", null);
                 if (StringUtils.hasText(answer)) {
                     session.appendDelta(WorkflowNodeTimeline.stepId(nodeId), "result", answer.strip());
                 }
@@ -148,14 +149,15 @@ public class WorkflowNodeFinalizer {
 
     public static NodeResult buildSkippedNodeResult(NodeSpec spec, String err) {
         String message = StringUtils.hasText(err) ? err.strip() : WorkflowNodeCompletionLabels.nodeFailed();
-        Map<String, String> outputs = new LinkedHashMap<>();
-        outputs.put("output", message);
-        outputs.put("detail", message);
-        outputs.put("skipped", "true");
+        Map<String, TypedValue> outputs = new LinkedHashMap<>();
+        outputs.put("output", TypedValue.scalar(message));
+        outputs.put("detail", TypedValue.scalar(message));
+        outputs.put("skipped", TypedValue.scalar("true"));
         if (WorkflowNodeType.TOOL.matches(spec.type())) {
-            String tool = spec.params().getOrDefault("tool", "");
+            Object toolVal = spec.params() != null ? spec.params().get("tool") : null;
+            String tool = toolVal != null ? toolVal.toString() : "";
             if (StringUtils.hasText(tool)) {
-                outputs.put("tool", tool.strip());
+                outputs.put("tool", TypedValue.scalar(tool.strip()));
             }
         }
         return NodeResult.ok(outputs);
@@ -206,11 +208,11 @@ public class WorkflowNodeFinalizer {
         }
     }
 
-    private GroundingVerdict validateAnswerGrounding(Map<String, String> outs, WorkflowContext wfCtx) {
+    private GroundingVerdict validateAnswerGrounding(Map<String, TypedValue> outs, WorkflowContext wfCtx) {
         if (!groundingProperties.isEnabled()) {
             return null;
         }
-        String answer = outs.getOrDefault("answer", outs.get("output"));
+        String answer = renderScalarFirst(outs, "answer", "output", null);
         GroundingVerdict verdict = groundingChecker.check(
                 answer, GroundingEvidenceSupport.fromWorkflow(wfCtx));
         if (verdict.passed()) {
@@ -231,9 +233,9 @@ public class WorkflowNodeFinalizer {
             WorkflowRunSession runSession) {
         switch (action) {
             case SKIP -> {
-                Map<String, String> placeholder = new LinkedHashMap<>();
-                placeholder.put("output", "");
-                placeholder.put("degraded", "true");
+                Map<String, TypedValue> placeholder = new LinkedHashMap<>();
+                placeholder.put("output", TypedValue.scalar(""));
+                placeholder.put("degraded", TypedValue.scalar("true"));
                 wfCtx.putNode(nodeId, placeholder);
             }
             case FAIL_FAST -> runSession.abort(OnFailureAction.FAIL_FAST, "节点 " + nodeId + " 失败: " + err);
@@ -261,20 +263,20 @@ public class WorkflowNodeFinalizer {
                 .collect(Collectors.toList());
     }
 
-    private static String resolveNodeDetail(NodeSpec spec, Map<String, String> outputs) {
+    private static String resolveNodeDetail(NodeSpec spec, Map<String, TypedValue> outputs) {
         if (WorkflowNodeType.LLM.matches(spec.type()) || WorkflowNodeType.ANSWER.matches(spec.type())) {
             return WorkflowNodeCompletionLabels.nodeComplete(nodeDisplayName(spec));
         }
-        String detail = outputs.get("detail");
+        String detail = renderScalar(outputs, "detail", "");
         if (detail != null && !detail.isBlank()) {
             return detail;
         }
-        String hitCount = outputs.get("hitCount");
+        String hitCount = renderScalar(outputs, "hitCount", "");
         if (hitCount != null && !hitCount.isBlank()) {
             return WorkflowNodeCompletionLabels.hitCount(hitCount);
         }
         if (WorkflowNodeType.AGENT.matches(spec.type())) {
-            String summary = outputs.get("detail");
+            String summary = renderScalar(outputs, "detail", "");
             if (summary != null && !summary.isBlank()) {
                 return summary;
             }
@@ -290,7 +292,7 @@ public class WorkflowNodeFinalizer {
     }
 
     private static String resolveExpandDetail(
-            NodeSpec spec, Map<String, String> outputs, String summaryLine, String traceMessageId) {
+            NodeSpec spec, Map<String, TypedValue> outputs, String summaryLine, String traceMessageId) {
         if (WorkflowNodeType.RAG.matches(spec.type())) {
             String stepId = WorkflowNodeTimeline.stepId(spec.id());
             String rewriteDetail = com.sunshine.orchestrator.rewrite.QueryRewriteTrace
@@ -300,27 +302,27 @@ public class WorkflowNodeFinalizer {
             }
         }
         if (WorkflowNodeType.AGENT.matches(spec.type())) {
-            String expand = outputs.get("expandDetail");
+            String expand = renderScalar(outputs, "expandDetail", "");
             if (expand != null && !expand.isBlank()) {
                 return expand.strip();
             }
-            String answer = outputs.get("answer");
+            String answer = renderScalar(outputs, "answer", "");
             if (answer != null && !answer.isBlank()) {
                 return answer.strip();
             }
             return summaryLine;
         }
         if (WorkflowNodeType.LLM.matches(spec.type())) {
-            String reasoning = outputs.get("reasoning");
+            String reasoning = renderScalar(outputs, "reasoning", "");
             if (reasoning != null && !reasoning.isBlank()) {
                 return reasoning.strip();
             }
             return null;
         }
         if (WorkflowNodeType.ANSWER.matches(spec.type())) {
-            String detail = outputs.get("detail");
+            String detail = renderScalar(outputs, "detail", "");
             if (detail != null && !detail.isBlank()) {
-                String answer = outputs.getOrDefault("answer", outputs.get("output"));
+                String answer = renderScalarFirst(outputs, "answer", "output", null);
                 if (answer != null && !answer.equals(detail)) {
                     return detail.strip();
                 }
@@ -328,7 +330,7 @@ public class WorkflowNodeFinalizer {
             return null;
         }
         if (WorkflowNodeType.TOOL.matches(spec.type())) {
-            String output = outputs.get("output");
+            String output = renderScalar(outputs, "output", "");
             return ToolExpandDetailSupport.resolveExpandDetail(summaryLine, output);
         }
         return null;
@@ -336,6 +338,29 @@ public class WorkflowNodeFinalizer {
 
     private static boolean isStreamingOutputNode(String type) {
         return WorkflowNodeType.isStreamingOutput(type);
+    }
+
+    /** 渲染 TypedValue 输出字段为字符串，缺失或空时返回 defaultValue */
+    private static String renderScalar(Map<String, TypedValue> outputs, String key, String defaultValue) {
+        TypedValue v = outputs.get(key);
+        if (v == null) {
+            return defaultValue;
+        }
+        String rendered = v.render();
+        return rendered != null ? rendered : defaultValue;
+    }
+
+    /** 依次尝试多个 key 渲染字符串，返回首个非空值，全缺失返回 defaultValue */
+    private static String renderScalarFirst(Map<String, TypedValue> outputs, String k1, String k2, String defaultValue) {
+        String v1 = renderScalar(outputs, k1, null);
+        if (v1 != null && !v1.isBlank()) {
+            return v1;
+        }
+        String v2 = renderScalar(outputs, k2, null);
+        if (v2 != null && !v2.isBlank()) {
+            return v2;
+        }
+        return defaultValue;
     }
 
     private void emitStreamTokens(String messageId, List<StreamToken> tokens) {

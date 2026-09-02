@@ -9,6 +9,17 @@ import {
 } from '../../utils/workflows/workflowsVersionUtils'
 
 const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
+
+function kindLabel(kind: string | undefined): string {
+  switch (kind) {
+    case 'chat':
+      return '对话'
+    case 'task':
+      return '任务'
+    default:
+      return ''
+  }
+}
 </script>
 
 <template>
@@ -47,6 +58,9 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
             <div class="wf-card-top">
               <div class="wf-card-names">
                 <span class="wf-title">{{ wf.id }}</span>
+                <span v-if="wf.kind && wf.kind !== 'all'" class="wf-kind">
+                  <NTag :bordered="false" size="tiny" class="meta-chip">{{ kindLabel(wf.kind) }}</NTag>
+                </span>
                 <span v-if="wf.displayName && wf.displayName !== wf.id" class="wf-subtitle">{{ wf.displayName }}</span>
                 <span class="wf-version-line">{{ listCardActiveVersionLine(wf) }}</span>
               </div>
@@ -98,8 +112,7 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 8px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 14px 16px 0;
 }
 
 .panel-title {
@@ -109,8 +122,7 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
 }
 
 .list-search {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--sun-border);
+  padding: 10px 12px;
 }
 
 .list-spin {
@@ -154,8 +166,8 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
 }
 
 .wf-card.active {
+  font-weight: 600;
   border-color: var(--sun-text);
-  box-shadow: inset 0 0 0 1px var(--sun-text);
 }
 
 .wf-card.disabled {
@@ -193,6 +205,17 @@ const page = inject(WORKFLOWS_PAGE_KEY) as WorkflowsPageApi
   font-size: 13px;
   font-weight: 600;
   font-family: var(--sun-font-mono);
+}
+
+.wf-kind {
+  flex-shrink: 0;
+}
+
+.meta-chip {
+  --n-color: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
+  --n-text-color: var(--sun-text-secondary) !important;
+  --n-border: none !important;
+  background: color-mix(in srgb, var(--sun-text) 8%, var(--sun-black)) !important;
 }
 
 .wf-subtitle {

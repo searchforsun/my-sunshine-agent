@@ -4,12 +4,14 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
@@ -19,6 +21,7 @@ import java.util.function.Function;
  * per-bridge Hook / Timeline / Generation 绑定注册表 — 替代 StepEventBridge 静态 Map。
  * 生产由 Spring 单例托管；单测可走 {@link StepEventBridge} 静态门面或独立实例。
  */
+@Slf4j
 @Component
 public class StepEventBridgeRegistry {
 
@@ -26,6 +29,8 @@ public class StepEventBridgeRegistry {
     private final Map<String, ConcurrentLinkedQueue<StreamToken>> hookTokenQueues = new ConcurrentHashMap<>();
     private final Map<String, String> ragDetails = new ConcurrentHashMap<>();
     private final Map<String, String> userQueries = new ConcurrentHashMap<>();
+    /** 4.7.7 goal-alignment：per-run 状态（bridgeId 生命周期，clear 随 bridge 回收） */
+    private final Map<String, AgentRunState> agentRunStates = new ConcurrentHashMap<>();
     private final Map<String, StepEventBridge.ToolAuditContext> toolAuditContexts = new ConcurrentHashMap<>();
     private final Map<String, Boolean> hitlEnabled = new ConcurrentHashMap<>();
     private final Map<String, String> hitlAssistantByBridge = new ConcurrentHashMap<>();
@@ -33,16 +38,26 @@ public class StepEventBridgeRegistry {
     private final Map<String, String> toolUseBridge = new ConcurrentHashMap<>();
     private final Map<String, String> toolUseStep = new ConcurrentHashMap<>();
     private final Map<String, String> hitlPreapproved = new ConcurrentHashMap<>();
+    /** assistantMsgId → 续跑预决策（fingerprint + result） */
+    private final Map<String, DecisionPreApproval> decisionPreapproved = new ConcurrentHashMap<>();
     /** assistantMsgId → Chat 工作区写 HITL 跳过模式 */
     private final Map<String, SandboxWriteHitlMode> writeHitlModes = new ConcurrentHashMap<>();
+
+    private record DecisionPreApproval(String fingerprint, DecisionResult result) {
+    }
     private final Map<String, Function<StreamToken, List<StreamToken>>> tokenWrappers = new ConcurrentHashMap<>();
+    /** 与 tokenWrappers 同键；缺省 {@link TokenWrapperMode#EMIT_OUTGOING} */
+    private final Map<String, TokenWrapperMode> tokenWrapperModes = new ConcurrentHashMap<>();
     /** assistantMsgId → loop body 折叠（Agent Hook 直刷 Generation 时用） */
     private final Map<String, Function<StreamToken, List<StreamToken>>> loopBodyFolds = new ConcurrentHashMap<>();
     private final Map<String, FlushBinding> generationFlush = new ConcurrentHashMap<>();
+    /** assistantMsgId → 续跑预填的 content_blocks JSON（抬高 segment seq + accumulator 种子） */
+    private final Map<String, String> resumeContentBlocksJson = new ConcurrentHashMap<>();
+    /** Planner 内部调用（planNext/selfAssess）期间抑制 content flush 的消息 ID 集合 */
+    private final Set<String> suppressedContentMessageIds = ConcurrentHashMap.newKeySet();
     private final Map<String, Long> streamEpoch = new ConcurrentHashMap<>();
     private final Map<String, Long> sessionStreamEpoch = new ConcurrentHashMap<>();
     /** 专家 Hub Sub-Agent：Hook 增量直出，不经主 Timeline think 锚点 */
-    private final Map<String, Consumer<StreamToken>> expertSpeakSinks = new ConcurrentHashMap<>();
 
     @PostConstruct
     void installFacade() {
@@ -58,6 +73,7 @@ public class StepEventBridgeRegistry {
         hookTokenQueues.clear();
         ragDetails.clear();
         userQueries.clear();
+        agentRunStates.clear();
         toolAuditContexts.clear();
         hitlEnabled.clear();
         hitlAssistantByBridge.clear();
@@ -65,13 +81,14 @@ public class StepEventBridgeRegistry {
         toolUseBridge.clear();
         toolUseStep.clear();
         hitlPreapproved.clear();
+        decisionPreapproved.clear();
         writeHitlModes.clear();
         tokenWrappers.clear();
+        tokenWrapperModes.clear();
         loopBodyFolds.clear();
         generationFlush.clear();
         streamEpoch.clear();
         sessionStreamEpoch.clear();
-        expertSpeakSinks.clear();
     }
 
     public void registerMainRun(String assistantMessageId, String bridgeId) {
@@ -115,7 +132,11 @@ public class StepEventBridgeRegistry {
             ConcurrentLinkedQueue<StreamToken> hookTokenQueue) {
         if (messageId != null && session != null) {
             sessions.put(messageId, session);
-            sessionStreamEpoch.put(messageId, currentStreamEpoch(messageId));
+            // bridgeId 可能是 main-{runId}/sub-{runId}，均非 streamEpoch 的键（其键是 assistantMessageId）。
+            // 经 hitlAssistantMessageId 解析回 assistantMessageId 再取 epoch，否则恢复续跑 bumpStreamEpoch 后，
+            // 新 spawn 的 sub bridge 会取到 0 与 bindingEpoch(N+1) 错配，isHookFlushAllowed 拒绝直刷 → 前端卡住。
+            String epochKey = hitlAssistantMessageId(messageId);
+            sessionStreamEpoch.put(messageId, currentStreamEpoch(epochKey != null ? epochKey : messageId));
         }
         if (messageId != null && hookTokenQueue != null) {
             hookTokenQueues.put(messageId, hookTokenQueue);
@@ -134,8 +155,24 @@ public class StepEventBridgeRegistry {
             return 0L;
         }
         String key = messageId.strip();
-        long next = streamEpoch.merge(key, 0L, (k, v) -> v + 1);
+        // merge(key,0,fn) 在 key 不存在时直接放 0（不调 fn），首次 bump 会得 0；改为显式 +1 保证单调递增。
+        long next = streamEpoch.compute(key, (k, v) -> (v == null ? 0L : v) + 1);
         generationFlush.remove(key);
+        // 同步抬高 sessionStreamEpoch：bindGenerationFlush 用新 epoch 绑定，
+        // 若 session bind 尚未重放（flux 异步订阅），isHookFlushAllowed 仍因 sessionEpoch 旧而拒绝 flush，
+        // 导致 spawn_subagent 等子 Agent token 无法直达 GenerationJob（卡到主 Agent drain）。
+        // 恢复续跑时 main/sub bridge 键（main-*/sub-*）的 sessionStreamEpoch 也须在 bind 前抬到新 epoch，
+        // 否则 resume run 的 bridge bind 记录旧 epoch，直刷与 drain 双双被 epoch 闸门拦截。
+        sessionStreamEpoch.put(key, next);
+        String activeBridge = mainRunByMessage.get(key);
+        if (activeBridge != null) {
+            sessionStreamEpoch.put(activeBridge, next);
+        }
+        for (Map.Entry<String, String> e : hitlAssistantByBridge.entrySet()) {
+            if (key.equals(e.getValue())) {
+                sessionStreamEpoch.put(e.getKey(), next);
+            }
+        }
         return next;
     }
 
@@ -173,6 +210,13 @@ public class StepEventBridgeRegistry {
             hitlEnabled.put(bridgeId, true);
             if (assistantMessageId != null && !assistantMessageId.isBlank()) {
                 hitlAssistantByBridge.put(bridgeId, assistantMessageId.strip());
+                // 统一在此校准 sessionStreamEpoch：bridgeId（main-*/sub-*）非 streamEpoch 键，
+                // bind 时 hitlAssistantByBridge 可能尚未注册（main 先 bind 后 bindHitl），
+                // 故在映射确立后按 assistantMessageId 重取 epoch，保证恢复续跑 bump 后新 spawn 的
+                // sub bridge 与 bindingEpoch 对齐，isHookFlushAllowed 放行直刷。
+                if (sessions.containsKey(bridgeId)) {
+                    sessionStreamEpoch.put(bridgeId, currentStreamEpoch(assistantMessageId));
+                }
             }
         } else {
             hitlEnabled.remove(bridgeId);
@@ -180,10 +224,39 @@ public class StepEventBridgeRegistry {
         }
     }
 
-    public void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
-        if (bridgeId != null && wrapper != null) {
-            tokenWrappers.put(bridgeId, wrapper);
+    public void unbindTokenWrapper(String bridgeId) {
+        if (bridgeId == null) {
+            return;
         }
+        tokenWrappers.remove(bridgeId);
+        tokenWrapperModes.remove(bridgeId);
+    }
+
+    public boolean hasSession(String bridgeId) {
+        return bridgeId != null && sessions.containsKey(bridgeId);
+    }
+
+    /** 4.7.7 goal-alignment：per-run 状态（bridgeId 无则懒建，clear 随 bridge 回收） */
+    public AgentRunState runState(String bridgeId) {
+        if (bridgeId == null || bridgeId.isBlank()) {
+            return null;
+        }
+        return agentRunStates.computeIfAbsent(bridgeId, k -> new AgentRunState());
+    }
+
+    public void bindTokenWrapper(String bridgeId, Function<StreamToken, List<StreamToken>> wrapper) {
+        bindTokenWrapper(bridgeId, wrapper, TokenWrapperMode.EMIT_OUTGOING);
+    }
+
+    public void bindTokenWrapper(
+            String bridgeId,
+            Function<StreamToken, List<StreamToken>> wrapper,
+            TokenWrapperMode mode) {
+        if (bridgeId == null || wrapper == null) {
+            return;
+        }
+        tokenWrappers.put(bridgeId, wrapper);
+        tokenWrapperModes.put(bridgeId, mode != null ? mode : TokenWrapperMode.EMIT_OUTGOING);
     }
 
     public void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
@@ -205,13 +278,6 @@ public class StepEventBridgeRegistry {
         return loopBodyFolds.get(assistantMessageId.strip());
     }
 
-    /** 专家发言专用：ReasoningChunk / 工具步等 Hook 产出即时消费，不依赖 ProcessingTimelineSession think 锚点 */
-    public void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
-        if (bridgeId != null && sink != null) {
-            expertSpeakSinks.put(bridgeId, sink);
-        }
-    }
-
     public void bindGenerationFlush(String messageId, Consumer<StreamToken> consumer) {
         bindGenerationFlush(messageId, currentStreamEpoch(messageId), consumer);
     }
@@ -226,6 +292,25 @@ public class StepEventBridgeRegistry {
         if (messageId != null) {
             generationFlush.remove(messageId);
         }
+    }
+
+    /** Planner 内部调用（planNext/selfAssess）期间抑制 content 令牌 flush 到 GenerationJob */
+    public void suppressContentFlush(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            suppressedContentMessageIds.add(messageId.strip());
+        }
+    }
+
+    /** 解除 content 抑制 */
+    public void unsuppressContentFlush(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            suppressedContentMessageIds.remove(messageId.strip());
+        }
+    }
+
+    /** 查询当前消息是否 content flush 被抑制 */
+    public boolean isContentFlushSuppressed(String messageId) {
+        return messageId != null && suppressedContentMessageIds.contains(messageId.strip());
     }
 
     public boolean hitlEnabled() {
@@ -249,6 +334,38 @@ public class StepEventBridgeRegistry {
         }
         String expected = hitlPreApprovalKey(toolId.strip(), params);
         return expected.equals(hitlPreapproved.remove(messageId.strip()));
+    }
+
+    public void grantDecisionPreApproval(String messageId, String fingerprint, DecisionResult result) {
+        if (messageId == null || messageId.isBlank()
+                || fingerprint == null || fingerprint.isBlank()
+                || result == null) {
+            return;
+        }
+        decisionPreapproved.put(messageId.strip(), new DecisionPreApproval(fingerprint.strip(), result));
+    }
+
+    public java.util.Optional<DecisionResult> consumeDecisionPreApproval(String messageId, String fingerprint) {
+        if (messageId == null || messageId.isBlank() || fingerprint == null || fingerprint.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        DecisionPreApproval held = decisionPreapproved.get(messageId.strip());
+        if (held == null || !fingerprint.strip().equals(held.fingerprint())) {
+            return java.util.Optional.empty();
+        }
+        decisionPreapproved.remove(messageId.strip(), held);
+        return java.util.Optional.ofNullable(held.result());
+    }
+
+    public java.util.Optional<DecisionResult> peekDecisionPreApproval(String messageId, String fingerprint) {
+        if (messageId == null || messageId.isBlank() || fingerprint == null || fingerprint.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        DecisionPreApproval held = decisionPreapproved.get(messageId.strip());
+        if (held == null || !fingerprint.strip().equals(held.fingerprint())) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.ofNullable(held.result());
     }
 
     public void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
@@ -329,11 +446,44 @@ public class StepEventBridgeRegistry {
         return null;
     }
 
+    /**
+     * 解析当前作用桥：优先唯一 toolUse 绑定（元工具/并行会话），再唯一 main 运行，
+     * 再 sessions 中唯一 main-*，最后才允许 sessions.size()==1。
+     */
     public String activeBridgeId() {
-        if (sessions.size() != 1) {
-            return null;
+        if (toolUseBridge.size() == 1) {
+            return toolUseBridge.values().iterator().next();
         }
-        return sessions.keySet().iterator().next();
+        if (mainRunByMessage.size() == 1) {
+            return mainRunByMessage.values().iterator().next();
+        }
+        String soleMainSession = null;
+        for (String id : sessions.keySet()) {
+            if (id != null && id.startsWith("main-")) {
+                if (soleMainSession != null) {
+                    soleMainSession = null;
+                    break;
+                }
+                soleMainSession = id;
+            }
+        }
+        if (soleMainSession != null) {
+            return soleMainSession;
+        }
+        if (sessions.size() == 1) {
+            return sessions.keySet().iterator().next();
+        }
+        return null;
+    }
+
+    /** 经 toolUse→bridge→assistantMessage 定位；无绑定则回退 {@link #activeMessageId()}。 */
+    public String resolveMessageIdForToolUse(String toolUseId) {
+        String bridge = bridgeIdForToolUse(toolUseId);
+        if (bridge != null && !bridge.isBlank()) {
+            String mapped = hitlAssistantMessageId(bridge);
+            return mapped != null ? mapped : bridge;
+        }
+        return activeMessageId();
     }
 
     public String hitlAssistantMessageId(String bridgeId) {
@@ -374,16 +524,47 @@ public class StepEventBridgeRegistry {
             hookTokenQueues.remove(messageId);
             ragDetails.remove(messageId);
             userQueries.remove(messageId);
+            agentRunStates.remove(messageId);
             toolAuditContexts.remove(messageId);
             hitlEnabled.remove(messageId);
             hitlAssistantByBridge.remove(messageId);
             hitlPreapproved.remove(messageId);
+            decisionPreapproved.remove(messageId);
             tokenWrappers.remove(messageId);
+            tokenWrapperModes.remove(messageId);
             loopBodyFolds.remove(messageId);
             generationFlush.remove(messageId);
             sessionStreamEpoch.remove(messageId);
-            expertSpeakSinks.remove(messageId);
+            resumeContentBlocksJson.remove(messageId);
+            suppressedContentMessageIds.remove(messageId.strip());
             toolUseBridge.entrySet().removeIf(e -> messageId.equals(e.getValue()));
+            // 清 bridge 时同步摘掉指向该 bridge 的 mainRun，避免多会话残留导致 activeBridgeId 误判
+            mainRunByMessage.entrySet().removeIf(e -> messageId.equals(e.getValue()));
+        }
+    }
+
+    /** 续跑：暂存中断前 content_blocks，供 TimelineSession 抬高 seq / GenerationJob 种子合并 */
+    public void prepareResumeContentBlocks(String messageId, String contentBlocksJson) {
+        if (messageId == null || messageId.isBlank()) {
+            return;
+        }
+        if (contentBlocksJson == null || contentBlocksJson.isBlank()) {
+            resumeContentBlocksJson.remove(messageId.strip());
+            return;
+        }
+        resumeContentBlocksJson.put(messageId.strip(), contentBlocksJson);
+    }
+
+    public String peekResumeContentBlocks(String messageId) {
+        if (messageId == null || messageId.isBlank()) {
+            return null;
+        }
+        return resumeContentBlocksJson.get(messageId.strip());
+    }
+
+    public void clearResumeContentBlocks(String messageId) {
+        if (messageId != null && !messageId.isBlank()) {
+            resumeContentBlocksJson.remove(messageId.strip());
         }
     }
 
@@ -433,9 +614,6 @@ public class StepEventBridgeRegistry {
         if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {
             return;
         }
-        if (emitExpertSpeakText(messageId, incrementalText)) {
-            return;
-        }
         ProcessingTimelineSession session = sessions.get(messageId);
         if (session == null) {
             return;
@@ -452,15 +630,19 @@ public class StepEventBridgeRegistry {
         if (messageId == null || incrementalText == null || incrementalText.isEmpty()) {
             return;
         }
-        if (emitExpertSpeakText(messageId, incrementalText)) {
-            return;
-        }
         ProcessingTimelineSession session = sessions.get(messageId);
         if (session == null) {
             return;
         }
+        // 首个 reasoning delta：按 pending 意图开/复用 think（无 Thinking 的轮次不开空步）
+        emitHookTokens(messageId, session, ProcessingTimelineSession::ensureThinkOpen);
         String thinkId = session.currentThinkStepId();
-        if (thinkId == null || !session.isThinkRunning()) {
+        boolean running = session.isThinkRunning();
+        if (thinkId == null || !running) {
+            if (log.isDebugEnabled()) {
+                log.debug("[TimelineBridge] dropReasoning thinkId={} running={} deltaLen={}",
+                        thinkId, running, incrementalText.length());
+            }
             return;
         }
         ConcurrentLinkedQueue<StreamToken> queue = hookTokenQueues.get(messageId);
@@ -469,52 +651,28 @@ public class StepEventBridgeRegistry {
         }
     }
 
-    /** 专家 Hub：Hook 增量直出正文，不经 think 锚点 */
-    public void emitExpertSpeakDelta(String bridgeId, String incrementalText) {
-        emitExpertSpeakText(bridgeId, incrementalText);
-    }
-
-    /** 专家 Hub：工具调用开始时刷新 expert 步 active 文案 */
-    public void emitExpertSpeakToolActive(String bridgeId, String toolLabel) {
-        if (bridgeId == null || toolLabel == null || toolLabel.isBlank()) {
+    /** ThinkingBlockStart：仅开 think，尚无 delta */
+    public void emitReasoningBlockStart(String messageId) {
+        if (messageId == null) {
             return;
         }
-        Consumer<StreamToken> sink = expertSpeakSinks.get(bridgeId);
-        if (sink == null) {
+        ProcessingTimelineSession session = sessions.get(messageId);
+        if (session == null) {
             return;
         }
-        long ts = System.currentTimeMillis();
-        String active = toolLabel.strip() + "…";
-        com.sunshine.orchestrator.processing.StepSummary summary =
-                new com.sunshine.orchestrator.processing.StepSummary(null, active, null);
-        ProcessingStep step = new ProcessingStep(
-                "tool-expert-speak",
-                "tool",
-                "running",
-                summary,
-                ts,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                ts,
-                toolLabel.strip(),
-                null,
-                null,
-                null);
-        sink.accept(StreamToken.step(step));
+        emitHookTokens(messageId, session, ProcessingTimelineSession::ensureThinkOpen);
     }
 
-    /** 专家 Hub：Hook 增量直出正文，不经 think 锚点 */
-    private boolean emitExpertSpeakText(String bridgeId, String incrementalText) {
-        if (!expertSpeakSinks.containsKey(bridgeId)) {
-            return false;
+    /** ThinkingBlockEnd：reasoning 通道结束即结掉 think，不等 tool_call / onReasoning flux */
+    public void emitReasoningBlockEnd(String messageId) {
+        if (messageId == null) {
+            return;
         }
-        Consumer<StreamToken> sink = expertSpeakSinks.get(bridgeId);
-        sink.accept(StreamToken.content(incrementalText));
-        return true;
+        ProcessingTimelineSession session = sessions.get(messageId);
+        if (session == null) {
+            return;
+        }
+        emitHookTokens(messageId, session, ProcessingTimelineSession::endReasoningRound);
     }
 
     public void emitSingletonReasoningChunk(String incrementalText) {
@@ -528,25 +686,30 @@ public class StepEventBridgeRegistry {
             Consumer<ProcessingTimelineSession> action) {
         List<StreamToken> hookEmitted = ProcessingTimelineSupport.run(session, () -> action.accept(session));
         ConcurrentLinkedQueue<StreamToken> queue = hookTokenQueues.get(messageId);
-        if (queue != null || generationFlush.containsKey(messageId)) {
+        boolean hasFlush = generationFlush.containsKey(messageId);
+        if (hookEmitted.stream().anyMatch(t -> t.isStepDelta()
+                && "step_summary".equals(t.channel()))) {
+            log.info("[HookDiag] emitHookTokens step_summary bridge={} emitted={} queue={} flush={}",
+                    messageId, hookEmitted.size(), queue != null, hasFlush);
+        }
+        if (queue != null || hasFlush) {
             hookEmitted.forEach(token -> routeHookToken(messageId, token, queue));
         }
     }
 
     private void routeHookToken(String messageId, StreamToken token,
             ConcurrentLinkedQueue<StreamToken> queue) {
+        if (token != null && token.isStepDelta() && "step_summary".equals(token.channel())) {
+            String flushKey0 = resolveFlushMessageId(messageId);
+            FlushBinding binding0 = flushKey0 != null ? generationFlush.get(flushKey0) : null;
+            log.info("[HookDiag] routeHookToken step_summary bridge={} bridgeActive={} queue={} canFlush={}",
+                    messageId, isHookBridgeActive(messageId), queue != null,
+                    binding0 != null && isHookFlushAllowed(messageId, flushKey0, binding0.epoch()));
+        }
         if (!isHookBridgeActive(messageId)) {
             return;
         }
-        Consumer<StreamToken> expertSink = expertSpeakSinks.get(messageId);
-        if (expertSink != null) {
-            // 专家 Hub：正文走 agent.stream REASONING；Hook 仅即时下发工具步（工具 RPC 期间 stream 无事件）
-            if (isExpertToolProgressToken(token)) {
-                expertSink.accept(token);
-            }
-            return;
-        }
-        // 专家 Hub 等无 tokenWrapper 的 sub Agent：禁止 Hook 刷入主 assistant 时间线
+        // 无 wrapper 的 sub Agent：禁止 Hook 刷入主 assistant 时间线
         if (messageId.startsWith("sub-") && !tokenWrappers.containsKey(messageId)) {
             if (queue != null) {
                 queue.offer(token);
@@ -555,21 +718,45 @@ public class StepEventBridgeRegistry {
         }
         String flushKey = resolveFlushMessageId(messageId);
         FlushBinding binding = flushKey != null ? generationFlush.get(flushKey) : null;
-        if (binding != null && isHookFlushAllowed(messageId, flushKey, binding.epoch())) {
-            Consumer<StreamToken> sink = binding.consumer();
-            Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(messageId);
-            List<StreamToken> outgoing;
-            if (wrapper != null) {
-                outgoing = wrapper.apply(token);
-            } else {
-                outgoing = List.of(token);
+        boolean canFlush = binding != null && isHookFlushAllowed(messageId, flushKey, binding.epoch());
+        WrapperOutcome outcome = applyTokenWrapper(messageId, token);
+        if (canFlush) {
+            if (outcome.mode() == TokenWrapperMode.PASS_THROUGH) {
+                // fold 副作用已执行；原 token 入队供 Flux，勿把空/父步刷进 Generation
+                if (queue != null) {
+                    queue.offer(token);
+                }
+                return;
             }
-            flushToGeneration(flushKey, sink, outgoing);
+            if (!outcome.outgoing().isEmpty()) {
+                flushToGeneration(flushKey, binding.consumer(), outcome.outgoing());
+                return;
+            }
+            // EMIT_OUTGOING + 空输出：丢弃
             return;
         }
         if (queue != null) {
             queue.offer(token);
         }
+    }
+
+    /**
+     * 执行 wrapper 副作用并解析输出；route / drain 共用，禁止再靠 sub- + 空列表猜测。
+     */
+    private WrapperOutcome applyTokenWrapper(String bridgeId, StreamToken token) {
+        Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(bridgeId);
+        if (wrapper == null) {
+            return new WrapperOutcome(TokenWrapperMode.EMIT_OUTGOING, List.of(token));
+        }
+        TokenWrapperMode mode = tokenWrapperModes.getOrDefault(bridgeId, TokenWrapperMode.EMIT_OUTGOING);
+        List<StreamToken> outgoing = wrapper.apply(token);
+        if (outgoing == null) {
+            outgoing = List.of();
+        }
+        return new WrapperOutcome(mode, outgoing);
+    }
+
+    private record WrapperOutcome(TokenWrapperMode mode, List<StreamToken> outgoing) {
     }
 
     private void flushToGeneration(
@@ -579,9 +766,15 @@ public class StepEventBridgeRegistry {
         if (sink == null || tokens == null || tokens.isEmpty()) {
             return;
         }
+        boolean suppressContent = isContentFlushSuppressed(flushKey);
         Function<StreamToken, List<StreamToken>> fold =
                 flushKey != null ? loopBodyFolds.get(flushKey) : null;
         for (StreamToken t : tokens) {
+            // planNext/selfAssess 期间仅抑制 Planner 正文产生的 content 令牌；
+            // step 令牌（Worker 步骤、工具步等）照常放行，前端仍须展示中间过程。
+            if (suppressContent && t.isContent()) {
+                continue;
+            }
             if (fold != null) {
                 List<StreamToken> folded = fold.apply(t);
                 if (folded != null) {
@@ -612,7 +805,19 @@ public class StepEventBridgeRegistry {
             return null;
         }
         String assistantId = hitlAssistantMessageId(bridgeId);
-        return assistantId != null ? assistantId : bridgeId;
+        if (assistantId != null) {
+            return assistantId;
+        }
+        // 非 HITL：main bridge 经 mainRunByMessage 反查 assistantMessageId，
+        // 使 spawn_subagent/worker 的 auxiliary（begin 卡、折叠快照）能直刷 GenerationJob。
+        // 否则主 Agent 工具调用阻塞（spawn blockLast 等待子 Agent 完成）期间主 Flux 无事件，
+        // hookQueue 不 drain → begin 卡堆积到 spawn 返回后才 emit（前端刷新才显示卡片）。
+        for (Map.Entry<String, String> e : mainRunByMessage.entrySet()) {
+            if (bridgeId.equals(e.getValue())) {
+                return e.getKey();
+            }
+        }
+        return bridgeId;
     }
 
     private boolean isHookFlushAllowed(String bridgeId, String flushKey, long bindingEpoch) {
@@ -621,14 +826,6 @@ public class StepEventBridgeRegistry {
             return false;
         }
         return bindingEpoch == currentStreamEpoch(flushKey);
-    }
-
-    private static boolean isExpertToolProgressToken(StreamToken token) {
-        if (token == null || !token.isStep() || token.step() == null) {
-            return false;
-        }
-        String phase = token.step().phase();
-        return phase != null && phase.startsWith("tool");
     }
 
     public void drainHookQueueToGeneration(String messageId,
@@ -641,16 +838,15 @@ public class StepEventBridgeRegistry {
             return;
         }
         StreamToken token;
-        Function<StreamToken, List<StreamToken>> wrapper = tokenWrappers.get(messageId);
         String flushKey = resolveFlushMessageId(messageId);
         while ((token = queue.poll()) != null) {
-            List<StreamToken> outgoing;
-            if (wrapper != null) {
-                outgoing = wrapper.apply(token);
-            } else {
-                outgoing = List.of(token);
+            WrapperOutcome outcome = applyTokenWrapper(messageId, token);
+            // PASS_THROUGH：副作用（fold）已执行；原 token 仅 Flux 消费，不刷 Generation
+            if (outcome.mode() == TokenWrapperMode.PASS_THROUGH) {
+                continue;
             }
-            if (outgoing == null || outgoing.isEmpty()) {
+            List<StreamToken> outgoing = outcome.outgoing();
+            if (outgoing.isEmpty()) {
                 continue;
             }
             Function<StreamToken, List<StreamToken>> fold =

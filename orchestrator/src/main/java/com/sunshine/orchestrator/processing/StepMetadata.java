@@ -1,13 +1,18 @@
 package com.sunshine.orchestrator.processing;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
+import com.sunshine.orchestrator.routing.RoutingTrace;
 import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
 
 /** 时间线步骤结构化元数据（如 RAG 命中数与来源文档、QueryRewrite 可观测） */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record StepMetadata(
         Integer hitCount,
         List<String> sources,
@@ -31,8 +36,6 @@ public record StepMetadata(
         NodeRecoveryMeta recovery,
         /** Workflow 节点执行 attempt 列表（重试过程实时下发） */
         List<NodeAttemptMeta> nodeAttempts,
-        /** 动态 Plan 用户确认轮次 */
-        PlanApprovalMeta planApproval,
         /** ReAct TaskBoard 清单项 */
         List<TaskBoardItemView> tasks,
         Integer taskRevision,
@@ -40,11 +43,33 @@ public record StepMetadata(
         /** 沙箱 read/write/edit：容器内完整路径（主行 after 可能为 fileName） */
         String sandboxPath,
         /** 沙箱 glob：搜索根（主行 after 为 pattern · root） */
-        String sandboxSearchRoot
+        String sandboxSearchRoot,
+        /** ReAct spawn_subagent：传入子 Agent 的 prompt（抽屉展示） */
+        String spawnPrompt,
+        /** 沙箱可单工具取消：UI 跟此字段，勿硬编码工具名单 */
+        Boolean cancellable,
+        /** 沙箱 edit：Git contextual diff（绝对行号）；UI 只认此字段 */
+        SandboxEditDiff editDiff,
+        /** ReAct request_decision：选择题载荷（勿截断 question/options） */
+        DecisionStepMeta decision,
+        /** 路由链路可观测：模式 → 轨 → L0 → 规则 → L3 → 最终绑定（intent 步抽屉） */
+        List<RoutingTrace> routingTraces,
+        /** Planner-Executor worker：异步 runId（前端单独取消 worker 卡） */
+        String workerRunId,
+        /** harness H1 taskQueue 投影（执行单元 versionedId，如 t1-1/t1-2；与 tasks 同形，前端优先展示并加 T1-1 记号） */
+        List<TaskBoardItemView> taskQueue,
+        /** 工具白名单标量入参（「金额=3000 · 单据=报销」；禁整段 payload）— 确定性 schema 行（五层 §5.5.8） */
+        String toolArgs,
+        /** exec 退出码（非 EXEC 工具为 null）— 确定性 schema 行 */
+        Integer toolExitCode
 ) {
 
     public static StepMetadata withTasks(List<TaskBoardItemView> tasks, Integer revision, String progress) {
         return StepMetadataAssembler.withTasks(tasks, revision, progress);
+    }
+
+    public static StepMetadata withTaskQueue(List<TaskBoardItemView> tasks, Integer revision, String progress) {
+        return StepMetadataAssembler.withTaskQueue(tasks, revision, progress);
     }
 
     public static StepMetadata fromRagToolOutput(String text) {
@@ -87,8 +112,8 @@ public record StepMetadata(
         return StepMetadataAssembler.fromRewrite(outcome);
     }
 
-    public static StepMetadata withPlanApproval(StepMetadata base, PlanApprovalMeta planApproval) {
-        return StepMetadataAssembler.withPlanApproval(base, planApproval);
+    public static StepMetadata withDecision(StepMetadata base, DecisionStepMeta decision) {
+        return StepMetadataAssembler.withDecision(base, decision);
     }
 
     public static StepMetadata mergeRewrite(StepMetadata base, QueryRewriteOutcome outcome) {
@@ -111,6 +136,28 @@ public record StepMetadata(
         return StepMetadataAssembler.fromSandbox(sandboxPath, sandboxSearchRoot);
     }
 
+    public static StepMetadata withSpawnPrompt(StepMetadata base, String prompt) {
+        return StepMetadataAssembler.withSpawnPrompt(base, prompt);
+    }
+
+    public static StepMetadata withCancellable(StepMetadata base, boolean cancellable) {
+        return StepMetadataAssembler.withCancellable(base, cancellable);
+    }
+
+    public static StepMetadata withEditDiff(StepMetadata base, SandboxEditDiff editDiff) {
+        return StepMetadataAssembler.withEditDiff(base, editDiff);
+    }
+
+    public static StepMetadata withWorkerRunId(StepMetadata base, String runId) {
+        return StepMetadataAssembler.withWorkerRunId(base, runId);
+    }
+
+    /** 工具步确定性 schema 数据：白名单标量入参 + exec 退出码（五层 §5.5.8 / task-scene §6.5） */
+    public static StepMetadata withToolSchema(StepMetadata base, String toolArgs, Integer exitCode) {
+        return StepMetadataAssembler.withToolSchema(base, toolArgs, exitCode);
+    }
+
+    @JsonIgnore
     public String sourcesLabel() {
         if (sources == null || sources.isEmpty()) {
             return "";
@@ -118,6 +165,7 @@ public record StepMetadata(
         return String.join("、", sources);
     }
 
+    @JsonIgnore
     public boolean isEmpty() {
         return (hitCount == null || hitCount == 0)
                 && (sources == null || sources.isEmpty())
@@ -128,11 +176,19 @@ public record StepMetadata(
                 && hitl == null
                 && recovery == null
                 && (nodeAttempts == null || nodeAttempts.isEmpty())
-                && planApproval == null
                 && (tasks == null || tasks.isEmpty())
                 && taskRevision == null
                 && !StringUtils.hasText(taskProgress)
+                && (taskQueue == null || taskQueue.isEmpty())
                 && !StringUtils.hasText(sandboxPath)
-                && !StringUtils.hasText(sandboxSearchRoot);
+                && !StringUtils.hasText(sandboxSearchRoot)
+                && !StringUtils.hasText(spawnPrompt)
+                && (cancellable == null || !cancellable)
+                && editDiff == null
+                && decision == null
+                && (routingTraces == null || routingTraces.isEmpty())
+                && !StringUtils.hasText(workerRunId)
+                && !StringUtils.hasText(toolArgs)
+                && toolExitCode == null;
     }
 }

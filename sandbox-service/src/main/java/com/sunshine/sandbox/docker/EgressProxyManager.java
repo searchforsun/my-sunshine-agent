@@ -4,16 +4,16 @@ import com.sunshine.sandbox.config.SandboxProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 共享 egress 代理（tinyproxy + Filter ACL）。
- * <p>v1：全实例一个 {@link #CONTAINER_NAME}；每次 ensure 用<strong>当前会话</strong>的
- * {@code network_allow} 重写 ALLOW（列表变化则重启容器）。并发会话白名单不同时会互相覆盖，
- * 可接受；后续若需隔离再改为 per-session egress。
+ * egress 代理（tinyproxy + Filter ACL），支持共享容器（向后兼容）和 per-session 容器。
  */
 @Slf4j
 @Component
@@ -26,11 +26,73 @@ public class EgressProxyManager {
     private final DockerCli dockerCli;
     private final SandboxProperties properties;
 
-    /** 最近一次成功 apply 的 ALLOW 串；同列表且容器在跑则跳过重启 */
+    /** 共享容器最近一次成功 apply 的 ALLOW 串 */
     private volatile String lastAllowCsv;
 
+    /** per-session 容器 Map：sessionId → containerName */
+    private final ConcurrentHashMap<String, String> sessionContainers = new ConcurrentHashMap<>();
+    /** per-session 容器上一次 ALLOW 串 */
+    private final ConcurrentHashMap<String, String> sessionAllowCsv = new ConcurrentHashMap<>();
+
     /**
-     * 确保 bridge 网络存在，并按 allowHosts 启动/复用 egress 容器。
+     * Per-session egress 容器（工作区级隔离）。
+     */
+    public synchronized void ensureRunning(String sessionId, List<String> allowHosts) {
+        if (!StringUtils.hasText(sessionId)) {
+            ensureRunning(allowHosts);
+            return;
+        }
+        String containerName = "sunshine-sandbox-egress-" + sessionId.substring(0, Math.min(sessionId.length(), 12));
+        String allowCsv = normalizeAllow(allowHosts);
+        String prevAllow = sessionAllowCsv.get(sessionId);
+        if (allowCsv.equals(prevAllow) && dockerCli.isRunning(containerName)) {
+            log.debug("egress reuse session={} name={} allow={}", sessionId, containerName, allowCsv);
+            return;
+        }
+        try {
+            dockerCli.removeForce(containerName);
+        } catch (RuntimeException e) {
+            log.debug("egress remove before recreate session={}: {}", sessionId, e.getMessage());
+        }
+        dockerCli.ensureNetwork(NETWORK_NAME);
+        List<String> args = new ArrayList<>();
+        args.add("run");
+        args.add("-d");
+        args.add("--name");
+        args.add(containerName);
+        args.add("--network");
+        args.add(NETWORK_NAME);
+        args.add("-e");
+        args.add("ALLOW=" + allowCsv);
+        args.add(properties.getEgress().getProxyImage());
+        dockerCli.runDetached(args);
+        sessionContainers.put(sessionId, containerName);
+        sessionAllowCsv.put(sessionId, allowCsv);
+        log.info("egress started session={} name={} allow={}", sessionId, containerName, allowCsv);
+    }
+
+    /** Per-session 代理地址 */
+    public String proxyUrl(String sessionId) {
+        if (sessionId == null) return proxyUrl();
+        String name = sessionContainers.get(sessionId);
+        return "http://" + (name != null ? name : CONTAINER_NAME) + ":" + properties.getEgress().getProxyPort();
+    }
+
+    /** 清理 per-session egress 容器 */
+    public void removeEgress(String sessionId) {
+        String name = sessionContainers.remove(sessionId);
+        sessionAllowCsv.remove(sessionId);
+        if (name != null) {
+            try {
+                dockerCli.removeForce(name);
+            } catch (RuntimeException e) {
+                log.warn("egress remove clean failed session={} name={}: {}", sessionId, name, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 共享 egress 代理（向后兼容，无 sessionId 的调用）。
      */
     public synchronized void ensureRunning(List<String> allowHosts) {
         String allowCsv = normalizeAllow(allowHosts);

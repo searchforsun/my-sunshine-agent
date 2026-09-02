@@ -1,0 +1,23 @@
+server:
+  port: 8240
+spring:
+  application:
+    name: sunshine-resource-manager
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        group: SUNSHINE_V2
+      config:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP
+  config:
+    import:
+      - optional:nacos:sunshine-resource-manager.yaml

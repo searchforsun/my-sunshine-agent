@@ -57,12 +57,12 @@ class StepEventBridgeConcurrentTest {
         bind("msg-a", queueA);
         bind("msg-b", queueB);
 
-        StepEventBridge.emit("msg-a", session -> session.beginToolStep("tool-list_finance_messages", "tool"));
+        StepEventBridge.emit("msg-a", session -> session.beginToolStep("tool-list_my_expenses", "tool"));
         StepEventBridge.emit("msg-a", session -> session.completeToolStep("pending 共 3 条"));
         StepEventBridge.emit("msg-b", session -> session.beginToolStep("tool-search_knowledge", "tool"));
         StepEventBridge.emit("msg-b", session -> session.completeToolStep("命中 2 条"));
 
-        assertThat(lastStepId(drain(queueA))).startsWith("tool-list_finance_messages");
+        assertThat(lastStepId(drain(queueA))).startsWith("tool-list_my_expenses");
         assertThat(lastStepId(drain(queueB))).startsWith("tool-search_knowledge");
     }
 
@@ -119,6 +119,29 @@ class StepEventBridgeConcurrentTest {
     }
 
     @Test
+    void activeBridgeId_prefersToolUseBindingWhenMultipleSessions() {
+        bind("main-a", new ConcurrentLinkedQueue<>());
+        bind("main-b", new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge("main-b", "msg-b", true);
+        StepEventBridge.bindToolUseBridge("tu-1", "main-b");
+
+        assertThat(StepEventBridge.activeBridgeId()).isEqualTo("main-b");
+        assertThat(StepEventBridge.resolveMessageIdForToolUse("tu-1")).isEqualTo("msg-b");
+
+        StepEventBridge.unbindToolUseBridge("tu-1");
+        assertThat(StepEventBridge.activeBridgeId()).isNull();
+    }
+
+    @Test
+    void activeBridgeId_prefersSoleMainWhenSubAlsoPresent() {
+        bind("main-run-1", new ConcurrentLinkedQueue<>());
+        bind("sub-run-1", new ConcurrentLinkedQueue<>());
+        StepEventBridge.registerMainRun("msg-1", "main-run-1");
+
+        assertThat(StepEventBridge.activeBridgeId()).isEqualTo("main-run-1");
+    }
+
+    @Test
     void resolveHitlBridgeId_fallsBackToSingleHitlBridge() {
         bind("msg-a", new ConcurrentLinkedQueue<>());
         bind("msg-b", new ConcurrentLinkedQueue<>());
@@ -136,6 +159,7 @@ class StepEventBridgeConcurrentTest {
         StepEventBridge.bindGenerationFlush("msg-stale", flushed::add);
 
         session.beginReasoningRound();
+        session.ensureThinkOpen();
         StepEventBridge.emitReasoningChunk("msg-stale", "旧推理");
         assertThat(flushed).hasSize(1);
 
@@ -154,11 +178,87 @@ class StepEventBridgeConcurrentTest {
         StepEventBridge.bindGenerationFlush("msg-flush", flushed::add);
 
         session.beginReasoningRound();
+        session.ensureThinkOpen();
         StepEventBridge.emitReasoningChunk("msg-flush", "增量推理");
 
         assertThat(flushed).hasSize(1);
         assertThat(flushed.get(0).isStepDelta()).isTrue();
         assertThat(flushed.get(0).text()).isEqualTo("增量推理");
+    }
+
+    @Test
+    void mainBridge_auxiliaryFlushesImmediatelyWithoutHitl() {
+        String assistantId = "msg-spawn-main";
+        String mainBridge = "main-spawn-run";
+        ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
+        bind(mainBridge, queue);
+        StepEventBridge.registerMainRun(assistantId, mainBridge);
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
+
+        // 非 HITL：主 Agent 工具调用阻塞期间，auxiliary（spawn begin 卡）须直刷 Generation 而非入 queue
+        StepEventBridge.emit(mainBridge, session -> session.beginToolStep("tool-spawn", "tool"));
+
+        assertThat(flushed).hasSize(2);
+        assertThat(flushed).allMatch(t -> t.isStep() && t.step().id().startsWith("tool-spawn"));
+        assertThat(queue.poll()).isNull();
+    }
+
+    @Test
+    void passThroughWrapper_withAssistantFlush_queuesContentForFlux() {
+        String assistantId = "msg-spawn-main";
+        String subBridge = "sub-spawn-run";
+        ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
+        bind(subBridge, subQueue);
+        StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
+        StepEventBridge.bindTokenWrapper(subBridge, token -> List.of(), TokenWrapperMode.PASS_THROUGH);
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
+
+        StepEventBridge.offerStreamToken(subBridge, StreamToken.content("子任务正文"));
+
+        assertThat(flushed).isEmpty();
+        assertThat(subQueue.poll()).matches(t -> t != null && t.isContent() && "子任务正文".equals(t.text()));
+    }
+
+    @Test
+    void drainHookQueue_passThrough_runsSideEffectButDoesNotEmit() {
+        String assistantId = "msg-spawn-drain";
+        String subBridge = "sub-spawn-drain";
+        ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
+        bind(subBridge, subQueue);
+        StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
+        List<StreamToken> sideEffects = new ArrayList<>();
+        StepEventBridge.bindTokenWrapper(subBridge, token -> {
+            sideEffects.add(token);
+            return List.of();
+        }, TokenWrapperMode.PASS_THROUGH);
+        subQueue.offer(StreamToken.content("仅副作用"));
+
+        List<StreamToken> drained = new ArrayList<>();
+        StepEventBridge.drainHookQueueToGeneration(subBridge, drained::add);
+
+        assertThat(sideEffects).hasSize(1);
+        assertThat(sideEffects.get(0).text()).isEqualTo("仅副作用");
+        assertThat(drained).isEmpty();
+    }
+
+    @Test
+    void emptyEmitOutgoing_doesNotQueueWhenFlushAllowed() {
+        String assistantId = "msg-emit-empty";
+        String subBridge = "sub-emit-empty";
+        ConcurrentLinkedQueue<StreamToken> subQueue = new ConcurrentLinkedQueue<>();
+        bind(subBridge, subQueue);
+        StepEventBridge.bindHitlBridge(subBridge, assistantId, true);
+        // 缺省 EMIT_OUTGOING：空输出丢弃（不再靠 sub- 启发式入队）
+        StepEventBridge.bindTokenWrapper(subBridge, token -> List.of());
+        List<StreamToken> flushed = new ArrayList<>();
+        StepEventBridge.bindGenerationFlush(assistantId, flushed::add);
+
+        StepEventBridge.offerStreamToken(subBridge, StreamToken.content("应丢弃"));
+
+        assertThat(flushed).isEmpty();
+        assertThat(subQueue.poll()).isNull();
     }
 
     @Test
@@ -169,7 +269,7 @@ class StepEventBridgeConcurrentTest {
         ConcurrentLinkedQueue<StreamToken> queue = new ConcurrentLinkedQueue<>();
         ProcessingTimelineSession session = bind("singleton-target", queue);
         session.beginReasoningRound();
-
+        session.ensureThinkOpen();
         StepEventBridge.emitSingleton(ProcessingTimelineSession::beginReasoningRound);
         StepEventBridge.emitSingletonReasoningChunk("不应出现");
 

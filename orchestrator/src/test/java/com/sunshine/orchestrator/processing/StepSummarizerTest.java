@@ -1,18 +1,9 @@
 package com.sunshine.orchestrator.processing;
 
-import com.sunshine.orchestrator.catalog.ToolCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
-import com.sunshine.orchestrator.catalog.WorkflowCatalogRegistry;
-import com.sunshine.orchestrator.client.WorkflowManagerClient;
-import com.sunshine.orchestrator.routing.WorkflowCatalog;
-import com.sunshine.orchestrator.execution.WorkflowNodeLabelService;
-import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,30 +21,17 @@ class StepSummarizerTest {
     }
 
     @Test
-    void intentAfter_knowledge_mentionsQuery() {
-        WorkflowCatalogRegistry registry = org.mockito.Mockito.mock(WorkflowCatalogRegistry.class);
-        WorkflowManagerClient client = org.mockito.Mockito.mock(WorkflowManagerClient.class);
-        WorkflowManagerClient.WorkflowCatalogEntryDto entry =
-                new WorkflowManagerClient.WorkflowCatalogEntryDto(
-                        "knowledge-qa", "workflow", "知识库问答", "查制度", List.of(), List.of(), null);
-        org.mockito.Mockito.when(registry.entries()).thenReturn(List.of(entry));
-        org.mockito.Mockito.when(registry.find("knowledge-qa")).thenReturn(entry);
-        WorkflowCatalog workflowCatalog = new WorkflowCatalog(registry, client);
-        WorkflowNodeLabelService workflowLabels = new WorkflowNodeLabelService(
-                workflowCatalog, Mockito.mock(ToolCatalogService.class));
-        WorkflowNodeLabels.bind(workflowLabels);
-        IntentLabels.bind(new IntentLabelService(
-                new AgentPromptProperties(), workflowCatalog, registry, workflowLabels));
+    void intentAfter_unifiedStatus_omitsQuery() {
         String after = StepSummarizer.after("intent", "公司考勤制度是什么？", "知识库问答");
-        assertThat(after).contains("公司考勤制度");
-        assertThat(after).contains("知识库问答");
+        assertThat(after).isEqualTo("已完成意图识别");
+        assertThat(after).doesNotContain("公司考勤制度");
     }
 
     @Test
-    void ragAfter_zeroHits_mentionsQuery() {
+    void ragAfter_zeroHits_omitsQuery() {
         String after = StepSummarizer.after("rag", "我怎么请假", "命中 0 条");
-        assertThat(after).contains("请假");
         assertThat(after).contains("未找到");
+        assertThat(after).doesNotContain("请假");
     }
 
     @Test
@@ -64,15 +42,15 @@ class StepSummarizerTest {
     }
 
     @Test
-    void ragAfter_withHits_mentionsCountAndQuery() {
+    void ragAfter_withHits_mentionsCountNotQuery() {
         String after = StepSummarizer.after("rag", "考勤制度", "命中 3 条");
         assertThat(after).contains("3 条");
-        assertThat(after).contains("考勤制度");
+        assertThat(after).doesNotContain("考勤制度");
     }
 
     @Test
     void ragAfter_withMetadata_usesDocTitlesOnly() {
-        StepMetadata metadata = new StepMetadata(3, List.of("公司请假流程规范"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        StepMetadata metadata = new StepMetadata(3, List.of("公司请假流程规范"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         String after = StepSummarizer.afterRag("项目预算审批流程", "命中 0 条", metadata);
         assertThat(after).isEqualTo("找到 3 条参考片段，来源：公司请假流程规范");
     }
@@ -90,36 +68,39 @@ class StepSummarizerTest {
         assertThat(after).contains("3 条");
         assertThat(after).doesNotContain("【");
         assertThat(after).doesNotContain("表格");
+        assertThat(after).doesNotContain("项目预算");
     }
 
     @Test
-    void generateAfter_mentionsQuery() {
+    void generateAfter_omitsQuery() {
         String after = StepSummarizer.after("generate", "你好", null);
-        assertThat(after).contains("你好");
         assertThat(after).contains("已完成");
+        assertThat(after).doesNotContain("你好");
     }
 
     @Test
-    void before_active_includeUserQuery() {
+    void before_active_omitUserQuery() {
         assertThat(StepSummarizer.before("intent", "测试问题"))
-                .isEqualTo("阅读「测试问题」");
+                .isEqualTo("识别用户意图");
         assertThat(StepSummarizer.active("rag", "测试问题"))
-                .contains("测试问题");
+                .isEqualTo("正在匹配最相关的文档片段");
+        assertThat(StepSummarizer.active("rag", "测试问题"))
+                .doesNotContain("测试问题");
     }
 
     @Test
     void clipQuery_skillMention_keepsFullTokenAndMoreEnglish() {
-        String clipped = StepSummarizer.clipQuery("@finance-analysis 先查制度再分析");
-        assertThat(clipped).isEqualTo("「@finance-analysis 先查制度再分析」");
+        String clipped = StepSummarizer.clipQuery("/finance-analysis 先查制度再分析");
+        assertThat(clipped).isEqualTo("「/finance-analysis 先查制度再分析」");
         assertThat(clipped).doesNotContain("…");
     }
 
     @Test
     void clipQuery_longEnglish_usesDisplayBudgetNotCharCount() {
-        String query = "@finance-analysis please analyze reimbursement compliance";
+        String query = "/finance-analysis please analyze reimbursement compliance";
         String clipped = StepSummarizer.clipQuery(query);
-        assertThat(clipped).startsWith("「@finance-analysis");
-        assertThat(clipped).contains("…");
+        assertThat(clipped).startsWith("「/finance-analysis");
+        assertThat(clipped).doesNotContain("…").doesNotContain("...");
         assertThat(StepSummarizer.clipByDisplayBudget(query, 36).length()).isGreaterThan(18);
     }
 }

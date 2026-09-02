@@ -9,14 +9,12 @@ import com.sunshine.common.tool.admin.ToolDefinitionView;
 import com.sunshine.common.tool.admin.ToolPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
-import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
+import com.sunshine.common.tool.admin.ToolSetToolIdsResponse;
 import com.sunshine.common.web.RemoteErrorMapper;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -32,18 +30,14 @@ import java.util.List;
 @Component
 public class ToolManagerAdminClient {
 
-    @Value("${tool-manager.base-url:http://localhost:8210}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public ToolManagerAdminClient(WebClient.Builder builder) {
+        this.webClient = builder
+                .baseUrl("http://sunshine-tool-service")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(8 * 1024 * 1024))
                 .build();
-        log.info("[BFF] ToolManager Admin 客户端: baseUrl={}", baseUrl);
+        log.info("[BFF] ToolManager Admin 客户端: baseUrl=http://sunshine-tool-service");
     }
 
     public Mono<R<List<SdkApplicationView>>> listSdkApplications() {
@@ -198,21 +192,19 @@ public class ToolManagerAdminClient {
                 .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
     }
 
-    public Mono<R<Void>> patchPlanWorkflowMemberCritical(
-            String tenantId, String toolId, ToolSetMemberCriticalPatchRequest body) {
-        return webClient.patch()
+    /** A-4：声明 picker 候选按 (tenant, kind) 集过滤；kind=all = chat∪task 并集 */
+    public Mono<R<ToolSetToolIdsResponse>> toolSetToolIds(String kind, String tenantId) {
+        return webClient.get()
                 .uri(uri -> {
-                    var builder = uri.path("/api/admin/tools/sets/plan-workflow/members/" + toolId);
+                    var builder = uri.path("/api/tools/sets/" + kind + "/tool-ids");
                     if (StringUtils.hasText(tenantId)) {
                         builder.queryParam("tenantId", tenantId);
                     }
                     return builder.build();
                 })
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toBizError)
-                .bodyToMono(new ParameterizedTypeReference<R<Void>>() {});
+                .bodyToMono(new ParameterizedTypeReference<R<ToolSetToolIdsResponse>>() {});
     }
 
     public Mono<R<List<ToolCatalogEntry>>> catalog(String tenantId, boolean enabledOnly) {

@@ -3,9 +3,7 @@ package com.sunshine.orchestrator.client;
 import com.sunshine.common.core.result.R;
 import com.sunshine.orchestrator.catalog.SkillCatalogEntry;
 import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -19,20 +17,22 @@ import java.util.Optional;
 @Component
 public class SkillCatalogClient {
 
-    @Value("${skill-manager.base-url:http://localhost:8225}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder().baseUrl(baseUrl).build();
+    public SkillCatalogClient(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
     }
 
-    public List<SkillCatalogIndexEntry> fetchCatalogIndex() {
+    public List<SkillCatalogIndexEntry> fetchCatalogIndex(String tenantId) {
         try {
             List<SkillCatalogIndexEntry> entries = webClient.get()
-                    .uri("/api/skills/catalog/index")
+                    .uri(uriBuilder -> {
+                        uriBuilder.path("/api/skills/catalog/index");
+                        if (tenantId != null && !tenantId.isBlank()) {
+                            uriBuilder.queryParam("tenantId", tenantId);
+                        }
+                        return uriBuilder.build();
+                    })
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<R<List<SkillCatalogIndexEntry>>>() {})
                     .map(R::getData)

@@ -169,6 +169,10 @@ async function emitGenerationChunks(generationId, tokens, res, assistantMsg, con
       await pushGenerationEvent(gen, res, clientConnected, stepPayload('agent', 'agent', 'done', 'Agent 推理', {
         summary: v2Summary('agent', 'done'),
       }))
+    } else {
+      await pushGenerationEvent(gen, res, clientConnected, stepPayload('think', 'think', 'done', '规划推理', {
+        summary: v2Summary('think', 'done'),
+      }))
     }
   }
 
@@ -285,7 +289,7 @@ ORDER BY order_count DESC;
 
 1. 用户通过 BFF 发送消息
 2. Orchestrator 根据意图分流
-    1. 简单对话 → 直连 LLM Gateway 逐 token 流式
+    1. 自主推理 → ReActAgent 多轮工具调用
     2. 知识检索 → ReActAgent + RAG 工具链
     3. 业务操作 → ReActAgent + OA/财务工具
 3. ReActAgent 调用工具链（检索 / 计算 / API）
@@ -323,14 +327,14 @@ ORDER BY order_count DESC;
 \`\`\`mermaid
 flowchart TD
     A[用户请求] --> B{意图分流}
-    B -->|简单对话| C[LLM Gateway]
+    B -->|自主推理| C[ReActAgent]
     B -->|知识检索| D[RAG Service]
     B -->|业务操作| E[Tool Manager]
-    C --> F[流式返回]
-    D --> G[ReActAgent]
-    G --> C
-    E --> G
-    F --> H[前端渲染]
+    C --> F[LLM Gateway]
+    D --> C
+    E --> C
+    F --> G[流式返回]
+    G --> H[前端渲染]
 \`\`\`
 
 \`\`\`mermaid
@@ -342,11 +346,12 @@ sequenceDiagram
     U->>B: 发送消息
     B->>O: 转发请求
     O->>O: 意图分类
-    alt 简单对话
-        O->>L: 直连流式
-        L-->>B: token 流
-    else 知识检索
+    alt 自主推理
         O->>O: ReActAgent 推理
+        O->>L: 调用 LLM / 工具
+        L-->>O: token 流
+    else 知识检索
+        O->>O: ReActAgent + RAG
         O->>L: 调用 LLM
         L-->>O: 工具调用结果
         O->>L: 最终生成
@@ -407,6 +412,11 @@ const STEP_V2 = {
     active: '正在查询 Milvus',
     after: detail => detail ?? '检索完成',
   },
+  think: {
+    before: '准备规划推理',
+    active: '正在规划推理路径',
+    after: detail => detail ?? '推理完成',
+  },
   agent: {
     before: '准备 Agent 推理',
     active: '正在调用 ReActAgent',
@@ -448,7 +458,7 @@ async function pushGenerationEvent(gen, res, clientConnected, text) {
 
 async function emitProcessingSteps(gen, res, clientConnected, options = {}) {
   const knowledge = !!options.knowledge
-  const intentDetail = knowledge ? '知识库查询' : '简单对话'
+  const intentDetail = knowledge ? '知识库查询' : '自主智能体'
 
   await pushGenerationEvent(gen, res, clientConnected, stepPayload('intent', 'intent', 'pending', '识别意图', {
     summary: v2Summary('intent', 'pending'),
@@ -474,6 +484,13 @@ async function emitProcessingSteps(gen, res, clientConnected, options = {}) {
     }))
     await pushGenerationEvent(gen, res, clientConnected, stepPayload('agent', 'agent', 'running', 'Agent 推理', {
       summary: v2Summary('agent', 'running'),
+    }))
+  } else {
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('think', 'think', 'pending', '规划推理', {
+      summary: v2Summary('think', 'pending'),
+    }))
+    await pushGenerationEvent(gen, res, clientConnected, stepPayload('think', 'think', 'running', '规划推理', {
+      summary: v2Summary('think', 'running'),
     }))
   }
 
@@ -584,6 +601,35 @@ const server = http.createServer(async (req, res) => {
     const conv = { id, userId, title: '新对话', createdAt: ts, updatedAt: ts, messages: [] }
     conversations.set(id, conv)
     return json(res, 200, { id, title: conv.title, createdAt: ts, updatedAt: ts })
+  }
+
+  // 聚合搜索：标题 + 消息正文命中（须在 /api/conversations/{id} 之前匹配）
+  if (req.method === 'GET' && url.startsWith('/api/conversations/search')) {
+    const q = new URL(req.url, 'http://localhost').searchParams.get('q') || ''
+    const kw = q.trim().toLowerCase()
+    const results = kw
+      ? [...conversations.values()]
+          .filter(c => c.userId === userId)
+          .map(c => {
+            const msgHit = (c.messages || []).find(
+              m => String(m.content || '').toLowerCase().includes(kw),
+            )
+            const titleHit = String(c.title || '').toLowerCase().includes(kw)
+            if (!titleHit && !msgHit) return null
+            return {
+              id: c.id,
+              title: c.title,
+              kind: c.kind || 'chat',
+              workspaceId: c.workspaceId || null,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt,
+              snippet: msgHit ? String(msgHit.content || '').slice(0, 120) : undefined,
+            }
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      : []
+    return json(res, 200, results)
   }
 
   const detailMatch = url.match(/^\/api\/conversations\/([^/?]+)$/)
@@ -723,7 +769,7 @@ const server = http.createServer(async (req, res) => {
       assistantMsg.status = 'streaming'
     } else {
       conv.messages.push({ id: newId(), role: 'user', content: payload.content, status: 'completed', seq: conv.messages.length + 1, createdAt: nowIso() })
-      assistantMsg = { id: newId(), role: 'assistant', content: '', status: 'streaming', intent: 'simple', seq: conv.messages.length + 1, createdAt: nowIso() }
+      assistantMsg = { id: newId(), role: 'assistant', content: '', status: 'streaming', intent: 'fast', seq: conv.messages.length + 1, createdAt: nowIso() }
       conv.messages.push(assistantMsg)
       if (conv.title === '新对话' && payload.content) {
         conv.title = payload.content.length > 28 ? payload.content.slice(0, 28) : payload.content

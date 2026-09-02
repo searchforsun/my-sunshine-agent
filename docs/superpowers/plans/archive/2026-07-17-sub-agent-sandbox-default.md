@@ -10,7 +10,7 @@
 
 **Tech Stack:** Java / Spring / AgentScope Toolkit / JUnit5 / Nacos YAML
 
-**Spec:** [2026-07-17-sub-agent-sandbox-default-design.md](../../specs/2026-07-17-sub-agent-sandbox-default-design.md)
+**Spec:** [2026-07-17-sub-agent-sandbox-default-design.md](../../specs/archive/2026-07-17-sub-agent-sandbox-default-design.md)
 
 ---
 

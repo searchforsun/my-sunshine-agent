@@ -6,6 +6,7 @@ import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
+import com.sunshine.sandbox.docker.SandboxInvocationRegistry;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
@@ -41,7 +42,8 @@ class SandboxExecTest {
         props = new SandboxProperties();
         props.getDocker().setDefaultTimeoutSec(30);
         docker = new FakeDockerCli(props);
-        executor = new SandboxToolExecutor(store, docker, props, null);
+        executor = new SandboxToolExecutor(
+                store, docker, props, null, new SandboxInvocationRegistry());
         sessionId = "sess-exec-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         Path hostSkill = hostRoot.resolve("skill");
@@ -53,7 +55,8 @@ class SandboxExecTest {
                 "cid-exec-1",
                 hostRoot,
                 new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 45, 256, 0.5,
-                        List.of(), List.of())));
+                        List.of(), List.of(), null),
+                null));
     }
 
     @Test
@@ -99,7 +102,8 @@ class SandboxExecTest {
                 sid,
                 "cid-2",
                 hostRoot,
-                new SandboxPolicy("docker", "img", null, 256, 0.5, List.of(), List.of())));
+                new SandboxPolicy("docker", "img", null, 256, 0.5, List.of(), List.of(), null),
+                null));
         docker.nextResult = new ExecResult(0, "", "");
         executor.invoke(sid, SandboxToolNames.EXEC, Map.of("command", "true"));
         assertThat(docker.invocations.get(0).timeout()).isEqualTo(Duration.ofSeconds(30));
@@ -160,13 +164,19 @@ class SandboxExecTest {
         ExecResult nextResult = new ExecResult(0, "", "");
 
         FakeDockerCli(SandboxProperties properties) {
-            super(properties);
+            super(properties, new SandboxInvocationRegistry());
         }
 
         @Override
         public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
             invocations.add(new Invocation(containerId, workingDir, List.copyOf(cmd), timeout));
             return nextResult;
+        }
+
+        @Override
+        public ExecResult exec(
+                String containerId, String workingDir, List<String> cmd, Duration timeout, String invocationId) {
+            return exec(containerId, workingDir, cmd, timeout);
         }
 
         record Invocation(String containerId, String workingDir, List<String> cmd, Duration timeout) {}

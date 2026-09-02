@@ -1,5 +1,5 @@
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { NIcon, useMessage, type DropdownOption } from 'naive-ui'
 import {
   CreateOutline,
@@ -25,6 +25,7 @@ import {
   publishSkillVersion,
   setSkillEnabled,
   updateSkill,
+  updateSkillVersionTools,
   uploadSkillPackage,
   zipFolderFiles,
   type SkillEntry,
@@ -32,6 +33,8 @@ import {
   type SkillVersion,
 } from '../api/skills'
 import { friendlyErrorMessage } from '../api/apiError'
+import { listBizScenes, type BizSceneEntry } from '../api/bizScenes'
+import { fetchToolSetToolIds, listToolCatalog, type ToolCatalogEntry, type ToolSetKindPath } from '../api/tools'
 import { buildFileTree, collectDirKeys, formatFileSize } from '../utils/buildFileTree'
 import { formatSkillVersionTime, formatSkillVersionTimeForFilename } from '../utils/formatSkillVersionTime'
 import {
@@ -47,15 +50,21 @@ import {
   listCardMaintainer,
 } from '../utils/skills/skillsVersionUtils'
 import { useSkillFilePreview } from '../composables/useSkillFilePreview'
+import { useSkillsRouteState } from '../composables/useSkillsRouteState'
+import { useTenantPreference } from '../composables/useTenantPreference'
 
 export const SKILLS_PAGE_KEY = Symbol('skillsPage')
 
 export function useSkillsPage() {
   const message = useMessage()
   const router = useRouter()
+  const route = useRoute()
+  const { tenantId } = useTenantPreference()
+  const { readSkillId, syncSkillId } = useSkillsRouteState()
   const skills = ref<SkillEntry[]>([])
   const loading = ref(false)
   const selectedId = ref<string | null>(null)
+  let suppressRouteWatch = false
   const versions = ref<SkillVersion[]>([])
   const selectedVersion = ref<number | null>(null)
   const files = ref<{ path: string; size: number; directory: boolean }[]>([])
@@ -67,9 +76,43 @@ export function useSkillsPage() {
 
   const showCreate = ref(false)
   const showEdit = ref(false)
-  const createForm = ref({ id: '', displayName: '', description: '' })
+  /** 业务场景 Lab active 条目（biz_scene 下拉选项；value=code、label=中文名） */
+  const activeBizScenes = ref<BizSceneEntry[]>([])
+
+  /** 业务工具目录（enabled 过滤做下拉选项） */
+  const toolCatalog = ref<ToolCatalogEntry[]>([])
+  /** A-4：(tenant, kind) 工具集成员，声明候选收敛用；kind=all = chat∪task 并集 */
+  const toolSetMemberIds = ref<string[] | null>(null)
+  const toolsLoading = ref(false)
+  /** 当前选中版本绑定工具的草稿（加载版本时同步） */
+  const versionTools = ref<string[]>([])
+  const toolsDirty = ref(false)
+  const savingTools = ref(false)
+
+  /** 业务工具仅草稿状态可变更（与文件在线编辑同语义） */
+  const canEditTools = computed(() => {
+    const ver = selectedVersionEntry.value
+    return !!ver?.storagePath && ver.status === 'draft'
+  })
+
+  /** A-4：声明候选收敛到当前 skill (tenant, kind) 工具集；成员未加载退化为全量 */
+  const toolSelectOptions = computed(() => {
+    const all = toolCatalog.value.filter(t => t.enabled).map(t => ({
+      label: `${t.displayName || t.id} (${t.id})`,
+      value: t.id,
+    }))
+    const memberIds = toolSetMemberIds.value
+    if (!memberIds || memberIds.length === 0) return all
+    const memberSet = new Set(memberIds)
+    return all.filter(o => memberSet.has(o.value))
+  })
+
+  const bizSceneOptions = computed(() =>
+    activeBizScenes.value.map(s => ({ label: s.displayName || s.bizScene, value: s.bizScene })),
+  )
+  const createForm = ref({ id: '', displayName: '', description: '', kind: 'all', bizScene: null as string | null })
   const editTargetSkill = ref<SkillEntry | null>(null)
-  const editForm = ref({ displayName: '', description: '' })
+  const editForm = ref({ displayName: '', description: '', kind: 'all', bizScene: null as string | null })
   const creating = ref(false)
   const savingEdit = ref(false)
   const uploading = ref(false)
@@ -337,6 +380,78 @@ export function useSkillsPage() {
   }
 
   /** 刷新整页：左侧列表 + 右侧当前 Skill/版本/文件预览 */
+  async function loadToolCatalog() {
+    if (toolsLoading.value || toolCatalog.value.length > 0) return
+    toolsLoading.value = true
+    try {
+      toolCatalog.value = await listToolCatalog()
+    } catch {
+      toolCatalog.value = []
+    } finally {
+      toolsLoading.value = false
+    }
+  }
+
+  /** A-4：按当前 skill 的 (tenant, kind) 拉取工具集成员；接口失败置空退化为全量候选 */
+  async function loadToolSetMembers(kind: string | undefined) {
+    const kindKey: ToolSetKindPath = kind === 'chat' || kind === 'task' ? kind : 'all'
+    const tenantParam = tenantId.value === 'default' ? undefined : tenantId.value
+    try {
+      toolSetMemberIds.value = await fetchToolSetToolIds(kindKey, tenantParam)
+    } catch {
+      toolSetMemberIds.value = null
+    }
+  }
+  watch(() => selectedSkill.value?.kind, (kind) => {
+    loadToolSetMembers(kind)
+  }, { immediate: true })
+
+  /** 解析版本 toolsJson 为工具 ID 列表（`["*"]` 展开为已启用工具） */
+  function parseVersionTools(toolsJson: string | undefined | null): string[] {
+    if (!toolsJson?.trim()) return []
+    try {
+      const parsed = JSON.parse(toolsJson) as unknown
+      if (!Array.isArray(parsed)) return []
+      const ids = parsed.map(x => String(x).trim()).filter(Boolean)
+      if (ids.length === 1 && ids[0] === '*') {
+        return toolCatalog.value.filter(t => t.enabled).map(t => t.id)
+      }
+      return ids.filter(id => id !== '*')
+    } catch {
+      return []
+    }
+  }
+
+  /** 版本切换时同步工具草稿（未保存变更丢弃） */
+  watch(selectedVersionEntry, (entry) => {
+    versionTools.value = entry ? parseVersionTools(entry.toolsJson) : []
+    toolsDirty.value = false
+  })
+
+  function onVersionToolsChange() {
+    toolsDirty.value = true
+  }
+
+  async function handleSaveVersionTools() {
+    if (!selectedId.value || selectedVersion.value == null) return
+    savingTools.value = true
+    try {
+      const updated = await updateSkillVersionTools(
+        selectedId.value,
+        selectedVersion.value,
+        versionTools.value,
+      )
+      skills.value = skills.value.map(s => (s.id === updated.id ? updated : s))
+      toolsDirty.value = false
+      message.success('工具绑定已保存')
+      await loadVersions(selectedId.value, { preserveVersion: selectedVersion.value ?? undefined })
+    } catch (e: unknown) {
+      message.error(friendlyErrorMessage(e, '保存失败'))
+    } finally {
+      savingTools.value = false
+    }
+  }
+
   async function refreshPage() {
     if (!(await flushFileEditBeforeLeave())) return
     const keepSkillId = selectedId.value
@@ -349,22 +464,27 @@ export function useSkillsPage() {
     try {
       skills.value = await listSkills()
       loading.value = false
-      if (!keepSkillId) {
-        if (skills.value.length > 0) {
-          selectedId.value = skills.value[0].id
+      const routeId = readSkillId()
+      const preferred = routeId || keepSkillId
+      const targetId = preferred && skills.value.some(s => s.id === preferred)
+        ? preferred
+        : (skills.value[0]?.id ?? null)
+      if (targetId !== selectedId.value) {
+        selectedId.value = targetId
+      } else if (targetId) {
+        suppressVersionWatch = true
+        try {
+          await loadVersions(targetId, { preserveVersion: keepVersion ?? undefined })
+          await loadDetailContent({ preservePath: keepFilePath ?? undefined })
+        } finally {
+          suppressVersionWatch = false
         }
-        return
       }
-      if (!skills.value.some(s => s.id === keepSkillId)) {
-        selectedId.value = skills.value[0]?.id ?? null
-        return
-      }
-      suppressVersionWatch = true
-      try {
-        await loadVersions(keepSkillId, { preserveVersion: keepVersion ?? undefined })
-        await loadDetailContent({ preservePath: keepFilePath ?? undefined })
-      } finally {
-        suppressVersionWatch = false
+      if (readSkillId() !== targetId) {
+        suppressRouteWatch = true
+        syncSkillId(targetId)
+        await nextTick()
+        suppressRouteWatch = false
       }
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '刷新失败'))
@@ -490,11 +610,13 @@ export function useSkillsPage() {
         createForm.value.id.trim(),
         createForm.value.displayName.trim(),
         createForm.value.description.trim(),
+        createForm.value.kind,
+        createForm.value.bizScene,
       )
       skills.value = [...skills.value, created]
       selectedId.value = created.id
       showCreate.value = false
-      createForm.value = { id: '', displayName: '', description: '' }
+      createForm.value = { id: '', displayName: '', description: '', kind: 'all', bizScene: null }
       message.success('Skill 已创建，请上传 Skill 文件夹')
     } catch (e: unknown) {
       message.error(friendlyErrorMessage(e, '创建失败'))
@@ -507,6 +629,10 @@ export function useSkillsPage() {
     if (id === selectedId.value) return
     if (!(await flushFileEditBeforeLeave())) return
     selectedId.value = id
+    suppressRouteWatch = true
+    syncSkillId(id)
+    await nextTick()
+    suppressRouteWatch = false
   }
 
   function onPickLabelClick(e: MouseEvent) {
@@ -592,6 +718,8 @@ export function useSkillsPage() {
     editForm.value = {
       displayName: skill.displayName,
       description: skill.description ?? '',
+      kind: skill.kind ?? 'all',
+      bizScene: skill.bizScene ?? null,
     }
     showEdit.value = true
   }
@@ -609,6 +737,8 @@ export function useSkillsPage() {
         editTargetSkill.value.id,
         editForm.value.displayName.trim(),
         editForm.value.description.trim(),
+        editForm.value.kind,
+        editForm.value.bizScene,
       )
       skills.value = skills.value.map(s => (s.id === updated.id ? updated : s))
       showEdit.value = false
@@ -818,7 +948,16 @@ export function useSkillsPage() {
     files.value = []
     versions.value = []
     selectedVersion.value = null
-    if (!id) return
+    if (!id) {
+      if (!suppressRouteWatch) syncSkillId(null)
+      return
+    }
+    if (!suppressRouteWatch && readSkillId() !== id) {
+      suppressRouteWatch = true
+      syncSkillId(id)
+      await nextTick()
+      suppressRouteWatch = false
+    }
     detailLoading.value = true
     suppressVersionWatch = true
     try {
@@ -831,6 +970,34 @@ export function useSkillsPage() {
       detailLoading.value = false
     }
   })
+
+  watch(
+    () => route.params.skillId,
+    async (raw) => {
+      if (suppressRouteWatch || route.name !== 'skills') return
+      const id = typeof raw === 'string' && raw.trim() ? raw.trim() : null
+      if (id === selectedId.value) return
+      if (id && skills.value.some(s => s.id === id)) {
+        if (!(await flushFileEditBeforeLeave())) {
+          suppressRouteWatch = true
+          syncSkillId(selectedId.value)
+          await nextTick()
+          suppressRouteWatch = false
+          return
+        }
+        selectedId.value = id
+        return
+      }
+      if (!id && skills.value.length > 0) {
+        const first = skills.value[0].id
+        selectedId.value = first
+        suppressRouteWatch = true
+        syncSkillId(first)
+        await nextTick()
+        suppressRouteWatch = false
+      }
+    },
+  )
 
   watch(selectedFilePath, async (path, oldPath) => {
     if (suppressFilePathWatch) return
@@ -858,6 +1025,10 @@ export function useSkillsPage() {
   onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload)
     void refreshPage()
+    void loadToolCatalog()
+    void listBizScenes()
+      .then(scenes => { activeBizScenes.value = scenes.filter(s => s.status === 'active') })
+      .catch(() => { activeBizScenes.value = [] })
   })
 
   onBeforeUnmount(() => {
@@ -883,6 +1054,15 @@ export function useSkillsPage() {
     createForm,
     editTargetSkill,
     editForm,
+    activeBizScenes,
+    bizSceneOptions,
+    toolCatalog,
+    toolsLoading,
+    versionTools,
+    toolsDirty,
+    savingTools,
+    toolSelectOptions,
+    canEditTools,
     creating,
     savingEdit,
     uploading,
@@ -949,6 +1129,8 @@ export function useSkillsPage() {
     handleDeleteVersionConfirm,
     onVersionSelected,
     handleMoreMenuSelect,
+    onVersionToolsChange,
+    handleSaveVersionTools,
     triggerFolderPick,
     onPickLabelClick,
     onFolderPicked,

@@ -55,7 +55,7 @@ async function submit(action: 'retry' | 'terminate' | 'skip') {
     :summary="summaryLine"
     :detail="errorText"
     :resolved="isResolved"
-    :default-collapsed="isResolved"
+    icon="recovery"
   >
     <p v-if="errorText" class="recovery-error">{{ errorText }}</p>
     <p v-if="awaiting && !localAction" class="recovery-hint">

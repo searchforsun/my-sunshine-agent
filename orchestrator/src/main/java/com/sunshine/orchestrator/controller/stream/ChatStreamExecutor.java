@@ -2,18 +2,20 @@ package com.sunshine.orchestrator.controller.stream;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.ProcessingStepMerger;
+import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
-import com.sunshine.orchestrator.client.DesensitizeClient;
 import com.sunshine.orchestrator.client.StreamChunkSplitter;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.client.StreamTokenCoalescer;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.conversation.ConversationService;
+import com.sunshine.orchestrator.conversation.ConversationTitleService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.ExecutionDispatcher;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
-import com.sunshine.orchestrator.execution.PlanWorkflowExecutor;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.execution.WorkflowResumeService;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -34,15 +36,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
-
 /** 直连 SSE 流组装（无 Redis GenerationJob 缓冲） */
 @Slf4j
 @Component
@@ -50,15 +49,16 @@ import java.util.function.Consumer;
 public class ChatStreamExecutor {
 
     private final ExecutionPlanStore executionPlanStore;
-    private final PlanWorkflowExecutor planWorkflowExecutor;
+    private final WorkflowResumeService workflowResumeService;
     private final ExecutionPlanParser executionPlanParser;
-    private final com.sunshine.orchestrator.execution.SimpleLlmExecutor simpleLlmExecutor;
     private final ExecutionDispatcher executionDispatcher;
     private final ExecutionPlanRouter executionPlanRouter;
     private final ConversationService conversationService;
+    private final ConversationTitleService titleService;
     private final GenerationFlushScheduler flushScheduler;
-    private final DesensitizeClient desensitizeClient;
-    private final MemoryLifecycleService memoryLifecycleService;
+    private final ContextLifecycle contextLifecycle;
+    private final com.sunshine.orchestrator.routing.RoutingStickyService routingStickyService;
+    private final com.sunshine.orchestrator.catalog.SkillBodyRenderer skillBodyRenderer;
 
     @Value("${agent.generation.flush-interval-ms:500}")
     private long flushIntervalMs;
@@ -72,33 +72,41 @@ public class ChatStreamExecutor {
 
         StringBuilder buffer = new StringBuilder();
         if (resume) {
-            boolean planWorkflowResume = executionPlanStore
+            boolean planRunResume = executionPlanStore
                     .findResumableForMessage(ctx.assistantMsgId()).isPresent();
-            boolean reactRestartResume = !planWorkflowResume && isReactStoredIntent(ctx.intent());
-            if (!planWorkflowResume && !reactRestartResume && StringUtils.hasText(ctx.existingContent())) {
+            boolean reactRestartResume = !planRunResume && isReactStoredIntent(ctx.intent());
+            if (!planRunResume && !reactRestartResume && StringUtils.hasText(ctx.existingContent())) {
                 buffer.append(ctx.existingContent());
             }
         }
-        boolean planWorkflowResumeOnResume = resume
+        boolean planRunResumeOnResume = resume
                 && executionPlanStore.findResumableForMessage(ctx.assistantMsgId()).isPresent();
-        boolean reactRestartOnResume = resume && !planWorkflowResumeOnResume && isReactStoredIntent(ctx.intent());
+        boolean reactRestartOnResume = resume && !planRunResumeOnResume && isReactStoredIntent(ctx.intent());
         StringBuilder reasoningBuffer = new StringBuilder(
-                resume && !planWorkflowResumeOnResume && !reactRestartOnResume
+                resume && !planRunResumeOnResume && !reactRestartOnResume
                         ? ctx.existingReasoning() : "");
         java.util.List<ProcessingStep> stepsBuffer = new java.util.ArrayList<>(
                 ProcessingStepSerde.fromJson(ctx.existingStepsJson()));
+        if (reactRestartOnResume) {
+            // 与 ChatController resume 一致：截断到最后一个完整 think，丢弃未终态 tool/rag/tasks
+            truncateAfterLastDoneThink(stepsBuffer);
+            // 截断后若最后一个 think 仍是 done（中断在其流式中途、半截被误标 done），
+            // 该 think 不在 checkpoint message 历史里、将被重生成，重置为 paused 让前端清空旧内容
+            resetTrailingDoneThinkToPaused(stepsBuffer);
+        }
         QueryRewriteTrace.bind(ctx.assistantMsgId());
         ThinkStepMapper thinkMapper = new ThinkStepMapper(stepsBuffer, ctx.userContent(), executionMode);
-        var appender = flushScheduler.createChunkAppender(buffer, ctx.assistantMsgId(), flushIntervalMs);
+        var appender = flushScheduler.createChunkAppender(
+                buffer, ctx.assistantMsgId(), flushIntervalMs, buffer.length());
 
         Flux<ServerSentEvent<String>> meta = Flux.just(
                 sse(flushScheduler.metaConversation(ctx.conversationId())),
                 sse(flushScheduler.metaMessage(ctx.assistantMsgId(), MessageStatus.STREAMING, resume))
         );
 
-        // 续跑直连 SSE，须在 boundedElastic 执行 DAG/Agent，避免 reactor-http 线程 block()
+        // 续跑直连 SSE，须在虚拟线程执行 DAG/Agent，避免 reactor-http 线程 block()
         Flux<ServerSentEvent<String>> chunks = chunkFlux
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .concatMap(token -> Flux.fromIterable(thinkMapper.map(token)))
                 .concatWith(Flux.defer(() -> Flux.fromIterable(thinkMapper.finish())))
                 .doOnNext(token -> {
@@ -115,7 +123,8 @@ public class ChatStreamExecutor {
                         return;
                     }
                     if (token.isContent()) {
-                        appender.accept(desensitizeClient.scrub(token.text()));
+                        // 脱敏由 flush 批量执行（间隔级），避免每 token 一次远程 scrub
+                        appender.accept(token.text());
                     } else if (token.isReasoning()) {
                         reasoningBuffer.append(token.text());
                     }
@@ -130,17 +139,16 @@ public class ChatStreamExecutor {
                                 reasoningBuffer.toString(),
                                 MessageStatus.COMPLETED,
                                 ProcessingStepSerde.toJson(stepsBuffer));
-                        maybeUpdateTitle(ctx);
-                        memoryLifecycleService.onAssistantCompleted(
+                        contextLifecycle.onTurnCompleted(
                                 ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.COMPLETED);
                     })
-                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribeOn(VirtualThreadExecutors.scheduler())
                     .subscribe();
             return Flux.just(sse(flushScheduler.metaMessage(
                     ctx.assistantMsgId(), MessageStatus.COMPLETED, resume)));
         });
 
-        return Flux.concat(meta, chunks, done)
+        return Flux.merge(Flux.concat(meta, chunks, done), titleService.titleEventSse(ctx))
                 .onErrorResume(e -> {
                     String errMsg = StreamErrorMessages.resolve(e);
                     if (buffer.length() > 0) {
@@ -148,6 +156,8 @@ public class ChatStreamExecutor {
                     } else {
                         buffer.append(errMsg);
                     }
+                    // 异常中断：running 步（含 rag/tool/think 等）标 paused 再落库，避免残留 running
+                    ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
                     Mono.fromRunnable(() ->
                                     flushScheduler.commitFinal(
                                             ctx.assistantMsgId(),
@@ -155,21 +165,24 @@ public class ChatStreamExecutor {
                                             reasoningBuffer.toString(),
                                             MessageStatus.FAILED,
                                             ProcessingStepSerde.toJson(stepsBuffer)))
-                            .subscribeOn(Schedulers.boundedElastic())
+                            .subscribeOn(VirtualThreadExecutors.scheduler())
                             .subscribe();
                     return Flux.just(
                             sse(flushScheduler.metaError(errMsg)),
                             sse(flushScheduler.metaMessage(
                                     ctx.assistantMsgId(), MessageStatus.FAILED, resume)));
                 })
-                .doOnCancel(() -> Mono.fromRunnable(() ->
+                .doOnCancel(() -> Mono.fromRunnable(() -> {
+                                // 用户中断：running 步（含 rag/tool/think 等）标 paused 再落库，避免残留 running
+                                ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
                                 flushScheduler.commitFinal(
                                         ctx.assistantMsgId(),
                                         buffer.toString(),
                                         reasoningBuffer.toString(),
                                         MessageStatus.INTERRUPTED,
-                                        ProcessingStepSerde.toJson(stepsBuffer)))
-                        .subscribeOn(Schedulers.boundedElastic())
+                                        ProcessingStepSerde.toJson(stepsBuffer));
+                            })
+                        .subscribeOn(VirtualThreadExecutors.scheduler())
                         .subscribe())
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={}", ctx.conversationId()))
                 .doOnError(e -> log.error("[Orchestrator] 异常", e))
@@ -180,20 +193,21 @@ public class ChatStreamExecutor {
             ChatStreamContext ctx, AtomicReference<ExecutionMode> executionMode, boolean resume) {
         var resumablePlan = executionPlanStore.findResumableForMessage(ctx.assistantMsgId());
         if (resumablePlan.isPresent()) {
-            ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "resume");
-            executionMode.set(ExecutionMode.PLAN_WORKFLOW);
+            ExecutionPlan plan = new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "resume");
+            executionMode.set(ExecutionMode.PRO);
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan)
                     .withPersistedPlanId(resumablePlan.get().getId());
-            return prepareChunkFlux(planWorkflowExecutor.resumePaused(execCtx, resumablePlan.get()));
+            return prepareChunkFlux(workflowResumeService.resumePaused(execCtx, resumablePlan.get()));
         }
         if (ctx.intent() != null) {
             ExecutionPlan plan = executionPlanParser.parseStoredIntent(ctx.intent());
+            // S-0：续跑复用该消息已存 RoutingResult（triggered skill / 可调度 agent），不重跑收集、不重触发决策
+            if (ctx.routingSeed() != null && ctx.routingSeed().hasAny()) {
+                plan = routingStickyService.applySeed(plan, ctx.routingSeed());
+            }
             executionMode.set(plan.mode());
             ExecutionStreamContext execCtx = toExecutionContext(ctx, plan);
             // ReAct 暂停续跑：仅保留 intent，从规划推理重新开始（见 ChatStreamContextFactory）
-            if (plan.mode() == ExecutionMode.SIMPLE_LLM && StringUtils.hasText(ctx.existingContent())) {
-                return prepareChunkFlux(simpleLlmExecutor.execute(execCtx));
-            }
             return prepareChunkFlux(executionDispatcher.execute(execCtx));
         }
 
@@ -214,22 +228,30 @@ public class ChatStreamExecutor {
                         ctx.executionPreference(),
                         ctx.forcedWorkflowId(),
                         ctx.clientSkillId(),
-                        ctx.memory()))
+                        ctx.memory(),
+                        null,
+                        StringUtils.hasText(ctx.conversationKind()) ? ctx.conversationKind() : "chat",
+                        ctx.routingSeed(),
+                        ctx.tenantId()))
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
                                             conversationService.updateMessageExecutionPlan(
                                                     ctx.assistantMsgId(), plan))
-                                    .subscribeOn(Schedulers.boundedElastic())
+                                    .subscribeOn(VirtualThreadExecutors.scheduler())
                                     .then();
                             session.completeIntent(plan);
-                            List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
-                            String skillId = plan.params() != null
-                                    ? plan.params().get(com.sunshine.orchestrator.skill.SkillBindingOutcome.PARAM_SKILL)
-                                    : null;
-                            if (StringUtils.hasText(skillId)) {
-                                session.completeSkillLoad(skillId.strip());
+                            // 统一加载入口：L0/L1 首次绑定技能渲染「加载技能」步骤（与 sunshine_search_skills
+                            // 动态加载一致）；继承技能（已在上一轮 seed 触发集）与动态加载（工具完成步渲染）不在此重复。
+                            List<String> seedSkills = ctx.routingSeed() != null ? ctx.routingSeed().skillIds() : List.of();
+                            for (String skillId : plan.triggeredSkillIds()) {
+                                if (skillId != null && !seedSkills.contains(skillId.trim())) {
+                                    String body = skillBodyRenderer.renderById(
+                                            skillId.trim(), ctx.tenantId(), ctx.conversationKind());
+                                    session.completeSkillLoad(skillId.trim(), body);
+                                }
                             }
+                            List<StreamToken> intentDoneTokens = drainStepTokens(stepEmissions);
                             List<StreamToken> skillDoneTokens = drainStepTokens(stepEmissions);
                             return savePlan.thenMany(Flux.concat(
                                     Flux.fromIterable(intentDoneTokens),
@@ -246,7 +268,7 @@ public class ChatStreamExecutor {
     }
 
     public AtomicReference<ExecutionMode> initialExecutionMode(ChatStreamContext ctx) {
-        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.REACT);
+        AtomicReference<ExecutionMode> mode = new AtomicReference<>(ExecutionMode.FAST);
         if (ctx.intent() != null) {
             mode.set(executionPlanParser.parseStoredIntent(ctx.intent()).mode());
         }
@@ -262,7 +284,7 @@ public class ChatStreamExecutor {
             return true;
         }
         ExecutionMode mode = executionPlanParser.parseStoredIntent(intent).mode();
-        return mode == ExecutionMode.REACT || mode == ExecutionMode.PEER_COLLAB;
+        return mode == ExecutionMode.FAST;
     }
 
     private static ExecutionStreamContext toExecutionContext(ChatStreamContext ctx, ExecutionPlan plan) {
@@ -281,7 +303,11 @@ public class ChatStreamExecutor {
                 null,
                 null,
                 false,
-                ctx.reactRestart());
+                ctx.reactRestart(),
+                ctx.existingStepsJson(),
+                ctx.personalRules(),
+                ctx.conversationKind(),
+                ctx.modelOverride());
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {
@@ -296,8 +322,35 @@ public class ChatStreamExecutor {
         }
         Mono.fromRunnable(() -> conversationService.autoTitleIfDefault(
                         ctx.conversationId(), ctx.userId(), ctx.tenantId(), ctx.userContent()))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe();
+    }
+
+    /** 断点续传截断：仅保留到「最后一个完整 think」，丢弃半截 think 及其后 tool/rag/tasks（见 ThinkStepIds） */
+    private static void truncateAfterLastDoneThink(java.util.List<ProcessingStep> steps) {
+        com.sunshine.orchestrator.processing.ThinkStepIds.truncateToLastCompleteThink(steps);
+    }
+
+    /** 截断后若最后一个步是 done think（流式中途被误标 done），重置为 paused 并清 reasoning，续跑重推时前端从头渲染 */
+    private static void resetTrailingDoneThinkToPaused(java.util.List<ProcessingStep> steps) {
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep s = steps.get(i);
+            if (!com.sunshine.orchestrator.processing.ThinkStepIds.isThinkStep(s.id())) {
+                continue;
+            }
+            if ("done".equals(s.lifecycle())) {
+                com.sunshine.orchestrator.processing.StepSummary summary = s.summary();
+                steps.set(i, new ProcessingStep(
+                        s.id(), s.phase(), "paused",
+                        new com.sunshine.orchestrator.processing.StepSummary(
+                                summary != null ? summary.before() : null, "已暂停", "已暂停"),
+                        s.startedAt(), null, null,
+                        s.detail(), null, s.output(), s.result(),
+                        System.currentTimeMillis(), s.label(), s.metadata(),
+                        s.contentBlocks(), s.subSteps(), s.stepSummary()));
+            }
+            return;
+        }
     }
 
     private ServerSentEvent<String> tokenToSse(StreamToken token) {

@@ -6,17 +6,17 @@ import com.sunshine.common.sandbox.CreateSessionResponse;
 import com.sunshine.common.sandbox.FsContentDto;
 import com.sunshine.common.sandbox.FsNodeDto;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 
 import java.util.Map;
 
@@ -27,18 +27,24 @@ import java.util.Map;
 @Component
 public class SandboxClient {
 
-    @Value("${sandbox-service.base-url:http://localhost:8226}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
+    /**
+     * HTTP 读超时须覆盖 sandbox exec 上限：工作区 policy=120s（git push/pull/fetch），
+     * 再留余量避免 docker exec 尚未返回时 WebClient 先断连、掩盖真实 git 报错。
+     */
+    private static final java.time.Duration RESPONSE_TIMEOUT = java.time.Duration.ofSeconds(180);
 
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public SandboxClient(WebClient.Builder builder) {
+        // 同上：先 build 继承 @LoadBalanced filter，再 mutate，避免污染共享单例 builder
+        this.webClient = builder.build().mutate()
+                .baseUrl("http://sunshine-sandbox-service")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create().responseTimeout(RESPONSE_TIMEOUT)))
                 .build();
-        log.info("[SandboxClient] baseUrl={}", baseUrl);
+        log.info("[SandboxClient] baseUrl=http://sunshine-sandbox-service responseTimeout={}s",
+                RESPONSE_TIMEOUT.toSeconds());
     }
 
     public String createSession(CreateSessionRequest req) {
@@ -138,12 +144,28 @@ public class SandboxClient {
                 .block();
     }
 
-    public FsContentDto readFsContent(String sessionId, String path, int maxChars) {
+    /** 递归列举目录下所有文件/目录路径（扁平化索引） */
+    public FsNodeDto.FsIndexResponse listFsIndex(String sessionId, String path, int maxDepth) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/sandbox/sessions/{id}/fs/index")
+                        .queryParam("path", path != null ? path : "/workspace")
+                        .queryParam("maxDepth", maxDepth > 0 ? maxDepth : 64)
+                        .build(sessionId))
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toSandboxError)
+                .bodyToMono(new ParameterizedTypeReference<R<FsNodeDto.FsIndexResponse>>() {})
+                .map(R::getData)
+                .block();
+    }
+
+    public FsContentDto readFsContent(String sessionId, String path, int maxChars, int offset) {
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/sandbox/sessions/{id}/fs/content")
                         .queryParam("path", path)
                         .queryParam("maxChars", maxChars)
+                        .queryParam("offset", offset)
                         .build(sessionId))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toSandboxError)
@@ -153,9 +175,18 @@ public class SandboxClient {
     }
 
     public ToolInvokeResponse invoke(String sessionId, String toolName, Map<String, Object> body) {
-        ToolInvokeResponse data = webClient.post()
+        return invoke(sessionId, toolName, body, null);
+    }
+
+    public ToolInvokeResponse invoke(
+            String sessionId, String toolName, Map<String, Object> body, String invocationId) {
+        var spec = webClient.post()
                 .uri("/api/sandbox/sessions/{id}/tools/{name}", sessionId, toolName)
-                .contentType(MediaType.APPLICATION_JSON)
+                .contentType(MediaType.APPLICATION_JSON);
+        if (StringUtils.hasText(invocationId)) {
+            spec = spec.header("x-sandbox-invocation-id", invocationId.strip());
+        }
+        ToolInvokeResponse data = spec
                 .bodyValue(body != null ? body : Map.of())
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, this::toSandboxError)
@@ -166,6 +197,20 @@ public class SandboxClient {
             return new ToolInvokeResponse(false, "", null, Map.of());
         }
         return data;
+    }
+
+    /** 取消进行中的沙箱工具调用（杀 docker Process / 置 host 协作标志） */
+    public void cancelInvocation(String sessionId, String invocationId) {
+        if (!StringUtils.hasText(sessionId) || !StringUtils.hasText(invocationId)) {
+            return;
+        }
+        webClient.post()
+                .uri("/api/sandbox/sessions/{id}/invocations/{invocationId}/cancel",
+                        sessionId.strip(), invocationId.strip())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, this::toSandboxError)
+                .bodyToMono(new ParameterizedTypeReference<R<Map<String, Boolean>>>() {})
+                .block();
     }
 
     public void mountSkill(String sessionId, String skillId, Map<String, String> skillFiles) {

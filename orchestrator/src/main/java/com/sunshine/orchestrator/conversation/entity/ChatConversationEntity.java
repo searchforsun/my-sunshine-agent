@@ -34,11 +34,27 @@ public class ChatConversationEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    /** 本会话最近一次发送时用户选择的 executionPreference */
+    /** 本会话最近一次发送时的执行模式（列名保留；取值 fast|pro|workflow） */
     @Column(name = "execution_preference", length = 32)
     private String executionPreference;
 
     /** 本会话绑定的知识库 id */
     @Column(name = "kb_id", length = 64)
     private String kbId;
+
+    /** 会话类型：chat / task（task 绑定工作区） */
+    @Column(length = 16)
+    private String kind = "chat";
+
+    /** kind=task 时绑定的工作区 id */
+    @Column(name = "workspace_id", length = 64)
+    private String workspaceId;
+
+    /** 用户选定的 checkout 路径 */
+    @Column(name = "checkout_path", length = 256)
+    private String checkoutPath;
+
+    /** 会话绑定模型（注册表 model_name；空则走 chat/default scene） */
+    @Column(name = "model_name", length = 128)
+    private String modelName;
 }

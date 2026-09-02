@@ -5,16 +5,20 @@ import { DocumentTextOutline, FolderOutline } from '@vicons/ionicons5'
 import type { ChatMentionKind } from '../../utils/chatMention'
 import { mentionPrefix } from '../../utils/chatMention'
 import { isLikelySandboxDir } from '../../utils/sandboxPathChip'
+import { sandboxPathChipLabel } from '../../utils/skillMentionEditor'
 import { useChatStore } from '../../stores/chatStore'
 import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspaceDrawer'
 
 const props = defineProps<{
   kind: ChatMentionKind
-  /** skill/expert/workflow：展示 ID；path：完整路径（title / 跳转） */
+  /** skill/agent/workflow：展示 ID；path：完整路径（title / 跳转） */
   token: string
   /** path：basename；其它可选展示名作 title */
   label?: string
   displayName?: string
+  /** path 选中行范围：展示 test.py(120-125)，点击定位到起始行 */
+  lineStart?: number
+  lineEnd?: number
 }>()
 
 const chatStore = useChatStore()
@@ -23,6 +27,11 @@ const sandboxDrawer = useSandboxWorkspaceDrawer()
 const isPath = computed(() => props.kind === 'path')
 const pathIsDir = computed(() => isPath.value && isLikelySandboxDir(props.token))
 const pathIcon = computed(() => (pathIsDir.value ? FolderOutline : DocumentTextOutline))
+const chipLabel = computed(() =>
+  isPath.value
+    ? sandboxPathChipLabel(props.token, props.label, props.lineStart, props.lineEnd)
+    : props.label || props.token,
+)
 
 function onPathClick(e: MouseEvent) {
   e.preventDefault()
@@ -30,7 +39,12 @@ function onPathClick(e: MouseEvent) {
   const cid = chatStore.currentId
   const path = props.token?.trim()
   if (!cid || !path) return
-  sandboxDrawer.open({ conversationId: cid, focusPath: path })
+  sandboxDrawer.open({
+    conversationId: cid,
+    focusPath: path,
+    focusLine: props.lineStart,
+    focusLineEnd: props.lineEnd,
+  })
 }
 </script>
 
@@ -43,7 +57,7 @@ function onPathClick(e: MouseEvent) {
     @click="onPathClick"
   >
     <NIcon class="mention-chip__icon" :component="pathIcon" :size="13" />
-    <span class="mention-chip__label">{{ label || token }}</span>
+    <span class="mention-chip__label">{{ chipLabel }}</span>
   </button>
   <span
     v-else

@@ -1,0 +1,49 @@
+# ============================================================
+# sunshine-tool-service — Nacos 配置
+# Data ID: sunshine-tool-service.yaml
+# Group:   DEFAULT_GROUP
+# 表结构 SSOT：docker/mysql/init/16-sunshine-tool-service.sql（禁止 Flyway）
+# ============================================================
+
+server:
+  port: 8210
+
+spring:
+  application:
+    name: sunshine-tool-service
+  datasource:
+    url: jdbc:mysql://ecs4c16g:3306/sunshine_tool?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: root
+    password: root123
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        timezone:
+          default_storage: NORMALIZE_UTC
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    show-sql: false
+  data:
+    redis:
+      host: ecs4c16g
+      port: 6379
+      password: redis123
+
+tool:
+  sdk:
+    pull-interval-seconds: 60
+    invoke-timeout-seconds: 30
+  mcp:
+    refresh-interval-seconds: 300
+    invoke-timeout-seconds: 60
+  timeline:
+    result:
+      # 仅平台级：{output} 内置占位符首行截断上限；业务摘要模板在工具 @SunshineTool / Catalog
+      truncate-max-chars: 80
+
+logging:
+  level:
+    com.sunshine: debug

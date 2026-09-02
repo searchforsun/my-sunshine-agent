@@ -91,8 +91,21 @@ public final class ProcessingTimelineSession {
         tools.skipCurrentToolStep(afterSummary);
     }
 
+    public void pauseToolStepForToolUse(String toolUseId, String afterSummary) {
+        tools.pauseToolStepForToolUse(toolUseId, afterSummary, null);
+    }
+
+    public void pauseToolStepForToolUse(String toolUseId, String afterSummary, String expandDetail) {
+        tools.pauseToolStepForToolUse(toolUseId, afterSummary, expandDetail);
+    }
+
     public void progressCurrentToolStep(String activeSummary) {
         tools.progressCurrentToolStep(activeSummary);
+    }
+
+    /** 可单工具取消：SSE metadata.cancellable，前端勿硬编码工具名单 */
+    public void markCurrentToolCancellable() {
+        tools.markCurrentToolCancellable();
     }
 
     public String currentToolStepId() {
@@ -105,7 +118,17 @@ public final class ProcessingTimelineSession {
 
     public void attachHitlPending(
             String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
-        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
+        attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    public void attachHitlPending(
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            com.sunshine.common.sandbox.SandboxEditDiff editDiff) {
+        tools.attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail, editDiff);
     }
 
     public void resolveHitlPending(String status) {
@@ -124,7 +147,18 @@ public final class ProcessingTimelineSession {
             String paramsSummary,
             long expiresAt,
             String expandDetail) {
-        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
+        attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    public void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            com.sunshine.common.sandbox.SandboxEditDiff editDiff) {
+        tools.attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, editDiff);
     }
 
     public void resolveHitlPendingOnStep(String stepId, String status) {
@@ -161,6 +195,22 @@ public final class ProcessingTimelineSession {
     public void bindUserQuery(String query) {
         if (query != null && !query.isBlank()) {
             state.userQuery = query.strip();
+        }
+    }
+
+    /**
+     * 从 AgentScope checkpoint 恢复 think 轮次基线：续跑时 thinkIteration 从 curIter 起递增，
+     * 生成的 step id（think-{n+1}）不与中断前已落库的 think-{1..n} 冲突；
+     * 中断在 think-N 中途时 curIter 传 N-1，下一轮复用 think-N（TimelineAggregator START 会清空旧 reasoning）。
+     */
+    public void resumeFromCheckpoint(int curIter) {
+        state.thinkIteration = curIter;
+        state.lastCompletedThinkId = curIter > 0 ? ThinkStepIds.forIteration(curIter) : null;
+        state.toolCompletedSinceLastThink = true;
+        // 中断若发生在 tool 执行中途（curIter 轮 think 已 done、工具未终态）， AgentScope 会重放该 tool，
+        // 此处预标记使重放的首个 reasoning delta 开新 think-(curIter+1) 而非复用已 done 的 think
+        if (curIter > 0) {
+            state.currentThinkId = ThinkStepIds.forIteration(curIter);
         }
     }
 
@@ -216,16 +266,13 @@ public final class ProcessingTimelineSession {
         completions.completePlanAt(after, detail, endedAt);
     }
 
-    public void beginPlanAwaitingApproval(String detail, StepMetadata metadata) {
-        completions.beginPlanAwaitingApproval(detail, metadata);
-    }
-
-    public void updatePlanApproval(StepMetadata metadata, String activeSummary) {
-        completions.updatePlanApproval(metadata, activeSummary);
-    }
-
     public void completeSkillLoad(String skillId) {
         completions.completeSkillLoad(skillId);
+    }
+
+    /** 带正文的 skill 步完成（L0 首现/动态加载统一，expandDetail 供前端下拉） */
+    public void completeSkillLoad(String skillId, String expandDetail) {
+        completions.completeSkillLoad(skillId, expandDetail);
     }
 
     public void updateTaskBoard(String stepId, String phase, String activeSummary, StepMetadata metadata) {
@@ -252,6 +299,10 @@ public final class ProcessingTimelineSession {
         lifecycle.pause(stepId, detail);
     }
 
+    public void pause(String stepId, String afterSummary, String expandDetail) {
+        lifecycle.pause(stepId, afterSummary, expandDetail);
+    }
+
     public void terminate(String stepId, String detail) {
         lifecycle.terminate(stepId, detail);
     }
@@ -276,6 +327,11 @@ public final class ProcessingTimelineSession {
         think.beginReasoningRound(this::closeContentSegment);
     }
 
+    /** 首个 ThinkingBlock：按 beginReasoningRound 的 pending 意图开/复用 think */
+    public void ensureThinkOpen() {
+        think.ensureThinkOpen();
+    }
+
     public void endReasoningRound() {
         think.endReasoningRound();
     }
@@ -287,6 +343,11 @@ public final class ProcessingTimelineSession {
 
     public void ingestStreamingContentDelta(String delta) {
         think.ingestStreamingContentDelta(delta, this::enqueueAuxiliary);
+    }
+
+    /** think_summary 元工具结构化摘要 → 写入最近一轮 think 步 step_summary */
+    public void applyThinkStepSummary(String summary) {
+        think.applyThinkStepSummary(summary, this::enqueueAuxiliary);
     }
 
     public String contentSegmentBaseline() {

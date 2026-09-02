@@ -15,7 +15,7 @@ test.describe('AI 对话页', () => {
     await ensureE2eLogin(page)
     await page.goto('/chat')
 
-    await page.getByRole('button', { name: '制度检索' }).click()
-    await expect(page.locator('.user-bubble').filter({ hasText: '检索知识库：公司的差旅报销制度有哪些要点？' })).toBeVisible()
+    await page.getByRole('button', { name: '青松假政策' }).click()
+    await expect(page.locator('.user-bubble').filter({ hasText: '#knowledge-qa 青松假有多少天、怎么申请' })).toBeVisible()
   })
 })

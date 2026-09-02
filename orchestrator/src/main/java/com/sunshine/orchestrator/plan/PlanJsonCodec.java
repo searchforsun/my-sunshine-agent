@@ -54,46 +54,6 @@ public class PlanJsonCodec {
         }
     }
 
-    public String plannerAttemptsToJson(List<PlannerAttempt> attempts) {
-        try {
-            return objectMapper.writeValueAsString(attempts);
-        } catch (Exception e) {
-            throw new PlanParseException("planner_attempts 序列化失败: " + e.getMessage());
-        }
-    }
-
-    public List<PlannerAttempt> plannerAttemptsFromJson(String json) {
-        if (json == null || json.isBlank()) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<>() {
-            });
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
-
-    public String approvalRoundsToJson(List<PlanApprovalRound> rounds) {
-        try {
-            return objectMapper.writeValueAsString(rounds);
-        } catch (Exception e) {
-            throw new PlanParseException("approval_rounds 序列化失败: " + e.getMessage());
-        }
-    }
-
-    public List<PlanApprovalRound> approvalRoundsFromJson(String json) {
-        if (json == null || json.isBlank()) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<>() {
-            });
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
-
     public List<PlanNodeTrace> traceFromJson(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
@@ -116,14 +76,6 @@ public class PlanJsonCodec {
         } catch (Exception e) {
             return Map.of();
         }
-    }
-
-    /** Plan 确认态 SSE 内嵌 DAG 预览 */
-    public Map<String, Object> toGraphMap(PlanJson plan) {
-        if (plan == null || plan.nodes() == null || plan.nodes().isEmpty()) {
-            return Map.of();
-        }
-        return parseJsonMap(toJson(plan));
     }
 
     public String checkpointToJson(WorkflowCheckpoint checkpoint) {
@@ -224,15 +176,35 @@ public class PlanJsonCodec {
         if (edge.isDefault()) {
             map.put("default", true);
         }
-        if (edge.condition() != null) {
-            Map<String, Object> cond = new LinkedHashMap<>();
-            cond.put("left", edge.condition().left());
-            cond.put("op", edge.condition().op());
-            if (!edge.condition().right().isBlank()) {
-                cond.put("right", edge.condition().right());
+        PlanEdgeConditionGroup group = edge.condition();
+        if (group != null && !group.isEmpty()) {
+            if (group.items().size() == 1 && "and".equals(group.logic())) {
+                // 单条件序列化为旧格式 {left, op, right}，便于旧消费方读取
+                PlanEdgeCondition c = group.items().get(0);
+                Map<String, Object> cond = new LinkedHashMap<>();
+                cond.put("left", c.left());
+                cond.put("op", c.op());
+                if (!c.right().isBlank()) {
+                    cond.put("right", c.right());
+                }
+                map.put("condition", cond);
+            } else {
+                Map<String, Object> cond = new LinkedHashMap<>();
+                cond.put("logic", group.logic());
+                cond.put("items", group.items().stream().map(this::conditionMap).toList());
+                map.put("condition", cond);
             }
-            map.put("condition", cond);
         }
         return map;
+    }
+
+    private Map<String, Object> conditionMap(PlanEdgeCondition c) {
+        Map<String, Object> cond = new LinkedHashMap<>();
+        cond.put("left", c.left());
+        cond.put("op", c.op());
+        if (!c.right().isBlank()) {
+            cond.put("right", c.right());
+        }
+        return cond;
     }
 }

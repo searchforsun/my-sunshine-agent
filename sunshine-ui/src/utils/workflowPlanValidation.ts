@@ -185,11 +185,13 @@ export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
       }
       for (const e of outEdges) {
         if (e.default) continue
-        const op = e.condition?.op?.trim()
-        const left = e.condition?.left?.trim()
-        if (!op || !left) {
-          issues.push(`条件分支出边 ${e.from}→${e.to} 须配置条件或标为默认`)
+        if (e.condition && 'items' in e.condition) {
+          if (e.condition.items.length === 0) {
+            issues.push(`条件分支出边 ${e.from}->${e.to} 须配置条件或标为默认`)
+          }
+          continue
         }
+        issues.push(`条件分支出边 ${e.from}->${e.to} 须配置条件或标为默认`)
       }
     }
     if (isLoopType(type)) {
@@ -202,10 +204,12 @@ export function validatePlanTopologyLocally(plan: WorkflowPlan): string[] {
         issues.push(`循环「${id}」外图出度须为 1`)
       }
       const params = nodes.find(n => n.id === id)?.params ?? {}
-      const op = String(params['condition.op'] ?? '').trim()
-      const left = String(params['condition.left'] ?? '').trim()
-      if (!op || !left) {
-        issues.push(`循环「${id}」须配置条件算子与左值`)
+      const conditionsArr = Array.isArray(params.conditions) ? params.conditions : []
+      const hasNewCondition = conditionsArr.some(
+        (c: Record<string, unknown>) => String(c?.op ?? '').trim() && String(c?.left ?? '').trim(),
+      )
+      if (!hasNewCondition) {
+        issues.push(`循环「${id}」须配置至少一条继续条件`)
       }
       const maxRaw = String(params['maxIterations'] ?? '3')
       const max = Number(maxRaw)

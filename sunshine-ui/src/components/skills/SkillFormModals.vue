@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { inject } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NModal } from 'naive-ui'
+import { computed, inject } from 'vue'
+import { NButton, NForm, NFormItem, NInput, NModal, NSelect } from 'naive-ui'
 import { SKILLS_PAGE_KEY, type SkillsPageApi } from '../../composables/useSkillsPage'
 
 const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
+
+const kindOptions = [
+  { label: '全部', value: 'all' },
+  { label: '对话', value: 'chat' },
+  { label: '任务', value: 'task' },
+]
+
+const bizSceneOptions = computed(() => page.bizSceneOptions)
 </script>
 
 <template>
@@ -17,6 +25,19 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
       </NFormItem>
       <NFormItem label="描述">
         <NInput v-model:value="page.createForm.description" class="sun-field" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="可选；上传 SKILL.md 后将以其 frontmatter description 为准" />
+      </NFormItem>
+      <NFormItem label="会话形态">
+        <NSelect v-model:value="page.createForm.kind" class="sun-field" :options="kindOptions" size="small" />
+      </NFormItem>
+      <NFormItem label="业务场景">
+        <NSelect
+          v-model:value="page.createForm.bizScene"
+          class="sun-field"
+          :options="bizSceneOptions"
+          size="small"
+          clearable
+          placeholder="不绑定"
+        />
       </NFormItem>
     </NForm>
     <template #action>
@@ -45,6 +66,19 @@ const page = inject(SKILLS_PAGE_KEY) as SkillsPageApi
           type="textarea"
           :autosize="{ minRows: 2, maxRows: 4 }"
           placeholder="可选"
+        />
+      </NFormItem>
+      <NFormItem label="会话形态">
+        <NSelect v-model:value="page.editForm.kind" class="sun-field" :options="kindOptions" size="small" />
+      </NFormItem>
+      <NFormItem label="业务场景">
+        <NSelect
+          v-model:value="page.editForm.bizScene"
+          class="sun-field"
+          :options="bizSceneOptions"
+          size="small"
+          clearable
+          placeholder="不绑定"
         />
       </NFormItem>
     </NForm>

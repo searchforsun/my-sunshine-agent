@@ -5,12 +5,11 @@ import java.util.Set;
 
 /**
  * Query 改写场景 id — 与 rag-service trace {@code stages[].name}、审计 {@code rewriteScenario} 对齐。
- * orchestrator 侧仅产生 {@link #INTENT} / {@link #PLANNER}；检索侧为 {@link #RAG} / {@link #HYDE} / {@link #EMPTY_RECALL}。
+ * orchestrator 侧仅产生 {@link #INTENT}；检索侧为 {@link #RAG} / {@link #HYDE} / {@link #EMPTY_RECALL}。
  */
 public enum QueryRewriteScenario {
 
     INTENT("intent"),
-    PLANNER("planner"),
     RAG("rag"),
     HYDE("hyde"),
     EMPTY_RECALL("empty-recall");

@@ -1,8 +1,6 @@
 package com.sunshine.bff.client;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -18,17 +16,11 @@ import java.util.Map;
 @Component
 public class AuthCenterClient {
 
-    @Value("${auth-center.base-url:http://localhost:8100}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(baseUrl)
-                .build();
-        log.info("[BFF] AuthCenter 客户端: baseUrl={}", baseUrl);
+    public AuthCenterClient(WebClient.Builder builder) {
+        this.webClient = builder.baseUrl("http://sunshine-auth").build();
+        log.info("[BFF] AuthCenter 客户端: baseUrl=http://sunshine-auth");
     }
 
     /** userId → 展示名（nickname 优先，否则 username） */

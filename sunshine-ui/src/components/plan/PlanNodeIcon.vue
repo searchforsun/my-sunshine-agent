@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
 const kind = computed(() => {
   const t = props.type?.trim().toLowerCase() || 'node'
   if (t === 'plan') return 'plan'
+  if (t === 'task') return 'task'
   return t
 })
 </script>
@@ -58,6 +59,12 @@ const kind = computed(() => {
         stroke-width="1.25"
         stroke-linejoin="round"
       />
+    </template>
+
+    <!-- worker：执行单元（播放环） -->
+    <template v-else-if="kind === 'worker'">
+      <circle cx="8" cy="8" r="5.25" stroke="currentColor" stroke-width="1.25" />
+      <path d="M6.8 5.6v4.8l4-2.4-4-2.4z" fill="currentColor" stroke="none" />
     </template>
 
     <!-- agent：子 Agent -->
@@ -153,6 +160,62 @@ const kind = computed(() => {
       <circle cx="12.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
     </template>
 
+    <!-- task：任务清单（clipboard，区分 tool 圆柱体） -->
+    <template v-else-if="kind === 'task'">
+      <path
+        d="M4 2.5h8l1.5 2v9a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13.5V4.5L4 2.5Z"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linejoin="round"
+      />
+      <path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+    </template>
+
+    <!-- variable-assignment：变量赋值 -->
+    <template v-else-if="kind === 'variable-assignment'">
+      <path
+        d="M3 4.5h4.5M3 8h7M3 11.5h5.5"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+      />
+      <path
+        d="M11 4.5l2.5 0M12.25 3.25v2.5"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+      />
+      <path
+        d="M10.5 10.5l3 3M13.5 10.5l-3 3"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linecap="round"
+      />
+    </template>
+
+    <!-- parameter-extractor：参数提取 -->
+    <template v-else-if="kind === 'parameter-extractor'">
+      <path
+        d="M4 2.5h8l2.5 3v8a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13.5V4A1.5 1.5 0 0 1 4 2.5z"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M9.5 2.5v3h3"
+        stroke="currentColor"
+        stroke-width="1.25"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M6 9.5l1.5 1.5L11 7.5"
+        stroke="currentColor"
+        stroke-width="1.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </template>
+
     <!-- fallback -->
     <template v-else>
       <circle cx="8" cy="8" r="5.25" stroke="currentColor" stroke-width="1.25" />
@@ -181,8 +244,16 @@ const kind = computed(() => {
   color: color-mix(in srgb, var(--sun-text-secondary) 90%, var(--sun-text));
 }
 
+.is-task {
+  color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-amber, #c9a227));
+}
+
 .is-agent {
   color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-gold, #dbb84a));
+}
+
+.is-worker {
+  color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-blue, #58a6ff));
 }
 
 .is-llm {
@@ -196,5 +267,13 @@ const kind = computed(() => {
 
 .is-exclusive-gateway {
   color: color-mix(in srgb, var(--sun-text-secondary) 78%, var(--sun-amber, #c9a227));
+}
+
+.is-variable-assignment {
+  color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-text));
+}
+
+.is-parameter-extractor {
+  color: color-mix(in srgb, var(--sun-text-secondary) 85%, var(--sun-blue, #58a6ff));
 }
 </style>

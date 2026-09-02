@@ -1,0 +1,30 @@
+server:
+  port: 8700
+spring:
+  application:
+    name: sunshine-biz-simulator
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        group: SUNSHINE_V2
+        metadata:
+          sunshine.tool-app: "true"
+          sunshine.tool-app-id: "sunshine-biz"
+      config:
+        server-addr: ecs4c16g:8848
+        username: nacos
+        password: nacos
+        import-check:
+          enabled: false
+        file-extension: yaml
+        group: DEFAULT_GROUP
+  config:
+    import:
+      - optional:nacos:sunshine-biz-simulator.yaml
+sunshine:
+  tools:
+    enabled: true
+    app-id: sunshine-biz

@@ -1,37 +1,75 @@
 /** 时间线步骤排序 */
 import type { ProcessingStep, StepPhase } from './processingSteps'
 
-/** ReAct 设计序：think* → tasks → tool*（同 startedAt 时 tasks 不得排在 tool 之后） */
+/** ReAct 时间线：intent 恒定最前；skill 作为普通工具步按真实时间戳排；tasks 紧随 intent、think 前 */
 export const STEP_ORDER: StepPhase[] = [
-  'intent', 'skill', 'plan', 'node', 'rag', 'think', 'tasks', 'tool', 'agent', 'generate',
+  'intent', 'skill', 'plan', 'node', 'rag', 'tasks', 'think', 'tool', 'agent', 'generate',
 ]
 
 function isThinkStepId(id: string): boolean {
   return id === 'think' || id.startsWith('think-')
 }
 
-/** plan-workflow / 静态 workflow 的节点级 reasoning，不走 ReAct think 步骤 */
+/** 静态 Workflow 的节点级 reasoning，不走 ReAct think 步骤 */
 export function isWorkflowNodeStepId(id: string | undefined): boolean {
   return !!id && id.startsWith('node-')
 }
 
-/** tasks 步固定紧跟首个 think，展示在「规划推理」下方、工具调用之前 */
-function repositionTasksAfterFirstThink(steps: ProcessingStep[]): ProcessingStep[] {
-  const tasksIdx = steps.findIndex(s => s.phase === 'tasks')
-  if (tasksIdx < 0) return steps
-  const firstThinkIdx = steps.findIndex(s => isThinkStepId(s.id))
-  if (firstThinkIdx < 0) return steps
-  const targetIdx = firstThinkIdx + 1
-  if (tasksIdx === targetIdx) return steps
-  const tasksStep = steps[tasksIdx]
-  const without = steps.filter((_, i) => i !== tasksIdx)
-  const thinkPos = without.findIndex(s => isThinkStepId(s.id))
-  const insertAt = thinkPos + 1
-  return [...without.slice(0, insertAt), tasksStep, ...without.slice(insertAt)]
+/**
+ * harness worker 卡任务序号：taskId 首个数字。
+ * worker-t1-1 → 1；worker-r5-quality-2 → 5；worker-unknown → null。
+ */
+function workerTaskSeq(id: string): number | null {
+  const m = /^worker-.*?(\d+)/.exec(id)
+  return m ? Number(m[1]) : null
+}
+
+/** harness worker 卡执行版本（末尾 -N）：worker-t1-2 → 2；无版本返回 0 */
+function workerTaskVersion(id: string): number {
+  const m = /^worker-.*?-(\d+)$/.exec(id)
+  return m ? Number(m[1]) : 0
+}
+
+/** 将指定 phase 步移到 anchorPhase 之后（若不存在则原样返回） */
+function movePhaseAfterAnchor(
+  steps: ProcessingStep[],
+  phase: StepPhase,
+  anchorPhase: StepPhase,
+): ProcessingStep[] {
+  const phaseIdx = steps.findIndex(s => s.phase === phase)
+  if (phaseIdx < 0) return steps
+  const anchorIdx = steps.findIndex(s => s.phase === anchorPhase)
+  if (anchorIdx < 0) return steps
+  if (phaseIdx === anchorIdx + 1) return steps
+  const moved = steps[phaseIdx]
+  const without = steps.filter((_, i) => i !== phaseIdx)
+  const newAnchor = without.findIndex(s => s.phase === anchorPhase)
+  const insertAt = newAnchor + 1
+  return [...without.slice(0, insertAt), moved, ...without.slice(insertAt)]
+}
+
+/**
+ * 头部钉扎：仅 tasks 紧随 intent（任务清单在 think 前、靠近意图）；skill 作为普通工具步按真实时间戳排。
+ * 用户要求「加载技能当作普通工具行，该在哪里就在哪里」——不把 skill 强行提前到第二步。
+ */
+function repositionPinnedHeaderSteps(steps: ProcessingStep[]): ProcessingStep[] {
+  return movePhaseAfterAnchor(steps, 'tasks', 'intent')
 }
 
 export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
   const sorted = [...steps].sort((a, b) => {
+    // harness worker 卡优先按任务序号稳定排序（T1/T2/T3，与 TaskBoard 一致）：
+    // dispatch_worker 并发派发时各 worker begin 的 startedAt 毫秒级随机，且 auxiliary 直刷
+    // 到达顺序不定，按时间戳排序会让卡片随到达顺序跳位；同序号（重派 t1-1/t1-2）按版本升序。
+    const aSeq = workerTaskSeq(a.id)
+    const bSeq = workerTaskSeq(b.id)
+    if (aSeq != null && bSeq != null) {
+      if (aSeq !== bSeq) return aSeq - bSeq
+      // 无版本（描述后缀如 t1-arch）视为无穷大，排在有版本执行卡之后
+      const aVer = workerTaskVersion(a.id) || Number.POSITIVE_INFINITY
+      const bVer = workerTaskVersion(b.id) || Number.POSITIVE_INFINITY
+      if (aVer !== bVer) return aVer - bVer
+    }
     const aStart = a.startedAt ?? a.ts ?? 0
     const bStart = b.startedAt ?? b.ts ?? 0
     if (aStart !== bStart) return aStart - bStart
@@ -42,7 +80,7 @@ export function sortSteps(steps: ProcessingStep[]): ProcessingStep[] {
     if (aOrder !== bOrder) return aOrder - bOrder
     return a.id.localeCompare(b.id)
   })
-  return repositionTasksAfterFirstThink(sorted)
+  return repositionPinnedHeaderSteps(sorted)
 }
 
 export { isThinkStepId }

@@ -63,6 +63,13 @@ class StepMetadataTest {
     }
 
     @Test
+    void withSpawnPrompt_setsField() {
+        StepMetadata m = StepMetadata.withSpawnPrompt(null, "检索差旅制度并摘要");
+        assertThat(m.spawnPrompt()).isEqualTo("检索差旅制度并摘要");
+        assertThat(m.isEmpty()).isFalse();
+    }
+
+    @Test
     void isEmpty_falseWhenOnlyHitl() {
         StepMetadata metadata = StepMetadata.withHitl(
                 null, HitlStepMeta.awaiting("tok-1", "审批 OA 待办", "taskId=T1001", 1L));
@@ -73,10 +80,10 @@ class StepMetadataTest {
     void isEmpty_falseWhenOnlyRoutingReason() {
         StepMetadata metadata = StepMetadata.fromRouting(
                 new com.sunshine.orchestrator.routing.ExecutionPlan(
-                        com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM,
+                        com.sunshine.orchestrator.routing.ExecutionMode.FAST,
                         null,
                         java.util.Map.of(),
-                        "user:forced-simple-llm"));
+                        "user:forced-fast"));
         assertThat(metadata).isNotNull();
         assertThat(metadata.isEmpty()).isFalse();
     }

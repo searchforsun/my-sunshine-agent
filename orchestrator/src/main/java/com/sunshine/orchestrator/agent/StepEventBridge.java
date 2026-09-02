@@ -25,21 +25,26 @@ public final class StepEventBridge {
             String userId,
             String tenantId,
             String planId,
-            String kbId) {
+            String kbId,
+            List<String> kbScope,
+            String dataScopeJson,
+            String permissionsJson,
+            /** 会话 kind（chat|task）；装默认工具集用，缺省按 chat */
+            String conversationKind) {
     }
 
     private StepEventBridge() {
     }
 
     /** Spring 启动时注入单例 registry */
-    static void bindRegistry(StepEventBridgeRegistry r) {
+    public static void bindRegistry(StepEventBridgeRegistry r) {
         if (r != null) {
             registry = r;
         }
     }
 
     /** 单测隔离 */
-    static void resetRegistry() {
+    public static void resetRegistry() {
         registry = new StepEventBridgeRegistry();
     }
 
@@ -104,6 +109,26 @@ public final class StepEventBridge {
         registry.bindTokenWrapper(bridgeId, wrapper);
     }
 
+    public static void unbindTokenWrapper(String bridgeId) {
+        registry.unbindTokenWrapper(bridgeId);
+    }
+
+    public static boolean hasSession(String bridgeId) {
+        return registry.hasSession(bridgeId);
+    }
+
+    /** 4.7.7 goal-alignment：per-run 状态（bridgeId 无则懒建，clear 随 bridge 回收；续跑重建即重置） */
+    public static AgentRunState runState(String bridgeId) {
+        return registry.runState(bridgeId);
+    }
+
+    public static void bindTokenWrapper(
+            String bridgeId,
+            Function<StreamToken, List<StreamToken>> wrapper,
+            TokenWrapperMode mode) {
+        registry.bindTokenWrapper(bridgeId, wrapper, mode);
+    }
+
     /** loop 框内：Hook 直刷 Generation 前将 body 步折叠进 node-loop.subSteps */
     public static void bindLoopBodyFold(String assistantMessageId, Function<StreamToken, List<StreamToken>> fold) {
         registry.bindLoopBodyFold(assistantMessageId, fold);
@@ -115,18 +140,6 @@ public final class StepEventBridge {
 
     public static Function<StreamToken, List<StreamToken>> loopBodyFold(String assistantMessageId) {
         return registry.loopBodyFold(assistantMessageId);
-    }
-
-    public static void bindExpertSpeakSink(String bridgeId, Consumer<StreamToken> sink) {
-        registry.bindExpertSpeakSink(bridgeId, sink);
-    }
-
-    public static void emitExpertSpeakDelta(String bridgeId, String incrementalText) {
-        registry.emitExpertSpeakDelta(bridgeId, incrementalText);
-    }
-
-    public static void emitExpertSpeakToolActive(String bridgeId, String toolLabel) {
-        registry.emitExpertSpeakToolActive(bridgeId, toolLabel);
     }
 
     public static void bindGenerationFlush(String messageId, Consumer<StreamToken> consumer) {
@@ -155,6 +168,23 @@ public final class StepEventBridge {
 
     public static boolean consumeHitlPreApproval(String messageId, String toolId, Map<String, String> params) {
         return registry.consumeHitlPreApproval(messageId, toolId, params);
+    }
+
+    /** 续跑已 resolve：grant 预决策结果，供 request_decision 入口消费短格式 */
+    public static void grantDecisionPreApproval(String messageId, String fingerprint, DecisionResult result) {
+        registry.grantDecisionPreApproval(messageId, fingerprint, result);
+    }
+
+    /** 消费预决策；fingerprint 匹配则返回结果并清除，否则 empty */
+    public static java.util.Optional<DecisionResult> consumeDecisionPreApproval(
+            String messageId, String fingerprint) {
+        return registry.consumeDecisionPreApproval(messageId, fingerprint);
+    }
+
+    /** 窥视预决策（不消费），供续跑路径判断是否已 resolve */
+    public static java.util.Optional<DecisionResult> peekDecisionPreApproval(
+            String messageId, String fingerprint) {
+        return registry.peekDecisionPreApproval(messageId, fingerprint);
     }
 
     public static void bindWriteHitlMode(String assistantMessageId, SandboxWriteHitlMode mode) {
@@ -189,16 +219,21 @@ public final class StepEventBridge {
         return registry.resolveHitlBridgeId();
     }
 
+    public static ToolAuditContext toolAuditContext(String messageId) {
+        return registry.toolAuditContext(messageId);
+    }
+
     public static String activeBridgeId() {
         return registry.activeBridgeId();
     }
 
-    public static String hitlAssistantMessageId(String bridgeId) {
-        return registry.hitlAssistantMessageId(bridgeId);
+    /** 元工具/沙箱：用 toolUseId 定位 assistantMessageId（多会话时不依赖 sessions.size()==1） */
+    public static String resolveMessageIdForToolUse(String toolUseId) {
+        return registry.resolveMessageIdForToolUse(toolUseId);
     }
 
-    public static ToolAuditContext toolAuditContext(String messageId) {
-        return registry.toolAuditContext(messageId);
+    public static String hitlAssistantMessageId(String bridgeId) {
+        return registry.hitlAssistantMessageId(bridgeId);
     }
 
     public static String ragDetail(String messageId) {
@@ -219,6 +254,18 @@ public final class StepEventBridge {
 
     public static void clearForReactRestart(String messageId) {
         registry.clearForReactRestart(messageId);
+    }
+
+    public static void prepareResumeContentBlocks(String messageId, String contentBlocksJson) {
+        registry.prepareResumeContentBlocks(messageId, contentBlocksJson);
+    }
+
+    public static String peekResumeContentBlocks(String messageId) {
+        return registry.peekResumeContentBlocks(messageId);
+    }
+
+    public static void clearResumeContentBlocks(String messageId) {
+        registry.clearResumeContentBlocks(messageId);
     }
 
     public static void emit(String messageId, Consumer<ProcessingTimelineSession> action) {
@@ -242,6 +289,14 @@ public final class StepEventBridge {
         registry.emitReasoningChunk(messageId, incrementalText);
     }
 
+    public static void emitReasoningBlockStart(String messageId) {
+        registry.emitReasoningBlockStart(messageId);
+    }
+
+    public static void emitReasoningBlockEnd(String messageId) {
+        registry.emitReasoningBlockEnd(messageId);
+    }
+
     public static void emitSingletonReasoningChunk(String incrementalText) {
         registry.emitSingletonReasoningChunk(incrementalText);
     }
@@ -253,5 +308,15 @@ public final class StepEventBridge {
     public static void drainHookQueueToGeneration(String messageId,
             java.util.function.Consumer<StreamToken> tokenConsumer) {
         registry.drainHookQueueToGeneration(messageId, tokenConsumer);
+    }
+
+    /** Planner 内部调用（planNext/selfAssess）期间抑制 content flush 到 GenerationJob */
+    public static void suppressContentFlush(String messageId) {
+        registry.suppressContentFlush(messageId);
+    }
+
+    /** 解除 content 抑制 */
+    public static void unsuppressContentFlush(String messageId) {
+        registry.unsuppressContentFlush(messageId);
     }
 }

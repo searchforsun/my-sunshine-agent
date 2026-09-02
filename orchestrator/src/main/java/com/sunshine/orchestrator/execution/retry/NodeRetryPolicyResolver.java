@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.execution.retry;
 
-import com.sunshine.common.tool.PlanWorkflowExecutionPolicy;
+import com.sunshine.common.tool.WorkflowNodeExecutionPolicy;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.catalog.WorkflowNodeDefaultsRegistry;
 import com.sunshine.orchestrator.execution.NodeSpec;
@@ -15,20 +15,17 @@ import java.util.Set;
 public class NodeRetryPolicyResolver {
 
     private final WorkflowNodeDefaultsRegistry nodeDefaultsRegistry;
-    private final ToolSetResolver toolSetResolver;
 
     public NodeRetryPolicyResolver(
-            WorkflowNodeDefaultsRegistry nodeDefaultsRegistry,
-            ToolSetResolver toolSetResolver) {
+            WorkflowNodeDefaultsRegistry nodeDefaultsRegistry) {
         this.nodeDefaultsRegistry = nodeDefaultsRegistry;
-        this.toolSetResolver = toolSetResolver;
     }
 
-    public NodeRetryPolicy resolve(NodeSpec spec, boolean planWorkflow, String tenantId) {
-        PlanWorkflowExecutionPolicy policy = nodeDefaultsRegistry.policy();
-        PlanWorkflowExecutionPolicy.NodeDefaults defaults = policy.defaults();
+    public NodeRetryPolicy resolve(NodeSpec spec) {
+        WorkflowNodeExecutionPolicy policy = nodeDefaultsRegistry.policy();
+        WorkflowNodeExecutionPolicy.NodeDefaults defaults = policy.defaults();
         String type = spec.type() != null ? spec.type() : "";
-        PlanWorkflowExecutionPolicy.NodeTypeOverride typeOverride =
+        WorkflowNodeExecutionPolicy.NodeTypeOverride typeOverride =
                 policy.byType() != null ? policy.byType().get(type) : null;
         int maxAttempts = firstPositive(
                 paramInt(spec, "retry.maxAttempts"),
@@ -41,7 +38,7 @@ public class NodeRetryPolicyResolver {
                 0L);
         double multiplier = defaults.backoffMultiplier() > 0
                 ? defaults.backoffMultiplier() : 2.0;
-        OnFailureAction onFailure = resolveOnFailure(spec, type, policy, defaults, tenantId);
+        OnFailureAction onFailure = resolveOnFailure(spec, type, policy, defaults);
         Set<String> retryOn = new HashSet<>(defaults.retryOnErrorClass());
         return new NodeRetryPolicy(maxAttempts, backoffMs, multiplier, onFailure, retryOn);
     }
@@ -49,21 +46,13 @@ public class NodeRetryPolicyResolver {
     private OnFailureAction resolveOnFailure(
             NodeSpec spec,
             String type,
-            PlanWorkflowExecutionPolicy policy,
-            PlanWorkflowExecutionPolicy.NodeDefaults defaults,
-            String tenantId) {
-        String param = spec.params() != null ? spec.params().get("retry.onFailure") : null;
+            WorkflowNodeExecutionPolicy policy,
+            WorkflowNodeExecutionPolicy.NodeDefaults defaults) {
+        String param = readParamString(spec, "retry.onFailure");
         if (StringUtils.hasText(param)) {
             return OnFailureAction.fromConfig(param);
         }
-        String tool = spec.params() != null ? spec.params().get("tool") : null;
-        if (StringUtils.hasText(tool)) {
-            Set<String> criticalTools = new HashSet<>(toolSetResolver.resolvePlanWorkflowCriticalTools(tenantId));
-            if (criticalTools.contains(tool.strip())) {
-                return OnFailureAction.fromConfig(policy.criticalOnFailure());
-            }
-        }
-        PlanWorkflowExecutionPolicy.NodeTypeOverride typeOverride =
+        WorkflowNodeExecutionPolicy.NodeTypeOverride typeOverride =
                 policy.byType() != null ? policy.byType().get(type) : null;
         if (typeOverride != null && StringUtils.hasText(typeOverride.onFailure())) {
             return OnFailureAction.fromConfig(typeOverride.onFailure());
@@ -94,7 +83,7 @@ public class NodeRetryPolicyResolver {
         if (spec.params() == null) {
             return 0;
         }
-        String raw = spec.params().get(key);
+        String raw = readParamString(spec, key);
         if (!StringUtils.hasText(raw)) {
             return 0;
         }
@@ -107,5 +96,14 @@ public class NodeRetryPolicyResolver {
 
     private static long paramLong(NodeSpec spec, String key) {
         return paramInt(spec, key);
+    }
+
+    /** 从 Map<String,Object> params 读取字符串值（兼容 Object 值） */
+    private static String readParamString(NodeSpec spec, String key) {
+        if (spec.params() == null) {
+            return null;
+        }
+        Object v = spec.params().get(key);
+        return v != null ? v.toString() : null;
     }
 }

@@ -6,18 +6,18 @@ import { executionModeIcon } from '../../api/executionModeIcons'
 import {
   EXECUTION_MODE_OPTIONS,
   findExecutionModeOption,
-  type ExecutionPreference,
+  type ExecutionMode,
 } from '../../api/executionModes'
 
 const props = defineProps<{
-  modelValue: ExecutionPreference
+  modelValue: ExecutionMode
   disabled?: boolean
   /** compact：Chat 底栏；block：设置页等表单场景 */
   variant?: 'compact' | 'block'
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: ExecutionPreference]
+  'update:modelValue': [value: ExecutionMode]
 }>()
 
 const variant = computed(() => props.variant ?? 'compact')
@@ -29,7 +29,7 @@ const COMPACT_MENU_WIDTH = 304
 
 const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : COMPACT_MENU_WIDTH))
 
-function select(value: ExecutionPreference) {
+function select(value: ExecutionMode) {
   emit('update:modelValue', value)
   showMenu.value = false
 }
@@ -121,8 +121,8 @@ function onShowUpdate(next: boolean) {
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
@@ -136,16 +136,17 @@ function onShowUpdate(next: boolean) {
   width: 100%;
   height: 36px;
   padding: 0 12px;
+  border: 1px solid var(--sun-border);
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
-  background: var(--n-color, #fff);
-  color: var(--sun-text, #212121);
+  background: var(--n-color, var(--sun-black));
+  color: var(--sun-text, #ececec);
   font-size: var(--sun-font-base, 14px);
 }
 
 .mode-selector:hover:not(:disabled) {
-  border-color: var(--sun-border-light, #ccc);
-  color: var(--sun-text, #212121);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
+  color: var(--sun-text, #ececec);
 }
 
 .mode-selector:disabled {
@@ -182,7 +183,7 @@ function onShowUpdate(next: boolean) {
 .mode-menu {
   padding: 4px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;
@@ -225,7 +226,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .mode-menu-item.is-selected .mode-menu-icon {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .mode-menu-text {
@@ -240,7 +241,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
 }
 
@@ -260,7 +261,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .mode-menu-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 </style>
 

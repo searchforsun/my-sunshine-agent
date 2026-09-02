@@ -27,6 +27,26 @@ public final class TimelineAggregator {
                 if (state.startedAt == null || event.ts() < state.startedAt) {
                     state.startedAt = event.ts();
                 }
+                // think-N 中断续跑复用同 id 重推：清空旧半截 reasoning，前端同步收到 running 快照后从头续写
+                if (state.endedAt != null) {
+                    state.reasoning = null;
+                }
+                state.endedAt = null;
+                state.durationMs = null;
+                state.after = null;
+                state.active = event.summary();
+            }
+            case RESUME -> {
+                // 无业务 tool 间隔复用同一 think-N：仅翻回 running 并清计时态，
+                // 保留既有 reasoning，让新 delta 经 concat 续写（避免覆盖之前已完成的思考）。
+                // 与 START 的差异：START 在中断续跑时清空旧半截 reasoning，RESUME 不清。
+                state.lifecycle = "running";
+                if (state.startedAt == null || event.ts() < state.startedAt) {
+                    state.startedAt = event.ts();
+                }
+                state.endedAt = null;
+                state.durationMs = null;
+                state.after = null;
                 state.active = event.summary();
             }
             case PROGRESS -> {
@@ -56,6 +76,13 @@ public final class TimelineAggregator {
                 }
             }
             case PAUSE -> {
+                // 取消前保留 active（如「正在执行 sleep 120」）到 detail，供展开显示命令
+                if (event.detail() != null && !event.detail().isBlank()) {
+                    state.detail = event.detail();
+                } else if ((state.detail == null || state.detail.isBlank())
+                        && state.active != null && !state.active.isBlank()) {
+                    state.detail = state.active;
+                }
                 state.lifecycle = "paused";
                 state.active = event.summary();
                 state.after = event.summary();
@@ -65,9 +92,6 @@ public final class TimelineAggregator {
                 }
                 if (state.startedAt != null) {
                     state.durationMs = event.ts() - state.startedAt;
-                }
-                if (event.detail() != null) {
-                    state.detail = event.detail();
                 }
             }
             case TERMINATE -> {
@@ -97,6 +121,7 @@ public final class TimelineAggregator {
             case "reasoning" -> state.reasoning = concat(state.reasoning, text);
             case "output" -> state.output = concat(state.output, text);
             case "result" -> state.result = text;
+            case "step_summary" -> state.stepSummary = text;
             default -> state.output = concat(state.output, text);
         }
     }
@@ -161,6 +186,7 @@ public final class TimelineAggregator {
         private String reasoning;
         private String output;
         private String result;
+        private String stepSummary;
         private StepMetadata metadata;
         private String labelOverride;
         private long ts;
@@ -189,7 +215,8 @@ public final class TimelineAggregator {
                     label,
                     metadata,
                     null,
-                    null
+                    null,
+                    stepSummary
             );
         }
     }

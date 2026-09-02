@@ -254,10 +254,10 @@ onMounted(async () => {
   <NModal v-model:show="showCreateDoc" preset="dialog" title="新建文档" class="sunshine-dialog">
     <NForm label-placement="left" label-width="90">
       <NFormItem label="文档 ID" required>
-        <NInput v-model:value="createDocForm.docId" placeholder="如 attendance-policy" />
+        <NInput v-model:value="createDocForm.docId" placeholder="如 c50-hr-leave" />
       </NFormItem>
       <NFormItem label="显示名称" required>
-        <NInput v-model:value="createDocForm.displayName" placeholder="如 考勤与加班管理规定" />
+        <NInput v-model:value="createDocForm.displayName" placeholder="如 员工假期与休假管理制度" />
       </NFormItem>
       <NFormItem label="文档类型" required>
         <NSelect

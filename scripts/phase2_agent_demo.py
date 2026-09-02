@@ -33,11 +33,47 @@ except ImportError:
 from sunshine_lib import unwrap_r
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
-FIN_LIST = "sdk__sunshine-finance__list_finance_messages"
+FIN_LIST = "sdk__sunshine-finance__list_my_expenses"
 FINANCE_URL = os.environ.get("FINANCE_URL", "http://ecs4c16g:8710").rstrip("/")
 RAG_URL = os.environ.get("RAG_URL", "http://ecs4c16g:8400").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("PHASE2_AGENT_TIMEOUT_SEC", "120"))
-FINANCE_QUERY = "帮我查询有哪些待审批的报销和付款消息，列出标题和金额"
+FINANCE_QUERY = "列出我的待审批报销单（含标题和金额）"
+MYSQL = {
+    "host": os.environ.get("MYSQL_HOST", "ecs4c16g"),
+    "port": int(os.environ.get("MYSQL_PORT", "3306")),
+    "user": os.environ.get("MYSQL_USER", "root"),
+    "password": os.environ.get("MYSQL_PASSWORD", "root123"),
+}
+
+
+def seed_finance_for_user(user_id: str) -> None:
+    """为新注册用户种子一条 pending 报销 + 财务待办，使 react/workflow finance
+    断言（list_my_expenses 工具命中 + 报销关键词）确定性成立。
+    此前脚本假设新用户自带种子数据，DB 演进后漂移为 0 命中。"""
+    import shutil
+    import subprocess as _sp
+    mysql = shutil.which("mysql")
+    if not mysql:
+        print("  [WARN] mysql client 缺失，跳过 finance 种子（finance 断言可能失败）")
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    today = datetime.now().strftime("%Y-%m-%d")
+    exp_id = f"exp-seed-{datetime.now():%H%M%S}"
+    inbox_id = f"inbox-seed-{datetime.now():%H%M%S}"
+    sql = (
+        f"INSERT INTO sunshine_biz.fin_expense "
+        f"(id,tenant_id,user_id,category,amount,status,occurred_on,remark,created_at,updated_at) "
+        f"VALUES ('{exp_id}','default','{user_id}','差旅',128.50,'pending','{today}',"
+        f"'种子待审批报销','{now}','{now}');"
+        f"INSERT INTO sunshine_biz.fin_inbox "
+        f"(id,tenant_id,user_id,title,status,amount,created_at,updated_at) "
+        f"VALUES ('{inbox_id}','default','{user_id}','种子待审批报销单','pending',128.50,'{now}','{now}');"
+    )
+    _sp.run(
+        [mysql, "-h", MYSQL["host"], "-P", str(MYSQL["port"]),
+         "-u", MYSQL["user"], f"-p{MYSQL['password']}", "-e", sql],
+        capture_output=True, text=True)
+    print(f"  OK seeded finance pending for user={user_id} exp={exp_id}")
 
 
 def auth_json(method: str, path: str, body: dict | None, token: str | None):
@@ -148,7 +184,7 @@ def tasks_item_count(step: dict | None) -> int:
 def run_react_taskboard(token: str, conv_id: str) -> dict:
     query = "帮我查待审批报销，并对有风险的单据逐条说明原因"
     print(f"\n[react-taskboard] SSE chat preference=react query={query}")
-    sse_raw = chat_sse(token, conv_id, query, executionPreference="react")
+    sse_raw = chat_sse(token, conv_id, query, executionMode="fast")
     assistant = wait_assistant_completed(token, conv_id, 120)
     steps = merge_steps(sse_raw, assistant)
     tasks = latest_step(steps, "tasks")
@@ -219,17 +255,25 @@ def wait_assistant_completed(token: str, conv_id: str, max_wait_sec: int = 30) -
     raise RuntimeError(f"assistant message not completed within {max_wait_sec}s")
 
 
+# 财务待办 preflight 种子用户（fin_inbox 中持有 pending 数据的 demo 账号）
+FINANCE_SEED_USER = os.environ.get(
+    "FINANCE_SEED_USER", "64306e36-2d36-4c72-9a10-c6be5ff291a3")
+
+
 def preflight_finance() -> None:
-    pending = requests.get(f"{FINANCE_URL}/api/finance/messages?status=pending", timeout=10).json()
+    pending = requests.get(
+        f"{FINANCE_URL}/api/finance/inbox?status=pending",
+        headers={"x-user-id": FINANCE_SEED_USER},
+        timeout=10).json()
     if pending.get("code") != 200 or not pending.get("data"):
-        raise RuntimeError("finance-service has no pending messages")
+        raise RuntimeError("finance-service has no pending inbox items for seed user")
     print(f"  OK finance pending={len(pending['data'])}")
 
 
 def preflight_rag() -> None:
     resp = requests.post(
         f"{RAG_URL}/api/rag/search",
-        json={"query": "年假可以请几天", "topK": 3},
+        json={"query": "青松假有多少天、怎么申请", "topK": 3},
         timeout=30,
     )
     resp.raise_for_status()
@@ -246,12 +290,15 @@ def setup_auth() -> tuple[str, str]:
     r1 = auth_json("POST", "/api/auth/register", {"username": user, "password": password, "nickname": "AgentDemo"}, None)
     if r1.get("code") != 200:
         raise RuntimeError("register failed")
+    user_id = (r1.get("data") or {}).get("userId")
     r2 = auth_json("POST", "/api/auth/login", {"username": user, "password": password}, None)
     if r2.get("code") != 200 or not r2.get("data", {}).get("token"):
         raise RuntimeError("login failed")
     token = r2["data"]["token"]
     conv_id = conversation_id(auth_json("POST", "/api/conversations", None, token))
     print(f"  OK user={user} conversation={conv_id}")
+    if user_id:
+        seed_finance_for_user(user_id)
     return token, conv_id
 
 
@@ -263,7 +310,7 @@ def run_react_finance(token: str, conv_id: str) -> dict:
     steps_json = json.dumps(assistant.get("steps") or "")
     tool_invoked = (FIN_LIST in sse_raw) or (FIN_LIST in steps_json)
     content = str(assistant.get("content") or "") or sse["content"]
-    finance_hit = any(x in content for x in ("1001", "1002", "1004", "待审批", "报销"))
+    finance_hit = any(x in content for x in ("待审批", "报销", "pending", "exp-"))
     ok = sse["step_count"] >= 2 and (tool_invoked or finance_hit)
     return {"pass": ok, "step_count": sse["step_count"], "tool_invoked": tool_invoked, "finance_hit": finance_hit}
 
@@ -288,7 +335,7 @@ def run_workflow_chat(token: str, conv_id: str, query: str, label: str, *, expec
     if expect_agent:
         ok = ok and ("agent" in steps_json or "node-" in steps_json)
     if expect_finance_data:
-        ok = ok and any(x in content for x in ("1001", "1002", "1004", "待审批", "报销"))
+        ok = ok and any(x in content for x in ("待审批", "报销", "pending", "exp-"))
     return {"pass": ok, "step_count": sse["step_count"], "content_len": len(content)}
 
 
@@ -319,10 +366,10 @@ def main() -> int:
 
     if args.suite in ("all", "workflow"):
         conv2 = conversation_id(auth_json("POST", "/api/conversations", None, token))
-        report["steps"]["wf-knowledge"] = run_workflow_chat(token, conv2, "年假可以请几天", "wf-knowledge")
+        report["steps"]["wf-knowledge"] = run_workflow_chat(token, conv2, "青松假有多少天、怎么申请", "wf-knowledge")
         conv3 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         report["steps"]["wf-finance-list"] = run_workflow_chat(
-            token, conv3, "有哪些待审批报销", "wf-finance-list",
+            token, conv3, "列出我的待审批报销单", "wf-finance-list",
             expect_tool=FIN_LIST, expect_finance_data=True)
         conv4 = conversation_id(auth_json("POST", "/api/conversations", None, token))
         report["steps"]["wf-finance-smart"] = run_workflow_chat(

@@ -27,10 +27,10 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 
 | 层级 | 文档 | 说明 |
 |------|------|------|
-| **总览** | [2026-06-27-rag-knowledge-studio-design.md](../superpowers/specs/2026-06-27-rag-knowledge-studio-design.md) | 原始全量 spec（4.1+4.2）；§12 指向 V2 |
-| **V2 扩展** | [2026-07-01-rag-studio-v2-design.md](../superpowers/specs/2026-07-01-rag-studio-v2-design.md) | 每 kb 独立版本链、MinIO、Suggest、评测平台 |
-| **V3 生命周期** | [2026-07-02-kb-config-version-lifecycle-design.md](../superpowers/specs/2026-07-02-kb-config-version-lifecycle-design.md) | draft→pending_eval→evaluating→eval_passed/eval_failed→active |
-| **评测 UI** | [2026-07-02-kb-eval-ui-redesign.md](../superpowers/specs/2026-07-02-kb-eval-ui-redesign.md) | 运行/脚本两 Tab + 记录内嵌；Suggest 与应用建议规则 |
+| **总览** | [2026-06-27-rag-knowledge-studio-design.md](../superpowers/specs/archive/2026-06-27-rag-knowledge-studio-design.md) | 原始全量 spec（4.1+4.2）；§12 指向 V2 |
+| **V2 扩展** | [2026-07-01-rag-studio-v2-design.md](../superpowers/specs/archive/2026-07-01-rag-studio-v2-design.md) | 每 kb 独立版本链、MinIO、Suggest、评测平台 |
+| **V3 生命周期** | [2026-07-02-kb-config-version-lifecycle-design.md](../superpowers/specs/archive/2026-07-02-kb-config-version-lifecycle-design.md) | draft→pending_eval→evaluating→eval_passed/eval_failed→active |
+| **评测 UI** | [2026-07-02-kb-eval-ui-redesign.md](../superpowers/specs/archive/2026-07-02-kb-eval-ui-redesign.md) | 运行/脚本两 Tab + 记录内嵌；Suggest 与应用建议规则 |
 | **实施计划** | [2026-06-27-rag-knowledge-studio.md](../superpowers/plans/2026-06-27-rag-knowledge-studio.md) | T0–T28 任务卡与验收 |
 
 **冲突时优先级**：V3 生命周期 > V2 > 父 spec §12 修订项。
@@ -71,10 +71,13 @@ RAG 能力横跨**阶段三（生产加固）**与**阶段四（平台化）**�
 
 | 脚本 | 用途 |
 |------|------|
-| `scripts/rag_eval.py` | CI / 命令行评测（调 admin eval API） |
-| `scripts/rag_ingest_bulk.py` | 批量入库 |
+| `scripts/rag_eval.py` | corpus-50 评测：`--sync` 写 MySQL + Admin 跑门禁 |
+| `scripts/generate_rag_corpus.py` | 生成 50 篇语料 + `docs/knowledge/eval_suite.json` |
+| `scripts/rag_wipe_and_ingest.py` | 删文档 + 清库 + 批量 ingest |
+| `scripts/rag_ingest_bulk.py` | 批量入库（`--strategy` / `--params-json`） |
 | `scripts/rag_reset.py` | Milvus 清库重建 |
 | `scripts/verify_rag_studio.py` | 工作台 live 验收 |
+| `scripts/verify_chunk_strategies_live.py` | 五策略分块 + publish 门禁 Live |
 
 ---
 

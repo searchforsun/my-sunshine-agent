@@ -4,59 +4,61 @@ Sunshine AI Platform — 企业级 AI 中台（AgentScope-Java + Spring Cloud Al
 
 ## 编码要义（最高优先级）
 
-1. **两三轮仍不能解决 → 停补丁，查本质**：同一 bug 改 2–3 轮仍反复或出新症状，必须质疑**架构**、**时间线方案**与 **Nacos 提示词**的合理性；禁止继续打补丁式修改。
-2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑（确需兼容须写明原因并评审通过）。
-3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改提示词或架构，不在前后端打补丁。
+1. **两三轮仍不能解决 → 停补丁，查本质**：同一 bug 改 2–3 轮仍反复或出新症状，必须质疑**架构**与 **Catalog 提示词**的合理性；禁止继续打补丁式修改。
+2. **找根因，简化设计**：优先从链路建模、SSE/步骤契约、提示词入手修正；方案要**简单**，禁止冗余分支与「兼容旧行为」的兜底逻辑。
+3. **模型输出不二次加工**：禁止对模型输出做截断、摘要或过滤兜底；不对就改 Catalog/`/prompts` 或架构。
 
-**进度**：阶段三 **检查门通过** — 阶段四 **4.7 多专家协作 ✅** · **4.7.5 ReAct TaskBoard ✅** · **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅ 收口** · **4.5 沙箱方案 B ✅**（工作区抽屉 / `writeHitlMode` / 时间线路径，索引 `docs/sandbox/README.md`）；缺口见 `docs/implementation-plan.md`。
+**进度**：阶段三 ✅ — 阶段四 **4.6 动态 DAG ✅** · **4.7 多智能体协作 ✅** · **4.7.5 ReAct TaskBoard ✅**（原生 `todo_write`，终态落 MySQL 审计）· **4.7.6 Spawn Subagent ✅** · **4.7.9 Request Decision ✅**（Chat MAIN + Planner D12 ✅；`decision.enabled` 默认关）· **异步工具 await ✅**（`background` + `await_tool_run`）· **4.8 工具集成 ✅** · **4.13 Workflow Studio ✅** · **4.5 沙箱方案 B ✅**（Codex 工作区）· **4.11 Prompt Catalog ✅** · **4.13.8 结构化 I/O ✅** · **4.14 Planner-Executor 重建 ✅**（Planner = 普通 ReAct + 动作元工具 `request_decision`；Worker 独立 sessionId 并行流式 + `await_tool_run`；阶段 D ✅——`PlanWorkflow` 源码与读侧兼容已删；[rebuild spec](docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md)）· **统一路由 v6 ✅**（wire 仅 `fast|pro|workflow`，字段 `executionMode`；[spec](docs/superpowers/specs/2026-07-29-unified-routing-design.md)）· **Kind·Biz-Scene Catalog ✅**（资源 `kind` 过滤 · 业务场景 Lab · 工具集 chat/task）· **模型注册表 ✅**（MySQL SSOT）· **服务合并 ✅**（skill/agent/prompt/desensitize → resource-manager :8240 · oa/finance/hr → biz-simulator :8700 · tool-manager → tool-service :8210）· **时间线前缀图标 ✅** · **Usage 状态栏 ✅**（轮次/输入输出/ctx 分组）· **任务清单记忆 ✅（已归档）**——M0 fast 跨轮恢复 / M1 KV Memory + `todo` / M2 pro 终态导出 / M3 session_search（scope `session|workspace`）；[spec](docs/superpowers/specs/archive/2026-08-14-task-list-memory-unification-design.md)）· **L1/L2/L3 上下文压缩 ✅**——L2 kind 精简为 9 类（`process_note` 合并）· L3 语义摘要化 + L2 对账（chat body 层退役）· 压缩点按 kind 分化（chat 4+4 / task 2+2+≤10k）· 工具轮确定性 schema 行 + Near 完整过程装载 · 账本重建校验 `verify_context_rebuild.py`；[spec §5.5/§7.4/§8.2/§13.4](docs/superpowers/specs/2026-07-31-unified-context-compression-design.md)）· **Skill 可发现/触发分离（skill-sticky）✅——活跃方案，当前 v3.22**——技能正文统一 `SkillBodyRenderer`（完整正文 + 声明工具），经 `PromptComposer` 尾部 USER 信封注入（守 C1）；`sunshine_search_skills` 动态加载 + L0 首次绑定统一走「加载技能」步骤；子 agent（spawn/workflow/worker）抽屉同款「加载技能」步骤 + 完整正文；worker 支持 `skillId`；[spec](docs/superpowers/specs/2026-08-12-skill-sticky-process-chain-design.md)）· **账本-视图治理（memory-ledger-view）✅（已归档）**——O1 fast 中断落板 / O2 语义 merge / O3 写路由收敛 `ContextWritePolicy` / O4 账本重建校验；[spec](docs/superpowers/specs/archive/2026-08-24-memory-ledger-view-optimization-design.md)）· **业务上下文权威层（business-context M0–M5）✅（已归档）**——Policy/业务任务/场景偏好三块装载 + M4 冲突仲裁 + M5 embedding 回退/场景双轨 + M0 装配时序；[spec](docs/superpowers/specs/archive/2026-08-13-business-context-authority-design.md)）· **目标对齐与失败预算（react-goal-alignment 4.7.7）✅**——`GoalAlignmentMiddleware` + `FailureBudgetMiddleware`（`react.goal-check`/`tool-failure-budget` 默认关）；失败统一 `[ERROR]` 前缀（AS 2.0 契约）；[spec](docs/superpowers/specs/2026-07-27-react-goal-alignment-design.md)）· 阶段五 **5.2 用量计量 ✅**（token 落库 + 日聚合 `llm_usage_daily` + 租户配额 `tenant_quota`）· **5.3 多模型场景路由 ✅**（`CallSiteKey` SSOT + `model_route_policy` + `model=auto` 按 call_site 路由）· **5.5 工具语义检索 ✅**（Milvus `sunshine_tool_index` + `ToolRetrievalMiddleware` 每轮 Top-K 注入，`tool-inject.mode` full 默认/retrieval）· 缺口见 `docs/implementation-plan.md`。
 
 ## 常用命令
 
-编译、启动、验收命令见 [README.md](./README.md) §快速开始。改 `docs/nacos/*.yaml` 后必跑 `python scripts/sync_nacos.py` 并重启消费服务。
+编译、启动、验收命令见 [README.md](./README.md) §快速开始。改 `docs/nacos/*.yaml` 后必跑 `python scripts/sync_nacos.py` 并重启消费服务。修改后端功能后必须重启对应服务的 `start.py`。
+
+**服务启停（`scripts/start.py`）**：服务为**独立进程**（setsid 守护），脚本启动即退出，关闭终端不会带走服务；停服用 `--stop`。
+
+```bash
+python scripts/start.py                # 启动全链路（先 SIGKILL 旧进程）
+python scripts/start.py --restart      # 打包并重启全链路
+python scripts/start.py --restart bff  # 打包并重启指定服务
+python scripts/start.py --stop         # 停止全链路
+python scripts/start.py --stop bff     # 停止指定服务
+```
 
 **运维脚本（SSOT：`scripts/*.py`）**
 
-| 脚本 | 用途 |
-|------|------|
-| `sunshine_lib.py` | 公共库（MySQL/Redis/启停 JVM） |
-| `sync_nacos.py` | Nacos 配置同步 |
-| `start.py` | 按依赖顺序启动全链路 |
-| `clear_session_cache.py` | 清会话 + 可选重启 |
-| `download_skywalking_agent.py` | 下载 SkyWalking Agent |
-| `phase2_agent_demo.py` | Phase 2.4 ReAct 验收；`--suite all\|react\|workflow\|react-taskboard` |
-| `verify_execution_preference.py` | Chat 底栏 `executionPreference` 强制路由 §J Live 验收 |
-| `rag_reset.py` | RAG Milvus 清库重建 |
-| `rag_ingest_bulk.py` | 按 document 表 + `docs/knowledge/*.md` 批量入库 |
-| `rag_eval.py` | RAG Recall/MRR 基线评测 |
-| `verify_rewrite_timeline.py` | Timeline 改写 detail/metadata 验收 |
-| `verify_skills_ui_live.py` | **3.12** `/skills` 管理页 API Live（列表/版本/diff/上传） |
-| `verify_skill_5b_live.py` | **3.11** Skill 5B Chat `@` + Plan 触发 |
-| `verify_hitl_live.py` | **3.3** HITL 写工具（`--live`） |
-| `verify_audit_live.py` | **3.6** 审计三 API |
-| `verify_grafana_rag_live.py` | **3.5** Grafana RAG 可观测 |
-| `verify_sentinel_dashboard.py` | **3.5** Sentinel Dashboard 联调 |
-| `verify_tenant_qps_live.py` | **3.5** 租户 QPS 限流 burst |
-| `verify_tenant_live.py` | **3.2** 多租户隔离（`--live`） |
-| `verify_grounding.py` | **3.7** Grounding 单测 |
-| `verify_subagent_timeline.py` | **3.10** workflow agent subSteps |
-| `verify_pause_resume_consistency.py` | **3.9.5** 暂停/续跑（`--live`） |
-| `verify_react_taskboard_live.py` | **4.7.5** ReAct TaskBoard §F Live（F1 + F-N1） |
-| `verify_peer_collab_live.py` | **4.7.3** PEER_COLLAB §E Live（L1 句式路由） |
-| `verify_expert_consultation_live.py` | **4.7.3 演进** 多专家协作 §K Live（`$` 绑定 + expert 步 + Synthesizer） |
-| `verify_sandbox_live.py` | **4.5** Skills Docker 沙箱 Live（`--suite direct\|chat\|all`；G1–G12，含 `#sandbox-agent` S4） |
-| `verify_sandbox_workspace_live.py` | **4.5** 对话级 Workspace 抽屉（W1–W5：status/SSE/list/content/复用） |
+| 类别 | 核心脚本 |
+|------|----------|
+| 启停/同步 | `start.py`、`sync_nacos.py`、`sunshine_lib.py` |
+| RAG | `rag_reset.py`、`rag_ingest_bulk.py`、`rag_eval.py`、`rag_wipe_and_ingest.py`、`generate_rag_corpus.py`、`verify_chunk_strategies_live.py` |
+| 阶段三验收 | `verify_tenant_live.py`、`verify_hitl_live.py`、`verify_skills_ui_live.py`、`verify_pause_resume_consistency.py` |
+| 阶段四验收 | `verify_sandbox_live.py`、`verify_sandbox_workspace_live.py`、`verify_sandbox_tool_cancel_live.py`、`verify_spawn_subagent_live.py`、`verify_async_tool_await_live.py`、`verify_decision_live.py`、`verify_external_agent_live.py`、`verify_react_taskboard_live.py`、`verify_tool_integration_live.py`、`verify_workflow_studio_live.py`、`verify_plan_dag_live.py`、`verify_prompt_catalog_live.py`、`verify_enterprise_workflow_live.py`、`verify_loop_live.py`、`verify_exclusive_gateway_live.py`、`verify_personal_rules_live.py`、`verify_model_registry_live.py`、`verify_planner_executor_live.py`、`verify_task_list_restore_live.py`、`verify_kv_memory_todo_live.py`、`verify_pro_todo_export_live.py`、`verify_session_search_live.py`、`verify_session_search_workspace_live.py`、`verify_l3_enhancement_live.py`、`verify_taskboard_interrupt_live.py`、`verify_context_rebuild.py`、`verify_goal_alignment_live.py` |
+| 阶段五验收 | `verify_model_route_live.py`（5.3 多模型场景路由：auto 池首路由/显式不回归/auto 无策略 400/用量 call_site 落库/策略 CRUD/热更新/语义缓存隔离）· `verify_tool_retrieval_live.py`（5.5 工具语义检索：直调 sync/search 语义命中+minScore 过滤/首轮索引同步/每轮 Top-K 动态注入/指纹幂等/恒注入不分组） |
+| 其他 | `clear_session_cache.py`、`download_skywalking_agent.py`、`sync_enterprise_agents.py` |
 
-沙箱文档索引：[`docs/sandbox/README.md`](./docs/sandbox/README.md)。
-| `verify_tool_integration_live.py` | **4.8** SDK+MCP 工具集成 Live（`--suite sdk\|mcp\|toolset\|hitl\|all`） |
-| `verify_workflow_studio_live.py` | **4.13** Studio Catalog/`#`/`parallel`/`exclusive` Live |
-| `verify_exclusive_gateway_live.py` | **4.13.7** exclusive-gateway 边条件（`#knowledge-branch`） |
-| `verify_loop_live.py` | **4.13.7** loop do-while + subSteps（`#knowledge-loop`） |
+> **提示词 / 路由规则 SSOT**：`prompt` DB（`/prompts` + Catalog，现聚合于 resource-manager），**不再**经 Nacos `agent.routing.*`。
 
-## 请求链路与模块
+## 服务端口
 
-架构图、端口、项目结构、中间件与**编译/启动/验收命令** SSOT 见 [README.md](./README.md)（§架构概览 · §项目结构 · §快速开始 · §服务器中间件）。
+| 服务 | 端口 | 说明 |
+|------|:---:|------|
+| `sunshine-ui` | 5173 | 前端 WebUI（Vue3 + Naive UI） |
+| `gateway` | 8000 | Spring Cloud Gateway + Sentinel（统一入口） |
+| `bff` | 8001 | WebFlux + SSE 流式转发 |
+| `auth-center` | 8100 | Sa-Token 认证中心 |
+| `orchestrator` | 8200 | 核心编排（workflow / react / planner-executor / 多智能体协作） |
+| `tool-service` | 8210 | 工具注册与调用（SDK + MCP，原 tool-manager） |
+| `resource-manager` | 8240 | 聚合管理服务（Skill / Agent / Prompt / Desensitize） |
+| `sandbox-service` | 8226 | 沙箱执行环境 |
+| `workflow-manager` | 8230 | Workflow 定义 / 版本 / 执行 |
+| `llm-gateway` | 8300 | LLM 网关（多厂商路由 / 缓存 / 熔断） |
+| `rag-service` | 8400 | RAG 检索（Milvus + Hybrid + Rerank） |
+| `biz-simulator` | 8700 | 业务模拟聚合（OA / Finance / HR） |
 
-Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `ExecutionDispatcher` → `StreamToken` → `GenerationJob`（Redis 缓冲 + seq）→ BFF/Gateway 透传 → 前端 `parseSsePayload`。步骤事件 `type:step` / `type:step_delta` 由 `GenerationFlushScheduler.metaStep` 序列化。各服务 `application.yml` 仅 Nacos 入口；业务配置 SSOT 在 `docs/nacos/`。
+**中间件**：Nacos `8848/9848` · MySQL `3306` · Redis `6379`（凭据见 [README.md](./README.md) §服务器中间件）。
+
+## 请求链路
+
+Agent 编排要点：`ChatController` → `ExecutionDispatcher` → `StreamToken` → `GenerationJob`（Redis 缓冲 + seq）→ BFF/Gateway 透传 → 前端 `parseSsePayload`。
 
 ## 架构与扩展（要点）
 
@@ -64,109 +66,82 @@ Agent 编排要点（扩展阅读，非运维重复）：`ChatController` → `E
 
 | 要扩展 | 改哪里 |
 |--------|--------|
-| 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册（metadata `sunshine.tool-app=true`）→ `/tools` 启用 → 加入 ReAct 工具集；Workflow 节点 `params.tool` 填 **Catalog ID**（`sdk__{app}__{name}`）；**禁止** tool-manager 新增编译期 `ToolHandler` |
-| 新 Workflow | **4.13**：`/workflows` + `workflow-manager` DB（**唯一 SSOT**，废弃 Nacos workflow）；MySQL init 种子 **8 标杆**（`13-sunshine-workflow-manager.sql`，含 `knowledge-branch` / `knowledge-loop` / `sandbox-agent`）；orchestrator `WorkflowManagerClient` |
-| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor`：`StaticPlanAdapter` 物化 Plan → `execution_plan` 落库 → 与 plan-workflow **同 UI**（`PlanWorkflowPanel` / `PlanExecutionCanvas`）；answer prompt 仍用 YAML 模板（不经 `PlanAnswerPromptAssembler`） |
-| **Plan-Workflow** | 意图 L1/L3 → `PlanWorkflowExecutor`；Planner → `PlanValidator` → **Replan**（校验失败）→ **用户确认**（可选）→ 执行；节点 **`NodeRetryExecutor`** + `on-failure`；重试策略 SSOT **`execution_mode_policy`**（tool-manager DB，`/tools` Planner Workflow Tab）；规划/校验耗尽或 `fallback_react` → **ReAct**；详见 `docs/routing/plan-workflow-retry-degradation.md`、**用户确认** `docs/superpowers/specs/2026-06-27-plan-user-approval-design.md` |
-| **Plan 终态 answer** | 引擎固定拼接 `id=answer`（Planner 勿输出，同 start）；`params.prompt` 由 **`agent.prompt.answer-template`** + `PlanAnswerPromptAssembler` 注入 |
-| Query 改写 | **检索域**（rag/hyde/empty-recall）→ `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；**路由域**（intent/planner）→ orchestrator `QueryRewriteService`；RAG 链：**rag 改写 → 首检 → HyDE → empty-recall**（均在 rag-service 一次 RPC） |
-| **意图路由** | **Policy Chain**：L0 Skill → L1 `agent.routing.structural` → L2 `agent.routing.rules` → L3 `agent.intent`；验收见 `docs/routing/routing-golden-set.md` |
-| **Chat 执行模式** | 底栏 `executionPreference`（五模式）→ `ForcedExecutionRouter` 覆盖 L1–L3；**具体 workflow 模板**由 4.13 `#` + `workflow-manager` catalog，**不在底栏做二级下拉**；见 `2026-06-25-chat-execution-mode-selector-design.md` §1.1 |
-| **Workflow 模板（4.13）** | `workflow-manager` DB + `/workflows` + Chat `#` 补全；标杆维护见 `docs/workflow/README.md`；详设 `2026-06-25-workflow-studio-design.md` · `2026-07-11-workflow-studio.md` |
-| Workflow 节点中文名 | PlanJson `displayName`（runtime bind）+ tool catalog → `WorkflowNodeLabelService` → SSE `step.label` |
-| 意图步骤文案 | Nacos `agent.timeline.intent`（before/active/after 模板）+ catalog 可选 `intentAfter`；**禁止**在 `StepSummarizer` 硬编码流程名 |
-| 步骤 before/active/after | Nacos `agent.timeline.steps`（plan / rag / generate 等）；前端 **只展示** SSE `summary` 当前阶段一行，勿写死步骤话术 |
-| 步骤中文名（ReAct 工具） | tool-manager catalog → `ToolCatalogService` → SSE `step.label`；前端 **勿**维护 `TOOL_DISPLAY_NAMES` |
-| 新 Agent 能力 / 子 Agent 配置 | `agent/runtime/` — 扩展 `AgentRunRequest` + `ReActAgentFactory`；workflow agent 节点 params 见 DB PlanJson / Studio |
-| **多专家协作（peer-collab）** | `expert-manager` 种子/CRUD → Nacos `agent.expert.*` / `agent.peer.*` → `ExpertConsultationExecutor` + `ExpertHubEngine`（min/max 轮次、continue 判断、第 2 轮起反应式选人）→ `ConsultationSynthesizer`；详设 `docs/superpowers/specs/2026-07-07-expert-consultation-design.md` |
-| **ReAct TaskBoard（4.7.5）** | `manage_tasks` 元工具 + 唯一 `tasks` 步；Hook 跳过 manage_tasks tool 行、首建锚定 think；prompt 仅建板/status；merge 引擎去重；详设 `docs/superpowers/specs/2026-06-24-react-taskboard-design.md` |
+| 新工具 | 业务 App 引入 `common/sunshine-tool-sdk` 声明 `@SunshineTool` → Nacos 注册 → `/tools` 启用；Workflow 节点 `params.tool` 填 Catalog ID（`sdk__{app}__{name}`） |
+| 新 Workflow | `/workflows` + `workflow-manager` DB（唯一 SSOT）+ MySQL init 种子；orchestrator `WorkflowManagerClient` |
+| **静态 Workflow** | L2 规则命中 → `WorkflowExecutor` → `StaticPlanAdapter` → `PlanWorkflowPanel`（DAG 画布）；answer prompt 随 workflow 定义维护于 DB `plan_json` |
+| **Planner-Executor（4.14）** | `PlannerHarnessExecutor`：Planner=ReAct 主 Agent（**单一循环**边规划边执行，S5 v4：无 full/hier 模式；细则在 Worker）→ Worker=工具调用（`forWorker()`）→ Planner 自判 → 综合回答；`PlanNotebook` + **Redis 单写** + 3 类显式触发重规划；**动态 Plan-Workflow 已完全舍弃**（`PlanWorkflowExecutor`/`WorkflowPlanner`/`PlanApproval` 源码与读侧兼容已删，阶段 D ✅）；依赖与落地顺序见 [specs/README](docs/superpowers/specs/README.md#活跃增量方案依赖与落地顺序2026-08-13)；详设 [rebuild](docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md) |
+| **意图路由** | [unified-routing v6](docs/superpowers/specs/2026-07-29-unified-routing-design.md)：**R-0～R-4 ✅**（用户显式 `fast`/`pro`/`workflow` + 双轨收集 + ResourceDispatcher；读侧兼容已去除，wire 仅 fast/pro/workflow；PlanWorkflow 源码残留已删）；延期：`intent.classifier` live 版本 bump |
+| **Chat 执行模式** | wire 字段 `executionMode=fast\|pro\|workflow`；后端枚举统一 `ExecutionMode`（`ExecutionPreference` 已删；存储读侧 DTO 字段仍名 `executionPreference`，值域同三值）→ `ResourceDispatcher`/`ExecutionDispatcher`；`#` 补全仅工作流模式；冒烟 `verify_routing_v6_smoke.py` |
+| **TaskBoard（4.7.5 → AgentScope 原生）** | 原生 `todo_write`（AS2 `enableTaskList`）+ 唯一 `tasks` 步；TaskBoard 终态落 MySQL 审计（自研 `manage_tasks` 已下线） |
+| **ReAct Spawn Subagent（4.7.6）** | 元工具 `spawn_subagent`（仅 MAIN）；上下文隔离；`subagent-*` 卡 + 抽屉；**单独取消**（`SpawnRunRegistry`）；`agentId` 指定预定义智能体，经 `AgentExecutorRouter` 按 `source` 分派 INTERNAL/EXTERNAL（A2A） |
+| **ReAct Request Decision（4.7.9）** | 元工具 `request_decision`（仅 MAIN；Nacos `react.decision.enabled` 默认 **false**；**Cursor 对齐**：`title?`+`questions[]` / resolve `answers[]` / `outcome=`）；主时间线 `decision-*`（`phase=decision` / `lifecycle=awaiting`）；`POST .../decisions/{token}/resolve`；暂停/续跑同问卷 re-await；**Planner D12 ✅**——Planner MAIN 同契约注册 + 续跑（`HarnessPlanner` bind `DecisionResumeSteps`，Planner 时间线决策卡与 Chat MAIN 一致），Worker/SUB 不注入 |
+| **沙箱工具取消（4.5.7）** | `sandbox__exec`/`grep`/`glob`：`CancellableToolRunRegistry` + sandbox kill；**同命令重试禁绝**（取消后原样命令拒调，换命令/换参数/换工具放行；v17.13 取代原「同族预算 3」） |
 
-**Tool 链路**：`ToolRegistry` → `GET /api/tools/catalog` + `POST /api/tools/summarize-*` → orchestrator `ToolCatalogService` / `ToolManagerClient` → `DynamicToolkitFactory`（`RagTool` + `CatalogRemoteAgentTool`）→ `StepLabels`。Catalog ID SSOT：`ToolIds`（`sdk__*` / `mcp__*`）；ReAct LLM `tool_call.name` 与 Catalog 同 ID；静态 Workflow `tool` 节点直调 invoke（不经 LLM）。HITL 读 DB `require_confirmation`。ReAct 验收可查 llm-gateway 日志 `toolCalls=`。
+**Agent 运行时**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `AssembledContext.forSubAgent()`（无 L1/L2/L3）+ `skillId`→`PromptComposer`；禁止绕过 `AgentRunRequest`。
 
-**Agent 运行时（3.10.1–3.10.7 ✅）**：唯一入口 `AgentRuntime.run(AgentRunRequest)`；SUB 用 `MemoryContext.forSubAgent()`（无 STM/LTM）+ `skillId`→`PromptComposer`；skill overlay 优先 **skill-manager Catalog**（3.11 ✅），Nacos `agent.prompt.skill-overlays` 兜底。
+**Tool 链路**：`ToolRegistry` → orchestrator `ToolCatalogService` → `DynamicToolkitFactory`；Catalog ID SSOT：`sdk__*` / `mcp__*`；HITL 读 DB `require_confirmation`。
 
-**子 Agent 目标（SSOT：`docs/superpowers/plans/2026-06-19-multi-agent-architecture.md` §子 Agent 实现目标）**：编排器-Worker；`query` + 上游 `context` 由 workflow 传入；system = base + skill overlay + 节点 `systemOverlay`；用户正文由下游 **answer** 节点合成。
+**Prompt 拼装**：`PromptComposer` 6 层叠加；ReAct 工具策略见 Catalog `mode-overlay.react`（`/prompts`）。
 
-**Prompt 拼装（3.8.2 ✅）**：`PromptComposer` 6 层叠加 → `ReActAgentRuntime` / `AnswerNodeHandler`；SUB 的 `skillId` 走 skill overlay 层；ReAct 工具策略见 Nacos `agent.prompt.mode-overlays.react`。
+**Query 改写**：仅检索域 → `rag-service` `KnowledgeRetrievalPipeline`（[ADR-002](docs/architecture/ADR-002-rag-pipeline-in-rag-service.md)）；orchestrator 路由域意图改写已退役（`QueryRewriteService`/`rewrite.intent` 已删，改写仅发生在 RAG 检索）。
 
-**Query 改写（3.8.1 ✅ → 4.0 迁移）**：检索侧 `rag.rewrite.{rag,hyde,empty-recall}` 迁入 `sunshine-rag.yaml` + pipeline；orchestrator 保留 `intent`（`<8` 字）| `planner`；HyDE 为 **首次 0 命中 fallback**；Timeline RAG 步骤读 response `trace`。
+**RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）。
 
-**RAG 检索策略**：orchestrator `rag.search.strategy` 透传 rag-service（默认 `hybrid+rerank`）；向量锚点门禁见 `RetrievalService`。
+**可观测性（6.x 设计中）**：三台联动以 `traceId` 贯穿；详设 `docs/superpowers/specs/2026-07-27-observability-enhancement-design.md`。
 
-### 时间线（ReAct vs Workflow DAG）
+## 时间线要点
 
-| 模式 | 步骤形态 | 说明 |
-|------|----------|------|
-| **ReAct** | `intent → think → tasks? → tool → think-2 → generate` | TaskBoard 开启时出现 `tasks`（锚定在 think 后）；**无业务 tool 间隔**的连续 reasoning 合并为同一 think（Hook），避免终态堆叠多个「综合分析」 |
-| **静态 Workflow** | `intent → plan → …`（DAG） | `WorkflowExecutor`：`StaticPlanAdapter` + `PlanTimeline`（`planId=`）→ `executeDynamicDefinition`；**无**逐步 `OperationCard` |
-| **Plan-Workflow** | `intent → plan → …`（DAG） | `PlanWorkflowExecutor` + Planner JSON；**成功路径无 `think`/`generate`**；与静态 workflow **共用** `PlanWorkflowPanel` / `PlanNodeDrawer` |
-| **Workflow agent 节点** | 主时间线仅 `node-{id}` 一步 | 子 Agent 内部 think/tool **不上主时间线**；`AgentNodeDetailSummarizer` 供主行 after + 展开 detail |
-| **Workflow loop 容器** | 主时间线仅 `node-{loopId}` | body 多轮 → `subSteps`（id=`i{n}-node-…`）；**禁止** body 节点上主时间线 |
-| **Workflow / Plan answer 节点** | 主时间线 `node-answer` + `step_delta(result)` | 仅 `step_delta(result)` SSOT（勿双写 content）；空白 token 勿 `hasText`/`isBlank` 过滤 |
-| **Plan/Workflow agent 节点** | 子 Timeline + `contentBlocks` | ReAct 正文经 `ingestStreamingContentDelta` → 分段 SSE；**禁止** `isBlank` 丢弃空白 delta |
-| **Expert 发言（peer-collab）** | `expert-convene` → `expert-{id}-s{seq}` + `step_delta(result)` | Hub 阶段2 `ExpertSpeakStreamer` Gateway 流式；**禁止** `hasText`/`trim` 丢弃 token；`step_delta(result)` **不切分**（TD-075） |
-| **Synthesizer 终态正文** | Hub 后 `message.content` 流式 | `ConsultationSynthesizer` → `LlmGatewayClient` → `StreamDeltaNormalizer`（闭合 `**` 等短 token 勿按前缀回退丢弃，TD-076）；**无** `generate` Timeline 步 |
+| 模式 | 关键约束 |
+|------|----------|
+| **ReAct** | `intent → think → tasks? → tool → think-2 → generate`；连续 reasoning 合并为同一 think；SSE 仅下发当前阶段一行 |
+| **ReAct spawn_subagent** | 主卡 `subagent-{runId}` + 抽屉 `subSteps`（指定 agentId 时 label 取智能体 displayName）；取消 → `paused` +「已取消」 |
+| **ReAct request_decision** | 主卡 `decision-{token}`（`phase=decision`）；`metadata.decision.questions[]`；等待 `lifecycle=awaiting`；resolve `answers[]` → `done`/`outcome=answered`；停止 → `paused`，续跑同问卷 re-await；同消息最多 1 张 awaiting |
+| **Workflow（静态）** | 主时间线 `intent → plan → …`（DAG 画布）；agent 节点内部不上主时间线；loop body 进 `subSteps`；answer 节点仅 `step_delta(result)`，勿双写 content |
+| **Planner-Executor（4.14）** | 分层普通时间线 `intent → plan → worker-* → planner-answer`；worker 卡 v17.5 起复用子 Agent 抽屉（`WorkerCard` → `PlanNodeDrawer`，任务契约 + contentBlocks + subSteps）；TaskBoard 一级=H1、二级=Worker todolist（有则展示）；**不渲染 Plan DAG** |
+| **沙箱工具** | 取消 → `lifecycle=paused`，`summary.after=已取消` |
 
-**reasoning 落点（勿双写）**
+**reasoning 落点**：ReAct `think*` step、静态 Workflow `node-*` reasoning 挂 node step、Planner-Executor `plan`/`worker` 步。Plan 不合成 think。
 
-| 路径 | SSE / steps | message.reasoning | 前端合成 think |
-|------|-------------|-------------------|----------------|
-| ReAct | `think*` step | 可选（generate 路径） | `normalizeTimelineSteps` 可合成 |
-| Plan/Workflow `node-*` | 挂在对应 node step | **不写**（`GenerationJob` + `chatSessions`） | **不合成**（有 plan/node 即跳过） |
+**静态 Workflow 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析** + **最终输出**（原样）；业务节点 **执行记录**（`attempts[]`）；RAG 改写 trace 进抽屉 **检索过程**。
 
-**Plan 节点抽屉**（`PlanNodeDrawer`）：answer/llm → **综合分析**（`step.reasoning` 原样）+ **最终输出**（`step.result` 原样）；业务节点可展开 **执行记录**（`attempts[]`）；RAG 节点 `metadata.rewriteInDetail=true` 时改写 trace 进抽屉 **检索过程**（`expandSectionTitle`），前端勿关键字过滤；无「执行摘要」；长文随 `.drawer-body` 整体滚动（区块内无嵌套滚动条）。
-
-**Timeline V2 约定**：步骤含 `lifecycle` + `summary.{before,active,after}`；SSE 仅下发当前阶段一行。终态 COMPLETE/FAIL/SKIP **必须下发**。
-
-**前端**：`OperationStack` / `PlanExecutionCanvas` / `PlanNodeDrawer` / `PlanApprovalActions`；时间线主行用 `step.label` + `resolveStepHeaderText`；**Plan 用户确认**折叠框与 HITL/Recovery 同组件；重新生成 **仅图区** loading、确认行「正在重新生成」、放大钮右上角且重生成中隐藏；DAG pending **等待中**；**勿**维护本地步骤话术 Map；**勿**对模型输出做截断/去重兜底（不对改 Nacos 提示词）。
+**前端**：`OperationStack` / `PlanExecutionCanvas`（仅静态 Workflow）/ `PlanNodeDrawer` / `TaskBoardPanel`；Planner-Executor 用分层普通时间线 + 一/二级看板（见 rebuild §4）；**禁止**维护本地步骤话术 Map、对模型输出做截断兜底。
 
 ## 关键约定
 
 1. OpenAIChatModel 对接 Gateway `/v1/chat/completions`。
 2. Gateway 鉴权注入 `x-user-id`；BFF/Orchestrator 只读，客户端不得自填。
 3. Nacos SSOT：改 `docs/nacos/*.yaml` → `sync_nacos.py` → 重启（无 `application-dev.yaml`）。
-4. 四模式（阶段四增第五）：`IntentRouter` → `ExecutionDispatcher`（`simple-llm` / `workflow` / `react` / `plan-workflow`；阶段四 **`peer-collab`** 见 D10 + `2026-06-24-peer-collab-routing-design.md`）；workflow 图在 **workflow-manager DB**（4.13）。
-5. 财务/react 工具经 tool-manager；**禁止** Controller 拼 prompt 模板（见 Nacos `agent.system-prompt`）。
+4. 执行模式：`IntentRouter` → `ExecutionDispatcher`；workflow 图在 **workflow-manager DB**（4.13）。
+5. 财务/react 工具经 tool-service；**禁止** Controller 拼 prompt 模板。
 6. `ChatCompletionResponse` 用 `@Builder` 须加 `@NoArgsConstructor` + `@AllArgsConstructor`。
 7. 审计：assistant 终态 → RocketMQ / MySQL / ES；`GET /api/audit/recent`。
-8. Workflow 意图步：`summary.after` 保留路由文案（如「将按 xx 流程处理」）；`detail` 不下发，避免与 after 重复可展开。
-9. ReAct / workflow agent 节点统一经 `AgentRuntime.run(AgentRunRequest)`；禁止新增兼容门面或绕过 `AgentRunRequest` 直接调 ReActAgent。
-
-## 中间件（ecs4c16g）
-
-端口与凭据见 [README.md](./README.md) §服务器中间件（ecs4c16g）。
+8. ReAct / workflow agent 节点统一经 `AgentRuntime.run(AgentRunRequest)`。
+9. **提示词以线上 DB 为准**：prompt 正文 SSOT = 线上 `prompt_definition`/`prompt_version`（改完 bump `prompt_catalog_meta.catalog_version`，orchestrator 5s 热更新）；种子 SQL（`docker/mysql/init/19-sunshine-resource.sql`）与线上有偏差时**一律以线上为准**回写种子，禁止只改种子或只改线上。
 
 ## 版本与前端
 
-- 勿升 Spring Boot 3.3+、AgentScope 2.0.0；Sa-Token **1.45.0**（需 `sa-token-jwt`）。
-- SSE 基址：生产构建须设 `VITE_BFF_STREAM_BASE`（见 `sunshine-ui/.env.production.example`）；开发态走 Vite proxy。
-- 思考区字号：`OperationCard` / `ReasoningPanel` 用 `--sun-font-base`（14px）。
+- 勿升 Spring Boot 3.3+；Sa-Token **1.45.0**。**AgentScope 已升 2.0**（native-first，P0–P3 完成；P4–P6 保留自研）。
+- ReAct 续跑依赖 **Redis StateStore TTL=7d**；官方自动持久化 + 优雅停机，勿自研 ShutdownHook。
+- SSE 基址：生产构建须设 `VITE_BFF_STREAM_BASE`；开发态走 Vite proxy。
 
-### UI 风格（Codex 简约）
+### UI 风格
 
-**SSOT**：`global.css`（`--sun-*`）、`markdown-content.css`（`--smd-*`）、`mermaidConfig.ts`、`useTheme.ts`（hljs）。
+背景统一 **`--sun-black`**、**边框**分区；**禁止**页面/面板/输入用 `--sun-surface` 灰底。代码/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）。
 
-**原则**：背景统一 **`--sun-black`（= `--sun-bg` = `--sun-sidebar-bg`）**，**边框**分区；**禁止**页面/面板/输入/选中态用 `--sun-surface` / `--sun-deep` / `--sun-accent-muted` 灰底。
+- 所有 UI 区域**禁止**冗余性的解释性说明文字，仅保留必要操作提示，保持简洁。
 
-| 元素 | 规则 |
-|------|------|
-| 页面、卡片、composer、输入框 | `--sun-black` 底 + `1px var(--sun-border)`；focus 无 shadow |
-| 块头栏、Plan 确认框、预览顶栏 | `transparent` 底，保边框 |
-| 下拉选中 | 对号 **18px**、无灰底；compact 宽 **304px**、说明不换行（见 `ExecutionModeSelector` / `TenantSelector`） |
-| 卡片/DAG 选中 | 内描边或 ring，hover 仅改边框（见 `SkillsView` / `PlanExecutionCanvas`） |
-| 文件树选中 | active 背景 transparent + 文字加粗 |
-| 代码/Mermaid | `--smd-block-bg` = 正文色；hljs/Mermaid 主题走 `useTheme` / `mermaidConfig`（`theme: 'base'`）；复制用 `stream-markdown/clipboard.ts` |
+## Plan/Spec 文档管理
 
-**已对齐**：Chat、Plan 组件、Skills / **Experts** / Knowledge / Status 页、MainLayout 侧栏。
-
-**Experts `/experts`**：与 Skills 同构（左列表 + 右详情）；`--sun-black` 底 + 边框分区，输入/下拉用 `sun-field` 覆写 Naive 灰底；新建弹窗仅 ID+展示名，启用开关在左卡（必填保存后）。
+1. **完成即更新状态**：功能落地后同步更新对应 spec/plan 文档状态为 `✅ 已实现`，禁止代码跑通但文档仍标「实施中」。
+2. **完成即归档**：确认完成后移入 `docs/superpowers/specs/archive/`；仅保留正在实施的活跃文档。
+3. **Claude.md 进度行同步**：归档时同步更新顶部进度行和 `docs/implementation-plan.md`。
+4. **排除项**：各阶段 SSOT 主文档（`phase1`–`phase5`）和 `README.md` 始终保留。
 
 ## 其他
 
-- 架构决策（ADR）：[docs/architecture/README.md](./docs/architecture/README.md)
+- 架构决策（ADR）：[docs/architecture/README.md](./docs/architecture/README.md)。
 - 代码加适量中文注释；**禁止**在业务代码中插入多余空行。
 - 禁止保存临时脚本；运维统一 **Python**（`scripts/*.py`）。
-- `start.py` 可带 SkyWalking agent（需先 `download_skywalking_agent.py`）。
-- 改 orchestrator 时间线 / workflow 后：编译 → 重启 → Agent 跑 live/e2e 留记录（见 `/tech-debt-refactor` §7）；**改前须 §1.3 功能识别并获确认**。
-- 项目中禁止硬编码提示词等，统一在nacos管理
-- **禁止 Flyway**；库表初始化/变更 SQL SSOT 在 `docker/mysql/init/`（`01` 建库 + `02–05` 中间件 + `10` auth / `11` orchestrator / `12` skill-manager / `13` workflow-manager / `14` rag-service，**一项目一文件**），**禁止**放在各模块 `resources/db/migration`
+- 项目中禁止硬编码提示词；正文 SSOT = resource-manager Catalog（`/prompts`）。
+- **禁止 Flyway**；库表 SQL SSOT 在 `docker/mysql/init/`（一项目一文件），禁止放各模块 `resources/db/migration`。
+- **种子 SQL 必须全量**：`docker/mysql/init/19-sunshine-resource.sql` 是 prompt/skill/agent 等 Catalog 数据的**全量快照**（由线上收敛导出），**不支持增量**；线上有变更（新增/改内容/删除）时必须同步为全量，禁止只补增量 INSERT。

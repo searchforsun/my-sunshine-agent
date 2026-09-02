@@ -42,13 +42,13 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
   },
   {
     id: 'finance-list',
-    name: '财务待办查询',
-    summary: 'start → Tool 列出待审批/已审批财务消息 → answer',
+    name: '我的报销查询',
+    summary: 'start → Tool 列出当前用户报销单 → answer',
   },
   {
     id: 'finance-summary',
-    name: '财务汇总统计',
-    summary: 'start → Tool 按状态汇总条数与金额 → answer',
+    name: '报销汇总统计',
+    summary: 'start → Tool 按状态汇总报销条数与金额 → answer',
   },
   {
     id: 'parallel-dual-rag',
@@ -62,10 +62,6 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplateDefinition[] = [
     summary: 'exclusive-gateway：含「报销」走财务 RAG，否则默认人事 RAG',
   },
 ]
-
-export function getWorkflowTemplate(id: WorkflowTemplateId): WorkflowTemplateDefinition | undefined {
-  return WORKFLOW_TEMPLATES.find(t => t.id === id)
-}
 
 export function buildWorkflowTemplatePreviewPlan(
   id: WorkflowTemplateId,

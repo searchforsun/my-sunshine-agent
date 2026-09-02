@@ -23,7 +23,6 @@ export interface EffectiveRagConfig {
   rrfK: number
   hybridPoolSize: number
   rerankMinScore: number
-  chunkMaxSize: number
 }
 
 export interface ConfigSchemaResponse {

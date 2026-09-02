@@ -9,10 +9,10 @@ class RoutingAuditExtractorTest {
     @Test
     void fromStepsJson_extractsForcedRouting() {
         String steps = """
-                [{"id":"intent","metadata":{"routingReason":"user:forced-react","skillId":"finance-analysis"}}]
+                [{"id":"intent","metadata":{"routingReason":"user:forced-fast","skillId":"finance-analysis"}}]
                 """;
         RoutingAuditExtractor.Summary summary = RoutingAuditExtractor.fromStepsJson(steps);
-        assertThat(summary.routingReason()).isEqualTo("user:forced-react");
+        assertThat(summary.routingReason()).isEqualTo("user:forced-fast");
         assertThat(summary.userForced()).isTrue();
         assertThat(summary.skillId()).isEqualTo("finance-analysis");
     }
@@ -20,9 +20,9 @@ class RoutingAuditExtractorTest {
     @Test
     void toPayloadMap_includesUserForced() {
         RoutingAuditExtractor.Summary summary = new RoutingAuditExtractor.Summary(
-                "user:forced-plan-workflow", true, "finance-analysis", null);
+                "user:forced-pro", true, "finance-analysis", null);
         assertThat(RoutingAuditExtractor.toPayloadMap(summary))
-                .containsEntry("routingReason", "user:forced-plan-workflow")
+                .containsEntry("routingReason", "user:forced-pro")
                 .containsEntry("userForced", true)
                 .containsEntry("skillId", "finance-analysis");
     }

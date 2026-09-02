@@ -3,7 +3,7 @@
 
 用法:
   python scripts/verify_skill_5b_live.py
-  python scripts/verify_skill_5b_live.py --query "@finance-analysis 先查制度再拉待办再分析再润色"
+  python scripts/verify_skill_5b_live.py --query "/finance-analysis 先查制度再拉待办再分析再润色"
   python scripts/verify_skill_5b_live.py --skip-wait
 
 环境变量:
@@ -11,10 +11,10 @@
   SKILL_5B_TIMEOUT_SEC（默认 180，Planner+DAG 较慢）
   SKILL_MANAGER_URL（可选 preflight，默认 http://ecs4c16g:8225）
 
-断言（routing-golden-set §E3 / E-Live）:
-  - intent 步 metadata: skillId + plannerMode=skill-driven
-  - plan 步 detail 含 planId=（成功路径有 DAG）
-  - 可选 GET /api/execution-plans/{planId} 校验 status
+断言（routing-golden-set §E3 / E-Live，v6 语义）:
+  - intent 步 metadata: skillId 绑定成功
+  - intent 步 after 统一文案「已完成意图识别」
+  - 可选：plan 步出现则校验 lifecycle/planId（v6 下 skill 绑定走轨 A，通常无 plan 步）
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ except ImportError:
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://ecs4c16g:8000").rstrip("/")
 SKILL_MANAGER_URL = os.environ.get("SKILL_MANAGER_URL", "http://ecs4c16g:8225").rstrip("/")
 TIMEOUT_SEC = int(os.environ.get("SKILL_5B_TIMEOUT_SEC", "180"))
-DEFAULT_QUERY = "@finance-analysis 先查制度再拉待办再分析再润色"
+DEFAULT_QUERY = "/finance-analysis 先查制度再拉待办再分析再润色"
 DEFAULT_SKILL = "finance-analysis"
 PLAN_ID_RE = re.compile(r"planId=([0-9a-f-]{36})", re.I)
 
@@ -67,21 +67,9 @@ def setup_auth() -> tuple[str, str]:
     return token, conv_id
 
 
-def confirm_plan(token: str, approval_token: str) -> bool:
-    body = auth_json(
-        "POST",
-        "/api/chat/confirm-plan",
-        {"token": approval_token, "action": "approve"},
-        token,
-    )
-    data = body.get("data") or body
-    return data.get("accepted") is True
-
-
-def collect_sse_with_plan_approval(token: str, conv_id: str, query: str) -> list[dict]:
-    """消费 SSE；若 plan 步进入用户确认则自动 approve。"""
+def collect_sse(token: str, conv_id: str, query: str) -> list[dict]:
+    """消费 SSE 收集步骤。"""
     steps: list[dict] = []
-    approved_tokens: set[str] = set()
     error: Exception | None = None
     done = threading.Event()
 
@@ -112,15 +100,6 @@ def collect_sse_with_plan_approval(token: str, conv_id: str, query: str) -> list
                     if obj.get("type") != "step":
                         continue
                     steps.append(obj)
-                    if str(obj.get("id")) != "plan":
-                        continue
-                    pa = (obj.get("metadata") or {}).get("planApproval") or {}
-                    approval_token = pa.get("token")
-                    status = pa.get("status")
-                    if approval_token and status == "awaiting" and approval_token not in approved_tokens:
-                        approved_tokens.add(approval_token)
-                        ok = confirm_plan(token, approval_token)
-                        print(f"[skill-5b] auto approve plan token={approval_token[:8]}... accepted={ok}")
         except Exception as e:
             error = e
         finally:
@@ -217,7 +196,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print(f"[skill-5b] GATEWAY={GATEWAY_URL} timeout={TIMEOUT_SEC}s")
-    print(f"[skill-5b] query={args.query!r} expect skill={args.skill} plannerMode=skill-driven")
+    print(f"[skill-5b] query={args.query!r} expect skill={args.skill}")
 
     if not args.skip_preflight:
         preflight_skill(args.skill)
@@ -225,7 +204,7 @@ def main() -> int:
     token, conv_id = setup_auth()
     print(f"[skill-5b] conversationId={conv_id}")
 
-    raw = collect_sse_with_plan_approval(token, conv_id, args.query)
+    raw = collect_sse(token, conv_id, args.query)
     steps = raw
     step_ids = [str(s.get("id")) for s in steps]
     print(f"[skill-5b] SSE steps ({len(steps)}): {step_ids}")
@@ -241,24 +220,19 @@ def main() -> int:
     print(f"[skill-5b] intent.metadata: {json.dumps(meta, ensure_ascii=False)}")
 
     skill_id = meta.get("skillId")
-    planner_mode = meta.get("plannerMode")
     routing_reason = meta.get("routingReason")
     errors: list[str] = []
 
     if skill_id != args.skill:
         errors.append(f"intent.metadata.skillId={skill_id!r} 期望 {args.skill!r}")
-    if planner_mode != "skill-driven":
-        errors.append(f"intent.metadata.plannerMode={planner_mode!r} 期望 'skill-driven'")
-    if routing_reason and "5b-skill-plan" not in str(routing_reason):
-        errors.append(f"intent.metadata.routingReason 应含 5b-skill-plan: {routing_reason!r}")
-    if intent_after and "动态规划" not in str(intent_after):
-        errors.append(f"intent after 应含「动态规划」: {intent_after!r}")
+    if intent_after and "已完成意图识别" not in str(intent_after):
+        errors.append(f"intent after 应含「已完成意图识别」: {intent_after!r}")
+    if routing_reason:
+        print(f"[skill-5b] intent.metadata.routingReason: {routing_reason!r}")
 
     plan = latest_step(steps, "plan")
     plan_id: str | None = None
-    if not plan:
-        errors.append("未收到 plan 步（可能 Planner 失败降级 ReAct）")
-    else:
+    if plan:
         plan_lifecycle = plan.get("lifecycle")
         plan_detail = plan.get("detail")
         plan_after = (plan.get("summary") or {}).get("after") or plan.get("after")
@@ -279,6 +253,8 @@ def main() -> int:
                     errors.append("成功 5B 路径不应在 plan 前出现 think 步")
             except ValueError:
                 pass
+    else:
+        print("[skill-5b] 未出现 plan 步（v6 下 skill 绑定走轨 A，符合预期）")
 
     if errors:
         print("FAIL:", file=sys.stderr)
@@ -286,7 +262,7 @@ def main() -> int:
             print(f"  - {e}", file=sys.stderr)
         return 1
 
-    print("PASS: intent metadata（skillId + plannerMode）+ plan 步 planId")
+    print("PASS: intent metadata（skillId 绑定）+ intent 统一文案")
 
     if plan_id and not args.no_plan_api:
         try:
@@ -294,8 +270,8 @@ def main() -> int:
             status = detail.get("status")
             nodes = (detail.get("validatedPlan") or detail.get("plan") or {}).get("nodes") or []
             print(f"[skill-5b] execution-plan status={status} nodes={len(nodes)}")
-            if status in ("rejected", "failed"):
-                print(f"WARN: plan 终态 {status} reject={detail.get('rejectReason')}", file=sys.stderr)
+            if status == "failed":
+                print(f"WARN: plan 终态 {status}", file=sys.stderr)
                 return 2
         except Exception as e:
             print(f"WARN: GET execution-plans 失败: {e}", file=sys.stderr)

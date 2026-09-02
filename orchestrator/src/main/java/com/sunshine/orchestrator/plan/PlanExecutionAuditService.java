@@ -12,7 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** plan-workflow 重试与降级审计事件 */
+/** Plan 重试与降级审计事件 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -63,20 +63,6 @@ public class PlanExecutionAuditService {
                 "reason", reason != null ? reason : ""));
     }
 
-    public void plannerAttempt(
-            String conversationId,
-            String messageId,
-            String userId,
-            String tenantId,
-            String planId,
-            PlannerAttempt attempt) {
-        publish(conversationId, messageId, userId, tenantId, "plan.planner_attempt", planId, Map.of(
-                "attemptNo", attempt.attemptNo(),
-                "phase", attempt.phase(),
-                "status", attempt.status(),
-                "error", attempt.error()));
-    }
-
     public void nodeAttempt(
             String conversationId,
             String messageId,
@@ -104,6 +90,45 @@ public class PlanExecutionAuditService {
             String reason) {
         publish(conversationId, messageId, userId, tenantId, "plan.fallback_react", planId, Map.of(
                 "reason", reason));
+    }
+
+    public void workerStarted(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String taskId,
+            String label) {
+        publish(conversationId, messageId, userId, tenantId, "plan.worker_started", planId, Map.of(
+                "taskId", taskId != null ? taskId : "",
+                "label", label != null ? label : ""));
+    }
+
+    public void workerCompleted(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String taskId,
+            String summary) {
+        publish(conversationId, messageId, userId, tenantId, "plan.worker_completed", planId, Map.of(
+                "taskId", taskId != null ? taskId : "",
+                "summary", summary != null ? summary : ""));
+    }
+
+    public void workerFailed(
+            String conversationId,
+            String messageId,
+            String userId,
+            String tenantId,
+            String planId,
+            String taskId,
+            String error) {
+        publish(conversationId, messageId, userId, tenantId, "plan.worker_failed", planId, Map.of(
+                "taskId", taskId != null ? taskId : "",
+                "error", error != null ? error : ""));
     }
 
     private void publish(

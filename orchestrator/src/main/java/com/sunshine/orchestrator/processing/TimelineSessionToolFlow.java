@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
+import com.sunshine.common.sandbox.SandboxEditDiff;
+
 import java.util.List;
 
 /** ReAct 工具步骤 + HITL / 节点 recovery metadata */
@@ -73,11 +75,41 @@ final class TimelineSessionToolFlow {
         state.currentToolStepId = null;
     }
 
+    void pauseToolStepForToolUse(String toolUseId, String afterSummary) {
+        pauseToolStepForToolUse(toolUseId, afterSummary, null);
+    }
+
+    void pauseToolStepForToolUse(String toolUseId, String afterSummary, String expandDetail) {
+        String stepId = com.sunshine.orchestrator.agent.StepEventBridge.stepIdForToolUse(toolUseId);
+        if (stepId == null || stepId.isBlank()) {
+            stepId = state.currentToolStepId;
+        }
+        if (stepId == null) {
+            return;
+        }
+        lifecycle.pause(stepId, afterSummary, expandDetail);
+        if (stepId.equals(state.currentToolStepId)) {
+            state.currentToolStepId = null;
+        }
+    }
+
     void progressCurrentToolStep(String activeSummary) {
         if (state.currentToolStepId == null || activeSummary == null || activeSummary.isBlank()) {
             return;
         }
         lifecycle.progress(state.currentToolStepId, activeSummary);
+    }
+
+    void markCurrentToolCancellable() {
+        if (state.currentToolStepId == null) {
+            return;
+        }
+        StepMetadata base = state.aggregator.get(state.currentToolStepId)
+                .map(com.sunshine.orchestrator.agent.ProcessingStep::metadata)
+                .orElse(null);
+        StepMetadata meta = StepMetadata.withCancellable(base, true);
+        emitter.applyAt(
+                state.currentToolStepId, null, EventKind.PROGRESS, null, null, meta, System.currentTimeMillis());
     }
 
     String currentToolStepId() {
@@ -90,11 +122,21 @@ final class TimelineSessionToolFlow {
 
     void attachHitlPending(
             String token, String toolDisplayName, String paramsSummary, long expiresAt, String expandDetail) {
+        attachHitlPending(token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    void attachHitlPending(
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            SandboxEditDiff editDiff) {
         if (state.currentToolStepId == null || token == null || token.isBlank()) {
             return;
         }
         attachHitlPendingOnStep(
-                state.currentToolStepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail);
+                state.currentToolStepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, editDiff);
     }
 
     void resolveHitlPending(String status) {
@@ -116,12 +158,24 @@ final class TimelineSessionToolFlow {
             String paramsSummary,
             long expiresAt,
             String expandDetail) {
+        attachHitlPendingOnStep(stepId, token, toolDisplayName, paramsSummary, expiresAt, expandDetail, null);
+    }
+
+    void attachHitlPendingOnStep(
+            String stepId,
+            String token,
+            String toolDisplayName,
+            String paramsSummary,
+            long expiresAt,
+            String expandDetail,
+            SandboxEditDiff editDiff) {
         if (stepId == null || token == null || token.isBlank()) {
             return;
         }
         StepMetadata base = state.aggregator.get(stepId).map(com.sunshine.orchestrator.agent.ProcessingStep::metadata).orElse(null);
         StepMetadata meta = StepMetadata.withHitl(
                 base, HitlStepMeta.awaiting(token, toolDisplayName, paramsSummary, expiresAt));
+        meta = StepMetadata.withEditDiff(meta, editDiff);
         emitter.applyAt(stepId, null, EventKind.PROGRESS, null, expandDetail, meta, System.currentTimeMillis());
     }
 

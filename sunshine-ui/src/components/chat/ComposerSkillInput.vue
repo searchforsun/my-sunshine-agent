@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { SkillCatalogIndexEntry } from '../../api/skills'
-import type { ExpertCatalogIndexEntry } from '../../api/experts'
+import type { AgentCatalogIndexEntry } from '../../api/agents'
 import type { WorkflowCatalogEntry } from '../../api/workflows'
 import {
   displaySegments,
@@ -25,10 +25,11 @@ import { useSandboxWorkspaceDrawer } from '../../composables/useSandboxWorkspace
 const props = defineProps<{
   modelValue: string
   allowsSkillMention: boolean
-  allowsExpertMention?: boolean
+  allowsAgentMention?: boolean
   allowsWorkflowMention?: boolean
+  disabled?: boolean
   catalog: SkillCatalogIndexEntry[]
-  expertCatalog?: ExpertCatalogIndexEntry[]
+  agentCatalog?: AgentCatalogIndexEntry[]
   workflowCatalog?: WorkflowCatalogEntry[]
   placeholder?: string
 }>()
@@ -48,12 +49,12 @@ const sandboxDrawer = useSandboxWorkspaceDrawer()
 const mentionContext = computed<ComposerMentionContext>(() => ({
   catalogs: {
     skills: props.catalog,
-    experts: props.expertCatalog ?? [],
+    agents: props.agentCatalog ?? [],
     workflows: props.workflowCatalog ?? [],
   },
   allows: {
     skill: props.allowsSkillMention,
-    expert: props.allowsExpertMention ?? false,
+    agent: props.allowsAgentMention ?? false,
     workflow: props.allowsWorkflowMention ?? false,
   },
 }))
@@ -158,6 +159,13 @@ function onPaste(e: ClipboardEvent) {
   document.execCommand('insertText', false, text)
 }
 
+/** 禁用时移除焦点并禁止输入 */
+watch(() => props.disabled, (val) => {
+  if (val && editorRef.value) {
+    editorRef.value.blur()
+  }
+})
+
 function onEditorKeydown(e: KeyboardEvent) {
   emit('keydown', e)
 }
@@ -202,6 +210,21 @@ function onDrop(e: DragEvent) {
   nextTick(() => syncChipEditor(next, nextCaret))
 }
 
+/** 插入工作区选中行引用：`path` L120-125 / `path` L120（光标处） */
+function insertPathRange(path: string, lineStart: number, lineEnd: number) {
+  const el = editorRef.value
+  if (!el || !path) return
+  el.focus()
+  const plain = plainTextFromEditor(el)
+  const caret = getCaretPlainOffset(el)
+  const token = sandboxPathPlainToken(path, lineStart, lineEnd)
+  const { next, caret: nextCaret } = insertPlainAtOffset(plain, caret, token)
+  syncing.value = true
+  emit('update:modelValue', next)
+  syncing.value = false
+  nextTick(() => syncChipEditor(next, nextCaret))
+}
+
 function onEditorClick(e: MouseEvent) {
   const el = (e.target as HTMLElement | null)?.closest?.('.mention-chip--path') as HTMLElement | null
   if (!el) return
@@ -217,7 +240,7 @@ function focus() {
   editorRef.value?.focus()
 }
 
-defineExpose({ focus })
+defineExpose({ focus, insertPathRange })
 
 onMounted(() => {
   nextTick(() => applyExternalValue(props.modelValue))
@@ -236,7 +259,7 @@ onMounted(() => {
       ref="editorRef"
       class="composer-editor"
       :class="{ 'is-empty': isEditorEmpty }"
-      contenteditable="true"
+      :contenteditable="!disabled"
       role="textbox"
       aria-multiline="true"
       :data-placeholder="placeholder"

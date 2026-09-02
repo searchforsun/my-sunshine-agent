@@ -23,20 +23,20 @@ class ExecutionPlanParserTest {
     @Test
     void invalidJsonFallsBackToReact() {
         ExecutionPlan plan = parser.parse("not json");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.workflowId()).isNull();
     }
 
     @Test
-    void normalizesSimpleLlmAlias() {
+    void unknownMode_simpleLlmFallsToReact() {
         ExecutionPlan plan = parser.parse("{\"mode\":\"simple-llm\"}");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
     }
 
     @Test
     void unknownStoredIntentFallsBackToReact() {
         ExecutionPlan plan = parser.parse("simple");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
     }
 
     @Test
@@ -47,36 +47,66 @@ class ExecutionPlanParserTest {
     }
 
     @Test
-    void parseStoredIntentSimpleLlm() {
+    void parseStoredIntent_unknownSimpleLlmFallsToReact() {
         ExecutionPlan plan = parser.parseStoredIntent("simple-llm");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
-    }
-
-    @Test
-    void parsesPlanWorkflowJson() {
-        String json = """
-                {"mode":"plan-workflow","workflowId":null,"params":{},"reason":"跨领域多步"}
-                """;
-        ExecutionPlan plan = parser.parse(json);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        assertThat(plan.intentLabel()).isEqualTo("plan-workflow");
-        assertThat(plan.reason()).isEqualTo("跨领域多步");
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
     }
 
     @Test
     void parsesSkillIdTopLevel() {
         String json = """
-                {"mode":"react","workflowId":null,"skillId":"sandbox-coding-demo","params":{},"reason":"沙箱脚本分析"}
+                {"mode":"pro","workflowId":null,"skillId":"sandbox-coding-demo","params":{},"reason":"沙箱脚本分析"}
                 """;
         ExecutionPlan plan = parser.parse(json);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("sandbox-coding-demo");
         assertThat(plan.reason()).isEqualTo("沙箱脚本分析");
     }
 
     @Test
-    void parseStoredIntentPlanWorkflow() {
-        ExecutionPlan plan = parser.parseStoredIntent("plan-workflow");
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+    void parsesTrackAFields_ignoresPlanModeAndExecutionMode() {
+        String json = """
+                {"planMode":"harness","executionMode":"workflow","agentIds":["a1","a2"],\
+                "skillIds":["s1","s2"],"reason":"轨A"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        // mode 缺省 → FAST；planMode/executionMode 不参与 mode
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        assertThat(plan.params()).containsEntry("agentIds", "a1,a2");
+        assertThat(plan.params()).containsEntry("skillIds", "s1,s2");
+        assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "s1");
+    }
+
+    @Test
+    void parsesSkillAndAgentScoresAsCompressedPairs() {
+        String json = """
+                {"agentIds":["a1"],"skillIds":["s1"],\
+                "skillScores":{"s1":0.9,"s2":0.6},"agentScores":{"a1":0.7},"reason":"S-C"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        assertThat(plan.params()).containsEntry(ExecutionPlan.PARAM_SKILL_SCORES, "s1=0.9,s2=0.6");
+        assertThat(plan.params()).containsEntry(ExecutionPlan.PARAM_AGENT_SCORES, "a1=0.7");
+        assertThat(plan.skillScores()).containsEntry("s1", 0.9).containsEntry("s2", 0.6);
+        assertThat(plan.agentScores()).containsEntry("a1", 0.7);
+    }
+
+    @Test
+    void dropsInvalidScoresAndNonObjectScoreNodes() {
+        String json = """
+                {"skillScores":{"s1":1.5,"s2":-0.1,"s3":"high","":"0.5","s4":0.8},\
+                "agentScores":["a1"],"reason":"非法剔除"}
+                """;
+        ExecutionPlan plan = parser.parse(json);
+        assertThat(plan.params()).containsEntry(ExecutionPlan.PARAM_SKILL_SCORES, "s4=0.8");
+        assertThat(plan.params()).doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);
+    }
+
+    @Test
+    void missingScoresLeaveParamsUntouched() {
+        ExecutionPlan plan = parser.parse("""
+                {"skillIds":["s1"],"reason":"无分数"}
+                """);
+        assertThat(plan.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES);
+        assertThat(plan.params()).doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);
     }
 }

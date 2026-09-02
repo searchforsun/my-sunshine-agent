@@ -13,13 +13,18 @@ const props = withDefaults(
     showCreate?: boolean
     /** compact：Chat 底栏；block：知识库页顶栏 */
     variant?: 'compact' | 'block'
+    /** 底栏碰撞时仅显示图标 */
+    iconOnly?: boolean
   }>(),
-  { showCreate: true },
+  { showCreate: true, iconOnly: false },
 )
 
 const showCreateButton = computed(() => props.showCreate)
 const variant = computed(() => props.variant ?? 'compact')
 const popoverPlacement = computed(() => (variant.value === 'block' ? 'bottom-start' : 'top-start'))
+
+const COMPACT_MENU_WIDTH = 304
+const popoverWidth = computed(() => (variant.value === 'block' ? 'trigger' : COMPACT_MENU_WIDTH))
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -55,13 +60,13 @@ function onShowUpdate(next: boolean) {
 </script>
 
 <template>
-  <div class="kb-dropdown-root" :class="`variant-${variant}`">
+  <div class="kb-dropdown-root" :class="[`variant-${variant}`, { 'is-icon-only': iconOnly }]">
     <NPopover
       :show="showMenu"
       trigger="click"
       content-class="kb-selector-popover"
       :placement="popoverPlacement"
-      :width="304"
+      :width="popoverWidth"
       :disabled="loading"
       raw
       :show-arrow="false"
@@ -72,7 +77,7 @@ function onShowUpdate(next: boolean) {
           type="button"
           class="kb-trigger"
           :disabled="loading"
-          :title="current?.kbId ?? '选择知识库'"
+          :title="current?.displayName ?? current?.kbId ?? '选择知识库'"
         >
           <span class="kb-leading">
             <NIcon class="kb-icon" :component="LibraryOutline" :size="14" />
@@ -132,25 +137,48 @@ function onShowUpdate(next: boolean) {
   max-width: 100%;
 }
 
+.kb-dropdown-root.variant-block {
+  display: block;
+  width: 100%;
+}
+
+.kb-dropdown-root.variant-block :deep(> *) {
+  display: block;
+  width: 100%;
+}
+
 .kb-trigger {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
   max-width: 140px;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
+}
+
+.kb-dropdown-root.variant-block .kb-trigger {
+  width: 100%;
+  max-width: none;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-md, 10px);
+  justify-content: space-between;
+  background: var(--n-color, var(--sun-black));
+  color: var(--sun-text, #ececec);
+  font-size: var(--sun-font-base, 14px);
 }
 
 .kb-trigger:hover:not(:disabled) {
-  border-color: var(--sun-border-light);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
   color: var(--sun-text);
 }
 
@@ -183,10 +211,24 @@ function onShowUpdate(next: boolean) {
   opacity: 0.55;
 }
 
+.kb-dropdown-root.is-icon-only .kb-label {
+  display: none;
+}
+
+.kb-dropdown-root.is-icon-only .kb-trigger {
+  padding: 0 8px;
+  max-width: none;
+  gap: 4px;
+}
+
+.kb-dropdown-root.is-icon-only .kb-leading {
+  gap: 0;
+}
+
 .kb-menu {
   padding: 3px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;
@@ -223,7 +265,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .kb-menu-item.is-selected .kb-menu-icon {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .kb-menu-text {
@@ -238,7 +280,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
 }
 
@@ -265,7 +307,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .kb-menu-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 
 .kb-menu-divider {

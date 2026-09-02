@@ -1,9 +1,15 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.orchestrator.agent.DecisionAnswer;
+import com.sunshine.orchestrator.agent.DecisionOption;
+import com.sunshine.orchestrator.agent.DecisionQuestion;
+import com.sunshine.orchestrator.agent.DecisionResult;
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -36,6 +42,26 @@ class ReactResumeContextSupportTest {
     }
 
     @Test
+    void buildInjectedBlocks_includesLoadedSkillAndTaskBoardProgress() {
+        List<ProcessingStep> steps = List.of(
+                intentStep(),
+                skillStep("brainstorming"),
+                thinkStep("think", "先列任务再探索"),
+                tasksStep());
+
+        List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(steps);
+
+        assertThat(blocks).hasSize(3);
+        assertThat(blocks.get(0)).contains("【已加载技能】").contains("brainstorming");
+        assertThat(blocks.get(1)).contains("先列任务再探索");
+        assertThat(blocks.get(2)).contains("【任务板】")
+                .contains("探索项目上下文")
+                .contains("completed")
+                .contains("理解用户优化意图")
+                .contains("in_progress");
+    }
+
+    @Test
     void buildInjectedBlocks_excludesAwaitingHitlToolResult() {
         ProcessingStep awaiting = awaitingHitlToolStep();
         List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(List.of(awaiting));
@@ -44,6 +70,41 @@ class ReactResumeContextSupportTest {
             assertThat(block).contains("待确认写操作");
             assertThat(block).doesNotContain("已执行");
         });
+    }
+
+    @Test
+    void buildInjectedBlocks_includesAwaitingDecision() {
+        List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(List.of(awaitingDecisionStep()));
+
+        assertThat(blocks).singleElement().satisfies(block -> {
+            assertThat(block).startsWith("【待决策】");
+            assertThat(block).contains("选哪个方案？");
+            assertThat(block).contains("plan_a: 方案A");
+            assertThat(block).contains("plan_b: 方案B很长很长的描述内容用于确认不被截断");
+        });
+    }
+
+    @Test
+    void buildInjectedBlocks_reactRestartExcludesAwaitingDecision() {
+        List<String> blocks = ReactResumeContextSupport.buildInjectedBlocks(
+                List.of(awaitingDecisionStep()), false);
+        assertThat(blocks).isEmpty();
+    }
+
+    @Test
+    void buildResolvedDecisionBlock_containsShortFormatAnswers() {
+        DecisionResult result = new DecisionResult(
+                "answered",
+                "选哪个方案？",
+                List.of(new DecisionAnswer("q1", List.of(DecisionOption.CUSTOM_ID), "备注原文不截断")),
+                1L);
+        String block = ReactResumeContextSupport.buildResolvedDecisionBlock(result);
+
+        assertThat(block).contains("【用户决策】");
+        assertThat(block).contains("选哪个方案？");
+        assertThat(block).contains("outcome=answered");
+        assertThat(block).contains("custom=备注原文不截断");
+        assertThat(block).doesNotContain("q.q1");
     }
 
     private static ProcessingStep intentStep() {
@@ -61,6 +122,55 @@ class ReactResumeContextSupportTest {
                 null,
                 2L,
                 "识别意图",
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static ProcessingStep skillStep(String skillId) {
+        return new ProcessingStep(
+                "skill",
+                "skill",
+                "done",
+                new StepSummary(null, null, "已加载 " + skillId),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "加载技能",
+                StepMetadata.fromSkillLoad(skillId),
+                null,
+                null,
+                null);
+    }
+
+    private static ProcessingStep tasksStep() {
+        StepMetadata meta = StepMetadata.withTasks(
+                List.of(
+                        new TaskBoardItemView("1", "探索项目上下文", "completed"),
+                        new TaskBoardItemView("2", "理解用户优化意图", "in_progress")),
+                1,
+                "1/8");
+        return new ProcessingStep(
+                "tasks",
+                "tasks",
+                "paused",
+                new StepSummary(null, "1/8 已完成", null),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "任务板",
+                meta,
                 null,
                 null,
                 null);
@@ -83,6 +193,7 @@ class ReactResumeContextSupportTest {
                 "规划推理",
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -101,6 +212,7 @@ class ReactResumeContextSupportTest {
                 result,
                 2L,
                 "知识检索",
+                null,
                 null,
                 null,
                 null);
@@ -125,6 +237,42 @@ class ReactResumeContextSupportTest {
                 2L,
                 "审批 OA 待办",
                 meta,
+                null,
+                null,
+                null);
+    }
+
+    private static ProcessingStep awaitingDecisionStep() {
+        String longLabel = "方案B很长很长的描述内容用于确认不被截断";
+        DecisionStepMeta decision = new DecisionStepMeta(
+                "tok-d1",
+                "选哪个方案？",
+                List.of(new DecisionQuestion(
+                        "q1",
+                        "选哪个方案？",
+                        List.of(
+                                new DecisionOption("plan_a", "方案A"),
+                                new DecisionOption("plan_b", longLabel)),
+                        false)),
+                System.currentTimeMillis() + 60_000,
+                null,
+                null);
+        return new ProcessingStep(
+                "decision-tok-d1",
+                "decision",
+                "awaiting",
+                new StepSummary(null, "等待决策", null),
+                1L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                2L,
+                "选哪个方案？",
+                StepMetadata.withDecision(null, decision),
+                null,
                 null,
                 null);
     }

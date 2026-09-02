@@ -1,0 +1,117 @@
+package com.sunshine.orchestrator.context.admin;
+
+import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.core.exception.CommonErrorCode;
+import com.sunshine.common.core.result.R;
+import com.sunshine.orchestrator.config.ReactiveBlocking;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.ConversationSummaryView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.GcResultView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L1SnapshotView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L2StateView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L2UpdateRequest;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L3EntryView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.L3StatusView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.RebuildCheckView;
+import com.sunshine.orchestrator.context.admin.ContextAdminDtos.ReingestResultView;
+import com.sunshine.orchestrator.plan.harness.PlanNotebook;
+import com.sunshine.orchestrator.plan.harness.PlanNotebookStore;
+import com.sunshine.orchestrator.taskboard.TaskBoardAuditService;
+import com.sunshine.orchestrator.taskboard.TaskBoardAuditView;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
+
+import java.util.List;
+
+/** 运维 Admin：L1/L2/L3 上下文只读/纠错。 */
+@RestController
+@RequestMapping("/api/admin/context")
+@RequiredArgsConstructor
+public class ContextAdminController {
+
+    private final ContextAdminService contextAdminService;
+    private final ContextRebuildVerifier rebuildVerifier;
+    private final TaskBoardAuditService taskBoardAuditService;
+    private final PlanNotebookStore planNotebookStore;
+
+    @GetMapping("/conversations")
+    public Mono<R<List<ConversationSummaryView>>> listConversations(
+            @RequestParam String userId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.listConversations(userId, tenantId)));
+    }
+
+    @GetMapping("/l2")
+    public Mono<R<List<L2StateView>>> listL2(
+            @RequestParam String userId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.listL2(userId, tenantId)));
+    }
+
+    @PutMapping("/l2/{id}")
+    public Mono<R<L2StateView>> updateL2(
+            @PathVariable String id,
+            @RequestBody L2UpdateRequest body) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.updateL2(id, body)));
+    }
+
+    @PostMapping("/l2/{id}/void")
+    public Mono<R<L2StateView>> voidL2(@PathVariable String id) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.voidL2(id)));
+    }
+
+    @GetMapping("/l1")
+    public Mono<R<L1SnapshotView>> getL1(@RequestParam String convId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.getL1(convId)));
+    }
+
+    /** O4 账本重建校验（只读）：对账结果含 ERROR 时 HTTP 仍 200，由脚本按 verdict 分级。 */
+    @GetMapping("/l1/rebuild-check")
+    public Mono<R<RebuildCheckView>> rebuildCheck(@RequestParam String convId) {
+        return ReactiveBlocking.call(() -> R.ok(rebuildVerifier.verifyRebuild(convId)));
+    }
+
+    @GetMapping("/l3/status")
+    public Mono<R<L3StatusView>> l3Status(
+            @RequestParam String userId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.l3Status(userId, tenantId)));
+    }
+
+    @GetMapping("/l3/entries")
+    public Mono<R<List<L3EntryView>>> listL3Entries(@RequestParam String convId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.listL3Entries(convId)));
+    }
+
+    @PostMapping("/l3/gc")
+    public Mono<R<GcResultView>> gc() {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.runGc()));
+    }
+
+    @PostMapping("/l3/reingest")
+    public Mono<R<ReingestResultView>> reingest(@RequestParam String convId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.reingest(convId)));
+    }
+
+    /** T0 任务进度：按会话取最近一次任务板快照（可观测）。 */
+    @GetMapping("/task/{convId}/taskboard")
+    public Mono<R<TaskBoardAuditView>> taskboard(@PathVariable String convId) {
+        return ReactiveBlocking.call(() -> R.ok(taskBoardAuditService
+                .findLatestByConversationId(convId)
+                .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));
+    }
+
+    /** H1 计划笔记本：读 Redis 中的执行态 PlanNotebook（可观测）。 */
+    @GetMapping("/task/{convId}/notebook")
+    public Mono<R<PlanNotebook>> notebook(@PathVariable String convId) {
+        return ReactiveBlocking.call(() -> R.ok(planNotebookStore.load(convId)
+                .orElseThrow(() -> new BizException(CommonErrorCode.NOT_FOUND))));
+    }
+}

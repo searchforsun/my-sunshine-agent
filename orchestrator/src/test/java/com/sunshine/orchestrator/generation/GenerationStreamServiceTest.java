@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = EmbeddedRedisTestConfig.class)
@@ -82,5 +83,15 @@ class GenerationStreamServiceTest {
         assertThat(meta.userId()).isEqualTo(USER_ID);
         assertThat(meta.tenantId()).isEqualTo(TENANT_ID);
         assertThat(meta.intent()).isEqualTo(INTENT);
+    }
+
+    @Test
+    @DisplayName("显式 ID 逆序 append 直接失败（GenerationJob 须串行 seq+XADD）")
+    void appendChunk_outOfOrderId_throws() {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+        streamService.appendChunk(generationId, 2, "second-first");
+        assertThatThrownBy(() -> streamService.appendChunk(generationId, 1, "first-late"))
+                .hasStackTraceContaining("equal or smaller");
     }
 }

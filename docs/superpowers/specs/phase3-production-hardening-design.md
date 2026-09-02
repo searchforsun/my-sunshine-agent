@@ -200,7 +200,7 @@
 | **3.9.4** | `plan.*` 审计事件（RocketMQ） | **✅** |
 | **静态 workflow** | `StaticPlanAdapter` 物化 Plan → 同 `PlanWorkflowPanel` / `PlanDagGraph` | **✅** |
 | **重试/降级** | `NodeRetryExecutor` + Replan + `degraded_react` / `completed_with_errors` | **✅** |
-| **用户确认** | `PlanApprovalService` + `confirm-plan` + 确认框 / 重新生成 UX · [design](./2026-06-27-plan-user-approval-design.md) | **✅** |
+| **用户确认** | `PlanApprovalService` + `confirm-plan` + 确认框 / 重新生成 UX · [design](archive/2026-06-27-plan-user-approval-design.md) | **✅** |
 
 **锁定决策**（原 `locked-architecture-decisions` D1–D2）：
 
@@ -215,7 +215,7 @@
 
 ### 3.9.5 阶段三收尾：暂停/续跑一致性（**✅ 代码**）
 
-> SSOT：[2026-06-26-pause-resume-consistency-design.md](./2026-06-26-pause-resume-consistency-design.md) · 实施：[2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)
+> SSOT：[2026-06-26-pause-resume-consistency-design.md](archive/2026-06-26-pause-resume-consistency-design.md) · 实施：[2026-06-26-pause-resume-consistency.md](../plans/2026-06-26-pause-resume-consistency.md)
 
 | 子任务 | 内容 | 状态 |
 |--------|------|:----:|
@@ -256,7 +256,7 @@
 | **3.11.7** | `@` + 强提示绑定 + 六种触发 | **✅**（`verify_skill_5b_live` ✅） |
 
 - 模块 **:8225**；MySQL + MinIO/本地存储
-- 详设 API 表见 [locked D3](./2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
+- 详设 API 表见 [locked D3](archive/2026-06-19-locked-architecture-decisions.md#d3-skills-服务端管理--前端运营页)
 
 ### 3.12 前端（**✅**，live **✅**）
 
@@ -273,7 +273,7 @@
 
 | **Chat** | `@` skill、`ExecutionModeSelector` 五模式底栏 | **✅** |
 
-**UI SSOT**：[skills-management-ui-design.md](./skills-management-ui-design.md)
+**UI SSOT**：[skills-management-ui-design.md](archive/skills-management-ui-design.md)
 
 ### 3.13 并行（不进检查门）
 

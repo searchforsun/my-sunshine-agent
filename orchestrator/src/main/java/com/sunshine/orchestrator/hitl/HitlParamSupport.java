@@ -8,8 +8,8 @@ import java.util.stream.Collectors;
 import org.springframework.util.StringUtils;
 
 /**
- * HITL 参数摘要：确认框只展示路径等元信息；正文（content / old_string / new_string）
- * 与超长 command 进工具步骤 detail，供展开查看完整内容。
+ * HITL 参数摘要：确认框只展示路径等元信息；正文（write→content、exec→command）
+ * 进工具步骤 detail；edit 预览只走 {@code metadata.editDiff}（EditDiffBuilder）。
  */
 public final class HitlParamSupport {
 
@@ -45,7 +45,7 @@ public final class HitlParamSupport {
                 .collect(Collectors.joining(", "));
     }
 
-    /** 工具步骤展开用全文（write→content；edit→old/new；exec→command） */
+    /** 工具步骤展开用全文（write→content；exec→command；edit 不在此生成） */
     public static String expandBodyFromParams(Map<String, String> params) {
         if (params == null || params.isEmpty()) {
             return null;
@@ -54,70 +54,8 @@ public final class HitlParamSupport {
         if (StringUtils.hasText(content)) {
             return content;
         }
-        String oldStr = params.get("old_string");
-        String newStr = params.get("new_string");
-        if (StringUtils.hasText(oldStr) || StringUtils.hasText(newStr)) {
-            return formatEditUnifiedDiff(
-                    oldStr != null ? oldStr : "",
-                    newStr != null ? newStr : "");
-        }
         String command = params.get("command");
         return StringUtils.hasText(command) ? command : null;
-    }
-
-    /**
-     * edit 展开：行级 unified（公共行前缀空格，删除 -，新增 +），同屏对照。
-     */
-    public static String formatEditUnifiedDiff(String oldStr, String newStr) {
-        String[] a = splitLines(oldStr != null ? oldStr : "");
-        String[] b = splitLines(newStr != null ? newStr : "");
-        int n = a.length;
-        int m = b.length;
-        int[][] dp = new int[n + 1][m + 1];
-        for (int i = n - 1; i >= 0; i--) {
-            for (int j = m - 1; j >= 0; j--) {
-                if (a[i].equals(b[j])) {
-                    dp[i][j] = dp[i + 1][j + 1] + 1;
-                } else {
-                    dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-                }
-            }
-        }
-        StringBuilder sb = new StringBuilder();
-        int i = 0;
-        int j = 0;
-        while (i < n && j < m) {
-            if (a[i].equals(b[j])) {
-                appendDiffLine(sb, ' ', a[i]);
-                i++;
-                j++;
-            } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-                appendDiffLine(sb, '-', a[i++]);
-            } else {
-                appendDiffLine(sb, '+', b[j++]);
-            }
-        }
-        while (i < n) {
-            appendDiffLine(sb, '-', a[i++]);
-        }
-        while (j < m) {
-            appendDiffLine(sb, '+', b[j++]);
-        }
-        return sb.toString();
-    }
-
-    private static String[] splitLines(String text) {
-        if (text.isEmpty()) {
-            return new String[]{""};
-        }
-        return text.split("\n", -1);
-    }
-
-    private static void appendDiffLine(StringBuilder sb, char prefix, String line) {
-        if (!sb.isEmpty()) {
-            sb.append('\n');
-        }
-        sb.append(prefix).append(line);
     }
 
     public static boolean isBodyParamKey(String key) {

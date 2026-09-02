@@ -106,8 +106,8 @@ def main() -> int:
             json_headers,
             json={
                 "id": SKILL_ID,
-                "displayName": "沙箱编码演示",
-                "description": "4.5 Docker 沙箱 Coding Agent 示例（读 /skills/{id}、写 /workspace、exec）",
+                "displayName": "工作区沙箱编程",
+                "description": "企业工作区沙箱编程（读 /skills/{id}、写 /workspace、exec）",
                 "sandbox": "docker",
                 "sandboxPolicy": DEFAULT_POLICY,
             },

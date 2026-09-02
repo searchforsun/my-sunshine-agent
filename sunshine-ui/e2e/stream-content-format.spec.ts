@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ensureE2eLogin, fillComposer } from './helpers'
 
 const PROMPT = '写一段 Python 快速排序，只给代码和一行说明'
 
@@ -6,10 +7,11 @@ test.describe('流式 content JSON 与 Markdown 显示', () => {
   test('正文有换行、代码块可渲染、无思考内容泄露', async ({ page }) => {
     test.setTimeout(180_000)
 
+    await ensureE2eLogin(page)
     await page.goto('/chat')
+    await expect(page.getByRole('heading', { name: '有什么可以帮你的？' })).toBeVisible({ timeout: 15_000 })
 
-    const input = page.getByRole('textbox', { name: '发消息，Enter 发送' })
-    await input.fill(PROMPT)
+    await fillComposer(page, PROMPT)
     await page.getByRole('button', { name: '发送' }).click()
 
     await expect(page.locator('.user-bubble').filter({ hasText: PROMPT })).toHaveCount(1)

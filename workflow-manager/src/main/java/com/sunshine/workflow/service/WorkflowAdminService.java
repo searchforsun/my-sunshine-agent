@@ -117,6 +117,7 @@ public class WorkflowAdminService {
         def.setEnabled(false);
         def.setActiveVersion(0);
         def.setSource("studio");
+        def.setKind(WorkflowAdminSupport.normalizeKind(request.kind()));
         def.setCreatedAt(Instant.now());
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
@@ -135,6 +136,7 @@ public class WorkflowAdminService {
         WorkflowAdminSupport.requireDescription(request.description());
         def.setDisplayName(request.displayName().strip());
         def.setDescription(request.description().strip());
+        def.setKind(WorkflowAdminSupport.normalizeKind(request.kind()));
         def.setUpdatedAt(Instant.now());
         definitionRepository.save(def);
         if (def.isEnabled() && def.getActiveVersion() > 0) {
@@ -290,6 +292,7 @@ public class WorkflowAdminService {
                 def.getMode(),
                 def.getDisplayName(),
                 def.getDescription(),
+                WorkflowAdminSupport.normalizeKind(def.getKind()),
                 WorkflowAdminSupport.stringList(meta.get("examples")),
                 WorkflowAdminSupport.stringList(meta.get("nodeSummary")),
                 WorkflowAdminSupport.textOrNull(meta.get("intentAfter")));

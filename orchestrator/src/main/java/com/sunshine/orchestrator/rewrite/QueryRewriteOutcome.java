@@ -1,11 +1,10 @@
 package com.sunshine.orchestrator.rewrite;
 
-import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
 import org.springframework.util.StringUtils;
 
 /**
  * 单次 Query 改写结果 — 供 Timeline detail 与审计 payload 复用。
- * RAG 场景 {@code scenarioLabel} 由 rag-service trace 透传；intent/planner 由 orchestrator Nacos 解析。
+ * scenarioLabel 由 rag-service trace 透传；intent 改写已退役。
  */
 public record QueryRewriteOutcome(
         String scenario,
@@ -92,12 +91,12 @@ public record QueryRewriteOutcome(
         return body;
     }
 
-    /** trace 透传优先；intent/planner 仍走 orchestrator Nacos */
+    /** trace 透传优先；无 label 时返回空 */
     public String resolveScenarioLabel() {
         if (StringUtils.hasText(scenarioLabel)) {
             return scenarioLabel.strip();
         }
-        return RewriteTimelineLabels.labelFor(scenario);
+        return "";
     }
 
     private static String clip(String text) {

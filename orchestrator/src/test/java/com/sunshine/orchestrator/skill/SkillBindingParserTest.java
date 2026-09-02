@@ -25,9 +25,10 @@ class SkillBindingParserTest {
     private SkillBindingParser parser;
 
     private static final List<SkillCatalogIndexEntry> INDEX = List.of(
-            new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true, "none"),
-            new SkillCatalogIndexEntry("policy-review", "制度审查", "制度对照", 1, true, "none"),
-            new SkillCatalogIndexEntry("disabled-skill", "已禁用", "不可用", 1, false, "none"));
+            new SkillCatalogIndexEntry("finance-analysis", "财务分析", "报销合规分析", 1, true, "none", "all", null, "default"),
+            new SkillCatalogIndexEntry("policy-review", "制度审查", "制度对照", 1, true, "none", "all", null, "default"),
+            new SkillCatalogIndexEntry("disabled-skill", "已禁用", "不可用", 1, false, "none", "all", null, "default"),
+            new SkillCatalogIndexEntry("task-only", "任务专用", "仅任务会话", 1, true, "none", "task", null, "default"));
 
     @BeforeEach
     void setUp() {
@@ -37,43 +38,56 @@ class SkillBindingParserTest {
     }
 
     @Test
-    void atMention_stripsPrefixAndBindsSkill() {
+    void slashMention_bindsSkill() {
         when(skillCatalogService.findIndex("finance-analysis"))
                 .thenReturn(Optional.of(INDEX.get(0)));
 
-        SkillBindingOutcome outcome = parser.parse("@finance-analysis 这笔报销是否合规？");
+        SkillBindingOutcome outcome = parser.parse("/finance-analysis 这笔报销是否合规？");
         assertThat(outcome.bound()).isTrue();
         assertThat(outcome.skillId()).isEqualTo("finance-analysis");
-        assertThat(outcome.effectiveQuery()).isEqualTo("这笔报销是否合规？");
-        assertThat(outcome.source()).isEqualTo(SkillBindingSource.AT_MENTION);
+        assertThat(outcome.effectiveQuery()).isEqualTo("/finance-analysis 这笔报销是否合规？");
+        assertThat(outcome.source()).isEqualTo(SkillBindingSource.SLASH_MENTION);
     }
 
     @Test
-    void atMention_resolvesDisplayName() {
+    void slashMention_resolvesDisplayName() {
         when(skillCatalogService.findIndex("财务分析")).thenReturn(Optional.empty());
 
-        SkillBindingOutcome outcome = parser.parse("@财务分析 分析单据");
+        SkillBindingOutcome outcome = parser.parse("/财务分析 分析单据");
         assertThat(outcome.bound()).isTrue();
         assertThat(outcome.skillId()).isEqualTo("finance-analysis");
-        assertThat(outcome.effectiveQuery()).isEqualTo("分析单据");
+        assertThat(outcome.effectiveQuery()).isEqualTo("/财务分析 分析单据");
     }
 
     @Test
-    void atMention_unknownSkill() {
+    void slashMention_unknownSkillFallsThroughAsPlainText() {
         when(skillCatalogService.findIndex("unknown-skill")).thenReturn(Optional.empty());
 
-        SkillBindingOutcome outcome = parser.parse("@unknown-skill 问题");
-        assertThat(outcome.unknown()).isTrue();
-        assertThat(outcome.unknownToken()).isEqualTo("unknown-skill");
+        SkillBindingOutcome outcome = parser.parse("/unknown-skill 问题");
+        assertThat(outcome.bound()).isFalse();
+        assertThat(outcome.unknown()).isFalse();
+        assertThat(outcome.effectiveQuery()).isEqualTo("/unknown-skill 问题");
     }
 
     @Test
-    void atMention_disabledSkillTreatedAsUnknown() {
+    void slashMention_disabledSkillFallsThroughAsPlainText() {
         when(skillCatalogService.findIndex("disabled-skill"))
                 .thenReturn(Optional.of(INDEX.get(2)));
 
-        SkillBindingOutcome outcome = parser.parse("@disabled-skill 问题");
-        assertThat(outcome.unknown()).isTrue();
+        SkillBindingOutcome outcome = parser.parse("/disabled-skill 问题");
+        assertThat(outcome.bound()).isFalse();
+        assertThat(outcome.unknown()).isFalse();
+    }
+
+    @Test
+    void slashMention_taskKindSkillUnreachableFromChatSession() {
+        when(skillCatalogService.findIndex("task-only"))
+                .thenReturn(Optional.of(INDEX.get(3)));
+
+        SkillBindingOutcome chat = parser.parse("/task-only 执行任务", null, "chat");
+        assertThat(chat.bound()).isFalse();
+        assertThat(chat.unknown()).isFalse();
+        assertThat(parser.parse("/task-only 执行任务", null, "task").bound()).isTrue();
     }
 
     @Test
@@ -96,42 +110,42 @@ class SkillBindingParserTest {
     }
 
     @Test
-    void stripAtMention_removesPrefix() {
-        assertThat(parser.stripAtMention("@policy-review 年假可以请几天"))
-                .isEqualTo("年假可以请几天");
+    void stripSlashMention_removesPrefix() {
+        assertThat(parser.stripSlashMention("/policy-review 青松假有多少天、怎么申请"))
+                .isEqualTo("青松假有多少天、怎么申请");
     }
 
     @Test
-    void stripAtMention_unknownSkillStillStrips() {
-        assertThat(parser.stripAtMention("@unknown-skill 问题")).isEqualTo("问题");
+    void stripSlashMention_unknownSkillStillStrips() {
+        assertThat(parser.stripSlashMention("/unknown-skill 问题")).isEqualTo("问题");
     }
 
     @Test
-    void stripAtMention_plainTextUnchanged() {
-        assertThat(parser.stripAtMention("年假制度")).isEqualTo("年假制度");
+    void stripSlashMention_plainTextUnchanged() {
+        assertThat(parser.stripSlashMention("年假制度")).isEqualTo("年假制度");
     }
 
     @Test
-    void inlineAtMention_bindsSkillAndStripsToken() {
+    void inlineSlashMention_bindsSkillKeepsRawQuery() {
         when(skillCatalogService.findIndex("finance-analysis"))
                 .thenReturn(Optional.of(INDEX.get(0)));
 
-        SkillBindingOutcome outcome = parser.parse("123 @finance-analysis 123");
+        SkillBindingOutcome outcome = parser.parse("123 /finance-analysis 123");
         assertThat(outcome.bound()).isTrue();
         assertThat(outcome.skillId()).isEqualTo("finance-analysis");
-        assertThat(outcome.effectiveQuery()).isEqualTo("123 123");
-        assertThat(outcome.source()).isEqualTo(SkillBindingSource.AT_MENTION);
+        assertThat(outcome.effectiveQuery()).isEqualTo("123 /finance-analysis 123");
+        assertThat(outcome.source()).isEqualTo(SkillBindingSource.SLASH_MENTION);
     }
 
     @Test
-    void clientSkillId_bindsAndStripsMentions() {
+    void clientSkillId_bindsKeepsRawQuery() {
         when(skillCatalogService.findIndex("finance-analysis"))
                 .thenReturn(Optional.of(INDEX.get(0)));
 
-        SkillBindingOutcome outcome = parser.parse("123 @finance-analysis 123", "finance-analysis");
+        SkillBindingOutcome outcome = parser.parse("123 /finance-analysis 123", "finance-analysis");
         assertThat(outcome.bound()).isTrue();
         assertThat(outcome.skillId()).isEqualTo("finance-analysis");
-        assertThat(outcome.effectiveQuery()).isEqualTo("123 123");
+        assertThat(outcome.effectiveQuery()).isEqualTo("123 /finance-analysis 123");
         assertThat(outcome.source()).isEqualTo(SkillBindingSource.CLIENT);
     }
 
@@ -146,6 +160,6 @@ class SkillBindingParserTest {
 
     @Test
     void stripSkillMentions_removesInlineToken() {
-        assertThat(parser.stripSkillMentions("123 @finance-analysis 123")).isEqualTo("123 123");
+        assertThat(parser.stripSkillMentions("123 /finance-analysis 123")).isEqualTo("123 123");
     }
 }

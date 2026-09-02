@@ -26,7 +26,7 @@ class StartNodeHandlerTest {
 
     @Test
     void keepsOriginalWhenIntentRewriteSkipped() {
-        assertThat(StartNodeHandler.resolveEffectiveUserQuery("请问年假可以请几天", "msg-2"))
-                .isEqualTo("请问年假可以请几天");
+        assertThat(StartNodeHandler.resolveEffectiveUserQuery("请问青松假有多少天、怎么申请", "msg-2"))
+                .isEqualTo("请问青松假有多少天、怎么申请");
     }
 }

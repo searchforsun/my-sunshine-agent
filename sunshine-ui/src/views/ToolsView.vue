@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { provide } from 'vue'
-import { NButton, NEmpty, NIcon, NSpace, NTabPane, NTabs } from 'naive-ui'
+import { NButton, NIcon, NSpace, NTabPane, NTabs } from 'naive-ui'
 import { RefreshOutline } from '@vicons/ionicons5'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import ToolsetTabPanel from '../components/tools/ToolsetTabPanel.vue'
@@ -31,18 +31,11 @@ provide(TOOLS_PAGE_KEY, toolsPage)
     <NTabs v-model:value="toolsPage.activeTab" type="line" :animated="false" class="tools-tabs">
       <NTabPane name="sdk" tab="SDK 应用" />
       <NTabPane name="mcp" tab="MCP 服务" />
-      <NTabPane name="platform" tab="平台工具" disabled />
       <NTabPane name="toolset" tab="工具集配置" />
     </NTabs>
 
     <SdkToolsPanel v-if="toolsPage.activeTab === 'sdk'" />
     <McpToolsPanel v-else-if="toolsPage.activeTab === 'mcp'" />
-
-    <div v-else-if="toolsPage.activeTab === 'platform'" class="tools-layout">
-      <main class="detail-panel detail-empty full-width">
-        <NEmpty description="平台内置工具（Phase 2）尚未开放" />
-      </main>
-    </div>
 
     <div v-else-if="toolsPage.activeTab === 'toolset'" class="tools-layout toolset-layout">
       <ToolsetTabPanel />
@@ -101,24 +94,6 @@ provide(TOOLS_PAGE_KEY, toolsPage)
 
 .toolset-layout {
   grid-template-columns: 1fr;
-}
-
-.detail-panel {
-  min-height: 0;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--sun-border);
-  background: var(--sun-black);
-}
-
-.full-width {
-  grid-column: 1 / -1;
-}
-
-.detail-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
 }
 
 .action-btn {

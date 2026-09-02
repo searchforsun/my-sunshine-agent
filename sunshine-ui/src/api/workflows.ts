@@ -10,6 +10,7 @@ export interface WorkflowEntry {
   id: string
   displayName: string
   description: string
+  kind: string
   enabled: boolean
   activeVersion: number
   source: string
@@ -32,8 +33,17 @@ export interface WorkflowCatalogEntry {
   mode: string
   displayName: string
   description: string
+  kind: string
   examples: string[]
   nodes: string[]
+}
+
+export interface WorkflowPlanInputBinding {
+  name: string
+  source: string
+  /** string | number | boolean | object | array（小写；缺省按 string） */
+  type?: string
+  required?: boolean
 }
 
 export interface WorkflowPlanNode {
@@ -41,20 +51,28 @@ export interface WorkflowPlanNode {
   type: string
   displayName?: string
   params?: Record<string, unknown>
+  /** 显式输入绑定（WF-1 结构化 I/O）：业务入参由 inputs 承载，params 仅保留控制参数 */
+  inputs?: WorkflowPlanInputBinding[]
   /** loop 容器内 body 归属 */
   parentId?: string
 }
 
 export interface WorkflowPlanEdgeCondition {
   left: string
-  op: 'empty' | 'not_empty' | 'contains' | 'eq' | string
+  op: string
   right?: string
+}
+
+export interface WorkflowPlanEdgeConditionGroup {
+  logic: 'and' | 'or'
+  items: WorkflowPlanEdgeCondition[]
 }
 
 export interface WorkflowPlanEdge {
   from: string
   to: string
-  condition?: WorkflowPlanEdgeCondition
+  /** 复合条件 {logic, items} */
+  condition?: WorkflowPlanEdgeConditionGroup
   default?: boolean
 }
 
@@ -76,7 +94,6 @@ export interface WorkflowNodeRetryDefaults {
 export interface WorkflowNodeDefaultsResponse {
   defaults: WorkflowNodeRetryDefaults
   byType: Record<string, WorkflowNodeRetryDefaults>
-  criticalOnFailure?: string
   backoffMultiplier?: number
   retryOnErrorClass?: string[]
   catalog?: { intentAfter: string }
@@ -141,11 +158,12 @@ export async function createWorkflow(
   id: string,
   displayName: string,
   description: string,
+  kind?: string,
 ): Promise<WorkflowEntry> {
   const res = await fetch(apiUrl('/api/workflows'), {
     method: 'POST',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, displayName, description }),
+    body: JSON.stringify({ id, displayName, description, kind: kind ?? 'all' }),
   })
   return parseApiResponse<WorkflowEntry>(res)
 }
@@ -154,11 +172,12 @@ export async function updateWorkflow(
   id: string,
   displayName: string,
   description: string,
+  kind?: string,
 ): Promise<WorkflowEntry> {
   const res = await fetch(apiUrl(`/api/workflows/${encodeURIComponent(id)}`), {
     method: 'PUT',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName, description }),
+    body: JSON.stringify({ displayName, description, kind: kind ?? 'all' }),
   })
   return parseApiResponse<WorkflowEntry>(res)
 }

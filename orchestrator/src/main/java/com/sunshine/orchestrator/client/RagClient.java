@@ -2,9 +2,7 @@ package com.sunshine.orchestrator.client;
 
 import com.sunshine.orchestrator.rewrite.QueryRewriteOutcome;
 import com.sunshine.orchestrator.rewrite.QueryRewriteScenario;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,18 +21,14 @@ import java.util.Map;
 @Component
 public class RagClient {
 
-    @Value("${rag.base-url:http://localhost:8400}")
-    private String baseUrl;
+    private final WebClient webClient;
 
-    private WebClient webClient;
-
-    @PostConstruct
-    public void init() {
-        this.webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public RagClient(WebClient.Builder builder) {
+        this.webClient = builder
+                .baseUrl("http://sunshine-rag")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .build();
-        log.info("[RagClient] 初始化完成: baseUrl={}", baseUrl);
+        log.info("[RagClient] baseUrl=http://sunshine-rag");
     }
 
     public Mono<String> fetchDefaultKbId(String tenantId) {

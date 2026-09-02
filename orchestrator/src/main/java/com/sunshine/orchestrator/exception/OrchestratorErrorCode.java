@@ -23,10 +23,16 @@ public enum OrchestratorErrorCode implements ErrorCode {
     EXECUTION_PLAN_PERSIST_INCOMPLETE(500, "orch_execution_plan_persist_incomplete", "执行计划数据不完整"),
     WORKFLOW_TEMPLATE_NOT_FOUND(400, "orch_workflow_template_not_found", "未匹配到可用的工作流模板"),
     WORKFLOW_NOT_FOUND(400, "orch_workflow_not_found", "未找到指定的工作流，请检查 /workflows"),
+    /** 专业模式依赖 Planner-Executor；harness.enabled=false 时显式失败，禁止静默降级 */
+    HARNESS_DISABLED(503, "orch_harness_disabled", "专业模式未启用（Planner-Executor harness 已关闭）"),
     SKILL_NOT_FOUND(400, "orch_skill_not_found", "未找到指定的 Skill，请检查列表后重试"),
-    EXPERT_NOT_FOUND(400, "orch_expert_not_found", "未找到指定的专家，请检查 /experts 后重试"),
-    EXPERT_ROSTER_TOO_SMALL(400, "orch_expert_roster_too_small", "多专家协作至少需要 2 位专家，请使用 $ 指定"),
-    SANDBOX_WORKSPACE_NOT_FOUND(404, "orch_sandbox_workspace_not_found", "尚无沙箱工作区");
+    AGENT_NOT_FOUND(400, "orch_agent_not_found", "未找到指定的智能体，请检查列表后重试"),
+    SANDBOX_WORKSPACE_NOT_FOUND(404, "orch_sandbox_workspace_not_found", "尚无沙箱工作区"),
+    DECISION_INVALID_CHOICE(400, "decision_invalid_choice", "选项无效"),
+    DECISION_INVALID_ANSWERS(400, "decision_invalid_answers", "答案不完整或题目不匹配"),
+    DECISION_INPUT_REQUIRED(400, "decision_input_required", "请填写自定义输入"),
+    DECISION_EXPIRED(400, "decision_expired", "决策已过期"),
+    DECISION_NOT_FOUND(404, "decision_not_found", "决策不存在或无权操作");
 
     private final int code;
     private final String key;

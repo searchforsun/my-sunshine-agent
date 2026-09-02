@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -29,6 +29,7 @@ public class RagTool implements AgentTool {
 
     private final RagClient ragClient;
     private final DefaultKbResolver defaultKbResolver;
+    private final RagContextFormatter ragContextFormatter;
 
     @Override
     public String getName() {
@@ -56,7 +57,7 @@ public class RagTool implements AgentTool {
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         return Mono.fromCallable(() -> execute(param))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private ToolResultBlock execute(ToolCallParam param) {
@@ -76,12 +77,11 @@ public class RagTool implements AgentTool {
                     resolveTenantId(),
                     messageId,
                     ragStepId);
-            String text = RagContextFormatter.formatToolResult(results);
+            String text = ragContextFormatter.formatToolResult(results);
             return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(text).build());
         } catch (Exception e) {
             log.warn("[RagTool] 知识库检索失败: {}", e.getMessage());
-            String err = "工具调用失败：知识库服务不可用（" + e.getMessage()
-                    + "）。请如实告知用户当前无法检索企业知识库。";
+            String err = ragContextFormatter.formatError(e.getMessage());
             return ToolResultBlock.of(toolUseId, NAME, TextBlock.builder().text(err).build());
         }
     }
@@ -104,7 +104,16 @@ public class RagTool implements AgentTool {
 
     private static String resolveKbId() {
         StepEventBridge.ToolAuditContext ctx = auditContext();
-        if (ctx == null || ctx.kbId() == null || ctx.kbId().isBlank()) {
+        if (ctx == null) {
+            return null;
+        }
+        if (ctx.kbScope() != null && !ctx.kbScope().isEmpty()) {
+            if (ctx.kbScope().size() == 1 && "*".equals(ctx.kbScope().get(0))) {
+                return ctx.kbId() != null ? ctx.kbId().strip() : null;
+            }
+            return ctx.kbScope().get(0);
+        }
+        if (ctx.kbId() == null || ctx.kbId().isBlank()) {
             return null;
         }
         return ctx.kbId().strip();

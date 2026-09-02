@@ -9,7 +9,13 @@ defineProps<{
 </script>
 
 <template>
-  <span class="conv-icon-wrap" :class="{ 'conv-icon-wrap--hitl': state === 'hitl_pending' }" :title="title">
+  <span
+    class="conv-icon-wrap"
+    :class="{
+      'conv-icon-wrap--hitl': state === 'hitl_pending' || state === 'decision_pending',
+    }"
+    :title="title"
+  >
   <!-- 空闲：圆角气泡轮廓（Cursor 非活动 Tab） -->
   <svg
     v-if="!state"
@@ -49,6 +55,26 @@ defineProps<{
       <line x1="11.15" y1="4.85" x2="12.85" y2="3.15" />
       <line x1="3.15" y1="12.85" x2="4.85" y2="11.15" />
     </g>
+  </svg>
+
+  <!-- 待决策：琥珀圆 + 问号（request_decision） -->
+  <svg
+    v-else-if="state === 'decision_pending'"
+    class="conv-icon conv-icon--hitl conv-icon--decision"
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+  >
+    <circle class="hitl-badge" cx="8" cy="8" r="7.25" />
+    <path
+      class="hitl-mark"
+      d="M5.85 6.15a2.15 2.15 0 1 1 2.55 2.05c-.55.2-.9.7-.9 1.3"
+      stroke-linecap="round"
+      fill="none"
+    />
+    <circle class="hitl-mark hitl-dot" cx="8" cy="11.45" r="0.95" />
   </svg>
 
   <!-- 待确认：琥珀实心圆 + 感叹号（需人工确认） -->
@@ -132,8 +158,14 @@ defineProps<{
   fill: var(--sun-amber-light);
 }
 
+.conv-icon--decision .hitl-mark {
+  stroke-width: 1.35;
+  fill: none;
+}
+
 .conv-icon--hitl .hitl-dot {
   stroke: none;
+  fill: var(--sun-amber-light);
 }
 
 .conv-icon--completed {

@@ -4,8 +4,6 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.common.core.result.R;
 import com.sunshine.rag.config.RagDesensitizeProperties;
 import com.sunshine.rag.exception.RagErrorCode;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
@@ -19,16 +17,15 @@ import java.util.Map;
 /** 发布入库前正文脱敏 */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class DesensitizeClient {
 
     private final RagDesensitizeProperties properties;
-    private WebClient webClient;
+    private final WebClient webClient;
 
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder().baseUrl(properties.getBaseUrl()).build();
-        log.info("[RAG] DesensitizeClient enabled={} baseUrl={}", properties.isEnabled(), properties.getBaseUrl());
+    public DesensitizeClient(RagDesensitizeProperties properties, WebClient.Builder builder) {
+        this.properties = properties;
+        this.webClient = builder.baseUrl("http://sunshine-resource-manager").build();
+        log.info("[RAG] DesensitizeClient enabled={} baseUrl=http://sunshine-resource-manager", properties.isEnabled());
     }
 
     public String scrubForPublish(String text) {

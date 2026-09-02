@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "rag.desensitize")
 public class RagDesensitizeProperties {
     private boolean enabled = true;
-    private String baseUrl = "http://127.0.0.1:8600";
     /** 脱敏失败时是否阻断发布 */
     private boolean failOnError = true;
 }

@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import com.sunshine.orchestrator.execution.WorkflowNodeLabels;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ToolNodeLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
     private final ToolCatalogService toolCatalogService;
 
     @PostConstruct
@@ -87,38 +88,11 @@ public class ToolNodeLabelService {
     }
 
     private AgentPromptProperties.StepTimeline toolTemplate() {
-        return stepTemplate(TimelineStepId.TOOL.id(), defaultToolTemplate());
+        return timelinePromptCatalog.step(TimelineStepId.TOOL.id());
     }
 
     private AgentPromptProperties.StepTimeline nodeTemplate() {
-        return stepTemplate(TimelineStepId.NODE.id(), defaultNodeTemplate());
-    }
-
-    private AgentPromptProperties.StepTimeline stepTemplate(String key, AgentPromptProperties.StepTimeline fallback) {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
-        if (steps == null) {
-            return fallback;
-        }
-        AgentPromptProperties.StepTimeline step = steps.get(key);
-        return step != null ? step : fallback;
-    }
-
-    private static AgentPromptProperties.StepTimeline defaultToolTemplate() {
-        var tool = new AgentPromptProperties.StepTimeline();
-        tool.setLabel("调用工具 {displayName}");
-        tool.setBefore("准备{displayName}");
-        tool.setActive("正在{displayName}");
-        tool.setAfter("{displayName}完成");
-        return tool;
-    }
-
-    private static AgentPromptProperties.StepTimeline defaultNodeTemplate() {
-        var node = new AgentPromptProperties.StepTimeline();
-        node.setBefore("准备{displayName}");
-        node.setActive("正在{displayName}");
-        node.setAfter("{displayName}完成");
-        node.setBeforeWithQuery("准备处理{query}的「{displayName}」环节");
-        return node;
+        return timelinePromptCatalog.step(TimelineStepId.NODE.id());
     }
 
     private static Map<String, String> vars(String clippedQuery, String displayName) {

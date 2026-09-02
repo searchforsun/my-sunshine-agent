@@ -10,6 +10,7 @@ import com.sunshine.auth.dto.UserBriefVO;
 import com.sunshine.auth.entity.UserEntity;
 import com.sunshine.auth.repo.UserRepository;
 import com.sunshine.auth.exception.AuthErrorCode;
+import com.sunshine.auth.support.SidebarSectionsLayoutSupport;
 import com.sunshine.auth.support.WriteHitlModeSupport;
 import com.sunshine.common.core.exception.BizException;
 import cn.dev33.satoken.stp.SaLoginModel;
@@ -49,6 +50,7 @@ public class UserService {
         user.setNickname(resolveNickname(request.getNickname(), request.getUsername()));
         user.setTenantId(resolveTenantId(request.getTenantId()));
         user.setDefaultWriteHitlMode(WriteHitlModeSupport.NEVER);
+        user.setSidebarSectionsLayout(SidebarSectionsLayoutSupport.VERTICAL);
         user.setStatus(STATUS_ACTIVE);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
@@ -76,6 +78,15 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
+                .defaultKbId(blankToNull(user.getDefaultKbId()))
+                .personalRules(user.getPersonalRules())
+                .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubToken(blankToNull(user.getGithubToken()))
+                .githubTokenSet(isNotBlank(user.getGithubToken()))
+                .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabToken(blankToNull(user.getGitlabToken()))
+                .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .build();
     }
 
@@ -100,10 +111,78 @@ public class UserService {
         if (request.getDefaultWriteHitlMode() != null && !request.getDefaultWriteHitlMode().isBlank()) {
             user.setDefaultWriteHitlMode(WriteHitlModeSupport.from(request.getDefaultWriteHitlMode()));
         }
+        if (request.getSidebarSectionsLayout() != null && !request.getSidebarSectionsLayout().isBlank()) {
+            user.setSidebarSectionsLayout(SidebarSectionsLayoutSupport.from(request.getSidebarSectionsLayout()));
+        }
+        // 默认知识库三态：null=不修改；空白=清空；其余 trim 保存
+        if (request.getDefaultKbId() != null) {
+            String trimmed = request.getDefaultKbId().trim();
+            user.setDefaultKbId(trimmed.isEmpty() ? null : trimmed);
+        }
+        // 个人规则三态：null=不修改；空白=清空；其余 trim 保存
+        if (request.getPersonalRules() != null) {
+            String trimmed = request.getPersonalRules().trim();
+            user.setPersonalRules(trimmed.isEmpty() ? null : trimmed);
+        }
+        // Git 服务令牌（先验证再保存）
+        if (request.getGithubToken() != null && !request.getGithubToken().isBlank()) {
+            validateGitToken(request.getGithubUrl(), request.getGithubToken(), "GitHub", "https://api.github.com/user");
+        }
+        if (request.getGitlabToken() != null && !request.getGitlabToken().isBlank()) {
+            validateGitToken(request.getGitlabUrl(), request.getGitlabToken(), "GitLab",
+                    (request.getGitlabUrl() != null ? request.getGitlabUrl().strip().replaceAll("/+$", "") : "") + "/api/v4/user");
+        }
+        if (request.getGithubUrl() != null && !request.getGithubUrl().isBlank()) {
+            user.setGithubUrl(request.getGithubUrl().strip());
+        }
+        if (request.getGithubToken() != null) {
+            user.setGithubToken(request.getGithubToken().strip());
+        }
+        if (request.getGitlabUrl() != null && !request.getGitlabUrl().isBlank()) {
+            user.setGitlabUrl(request.getGitlabUrl().strip());
+        }
+        if (request.getGitlabToken() != null) {
+            user.setGitlabToken(request.getGitlabToken().strip());
+        }
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
         String newToken = reissueToken(user);
         return toUpdateProfileResponse(user, newToken);
+    }
+
+    /** 通过请求 API 验证 Git PAT 是否有效 */
+    private void validateGitToken(String url, String token, String platform, String apiUrl) {
+        String host = url != null && !url.isBlank() ? extractHost(url) : null;
+        if (host == null) {
+            throw new BizException(new com.sunshine.common.core.exception.FixedErrorCode(
+                    400, "git_url_missing", platform + " 地址未配置，无法验证令牌"));
+        }
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10))
+                    .build();
+            java.net.http.HttpRequest httpReq = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(apiUrl))
+                    .timeout(java.time.Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+            java.net.http.HttpResponse<String> resp = client.send(httpReq,
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            int code = resp.statusCode();
+            if (code < 200 || code >= 300) {
+                throw new BizException(new com.sunshine.common.core.exception.FixedErrorCode(
+                        400, "git_token_invalid",
+                        platform + " PAT 验证失败 (HTTP " + code + ")，请检查令牌和地址是否正确"));
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(new com.sunshine.common.core.exception.FixedErrorCode(
+                    400, "git_token_error",
+                    platform + " PAT 验证失败: " + e.getMessage()));
+        }
     }
 
     /** 注销当前 JWT 并签发含最新 extra 的新 token（避免 getTokenValue 返回旧值） */
@@ -117,6 +196,18 @@ public class UserService {
         return StpUtil.createLoginSession(user.getId(), SaLoginModel.create()
                 .setExtra("nickname", nickname)
                 .setExtra("tenantId", tenantId));
+    }
+
+    /** 租户下启用用户列表 — 供业务数据页用户下拉 */
+    public List<UserBriefVO> listActiveUsers(String tenantId) {
+        String tid = resolveTenantId(tenantId);
+        return userRepository.findByTenantIdAndStatus(tid, STATUS_ACTIVE).stream()
+                .map(user -> UserBriefVO.builder()
+                        .userId(user.getId())
+                        .username(user.getUsername())
+                        .nickname(resolveNickname(user.getNickname(), user.getUsername()))
+                        .build())
+                .toList();
     }
 
     /** 批量查询用户展示信息 — 供 skill-manager BFF 解析维护人 */
@@ -168,6 +259,15 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
+                .defaultKbId(blankToNull(user.getDefaultKbId()))
+                .personalRules(user.getPersonalRules())
+                .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubToken(blankToNull(user.getGithubToken()))
+                .githubTokenSet(isNotBlank(user.getGithubToken()))
+                .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabToken(blankToNull(user.getGitlabToken()))
+                .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .build();
     }
 
@@ -178,7 +278,51 @@ public class UserService {
                 .nickname(resolveNickname(user.getNickname(), user.getUsername()))
                 .tenantId(resolveTenantId(user.getTenantId()))
                 .defaultWriteHitlMode(WriteHitlModeSupport.from(user.getDefaultWriteHitlMode()))
+                .sidebarSectionsLayout(SidebarSectionsLayoutSupport.from(user.getSidebarSectionsLayout()))
+                .defaultKbId(blankToNull(user.getDefaultKbId()))
+                .personalRules(user.getPersonalRules())
+                .githubUrl(blankToNull(user.getGithubUrl()))
+                .githubToken(blankToNull(user.getGithubToken()))
+                .githubTokenSet(isNotBlank(user.getGithubToken()))
+                .gitlabUrl(blankToNull(user.getGitlabUrl()))
+                .gitlabToken(blankToNull(user.getGitlabToken()))
+                .gitlabTokenSet(isNotBlank(user.getGitlabToken()))
                 .token(token)
                 .build();
+    }
+
+    /**
+     * 按 host 匹配用户已配置的 Git 凭据，供 orchestrator clone 时使用（服务间调用）。
+     * @return Map.of("url", ..., "token", ...) 或空 Map（无匹配凭据）
+     */
+    public Map<String, String> findGitCredential(String userId, String host) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new BizException(AuthErrorCode.USER_NOT_FOUND));
+        String h = host != null ? host.strip().toLowerCase() : "";
+        if (!h.isEmpty() && isNotBlank(user.getGithubUrl())
+                && h.equals(extractHost(user.getGithubUrl()))) {
+            return Map.of("url", user.getGithubUrl(), "token", user.getGithubToken());
+        }
+        if (!h.isEmpty() && isNotBlank(user.getGitlabUrl())
+                && h.equals(extractHost(user.getGitlabUrl()))) {
+            return Map.of("url", user.getGitlabUrl(), "token", user.getGitlabToken());
+        }
+        return Map.of();
+    }
+
+    private static String extractHost(String url) {
+        try {
+            return new java.net.URL(url).getHost().toLowerCase();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.strip();
+    }
+
+    private static boolean isNotBlank(String s) {
+        return s != null && !s.isBlank();
     }
 }

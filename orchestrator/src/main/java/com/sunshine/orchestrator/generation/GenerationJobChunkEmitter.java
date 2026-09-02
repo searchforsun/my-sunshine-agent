@@ -25,20 +25,27 @@ final class GenerationJobChunkEmitter {
     private final String generationId;
     private final String messageId;
     private final AtomicLong seq;
+    /** 与 {@link GenerationJob} 共享：串行 seq++ + XADD（工具并行语义不变） */
+    private final Object streamAppendLock;
     private final AtomicBoolean finished;
     private final long boundStreamEpoch;
     private final List<ProcessingStep> stepsBuffer;
     private final ThinkStepMapper thinkMapper;
     private final ContentBlockAccumulator contentBlockAccumulator;
     private volatile StringBuilder reasoningBufferRef;
+    /** usage 末帧：append 锁内写入、终态落库在锁外读取，故 volatile */
+    private volatile String lastUsageJson;
     private final GenerationStreamService streamService;
     private final GenerationFlushScheduler flushScheduler;
     private final GenerationProperties properties;
+    /** mysqlBuffer 已 flush 至的位置：flush 时只提交新增 delta，避免全量重写大字段 */
+    private final AtomicLong mysqlFlushedLen = new AtomicLong(0);
 
     GenerationJobChunkEmitter(
             String generationId,
             String messageId,
             AtomicLong seq,
+            Object streamAppendLock,
             AtomicBoolean finished,
             long boundStreamEpoch,
             List<ProcessingStep> stepsBuffer,
@@ -51,6 +58,7 @@ final class GenerationJobChunkEmitter {
         this.generationId = generationId;
         this.messageId = messageId;
         this.seq = seq;
+        this.streamAppendLock = streamAppendLock;
         this.finished = finished;
         this.boundStreamEpoch = boundStreamEpoch;
         this.stepsBuffer = stepsBuffer;
@@ -73,8 +81,16 @@ final class GenerationJobChunkEmitter {
         }
     }
 
+    String lastUsageJson() {
+        return lastUsageJson;
+    }
+
     private void onChunkUnfolded(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
+        if (token.isUsage()) {
+            emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
+            return;
+        }
         if (token.isSandboxSession()) {
             emitMappedChunk(token, mysqlBuffer, flushPartial, lastFlush);
             return;
@@ -97,7 +113,7 @@ final class GenerationJobChunkEmitter {
 
     /**
      * HITL / ReAct 旁路 token。须写入与 {@link #onChunk} 同一 {@code mysqlBuffer}，
-     * 否则正文只进 content_blocks、content 为空，STM 会丢弃 assistant 轮次。
+     * 否则正文只进 content_blocks、content 为空，L1 会丢弃 assistant 轮次。
      */
     void emitStreamToken(StreamToken token, StringBuilder mysqlBuffer, Consumer<String> flushPartial) {
         if (token == null || finished.get() || !isStreamEpochValid()) {
@@ -142,6 +158,26 @@ final class GenerationJobChunkEmitter {
         }
     }
 
+    private final AtomicLong lastStepsFlush = new AtomicLong(0);
+
+    /**
+     * 步骤落库 throttle：HITL/Recovery 等待步立即落库（续跑阻塞期间需保持暂停快照）；
+     * 其余 ReAct 工具步按间隔增量落库，保证长任务执行中刷新时 DB 已含已输出步骤/推理，
+     * 不依赖前端 localStorage 缓存兜底。
+     */
+    void throttleStepsFlush() {
+        maybeFlushStepsForAwaitingInteraction();
+        long now = System.currentTimeMillis();
+        if (now - lastStepsFlush.get() >= stepsFlushIntervalMs()) {
+            lastStepsFlush.set(now);
+            flushScheduler.flushStepsPartial(messageId, ProcessingStepSerde.toPersistJson(stepsBuffer));
+        }
+    }
+
+    private long stepsFlushIntervalMs() {
+        return Math.max(properties.flushIntervalMs() * 10, 5000);
+    }
+
     void maybeFlushStepsForAwaitingInteraction() {
         boolean awaiting = stepsBuffer.stream().anyMatch(ProcessingStepLifecycleOps::isAwaitingInteractionStep);
         if (!awaiting) {
@@ -167,73 +203,88 @@ final class GenerationJobChunkEmitter {
 
     private void emitSingleMappedChunk(StreamToken token, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, AtomicLong lastFlush) {
-        long nextSeq = seq.incrementAndGet();
-        if (token.isSandboxSession()) {
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
-            return;
-        }
-        if (token.isStep()) {
-            ProcessingStepMerger.upsert(stepsBuffer, token.step());
-            maybeFlushStepsForAwaitingInteraction();
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
-            return;
-        }
-        if (token.isStepDelta()) {
-            ProcessingStepMerger.applyDelta(
-                    stepsBuffer, token.stepId(), token.channel(), token.text());
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
-                    token.stepId(), token.channel(), token.text()));
-            if ("reasoning".equals(token.channel()) && reasoningBufferRef != null
-                    && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
-                reasoningBufferRef.append(token.text());
+        // 与 GenerationJob.emitOutbound 同锁：分配 seq 与 XADD 原子有序，工具并行只等写流
+        synchronized (streamAppendLock) {
+            long nextSeq = seq.incrementAndGet();
+            if (token.isSandboxSession()) {
+                streamService.appendChunk(generationId, nextSeq,
+                        flushScheduler.metaSandboxSession(token.text(), token.channel(), token.stepId()));
+                return;
             }
-            return;
-        }
-        if (token.isContentStart()) {
-            contentBlockAccumulator.onContentStart(token);
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaContentStart(
-                            token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
-            return;
-        }
-        if (token.isContentEnd()) {
-            contentBlockAccumulator.onContentEnd(token);
-            streamService.appendChunk(generationId, nextSeq,
-                    flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
-            return;
-        }
-        String wire = token.isContent()
-                ? (token.segmentId() != null
-                ? flushScheduler.metaContentInSegment(
-                        token.segmentId(), token.text(), token.scopeNodeStepId())
-                : flushScheduler.metaContent(token.text(), token.afterStepId()))
-                : flushScheduler.metaReasoning(token.text());
-        streamService.appendChunk(generationId, nextSeq, wire);
-        if (token.isReasoning()) {
-            if (reasoningBufferRef != null) {
-                reasoningBufferRef.append(token.text());
+            // usage 帧不写正文缓冲：seq 分配与 XADD 同锁原子，仅记录末帧供终态落库
+            if (token.isUsage()) {
+                lastUsageJson = token.text();
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaUsage(token.text()));
+                return;
             }
-            return;
-        }
-        if (token.isContent() && token.segmentId() != null) {
-            contentBlockAccumulator.onContent(token);
-        }
-        if (StringUtils.hasText(token.scopeNodeStepId())) {
+            if (token.isStep()) {
+                ProcessingStepMerger.upsert(stepsBuffer, token.step());
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStep(token.step()));
+                throttleStepsFlush();
+                return;
+            }
+            if (token.isStepDelta()) {
+                ProcessingStepMerger.applyDelta(
+                        stepsBuffer, token.stepId(), token.channel(), token.text());
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaStepDelta(
+                        token.stepId(), token.channel(), token.text()));
+                if ("reasoning".equals(token.channel()) && reasoningBufferRef != null
+                        && (token.stepId() == null || !token.stepId().startsWith("node-"))) {
+                    reasoningBufferRef.append(token.text());
+                }
+                throttleStepsFlush();
+                return;
+            }
+            if (token.isContentStart()) {
+                contentBlockAccumulator.onContentStart(token);
+                streamService.appendChunk(generationId, nextSeq,
+                        flushScheduler.metaContentStart(
+                                token.segmentId(), token.afterStepId(), token.scopeNodeStepId()));
+                return;
+            }
+            if (token.isContentEnd()) {
+                contentBlockAccumulator.onContentEnd(token);
+                streamService.appendChunk(generationId, nextSeq,
+                        flushScheduler.metaContentEnd(token.segmentId(), token.scopeNodeStepId()));
+                return;
+            }
+            String wire = token.isContent()
+                    ? (token.segmentId() != null
+                    ? flushScheduler.metaContentInSegment(
+                            token.segmentId(), token.text(), token.scopeNodeStepId())
+                    : flushScheduler.metaContent(token.text(), token.afterStepId()))
+                    : flushScheduler.metaReasoning(token.text());
+            streamService.appendChunk(generationId, nextSeq, wire);
+            if (token.isReasoning()) {
+                if (reasoningBufferRef != null) {
+                    reasoningBufferRef.append(token.text());
+                }
+                return;
+            }
+            if (token.isContent() && token.segmentId() != null) {
+                contentBlockAccumulator.onContent(token);
+            }
+            if (StringUtils.hasText(token.scopeNodeStepId())) {
+                throttlePartialFlush(mysqlBuffer, flushPartial, lastFlush);
+                return;
+            }
+            if (token.isContent() && token.text() != null) {
+                mysqlBuffer.append(token.text());
+            }
             throttlePartialFlush(mysqlBuffer, flushPartial, lastFlush);
-            return;
         }
-        if (token.isContent() && token.text() != null) {
-            mysqlBuffer.append(token.text());
-        }
-        throttlePartialFlush(mysqlBuffer, flushPartial, lastFlush);
     }
 
     private void throttlePartialFlush(StringBuilder mysqlBuffer, Consumer<String> flushPartial, AtomicLong lastFlush) {
         long now = System.currentTimeMillis();
         if (now - lastFlush.get() >= properties.flushIntervalMs()) {
-            lastFlush.set(now);
-            flushPartial.accept(mysqlBuffer.toString());
+            long flushed = mysqlFlushedLen.get();
+            int len = mysqlBuffer.length();
+            if (len > flushed) {
+                lastFlush.set(now);
+                mysqlFlushedLen.set(len);
+                flushPartial.accept(mysqlBuffer.substring((int) flushed));
+            }
         }
     }
 

@@ -3,7 +3,6 @@ import type { ChatMessage } from '../api/chat'
 import { resolveApiBase } from '../api/config'
 import { apiHeaders } from '../stores/authStore'
 import {
-  isContentFullyInterleaved,
   normalizeRestoredInterleavedContent,
 } from '../api/contentInterleave'
 import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from '../api/hitlSteps'
@@ -14,6 +13,7 @@ import {
 
 interface ChatStoreLike {
   conversations: { id: string; messages?: ChatMessage[] }[]
+  currentId: string | null
   syncMessages: (id: string, msgs: ChatMessage[]) => void
   loadDetail: (id: string) => Promise<void>
 }
@@ -31,6 +31,7 @@ export function useChatSessionHydration(options: {
   sessionSettledHtml: Map<string, string>
   ensureStreamRenderer: () => Promise<void>
   scrollToBottom: (force?: boolean) => void
+  settleScrollToBottom: () => void
   enhanceAllStaticMarkdown: () => void
 }) {
   const {
@@ -45,6 +46,7 @@ export function useChatSessionHydration(options: {
     sessionSettledHtml,
     ensureStreamRenderer,
     scrollToBottom,
+    settleScrollToBottom,
     enhanceAllStaticMarkdown,
   } = options
 
@@ -117,10 +119,8 @@ export function useChatSessionHydration(options: {
       restoredLast.reasoning = localLast.reasoning ?? ''
       restoredLast.contentBlocks = localLast.contentBlocks
       restoredLast.pendingHitlConfirmations = undefined
-      restoredLast.pendingHitlConfirmation = undefined
     } else if (getPendingHitlConfirmations(localLast).length && !localIntentOnly) {
       restoredLast.pendingHitlConfirmations = getPendingHitlConfirmations(localLast)
-      restoredLast.pendingHitlConfirmation = undefined
     }
     if (localLast.contentBlocks?.length) {
       const localJoined = localLast.contentBlocks.map(b => b.text).join('')
@@ -130,6 +130,13 @@ export function useChatSessionHydration(options: {
       }
     }
     restoredLast.status = pickPreferredAssistantStatus(restoredLast.status, localLast.status)
+    if (localLast.timelineStartedAt != null) {
+      restoredLast.timelineStartedAt = localLast.timelineStartedAt
+    }
+    if (localLast.timelineEndedAt != null
+      && (restoredLast.timelineEndedAt == null || localLast.timelineEndedAt > restoredLast.timelineEndedAt)) {
+      restoredLast.timelineEndedAt = localLast.timelineEndedAt
+    }
     if (localLast.streamError && !restoredLast.streamError) {
       restoredLast.streamError = localLast.streamError
     }
@@ -167,7 +174,7 @@ export function useChatSessionHydration(options: {
     }
   }
 
-  async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean }) {
+  async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean; deferScroll?: boolean }) {
     const skipApi = opts?.skipApiLoad ?? loading.value
     if (!skipApi) {
       await chatStore.loadDetail(cid)
@@ -198,7 +205,9 @@ export function useChatSessionHydration(options: {
     }
     await nextTick()
     enhanceAllStaticMarkdown()
-    scrollToBottom(false)
+    if (!opts?.deferScroll && chatStore.currentId === cid) {
+      settleScrollToBottom()
+    }
   }
 
   async function tryAutoReconnect(cid: string, active: ActiveGeneration) {
@@ -242,10 +251,11 @@ export function useChatSessionHydration(options: {
         if (tail?.role === 'assistant') {
           normalizeRestoredInterleavedContent(tail)
         }
+        // 续连必须从「前端已消费到的 seq」之后重放，不能因 isContentFullyInterleaved 就跳到
+        // 后端最新 seq：流式中 contentBlocks 与 content 一致并不代表前端已收到后端最新 chunk，
+        // 跳变会跳过中间 seq 的 chunk，导致刷新后续连丢内容、loading 卡死、重新生成无反应。
         let afterSeq = active.lastSeq
-        if (tail?.role === 'assistant' && isContentFullyInterleaved(tail)) {
-          afterSeq = Math.max(afterSeq, status.lastSeq ?? 0)
-        } else if (afterSeq <= 0 && (status.lastSeq ?? 0) > 0 && tail?.content?.trim()) {
+        if (afterSeq <= 0 && (status.lastSeq ?? 0) > 0 && tail?.content?.trim()) {
           afterSeq = status.lastSeq
         }
         await nextTick()
@@ -253,12 +263,46 @@ export function useChatSessionHydration(options: {
         await nextTick()
         await ensureStreamRenderer()
         await reconnectPromise
+        // 续传异常结束（网络失败 / 后端已终态导致 SSE 中断）：重新拉取 API + 本地缓存，
+        // 后端 commitFinal 可能已落库已输出的步骤/正文，避免停留在空白或失败态消息上。
+        // 注意：不清除 active generation 锚点——后端可能仍在 RUNNING，只是续连流被网络/导航
+        // 意外中断；清掉锚点会导致下次刷新不再续连（「多刷新两次就断流」的根因）。
+        // 后端若已终态，hydrate 后消息会变为对应终态；若仍在跑，保留锚点供下次刷新续连。
+        const tailAfter = active.messageId
+          ? msgs.find(m => m.id === active.messageId && m.role === 'assistant')
+          : msgs[msgs.length - 1]
+        if (
+          tailAfter?.role === 'assistant' &&
+          tailAfter.status !== 'completed' &&
+          tailAfter.status !== 'streaming'
+        ) {
+          await hydrateSessionFromStore(cid)
+          // hydrate 优先取 API 的 streaming 状态（后端仍在跑），但此刻本地已无活跃续连流，
+          // 保持 interrupted 让「重新生成」入口可用；锚点保留，下次刷新仍会续连。
+          const after = active.messageId
+            ? getMessages(cid).find(m => m.id === active.messageId && m.role === 'assistant')
+            : getMessages(cid)[getMessages(cid).length - 1]
+          if (after?.role === 'assistant' && after.status === 'streaming') {
+            after.status = 'interrupted'
+          }
+          return
+        }
         syncSessionToStore(cid)
       }
     } catch (e) {
       console.error('[ChatView] auto reconnect failed', e)
-      clearActiveGeneration()
+      // 网络/导航等瞬时异常：后端 generation 很可能仍在 RUNNING，绝不能清除 active 锚点——
+      // 清掉后后续刷新将不再续连（「多刷新两次就中断流式输出」的直接根因：快速刷新时
+      // 状态查询/续连请求被导航中断，抛 TypeError: Failed to fetch 落入本 catch）。
+      // 保留锚点供下次刷新重试；同时把停在 streaming 的尾部 assistant 标 interrupted，
+      // 避免 UI 停在假流式状态且无任何「重新生成」恢复入口。
       await hydrateSessionFromStore(cid)
+      const after = active.messageId
+        ? getMessages(cid).find(m => m.id === active.messageId && m.role === 'assistant')
+        : getMessages(cid)[getMessages(cid).length - 1]
+      if (after?.role === 'assistant' && after.status === 'streaming') {
+        after.status = 'interrupted'
+      }
     }
   }
 

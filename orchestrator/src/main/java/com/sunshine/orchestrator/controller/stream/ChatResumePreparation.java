@@ -1,14 +1,15 @@
 package com.sunshine.orchestrator.controller.stream;
 
-import com.sunshine.orchestrator.memory.MemoryContext;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.routing.ExecutionMode;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 
 /** 续跑前从 DB 组装的上下文 */
 public record ChatResumePreparation(
         String assistantId,
         String conversationId,
         String userContent,
-        MemoryContext memory,
+        AssembledContext memory,
         String resumeContent,
         String resumeReasoning,
         String intent,
@@ -17,7 +18,11 @@ public record ChatResumePreparation(
         boolean reactRestart,
         String userId,
         String tenantId,
-        String kbId) {
+        String kbId,
+        String conversationKind,
+        String modelOverride,
+        /** 该消息已存 RoutingResult（S-0 续跑复用，不重跑收集） */
+        RoutingSeed routingSeed) {
 
     public ChatStreamContext toStreamContext() {
         return new ChatStreamContext(
@@ -33,10 +38,15 @@ public record ChatResumePreparation(
                 false,
                 userId,
                 tenantId,
-                ExecutionPreference.AUTO,
+                ExecutionMode.FAST,
                 null,
                 null,
                 kbId,
-                reactRestart);
+                reactRestart,
+                // 续跑不重注入个人规则（原始 run 已注入；规则随新消息生效）
+                null,
+                conversationKind,
+                modelOverride,
+                routingSeed);
     }
 }

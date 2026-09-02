@@ -26,7 +26,7 @@ public final class ThinkStepMapper {
     private boolean workflowMode;
 
     public ThinkStepMapper(List<ProcessingStep> stepsBuffer, String userQuery) {
-        this(stepsBuffer, userQuery, new AtomicReference<>(ExecutionMode.REACT));
+        this(stepsBuffer, userQuery, new AtomicReference<>(ExecutionMode.FAST));
     }
 
     public ThinkStepMapper(List<ProcessingStep> stepsBuffer, String userQuery,
@@ -35,7 +35,7 @@ public final class ThinkStepMapper {
         this.userQuery = userQuery;
         this.executionMode = executionMode != null
                 ? executionMode
-                : new AtomicReference<>(ExecutionMode.REACT);
+                : new AtomicReference<>(ExecutionMode.FAST);
         for (ProcessingStep step : this.stepsBuffer) {
             trackExistingStep(step);
         }
@@ -43,7 +43,7 @@ public final class ThinkStepMapper {
 
     private ExecutionMode mode() {
         ExecutionMode current = executionMode.get();
-        return current != null ? current : ExecutionMode.REACT;
+        return current != null ? current : ExecutionMode.FAST;
     }
 
     public List<StreamToken> map(StreamToken token) {
@@ -55,7 +55,7 @@ public final class ThinkStepMapper {
             return List.of(token);
         }
         if (token.isContentStart() || token.isContentEnd()) {
-            if (mode() == ExecutionMode.REACT) {
+            if (mode() == ExecutionMode.FAST) {
                 return List.of(token);
             }
             return List.of();
@@ -67,7 +67,7 @@ public final class ThinkStepMapper {
             return mapReasoning(token.text());
         }
         if (token.isContent()) {
-            if (mode() == ExecutionMode.REACT && token.segmentId() != null) {
+            if (mode() == ExecutionMode.FAST && token.segmentId() != null) {
                 return List.of(token);
             }
             return mapContent(token);
@@ -84,7 +84,7 @@ public final class ThinkStepMapper {
     public List<StreamToken> finish(boolean streamFailed) {
         List<StreamToken> out = new ArrayList<>();
         findRunningThinkId().ifPresent(id -> out.add(stepToken(completeThinkStep(id))));
-        if (mode() == ExecutionMode.REACT) {
+        if (mode() == ExecutionMode.FAST) {
             return out;
         }
         if (!streamFailed && !workflowMode && !generateOpened && !hasStep(TimelineStepId.GENERATE.id())) {
@@ -120,10 +120,6 @@ public final class ThinkStepMapper {
         if (text == null || text.isEmpty()) {
             return List.of();
         }
-        // 多专家会诊汇总走 message.content，勿再开 think
-        if (workflowMode && mode() == ExecutionMode.PEER_COLLAB) {
-            return List.of();
-        }
         String thinkId = resolveThinkIdForReasoning();
         List<StreamToken> out = new ArrayList<>(openThinkIfNeeded(thinkId));
         out.add(StreamToken.stepDelta(thinkId, "reasoning", text));
@@ -134,7 +130,7 @@ public final class ThinkStepMapper {
         if (workflowMode) {
             return List.of(token);
         }
-        if (mode() == ExecutionMode.REACT) {
+        if (mode() == ExecutionMode.FAST) {
             if (token.afterStepId() != null) {
                 return List.of(token);
             }
@@ -230,7 +226,7 @@ public final class ThinkStepMapper {
                 stepId, TimelineStepId.THINK.phase(), "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, label, null, null, null);
+                ts, label, null, null, null, null);
     }
 
     private ProcessingStep completeThinkStep(String stepId) {
@@ -250,7 +246,8 @@ public final class ThinkStepMapper {
                 null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, label, null, null, null);
+                ts, label, null, null, null,
+                prev != null ? prev.stepSummary() : null);
     }
 
     private ProcessingStep runningGenerateStep() {
@@ -264,7 +261,7 @@ public final class ThinkStepMapper {
                 TimelineStepId.GENERATE.id(), TimelineStepId.GENERATE.id(), "running", summary,
                 ts, null, null, null,
                 null, null, null,
-                ts, label, null, null, null);
+                ts, label, null, null, null, null);
     }
 
     private ProcessingStep completeGenerateStep() {
@@ -283,7 +280,7 @@ public final class ThinkStepMapper {
                 prev != null ? prev.reasoning() : null,
                 prev != null ? prev.output() : null,
                 prev != null ? prev.result() : null,
-                ts, label, null, null, null);
+                ts, label, null, null, null, null);
     }
 
     private void trackExistingStep(ProcessingStep step) {
@@ -297,10 +294,7 @@ public final class ThinkStepMapper {
             generateOpened = true;
         }
         if (TimelineStepId.PLAN.matches(step.id())
-                || TimelineStepId.PEER_COLLAB.matches(step.id())
-                || TimelineStepId.isNodeStep(step.id())
-                || "expert-convene".equals(step.id())
-                || (step.id() != null && step.id().startsWith("expert-"))) {
+                || TimelineStepId.isNodeStep(step.id())) {
             workflowMode = true;
             generateOpened = true;
         }

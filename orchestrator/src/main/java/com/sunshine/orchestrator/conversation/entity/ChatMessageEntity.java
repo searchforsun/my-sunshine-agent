@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.Instant;
 
@@ -13,6 +14,7 @@ import java.time.Instant;
 @Table(name = "chat_message")
 @Getter
 @Setter
+@DynamicUpdate
 public class ChatMessageEntity {
 
     @Id
@@ -42,14 +44,15 @@ public class ChatMessageEntity {
     @Column(name = "content_blocks", columnDefinition = "MEDIUMTEXT")
     private String contentBlocks;
 
+    /** 消息级 LLM usage + 上下文分组快照 JSON */
+    @Column(name = "usage_json", columnDefinition = "MEDIUMTEXT")
+    private String usageJson;
+
     @Column(nullable = false, length = 16)
     private String status = "completed";
 
     @Column(length = 32)
     private String intent;
-
-    @Column(name = "execution_mode", length = 16)
-    private String executionMode;
 
     @Column(name = "workflow_id", length = 64)
     private String workflowId;
@@ -57,7 +60,15 @@ public class ChatMessageEntity {
     @Column(name = "execution_plan_id", length = 36)
     private String executionPlanId;
 
-    /** user 消息发送时用户选择的 executionPreference */
+    /** 本轮已触发 skill 集（逗号分隔；skill-sticky S-0） */
+    @Column(name = "routing_skill_ids", columnDefinition = "MEDIUMTEXT")
+    private String routingSkillIds;
+
+    /** 本轮可调度 agent 集（逗号分隔；skill-sticky S-0） */
+    @Column(name = "routing_agent_ids", columnDefinition = "MEDIUMTEXT")
+    private String routingAgentIds;
+
+    /** user 消息发送时的执行模式（列名保留；取值 fast|pro|workflow） */
     @Column(name = "execution_preference", length = 32)
     private String executionPreference;
 

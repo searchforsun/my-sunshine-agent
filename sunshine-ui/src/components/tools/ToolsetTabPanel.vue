@@ -9,7 +9,6 @@ import {
   NPagination,
   NSpace,
   NSpin,
-  NSwitch,
   NTabPane,
   NTabs,
   NTag,
@@ -22,7 +21,6 @@ import TenantSelector from '../knowledge/TenantSelector.vue'
 import ToolSetAddModal from './ToolSetAddModal.vue'
 import {
   pageToolSetMembers,
-  patchPlanWorkflowMemberCritical,
   removeToolSetMembers,
   type ToolSetKindPath,
   type ToolSetMemberItem,
@@ -37,7 +35,7 @@ const { tenantId: toolsetTenant, setTenantId: setToolsetTenant } = useTenantPref
 
 let membersRequestSeq = 0
 
-const subTab = ref<'react' | 'plan-workflow'>('react')
+const subTab = ref<'chat' | 'task'>('chat')
 const loading = ref(false)
 const searchQuery = ref('')
 const page = ref(1)
@@ -47,15 +45,13 @@ const members = ref<ToolSetMemberItem[]>([])
 const selectedRowKeys = ref<string[]>([])
 const showAddModal = ref(false)
 
-const kind = computed<ToolSetKindPath>(() =>
-  subTab.value === 'react' ? 'react-default' : 'plan-workflow',
-)
+const kind = computed<ToolSetKindPath>(() => subTab.value)
 
 const tenantParam = computed(() =>
   toolsetTenant.value === 'default' ? undefined : toolsetTenant.value,
 )
 
-const tableScrollX = computed(() => (subTab.value === 'plan-workflow' ? 920 : 840))
+const tableScrollX = computed(() => (subTab.value === 'task' ? 860 : 840))
 
 function renderCellText(text: string) {
   return h('span', { class: 'toolset-cell-text' }, text)
@@ -90,19 +86,6 @@ const columns = computed((): DataTableColumns<ToolSetMemberItem> => {
       }, { default: () => (row.sideEffect === 'write' ? '写' : '读') }),
     },
   ]
-  if (subTab.value === 'plan-workflow') {
-    base.push({
-      title: '关键',
-      key: 'critical',
-      width: 72,
-      align: 'center',
-      render: (row) => h(NSwitch, {
-        size: 'small',
-        value: row.critical,
-        onUpdateValue: (v: boolean) => handlePatchCritical(row, v),
-      }),
-    })
-  }
   base.push({
     title: '操作',
     key: 'actions',
@@ -184,18 +167,6 @@ async function handleRemove(toolIds: string[]) {
   }
 }
 
-async function handlePatchCritical(row: ToolSetMemberItem, critical: boolean) {
-  try {
-    await patchPlanWorkflowMemberCritical(row.toolId, critical, tenantParam.value)
-    row.critical = critical
-    message.success(critical ? '已设为关键工具' : '已取消关键工具')
-  } catch (e) {
-    message.error('更新关键标记失败')
-    console.error(e)
-    await refreshMembers()
-  }
-}
-
 watch(subTab, () => {
   page.value = 1
   void refreshAll()
@@ -233,8 +204,8 @@ defineExpose({ refresh: refreshAll })
 <template>
   <main class="toolset-panel detail-panel full-width">
     <NTabs v-model:value="subTab" type="line" animated class="toolset-subtabs">
-      <NTabPane name="react" tab="ReAct" />
-      <NTabPane name="plan-workflow" tab="Planner Workflow" />
+      <NTabPane name="chat" tab="对话默认" />
+      <NTabPane name="task" tab="任务默认" />
     </NTabs>
     <div class="toolset-toolbar">
       <div class="toolset-toolbar-head">
@@ -308,7 +279,6 @@ defineExpose({ refresh: refreshAll })
       v-model:show="showAddModal"
       :kind="kind"
       :tenant-id="toolsetTenant"
-      :allow-critical="subTab === 'plan-workflow'"
       @added="refreshMembers"
     />
   </main>

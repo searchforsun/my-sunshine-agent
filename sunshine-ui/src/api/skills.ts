@@ -33,9 +33,15 @@ export interface SkillEntry {
   activeVersionMaintainerName?: string | null
   /** 当前 active 版本是否已发布 — 未发布草稿不可开启 Skill */
   activeVersionPublished?: boolean
+  /** 当前 active 版本绑定的业务工具 Catalog ID（JSON 数组串） */
+  toolsJson?: string
   /** none | docker */
   sandbox?: string
   sandboxPolicy?: SandboxPolicy | null
+  /** 会话形态：chat | task | all */
+  kind?: string
+  /** 业务场景闭集码（业务场景 Lab；空=不触发结构化业务记忆） */
+  bizScene?: string | null
 }
 
 export interface SkillVersion {
@@ -75,11 +81,23 @@ export async function listSkills(): Promise<SkillEntry[]> {
   return parseApiResponse<SkillEntry[]>(res)
 }
 
-export async function createSkill(id: string, displayName: string, description?: string): Promise<SkillEntry> {
+export async function createSkill(
+  id: string,
+  displayName: string,
+  description?: string,
+  kind?: string,
+  bizScene?: string | null,
+): Promise<SkillEntry> {
   const res = await fetch(apiUrl('/api/skills'), {
     method: 'POST',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, displayName, description: description ?? '' }),
+    body: JSON.stringify({
+      id,
+      displayName,
+      description: description ?? '',
+      kind: kind ?? 'all',
+      bizScene: bizScene ?? null,
+    }),
   })
   return parseApiResponse<SkillEntry>(res)
 }
@@ -97,11 +115,18 @@ export async function updateSkill(
   id: string,
   displayName: string,
   description?: string,
+  kind?: string,
+  bizScene?: string | null,
 ): Promise<SkillEntry> {
   const res = await fetch(apiUrl(`/api/skills/${encodeURIComponent(id)}`), {
     method: 'PUT',
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName, description: description ?? '' }),
+    body: JSON.stringify({
+      displayName,
+      description: description ?? '',
+      kind: kind ?? 'all',
+      bizScene: bizScene ?? null,
+    }),
   })
   return parseApiResponse<SkillEntry>(res)
 }
@@ -129,18 +154,18 @@ export async function listSkillVersions(id: string): Promise<SkillVersion[]> {
 }
 
 /** 更新版本 sandbox / sandbox_policy（T9 UI 编辑器用） */
-export async function updateSkillVersionSandbox(
+/** 覆写版本绑定的业务工具 Catalog ID 列表（独立于 SKILL.md frontmatter） */
+export async function updateSkillVersionTools(
   id: string,
   version: number,
-  sandbox: string,
-  sandboxPolicy?: SandboxPolicy | null,
+  tools: string[],
 ): Promise<SkillEntry> {
   const res = await fetch(
-    apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/sandbox`),
+    apiUrl(`/api/skills/${encodeURIComponent(id)}/versions/${version}/tools`),
     {
       method: 'PUT',
       headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sandbox, sandboxPolicy: sandboxPolicy ?? null }),
+      body: JSON.stringify({ tools }),
     },
   )
   return parseApiResponse<SkillEntry>(res)
@@ -290,6 +315,8 @@ export interface SkillCatalogIndexEntry {
   description: string
   version: number
   enabled: boolean
+  /** 会话形态：chat | task | all */
+  kind?: string
 }
 
 export async function listSkillCatalogIndex(): Promise<SkillCatalogIndexEntry[]> {

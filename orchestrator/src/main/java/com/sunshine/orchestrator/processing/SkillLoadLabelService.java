@@ -3,6 +3,7 @@ package com.sunshine.orchestrator.processing;
 import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -19,7 +20,7 @@ import java.util.Map;
 public class SkillLoadLabelService {
 
     private final SkillCatalogService skillCatalogService;
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -27,17 +28,17 @@ public class SkillLoadLabelService {
     }
 
     public String beforeLine() {
-        return textOrDefault(skillTemplate().getBefore(), "准备加载 Skill");
+        return textOrDefault(skillTemplate().getBefore(), "加载技能");
     }
 
     public String activeLine() {
-        return textOrDefault(skillTemplate().getActive(), "正在加载 Skill 指令");
+        return textOrDefault(skillTemplate().getActive(), "正在加载技能");
     }
 
     public String afterLine(String skillId) {
         String id = skillId.strip();
         String displayName = resolveDisplayName(id);
-        String template = textOrDefault(skillTemplate().getAfter(), "@{skillId} {skillDisplayName}");
+        String template = textOrDefault(skillTemplate().getAfter(), "{skillId} {skillDisplayName}");
         Map<String, String> vars = new HashMap<>();
         vars.put("skillId", id);
         vars.put("skillDisplayName", id.equals(displayName) ? "" : displayName);
@@ -45,7 +46,7 @@ public class SkillLoadLabelService {
     }
 
     private AgentPromptProperties.StepTimeline skillTemplate() {
-        var steps = agentPromptProperties.timelineOrDefault().getSteps();
+        var steps = timelinePromptCatalog.steps();
         if (steps == null) {
             return new AgentPromptProperties.StepTimeline();
         }

@@ -3,14 +3,24 @@ import type { ProcessingStep } from './processingSteps'
 import {
   extractSandboxExecCommand,
   extractSandboxSearchRoot,
+  formatExecCommandHeader,
+  formatExecCommandHeaderText,
+  hasExpandableContent,
   inferSandboxSearchRoot,
   isSandboxExecStep,
+  isSandboxFetchStep,
+  isSandboxReadStep,
   isSandboxToolStep,
   parseSandboxPathList,
+  resolveRunningChildStepBody,
   resolveSandboxFocusPath,
+  resolveSandboxReadLineRange,
   resolveStepExpandInner,
   resolveStepHeaderText,
+  sandboxDisplayPath,
+  sandboxToolKind,
   shouldShiftSummaryOnExpand,
+  stripWorkspaceCheckoutPrefixInText,
 } from './processingStepsDisplay'
 
 function sandboxStep(partial: Partial<ProcessingStep> & { id: string }): ProcessingStep {
@@ -26,10 +36,93 @@ function sandboxStep(partial: Partial<ProcessingStep> & { id: string }): Process
 }
 
 describe('sandbox tool timeline display', () => {
-  it('detects sandbox__* tool step ids', () => {
+  it('detects sandbox__* tool step ids by prefix', () => {
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__read@123' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__exec@9' }))).toBe(true)
+    expect(isSandboxToolStep(sandboxStep({ id: 'tool-sandbox__future@1' }))).toBe(true)
     expect(isSandboxToolStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
+  })
+
+  it('detects sandbox__read step', () => {
+    expect(isSandboxReadStep(sandboxStep({ id: 'tool-sandbox__read@1' }))).toBe(true)
+    expect(isSandboxReadStep(sandboxStep({ id: 'tool-sandbox__exec@1' }))).toBe(false)
+    expect(isSandboxReadStep(sandboxStep({ id: 'tool-sdk__finance__list@1' }))).toBe(false)
+  })
+
+  it('isSandboxFetchStep：仅网页工具', () => {
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__webfetch@1' }))).toBe(true)
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__websearch@2' }))).toBe(true)
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__read@3' }))).toBe(false)
+    expect(isSandboxFetchStep(sandboxStep({ id: 'tool-sandbox__exec@4' }))).toBe(false)
+  })
+
+  it('read step: parses line range from after summary', () => {
+    const partial = sandboxStep({
+      id: 'tool-sandbox__read@1',
+      summary: { after: 'test.py L20-28' },
+    })
+    expect(resolveSandboxReadLineRange(partial)).toEqual({ start: 20, end: 28 })
+    const full = sandboxStep({
+      id: 'tool-sandbox__read@2',
+      summary: { after: 'readme.md L1-129' },
+    })
+    expect(resolveSandboxReadLineRange(full)).toEqual({ start: 1, end: 129 })
+  })
+
+  it('read step: no line range when after has none', () => {
+    expect(resolveSandboxReadLineRange(sandboxStep({ id: 'tool-sandbox__read@1' }))).toBeUndefined()
+    expect(resolveSandboxReadLineRange(sandboxStep({
+      id: 'tool-sandbox__read@1',
+      summary: { after: '读文件 test.py' },
+    }))).toBeUndefined()
+  })
+
+  it('read step: content is not expanded (only locate in workspace)', () => {
+    const step = sandboxStep({ id: 'tool-sandbox__read@1', detail: 'line1\nline2' })
+    expect(hasExpandableContent(step)).toBe(false)
+  })
+
+  it('cancelled exec: header trusts after; expand command from detail (lifecycle, not 已取消 text)', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@9',
+      label: '执行命令',
+      lifecycle: 'paused',
+      summary: { before: '准备执行命令', active: '正在执行 sleep 120', after: '用户取消' },
+      detail: 'sleep 120',
+      metadata: { cancellable: true },
+    })
+    expect(resolveStepHeaderText(step)).toBe('用户取消')
+    expect(extractSandboxExecCommand(step)).toBe('sleep 120')
+    expect(hasExpandableContent(step)).toBe(true)
+    expect(resolveStepExpandInner(step)).toBe('')
+  })
+
+  it('paused without after: header empty (no legacy active fallback)', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@10',
+      label: '调用工具 执行命令',
+      lifecycle: 'paused',
+      summary: { active: '已取消' },
+      detail: 'sleep 120',
+      metadata: { cancellable: true },
+    })
+    expect(resolveStepHeaderText(step)).toBe('')
+  })
+
+  it('strips /workspace/wt-xxx from write/edit/read header display', () => {
+    expect(stripWorkspaceCheckoutPrefixInText(
+      '正在写入 /workspace/wt-123466/docs/superpowers/specs/a.md',
+    )).toBe('正在写入 docs/superpowers/specs/a.md')
+    expect(sandboxDisplayPath('/workspace/wt-123466/docs/a.md')).toBe('docs/a.md')
+    const writing = sandboxStep({
+      id: 'tool-sandbox__write@1',
+      lifecycle: 'running',
+      label: '写文件',
+      summary: { active: '正在写入 /workspace/wt-123466/docs/a.md' },
+      metadata: { sandboxPath: '/workspace/wt-123466/docs/a.md' },
+    })
+    expect(resolveStepHeaderText(writing)).toBe('正在写入 docs/a.md')
+    expect(resolveSandboxFocusPath(writing)).toBe('/workspace/wt-123466/docs/a.md')
   })
 
   it('header shows backend summary as-is; focus uses metadata.sandboxPath', () => {
@@ -48,7 +141,7 @@ describe('sandbox tool timeline display', () => {
     })
     const header = resolveStepHeaderText(exec)
     expect(header.length).toBeLessThanOrEqual(43)
-    expect(header.endsWith('…')).toBe(true)
+    expect(header.endsWith('…')).toBe(false)
     expect(extractSandboxExecCommand(exec)).toBe(longCmd)
   })
 
@@ -109,5 +202,243 @@ describe('sandbox tool timeline display', () => {
     expect(isSandboxExecStep(step)).toBe(true)
     expect(extractSandboxExecCommand(step)).toBe('ls -la /skills')
     expect(resolveStepExpandInner(step)).toBe('total 0\ndrwxr-xr-x 1 root root 0 Jul 16 03:32 .')
+  })
+
+  it('edit step with metadata.editDiff is expandable even without detail', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__edit@1',
+      label: '调用工具 编辑文件',
+      summary: { after: 'hello.py +1 -1' },
+      detail: '',
+      metadata: {
+        sandboxPath: '/skills/demo/scripts/hello.py',
+        editDiff: {
+          path: '/skills/demo/scripts/hello.py',
+          contextRadius: 3,
+          lines: [
+            { kind: 'del', text: 'old', oldLine: 2, newLine: null },
+            { kind: 'add', text: 'new', oldLine: null, newLine: 2 },
+          ],
+        },
+      },
+    })
+    expect(resolveStepExpandInner(step)).toBe('')
+    expect(hasExpandableContent(step)).toBe(true)
+  })
+
+  it('HITL awaiting edit with metadata.editDiff is expandable', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__edit@2',
+      label: '调用工具 编辑文件',
+      lifecycle: 'running',
+      summary: { active: '待确认编辑 hello.py' },
+      detail: '',
+      metadata: {
+        hitlStatus: 'awaiting',
+        hitlToken: 'tok-edit-1',
+        sandboxPath: '/skills/demo/scripts/hello.py',
+        editDiff: {
+          path: '/skills/demo/scripts/hello.py',
+          lines: [{ kind: 'add', text: 'pending', oldLine: null, newLine: 1 }],
+        },
+      },
+    })
+    expect(hasExpandableContent(step)).toBe(true)
+  })
+
+  it('formatExecCommandHeader: keeps first token per pipe/and segment', () => {
+    expect(formatExecCommandHeader(
+      'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120',
+    )).toBe('find | head')
+    expect(formatExecCommandHeader('ls -la')).toBe('ls')
+    expect(formatExecCommandHeader('ls -la src 2>&1 || echo "src 目录不存在"')).toBe('ls || echo')
+    expect(formatExecCommandHeader('cd /tmp && ls -la')).toBe('cd && ls')
+    expect(formatExecCommandHeader('python3 -c "print(1 | 2)"')).toBe('python3')
+    expect(formatExecCommandHeader('echo "a | b" && echo c; sleep 1')).toBe('echo && echo ; sleep')
+  })
+
+  it('formatExecCommandHeaderText: think_summary 摘要前置 + 命令头', () => {
+    expect(formatExecCommandHeaderText(
+      'git status | grep src',
+      '提交一下改动',
+    )).toBe('提交一下改动 git | grep')
+    expect(formatExecCommandHeaderText(
+      'find /workspace -name "*.py" | head -20',
+      '',
+    )).toBe('find | head')
+    expect(formatExecCommandHeaderText('ls -la', '  ')).toBe('ls')
+    expect(formatExecCommandHeaderText('ls -la', undefined)).toBe('ls')
+  })
+
+  it('header for exec step: shows compact command head, keeps cancelled text', () => {
+    const exec = sandboxStep({
+      id: 'tool-sandbox__exec@3',
+      label: '执行命令',
+      lifecycle: 'done',
+      summary: { after: 'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120' },
+      detail: 'ok',
+    })
+    expect(extractSandboxExecCommand(exec)).toBe(
+      'find /workspace/wt-1b385872d4 -maxdepth 3 -type f | head -120',
+    )
+  })
+
+  it('HITL awaiting exec: command extracted from detail (running, command 已写入 detail)', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@11',
+      label: '执行命令',
+      lifecycle: 'running',
+      summary: { active: '等待用户确认执行写操作' },
+      detail: 'ls -la /workspace',
+      metadata: { cancellable: true, hitlStatus: 'awaiting', hitlToken: 'tok-exec-1' },
+    })
+    expect(extractSandboxExecCommand(step)).toBe('ls -la /workspace')
+  })
+
+  it('HITL awaiting exec without detail falls back to undefined (no stdout as command)', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@12',
+      label: '执行命令',
+      lifecycle: 'running',
+      summary: { active: '等待用户确认执行写操作' },
+      detail: '',
+      metadata: { cancellable: true, hitlStatus: 'awaiting', hitlToken: 'tok-exec-2' },
+    })
+    expect(extractSandboxExecCommand(step)).toBeUndefined()
+  })
+
+  it('done exec: stdout in detail is never treated as the command', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@13',
+      label: '执行命令',
+      lifecycle: 'done',
+      summary: { after: 'echo hello' },
+      detail: 'hello\n',
+      metadata: {},
+    })
+    expect(extractSandboxExecCommand(step)).toBe('echo hello')
+  })
+
+  it('running exec: command extracted from active summary (正在执行 {command})', () => {
+    const step = sandboxStep({
+      id: 'tool-sandbox__exec@14',
+      label: '执行命令',
+      lifecycle: 'running',
+      summary: { active: '正在执行 ls -la /workspace' },
+      detail: '',
+      metadata: { cancellable: true },
+    })
+    expect(extractSandboxExecCommand(step)).toBe('ls -la /workspace')
+  })
+})
+
+describe('sandboxToolKind 按用途细分（组文案决定）', () => {
+  it('查看类：read / glob / grep', () => {
+    expect(sandboxToolKind('sandbox__read')).toBe('view')
+    expect(sandboxToolKind('sandbox__glob')).toBe('view')
+    expect(sandboxToolKind('sandbox__grep')).toBe('view')
+  })
+
+  it('修改类：write / edit', () => {
+    expect(sandboxToolKind('sandbox__write')).toBe('edit')
+    expect(sandboxToolKind('sandbox__edit')).toBe('edit')
+  })
+
+  it('查找类：webfetch / websearch', () => {
+    expect(sandboxToolKind('sandbox__webfetch')).toBe('fetch')
+    expect(sandboxToolKind('sandbox__websearch')).toBe('fetch')
+  })
+
+  it('其余 sandbox 工具归执行类', () => {
+    expect(sandboxToolKind('sandbox__exec')).toBe('exec')
+    expect(sandboxToolKind('sandbox__unknown')).toBe('exec')
+  })
+
+  it('非 sandbox 工具返回 null', () => {
+    expect(sandboxToolKind('sdk__sunshine-oa__list_oa_tasks')).toBeNull()
+    expect(sandboxToolKind(undefined)).toBeNull()
+  })
+})
+
+describe('resolveRunningChildStepBody · 运行中当前子步正文', () => {
+  function child(partial: Partial<ProcessingStep> & { id: string; phase: string }): ProcessingStep {
+    return {
+      lifecycle: 'done',
+      ...partial,
+    }
+  }
+
+  it('无 subSteps 返回空', () => {
+    const step: ProcessingStep = { id: 'worker-t1-1', phase: 'worker', lifecycle: 'running' }
+    expect(resolveRunningChildStepBody(step)).toBe('')
+  })
+
+  it('running think 子步有 reasoning 时返回思考正文（单行截断）', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'think-2', phase: 'think', lifecycle: 'running', reasoning: '先核对文档\n再比对配置项' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('先核对文档 再比对配置项')
+  })
+
+  it('running think 无正文回退「深度思考」', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'running',
+      subSteps: [child({ id: 'think-2', phase: 'think', lifecycle: 'running' })],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('深度思考')
+  })
+
+  it('running sandbox exec 无正文回退「执行命令」', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'tool-sandbox__exec@1', phase: 'tool', label: '执行命令', lifecycle: 'running' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('执行命令')
+  })
+
+  it('generate（最后正文）阶段固定显示「正在收尾回复」', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'think-3', phase: 'think', lifecycle: 'done', reasoning: '已完成调研' }),
+        child({ id: 'generate', phase: 'generate', lifecycle: 'running', reasoning: '正在撰写最终答复…' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('正在收尾回复')
+  })
+
+  it('跳过 tasks/intent/skill 脚手架步，取首个动态子步正文', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'running' }),
+        child({ id: 'think-1', phase: 'think', lifecycle: 'running', reasoning: '分析问题要点' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('分析问题要点')
+  })
+
+  it('仅脚手架步 running 时返回空（不再显示「任务清单」）', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      subSteps: [
+        child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'running' }),
+        child({ id: 'intent', phase: 'intent', label: '意图理解', lifecycle: 'done' }),
+      ],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('')
+  })
+
+  it('卡非 running（pending/done）返回空', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'done',
+      subSteps: [child({ id: 'think', phase: 'think', label: '深度思考', lifecycle: 'done' })],
+    }
+    expect(resolveRunningChildStepBody(step)).toBe('')
   })
 })

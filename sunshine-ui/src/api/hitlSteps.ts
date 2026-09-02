@@ -12,28 +12,31 @@ export interface HitlConfirmationPayload {
   expiresAt: number
 }
 
+/** 无 pending 时的共享空数组：避免每次归一化都新建引用，
+ * 保证 OperationStack 在无 HITL 场景下传给子组件的 pending-list 引用稳定、可跳过更新 */
+export const EMPTY_PENDING_HITL_LIST: HitlConfirmationPayload[] = []
+
 export function normalizePendingHitlList(
   pending?: HitlConfirmationPayload | HitlConfirmationPayload[] | null,
 ): HitlConfirmationPayload[] {
-  if (!pending) return []
+  if (!pending) return EMPTY_PENDING_HITL_LIST
   return Array.isArray(pending) ? pending : [pending]
 }
 
 export function getPendingHitlConfirmations(
-  msg?: { pendingHitlConfirmation?: HitlConfirmationPayload; pendingHitlConfirmations?: HitlConfirmationPayload[] } | null,
+  msg?: { pendingHitlConfirmations?: HitlConfirmationPayload[] } | null,
 ): HitlConfirmationPayload[] {
   if (!msg) return []
-  if (msg.pendingHitlConfirmations?.length) return msg.pendingHitlConfirmations.map(p => ({ ...p }))
-  if (msg.pendingHitlConfirmation) return [{ ...msg.pendingHitlConfirmation }]
-  return []
+  return msg.pendingHitlConfirmations?.length
+    ? msg.pendingHitlConfirmations.map(p => ({ ...p }))
+    : []
 }
 
 export function setPendingHitlConfirmations(
-  msg: { pendingHitlConfirmation?: HitlConfirmationPayload; pendingHitlConfirmations?: HitlConfirmationPayload[] },
+  msg: { pendingHitlConfirmations?: HitlConfirmationPayload[] },
   list: HitlConfirmationPayload[] | undefined,
 ): void {
   msg.pendingHitlConfirmations = list?.length ? list.map(p => ({ ...p })) : undefined
-  msg.pendingHitlConfirmation = undefined
 }
 
 export function upsertPendingHitlConfirmationList(
@@ -90,17 +93,30 @@ export function isHitlAwaiting(step: ProcessingStep): boolean {
 }
 
 export function isToolStepId(stepId: string): boolean {
-  return stepId.startsWith('tool-') || stepId.startsWith('tool@')
+  return stepId.startsWith('tool-') || stepId.startsWith('tool@') || isRagStepId(stepId)
 }
 
-/** Plan workflow 业务 node 步（含 tool 写操作 HITL，id 为 node-{id}） */
-export function isPlanWorkflowBizNode(step: ProcessingStep): boolean {
+/** 去掉 {@code @{epochMs}} 调用后缀，还原 base stepId（与后端 ToolStepIds.stripInvokeSuffix 对齐） */
+function stripInvokeSuffix(stepId: string): string {
+  const at = stepId.lastIndexOf('@')
+  if (at <= 0) return stepId
+  if (!/^\d+$/.test(stepId.slice(at + 1))) return stepId
+  return stepId.slice(0, at)
+}
+
+/** RAG 检索知识库工具步（id 形如 {@code rag@{epochMs}}） */
+export function isRagStepId(stepId: string): boolean {
+  return stripInvokeSuffix(stepId) === 'rag'
+}
+
+/** Plan DAG 业务 node 步（含 tool 写操作 HITL，id 为 node-{id}） */
+export function isPlanBizNode(step: ProcessingStep): boolean {
   return step.id.startsWith('node-') && step.id !== 'node-answer'
 }
 
-/** 可承载 HITL 的步骤：ReAct tool 步或 Plan workflow 业务 node */
+/** 可承载 HITL 的步骤：ReAct tool 步或 Plan DAG 业务 node */
 export function isHitlCarrierStep(step: ProcessingStep): boolean {
-  return isHitlToolStep(step) || isPlanWorkflowBizNode(step)
+  return isHitlToolStep(step) || isPlanBizNode(step)
 }
 
 /** ReAct 主 timeline 工具步（id 或 phase 任一命中） */
@@ -132,7 +148,7 @@ function toolIdFromStepId(stepId: string): string | undefined {
 }
 
 function buildPendingFromPlanNode(step: ProcessingStep): HitlConfirmationPayload | undefined {
-  if (!isPlanWorkflowBizNode(step)) return undefined
+  if (!isPlanBizNode(step)) return undefined
   const awaiting = isHitlAwaiting(step) || isHitlSummaryAwaiting(step)
   if (!awaiting) return undefined
   const token = resolveHitlToken(step) ?? ''
@@ -225,7 +241,7 @@ export function resolvePendingHitlForStep(
     if (isToolStepId(step.id)) {
       return step.id.startsWith(toolStepIdPrefix(p.toolId.trim()))
     }
-    if (isPlanWorkflowBizNode(step)) {
+    if (isPlanBizNode(step)) {
       return p.toolId.trim() === (step.metadata?.hitlToolDisplayName?.trim() || formatStepLabel(step))
     }
     return false
@@ -255,14 +271,6 @@ export function syncPendingHitlListFromSteps(steps: ProcessingStep[] | undefined
     out.push(pending)
   })
   return out
-}
-
-/** step upsert 后扫描主 timeline 工具步与 agent 节点 subSteps，同步 pending（兼容旧 API） */
-export function syncPendingHitlFromSteps(
-  steps: ProcessingStep[] | undefined,
-): HitlConfirmationPayload | undefined {
-  const list = syncPendingHitlListFromSteps(steps)
-  return list.length ? list[list.length - 1] : undefined
 }
 
 function mergePendingLists(
@@ -310,14 +318,17 @@ export function hasHitlPanel(step: ProcessingStep): boolean {
 /** 时间线中是否存在待用户操作的 HITL 步（ReAct 主 timeline 或 agent 节点 subSteps） */
 export function stepsHaveAwaitingHitl(steps: ProcessingStep[] | undefined): boolean {
   if (!steps?.length) return false
-  if (steps.some(s => isPlanWorkflowBizNode(s) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
+  if (steps.some(s => isPlanBizNode(s) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
     return true
   }
   if (steps.some(s => isToolStepId(s.id) && (isHitlAwaiting(s) || isHitlSummaryAwaiting(s)))) {
     return true
   }
   for (const node of steps) {
-    if (!node.id.startsWith('node-') || !node.subSteps?.length) continue
+    if (!node.subSteps?.length) continue
+    if (!node.id.startsWith('node-') && !node.id.startsWith('subagent-') && node.phase !== 'subagent') {
+      continue
+    }
     if (node.subSteps.some(s => isHitlAwaiting(s) || isHitlSummaryAwaiting(s))) return true
   }
   return false
@@ -341,7 +352,7 @@ export function resolveHitlUiKey(
   if (!steps?.length) return ''
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (isPlanWorkflowBizNode(s) && isHitlSummaryAwaiting(s)) return s.id
+    if (isPlanBizNode(s) && isHitlSummaryAwaiting(s)) return s.id
     if (isToolStepId(s.id) && isHitlSummaryAwaiting(s)) return s.id
   }
   return ''
@@ -404,13 +415,6 @@ export function formatHitlParamsSummary(raw?: string | null, maxValueLen = 120):
   return parseHitlParamsSummary(raw, maxValueLen)
     .map(({ key, value }) => `${key}=${value}`)
     .join(', ')
-}
-
-export function resolveHitlHint(step: ProcessingStep): string {
-  if (step.summary?.active?.trim()) {
-    return step.summary.active.trim()
-  }
-  return ''
 }
 
 function isRunningStep(step: ProcessingStep): boolean {
@@ -557,7 +561,7 @@ function findHitlTargetPlanNodeIndex(
 ): number {
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (!isPlanWorkflowBizNode(s)) continue
+    if (!isPlanBizNode(s)) continue
     if (attachMode) {
       const lc = s.lifecycle
       if (lc !== 'running' && lc !== 'paused' && lc !== 'pending') continue
@@ -569,7 +573,7 @@ function findHitlTargetPlanNodeIndex(
   if (attachMode) return -1
   for (let i = steps.length - 1; i >= 0; i--) {
     const s = steps[i]
-    if (!isPlanWorkflowBizNode(s)) continue
+    if (!isPlanBizNode(s)) continue
     if (isHitlResolved(s)) continue
     if (s.lifecycle === 'done' || s.lifecycle === 'skipped') continue
     return i
@@ -654,6 +658,14 @@ function findAgentNodeStep(
   steps: ProcessingStep[] | undefined,
   nodeId: string,
 ): ProcessingStep | undefined {
+  // ReAct spawn_subagent：抽屉用 step.id（subagent-{runId}）作 node.id
+  if (nodeId.startsWith('subagent-')) {
+    return steps?.find(s => s.id === nodeId)
+  }
+  // Planner-Executor worker：抽屉用 step.id（worker-{taskId}）作 node.id
+  if (nodeId.startsWith('worker-')) {
+    return steps?.find(s => s.id === nodeId)
+  }
   const top = steps?.find(s => s.id === `node-${nodeId}`)
   if (top) return top
   const suffix = `node-${nodeId}`
@@ -671,21 +683,6 @@ function findAgentNodeStep(
     }
   }
   return best
-}
-
-/** 子 Agent 执行过程：保证 HITL metadata 落在 tool 子步，供 Plan 抽屉确认框 */
-export function resolveAgentSubStepsForDisplay(
-  parent: ProcessingStep | undefined,
-  pending?: HitlConfirmationPayload | HitlConfirmationPayload[],
-): ProcessingStep[] {
-  if (!parent?.subSteps?.length) return []
-  let node = relocateAgentNodeHitl(parent)
-  const list = normalizePendingHitlList(pending)
-  if (list.length) {
-    const merged = reapplyPendingHitlList([node], list)
-    node = merged[0] ?? node
-  }
-  return node.subSteps ?? []
 }
 
 /** agent 节点误挂 HITL 时归位到 subSteps 内 tool 步（含 loop 内 i{n}-node-*） */

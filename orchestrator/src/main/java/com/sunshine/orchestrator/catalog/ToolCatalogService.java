@@ -1,10 +1,12 @@
 package com.sunshine.orchestrator.catalog;
 
 import com.sunshine.common.tool.ToolCatalogEntry;
+import com.sunshine.orchestrator.agent.AwaitToolRunTool;
 import com.sunshine.orchestrator.agent.RagTool;
 import com.sunshine.orchestrator.client.ToolManagerClient;
 import com.sunshine.orchestrator.client.ToolSummarizeOutputResponse;
 import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.processing.AwaitToolRunLabels;
 import com.sunshine.orchestrator.processing.StepLabels;
 import com.sunshine.orchestrator.sandbox.SandboxHitlPolicy;
 import com.sunshine.orchestrator.sandbox.SandboxIds;
@@ -32,6 +34,8 @@ public class ToolCatalogService {
     private final AgentSandboxProperties sandboxProperties;
     private volatile Map<String, ToolCatalogEntry> entries = Map.of();
     private volatile Set<String> defaultEnabledIds = Set.of();
+    /** catalog 版本号：refresh 时自增，供 HarnessAgent 指纹缓存失效（P2-1） */
+    private volatile long catalogVersion = 0L;
 
     public ToolCatalogService(ToolManagerClient toolManagerClient, AgentSandboxProperties sandboxProperties) {
         this.toolManagerClient = toolManagerClient;
@@ -53,8 +57,14 @@ public class ToolCatalogService {
         this.defaultEnabledIds = toolManagerClient.fetchCatalog(DEFAULT_TENANT, true).stream()
                 .map(ToolCatalogEntry::id)
                 .collect(Collectors.toUnmodifiableSet());
+        this.catalogVersion++;
         log.info("[ToolCatalogService] catalog loaded: {} (enabled={})",
                 String.join(", ", entries.keySet()), String.join(", ", defaultEnabledIds));
+    }
+
+    /** catalog 版本号（refresh 自增）；HarnessAgent 指纹缓存 key 组成部分 */
+    public long catalogVersion() {
+        return catalogVersion;
     }
 
     /** 租户可见且启用的工具 id 池（ToolSet 白名单求交用） */
@@ -75,9 +85,28 @@ public class ToolCatalogService {
         return Optional.ofNullable(entries.get(toolId));
     }
 
+    /** 平台内建元工具中文名：不经 tool-service catalog（Planner 元工具仅注册进 toolkit） */
+    private static final Map<String, String> BUILTIN_TOOL_DISPLAY_NAMES = Map.of(
+            "dispatch_worker", "调度执行单元",
+            "plan_submit", "提交调度计划",
+            "self_assess", "评估进展",
+            "task_status", "查询任务状态",
+            "async_status", "查询异步任务状态",
+            "await_tool_run", "等待结果",
+            "sunshine_session_search", "检索历史正文",
+            "sunshine_search_skills", "加载技能"
+    );
+
     public String displayName(String toolId) {
+        String builtin = BUILTIN_TOOL_DISPLAY_NAMES.get(toolId);
+        if (builtin != null) {
+            return builtin;
+        }
         if (RagTool.NAME.equals(toolId)) {
             return "检索知识库";
+        }
+        if (AwaitToolRunTool.NAME.equals(toolId)) {
+            return AwaitToolRunLabels.label();
         }
         if (sandboxProperties.isSandboxTool(toolId)) {
             return sandboxProperties.displayName(toolId);

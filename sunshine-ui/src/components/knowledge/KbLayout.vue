@@ -171,7 +171,17 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+}
+
+/* 长知识库名时收缩为省略号，避免把右侧「应用配置」挤出屏幕 */
+.page-header-context :deep(.kb-dropdown-root.variant-block) {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: min(240px, 26vw);
 }
 
 .context-label {

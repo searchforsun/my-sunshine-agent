@@ -1,5 +1,6 @@
 import type { ChatMessage } from './chat'
 import { hydrateStreamError, applyStreamErrorFromText } from './streamError'
+import { stampTimelineEnded, stampTimelineStarted } from './timelineMessageClock'
 import {
   saveActiveGeneration,
   updateLastSeq,
@@ -15,7 +16,7 @@ import {
   setPendingHitlConfirmations,
   upsertPendingHitlConfirmationList,
 } from './hitlSteps'
-import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId } from './processingSteps'
+import { upsertStep, applyStepDelta, findRunningStepId, isWorkflowNodeStepId, hasActiveStep, settleRunningSteps } from './processingSteps'
 import {
   reactivateOtherPausedWorkflowNodes,
   shouldIgnoreResumeStepReplay,
@@ -45,7 +46,8 @@ import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceR
 import { resolveSandboxWorkspaceRefreshScope } from './sandboxWorkspaceRefreshPolicy'
 import { appendChunk, getOrCreateSession, type SessionState } from './chatSessionRegistry'
 import {
-  bumpAssistantMessage,
+  scheduleAssistantMessageBump,
+  flushAssistantMessageBump,
   updateNodeStepContent,
 } from './chatSessionMutations'
 
@@ -81,9 +83,7 @@ export async function consumeChatSseStream(
     const { done, value } = await reader.read()
     if (value) {
       buf += decoder.decode(value, { stream: true })
-    }
-
-    let { events, pending } = drainSseBuffer(done && buf.trim() ? `${buf}\n\n` : buf)
+    }    let { events, pending } = drainSseBuffer(done && buf.trim() ? `${buf}\n\n` : buf)
     buf = pending
 
     for (const rawEvent of events) {
@@ -132,23 +132,36 @@ export async function consumeChatSseStream(
           const last = s.messages[s.messages.length - 1]
           if (last?.role === 'assistant') {
             last.status = 'completed'
+            stampTimelineEnded(last)
+            // 消息级终态收口：后端 done 快照若在途丢失，残余 running 工具步会永续 live 计时。
+            // completed 是权威终态信号，此时的 endedAt 即消息终止时刻，统一落定避免「已完成消息耗时仍走表」。
+            if (last.steps?.length && hasActiveStep(last.steps)) {
+              last.steps = settleRunningSteps(last.steps, last.timelineEndedAt ?? Date.now())
+            }
             setPendingHitlConfirmations(last, undefined)
             normalizeRestoredInterleavedContent(last)
             notifyCompletedIfNeeded(streamConversationId ?? s.id, last)
+            scheduleAssistantMessageBump(s)
           }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'interrupted') {
           const last = s.messages[s.messages.length - 1]
-          if (last?.role === 'assistant') last.status = 'interrupted'
+          if (last?.role === 'assistant') {
+            last.status = 'interrupted'
+            stampTimelineEnded(last)
+            scheduleAssistantMessageBump(s)
+          }
         }
         if (parsed.meta.type === 'message' && parsed.meta.status === 'failed') {
           const last = s.messages[s.messages.length - 1]
           if (last?.role === 'assistant') {
             last.status = 'failed'
+            stampTimelineEnded(last)
             hydrateStreamError(last)
             if (!last.streamError) {
               last.streamError = '可点击下方继续生成重试'
             }
+            scheduleAssistantMessageBump(s)
           }
         }
         continue
@@ -159,6 +172,17 @@ export async function consumeChatSseStream(
         const lastMsg = s.messages[s.messages.length - 1]
         if (lastMsg?.role === 'assistant') {
           applyStreamErrorFromText(lastMsg, parsed.text)
+        }
+        hooks.onProgress?.(s.id)
+        continue
+      }
+
+      if (parsed.kind === 'usage') {
+        if (eventSeq !== null) updateLastSeq(eventSeq)
+        const lastMsg = s.messages[s.messages.length - 1]
+        if (lastMsg?.role === 'assistant') {
+          lastMsg.usage = parsed.usage
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -187,6 +211,7 @@ export async function consumeChatSseStream(
               ? appendChunk(prev, parsed.text)
               : prev + parsed.text
           }
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -235,7 +260,7 @@ export async function consumeChatSseStream(
           if (refreshScope) {
             requestSandboxWorkspaceRefresh(streamConversationId ?? s.id, refreshScope)
           }
-          bumpAssistantMessage(s)
+          flushAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -261,9 +286,6 @@ export async function consumeChatSseStream(
             }
           }
           lastMsg.steps = applyStepDelta(lastMsg.steps ?? [], delta)
-          if (delta.stepId.startsWith('expert-')) {
-            bumpAssistantMessage(s)
-          }
           if (delta.stepId === 'node-answer' && (delta.channel === 'result' || delta.channel === 'output')) {
             syncPlanAnswerContentFromStep(lastMsg)
           }
@@ -275,6 +297,8 @@ export async function consumeChatSseStream(
               ? appendChunk(prev, delta.text)
               : prev + delta.text
           }
+          // 原地改 step 字段后需 bump 才驱动 OperationStack（timelineRevision）；80ms 节流
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -304,7 +328,7 @@ export async function consumeChatSseStream(
           setPendingHitlConfirmations(lastMsg, synced.pending)
           stripPlanDrawerLeakFromMessage(lastMsg)
           notifyHitlIfNeeded(streamConversationId ?? s.id, lastMsg)
-          bumpAssistantMessage(s)
+          flushAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -323,8 +347,9 @@ export async function consumeChatSseStream(
           }
           if (!lastMsg.status || lastMsg.status === 'interrupted') {
             lastMsg.status = 'streaming'
+            stampTimelineStarted(lastMsg)
           }
-          bumpAssistantMessage(s)
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -341,7 +366,7 @@ export async function consumeChatSseStream(
           } else {
             endContentSegment(lastMsg, parsed.segmentId)
           }
-          bumpAssistantMessage(s)
+          scheduleAssistantMessageBump(s)
         }
         hooks.onProgress?.(s.id)
         continue
@@ -369,13 +394,21 @@ export async function consumeChatSseStream(
           }
           if (!lastMsg.status || lastMsg.status === 'interrupted') {
             lastMsg.status = 'streaming'
+            stampTimelineStarted(lastMsg)
           }
           stripPlanDrawerLeakFromMessage(lastMsg)
-          bumpAssistantMessage(s)
+          scheduleAssistantMessageBump(s)
         }
         hooks.onChunk?.(s.id, parsed.text)
         hooks.onProgress?.(s.id)
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        // resume 续连会回放已完成/积压的历史事件（量大），逐 chunk 等 rAF 会拖慢 catch-up，
+        // 使任务已终态时 UI 仍长时间停在「正在处理」；bump 已有 80ms 节流兜底 UI 刷新，
+        // 故 resume 场景跳过 rAF（实时流式仍在跑时也只是消费更快，不影响正确性）
+        // 页面隐藏时 rAF 被浏览器挂起：仍逐 chunk 等 rAF 会卡住消费循环 → 停止读网络 →
+        // TCP 背压使服务端 SSE 写阻塞，表现为后台标签页流式停滞；隐藏时无渲染节奏需求，直接消费
+        if (!options.resume && document.visibilityState === 'visible') {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        }
         continue
       }
 
@@ -385,16 +418,26 @@ export async function consumeChatSseStream(
       if (lastMsg?.role === 'assistant') {
         if (!lastMsg.status || lastMsg.status === 'interrupted') {
           lastMsg.status = 'streaming'
+          stampTimelineStarted(lastMsg)
         }
-        bumpAssistantMessage(s)
+        scheduleAssistantMessageBump(s)
       }
 
       hooks.onProgress?.(s.id)
       continue
     }
 
-    if (events.length > 0) await new Promise(r => setTimeout(r, 0))
+    // 页面隐藏时跳过让出：chunk 分支已因 rAF 挂起跳过等待，此处若仍 await setTimeout，
+    // Chrome 会把后台 tab 的 timer 节流到 ≥1s（隐藏超 5 分钟更达 1 分钟/次），每批事件
+    // 都要等一次节流 → 消费速率低于生产速率 → 网络积压 → TCP 背压使服务端 SSE 写阻塞，
+    // 表现为后台 tab 流式停滞。隐藏时无渲染节奏需求，直接消费即可快速 catch-up。
+    if (events.length > 0 && document.visibilityState === 'visible') {
+      await new Promise(r => setTimeout(r, 0))
+    }
 
-    if (done) break
+    if (done) {
+      break
+    }
   }
+  flushAssistantMessageBump(s)
 }

@@ -9,10 +9,18 @@ import {
 import { setSandboxDrawerLayout } from './sandboxDrawerBridge'
 
 export interface SandboxWorkspaceDrawerPayload {
-  conversationId: string
-  /** 打开时聚焦的文件路径（可选） */
+  conversationId?: string
   focusPath?: string
+  /** 打开后定位到文件起始行（read 步骤 L 范围起点）；不传则默认顶部 */
+  focusLine?: number
+  /** 定位行范围终点（正文 `path` L1-20 点击）；不传则仅起始行单行定位 */
+  focusLineEnd?: number
+  /** 进入「改动」diff 模式，展示该文件的 diff 详情（优先级高于 focusPath） */
+  diffPath?: string
 }
+
+/** 任务工作区内容 tab：文件树 / 改动 */
+export type SandboxWorkspaceTab = 'files' | 'diff'
 
 /** 与 Chat / 节点抽屉统一 */
 export const DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
@@ -20,7 +28,7 @@ export const DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
 export const DRAWER_DEFAULT_WIDTH = 520
 export { CHAT_CONTENT_MIN_WIDTH, PANE_MIN_WIDTH }
 export const TREE_MIN_WIDTH = 160
-export const TREE_MAX_WIDTH = 360
+export const TREE_MAX_WIDTH = 480
 export const TREE_DEFAULT_WIDTH = 220
 /** 预览区最小宽度；缩窄抽屉时树宽不超过 drawer - PREVIEW_MIN */
 export const PREVIEW_MIN_WIDTH = 240
@@ -48,6 +56,13 @@ const state = reactive({
   open: false,
   conversationId: '' as string,
   focusPath: '' as string,
+  focusLine: 0 as number,
+  /** 定位行范围终点（0 = 仅单行定位） */
+  focusLineEnd: 0 as number,
+  /** 任务工作区内容 tab：文件树 / 改动 diff */
+  tab: 'files' as SandboxWorkspaceTab,
+  /** diff 视图初始打开的文件（空 = 改动列表） */
+  diffPath: '' as string,
 })
 
 const savedWidth = ref(loadSavedWidth())
@@ -242,22 +257,68 @@ export function useSandboxWorkspaceDrawer() {
   }
 
   function open(payload: SandboxWorkspaceDrawerPayload) {
-    if (!payload.conversationId?.trim()) return
-    state.conversationId = payload.conversationId.trim()
+    state.conversationId = payload.conversationId?.trim() ?? ''
     state.focusPath = payload.focusPath?.trim() ?? ''
+    state.focusLine = typeof payload.focusLine === 'number' && payload.focusLine > 0 ? payload.focusLine : 0
+    state.focusLineEnd = typeof payload.focusLineEnd === 'number' && payload.focusLineEnd >= state.focusLine
+      ? payload.focusLineEnd
+      : state.focusLine
+    state.diffPath = payload.diffPath?.trim() ?? ''
+    state.tab = state.diffPath ? 'diff' : 'files'
+    if (state.tab === 'diff') {
+      // diff 模式下定位到改动视图，不需要文件定位参数
+      state.focusPath = ''
+      state.focusLine = 0
+      state.focusLineEnd = 0
+    }
     state.open = true
+  }
+
+  /** 切换任务工作区内容 tab：文件树 / 改动 */
+  function switchTab(tab: SandboxWorkspaceTab) {
+    if (state.tab === tab) return
+    state.tab = tab
+    if (tab === 'files') state.diffPath = ''
+  }
+
+  /** 从改动视图跳转文件区：切回文件树并定位到目标文件（打开预览） */
+  function openFileFromDiff(path: string) {
+    state.tab = 'files'
+    state.diffPath = ''
+    state.focusPath = path
+    state.focusLine = 0
+    state.focusLineEnd = 0
   }
 
   function close() {
     state.open = false
     state.conversationId = ''
     state.focusPath = ''
+    state.focusLine = 0
+    state.focusLineEnd = 0
+    state.tab = 'files'
+    state.diffPath = ''
+  }
+
+  /** 退出「改动」diff 视图，回到文件树浏览 */
+  function closeDiff() {
+    switchTab('files')
+  }
+
+  function updateConversationId(convId: string) {
+    if (state.open && convId) {
+      state.conversationId = convId
+    }
   }
 
   return {
     state,
     open,
+    switchTab,
+    openFileFromDiff,
     close,
+    closeDiff,
+    updateConversationId,
     compareMode,
     drawerWidth,
     drawerMaxWidth,

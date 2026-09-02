@@ -1,5 +1,7 @@
 package com.sunshine.orchestrator.plan;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.sunshine.common.workflow.WorkflowNodeType;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayDeque;
@@ -32,7 +34,7 @@ public final class PlanExecutionSchedule {
     /** 排他网关：运行时按边条件选中一臂并执行 pathNodeIds */
     public record ExclusiveArm(
             String targetNodeId,
-            PlanEdgeCondition condition,
+            PlanEdgeConditionGroup condition,
             boolean isDefault,
             List<String> pathNodeIds) {
         public ExclusiveArm {
@@ -54,9 +56,9 @@ public final class PlanExecutionSchedule {
     }
 
     /** 并行拓扑校验；无 join 时返回 null */
-    public static String validateParallelTopology(PlanJson plan) {
+    public static PlanValidationIssue validateParallelTopology(PlanJson plan) {
         if (plan == null || plan.nodes().isEmpty()) {
-            return "nodes 为空";
+            return PlanValidationIssue.of(PlanValidationCode.NODES_EMPTY, "nodes 为空");
         }
         Map<String, PlanNode> nodes = plan.nodesById();
         Map<String, List<String>> out = outAdj(plan);
@@ -71,36 +73,52 @@ public final class PlanExecutionSchedule {
         for (String joinId : joinIds) {
             List<String> preds = in.getOrDefault(joinId, List.of());
             if (preds.size() < 2) {
-                return "join 节点 " + joinId + " 入度须 ≥ 2";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.PARALLEL_JOIN_IN,
+                        "join 节点 " + joinId + " 入度须 ≥ 2");
             }
             List<String> afterJoin = out.getOrDefault(joinId, List.of());
             if (afterJoin.size() != 1) {
-                return "join 节点 " + joinId + " 出度须为 1";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.PARALLEL_TOPOLOGY,
+                        "join 节点 " + joinId + " 出度须为 1");
             }
             String forkId = findFanOutFork(preds, in, nodes);
             if (!StringUtils.hasText(forkId)) {
-                return "join 节点 " + joinId + " 缺少公共 fan-out 分叉点";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.PARALLEL_TOPOLOGY,
+                        "join 节点 " + joinId + " 缺少公共 fan-out 分叉点");
             }
             List<String> forkOut = out.getOrDefault(forkId, List.of());
             if (forkOut.size() < 2) {
-                return "并行分叉点 " + forkId + " 出度须 ≥ 2";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.PARALLEL_TOPOLOGY,
+                        "并行分叉点 " + forkId + " 出度须 ≥ 2");
             }
             for (String head : forkOut) {
                 PlanNode headNode = nodes.get(head);
                 if (headNode == null) {
-                    return "并行分支头节点不存在: " + head;
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.PARALLEL_TOPOLOGY,
+                            "并行分支头节点不存在: " + head);
                 }
                 if ("join".equals(headNode.type())) {
-                    return "并行分支头不能为 join: " + head;
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.PARALLEL_TOPOLOGY,
+                            "并行分支头不能为 join: " + head);
                 }
                 String convergingJoin = singlePathJoin(head, out, nodes, new HashSet<>());
                 if (!joinId.equals(convergingJoin)) {
-                    return "并行分支 " + head + " 须汇合至 join " + joinId;
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.PARALLEL_TOPOLOGY,
+                            "并行分支 " + head + " 须汇合至 join " + joinId);
                 }
             }
             for (String pred : preds) {
                 if (!reachableFromFork(forkId, pred, out, nodes, joinId)) {
-                    return "join 前驱 " + pred + " 不在分叉点 " + forkId + " 的并行子树内";
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.PARALLEL_TOPOLOGY,
+                            "join 前驱 " + pred + " 不在分叉点 " + forkId + " 的并行子树内");
                 }
             }
         }
@@ -108,9 +126,9 @@ public final class PlanExecutionSchedule {
     }
 
     /** 排他网关边条件校验；通过返回 null */
-    public static String validateExclusiveTopology(PlanJson plan) {
+    public static PlanValidationIssue validateExclusiveTopology(PlanJson plan) {
         if (plan == null || plan.nodes().isEmpty()) {
-            return "nodes 为空";
+            return PlanValidationIssue.of(PlanValidationCode.NODES_EMPTY, "nodes 为空");
         }
         Map<String, PlanNode> nodes = plan.nodesById();
         Map<String, List<PlanEdge>> outEdges = outEdges(plan);
@@ -120,18 +138,24 @@ public final class PlanExecutionSchedule {
             }
             List<PlanEdge> edges = outEdges.getOrDefault(node.id(), List.of());
             if (edges.size() < 2) {
-                return "exclusive-gateway 节点 " + node.id() + " 出度须 ≥ 2";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.EXCLUSIVE_OUT,
+                        "exclusive-gateway 节点 " + node.id() + " 出度须 ≥ 2");
             }
             long defaults = edges.stream().filter(PlanEdge::isDefault).count();
             if (defaults != 1) {
-                return "exclusive-gateway 节点 " + node.id() + " 须恰好 1 条 default 出边";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.EXCLUSIVE_DEFAULT,
+                        "exclusive-gateway 节点 " + node.id() + " 须恰好 1 条 default 出边");
             }
             for (PlanEdge edge : edges) {
                 if (edge.isDefault()) {
                     continue;
                 }
                 if (!edge.hasCondition()) {
-                    return "exclusive-gateway 出边 " + edge.from() + "→" + edge.to() + " 须配置 condition 或标记 default";
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.EXCLUSIVE_TOPOLOGY,
+                            "exclusive-gateway 出边 " + edge.from() + "→" + edge.to() + " 须配置 condition 或标记 default");
                 }
             }
         }
@@ -141,19 +165,21 @@ public final class PlanExecutionSchedule {
             }
             PlanNode from = nodes.get(edge.from());
             if (from == null || !"exclusive-gateway".equals(from.type())) {
-                return "边 " + edge.from() + "→" + edge.to() + " 的 condition/default 仅允许 exclusive-gateway 出边";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.EXCLUSIVE_TOPOLOGY,
+                        "边 " + edge.from() + "→" + edge.to() + " 的 condition/default 仅允许 exclusive-gateway 出边");
             }
         }
         return null;
     }
 
     private static final Set<String> ON_MAX_ITERATIONS = Set.of("fail_fast", "exit", "fallback_react");
-    private static final Set<String> LOOP_BODY_TYPES = Set.of("rag", "tool", "agent");
+    private static final Set<String> LOOP_BODY_TYPES = WorkflowNodeType.loopBodyTypeIds();
 
     /** loop 容器拓扑校验；通过返回 null */
-    public static String validateLoopTopology(PlanJson plan) {
+    public static PlanValidationIssue validateLoopTopology(PlanJson plan) {
         if (plan == null || plan.nodes().isEmpty()) {
-            return "nodes 为空";
+            return PlanValidationIssue.of(PlanValidationCode.NODES_EMPTY, "nodes 为空");
         }
         Map<String, PlanNode> nodes = plan.nodesById();
         Map<String, List<PlanEdge>> outEdges = outEdges(plan);
@@ -162,16 +188,24 @@ public final class PlanExecutionSchedule {
             if (node.hasParent()) {
                 PlanNode parent = nodes.get(node.parentId());
                 if (parent == null) {
-                    return "节点 " + node.id() + " 的 parentId 不存在: " + node.parentId();
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.VALIDATION_FAILED,
+                            "节点 " + node.id() + " 的 parentId 不存在: " + node.parentId());
                 }
                 if (!"loop".equals(parent.type())) {
-                    return "节点 " + node.id() + " 的 parentId 须指向 loop 容器";
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.VALIDATION_FAILED,
+                            "节点 " + node.id() + " 的 parentId 须指向 loop 容器");
                 }
                 if (!LOOP_BODY_TYPES.contains(node.type())) {
-                    return "loop 框内节点 " + node.id() + " 类型须为 rag/tool/agent";
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.VALIDATION_FAILED,
+                            "loop 框内节点 " + node.id() + " 类型不在允许范围内");
                 }
                 if ("loop".equals(node.type())) {
-                    return "禁止嵌套 loop: " + node.id();
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.VALIDATION_FAILED,
+                            "禁止嵌套 loop: " + node.id());
                 }
             }
         }
@@ -181,10 +215,20 @@ public final class PlanExecutionSchedule {
             boolean fromBody = from != null && from.hasParent();
             boolean toBody = to != null && to.hasParent();
             if (fromBody != toBody) {
-                return "禁止跨框边 " + edge.from() + "→" + edge.to();
+                String fromId = edge.from();
+                String toId = edge.to();
+                String problem = "edge " + fromId + "→" + toId + " 跨 loop 框内外（loop 容器与 parentId body 之间禁止连边）";
+                String fixHint = """
+                        1. 删除 edge %s→%s
+                        2. 若 %s 为 loop、%s 为 body：body 保留 "parentId":"%s"，外图 edges 只保留 start→%s
+                        3. 单 body 时勿写 loop→body 或框内 edges；多 body 时框内才写 b1→b2（同 parentId）
+                        4. 外图勿连 answer（引擎自动拼接）""".formatted(fromId, toId, fromId, toId, fromId, fromId);
+                return PlanValidationIssue.of(PlanValidationCode.LOOP_CROSS_FRAME, problem, fixHint);
             }
             if (fromBody && toBody && !from.parentId().equals(to.parentId())) {
-                return "禁止跨不同 loop 的边 " + edge.from() + "→" + edge.to();
+                return PlanValidationIssue.of(
+                        PlanValidationCode.LOOP_CROSS_LOOP,
+                        "edge " + edge.from() + "→" + edge.to() + " 跨不同 loop 容器");
             }
         }
         for (PlanNode node : plan.nodes()) {
@@ -192,16 +236,25 @@ public final class PlanExecutionSchedule {
                 continue;
             }
             if (node.hasParent()) {
-                return "禁止嵌套 loop: " + node.id();
+                return PlanValidationIssue.of(
+                        PlanValidationCode.VALIDATION_FAILED,
+                        "禁止嵌套 loop: " + node.id());
             }
             List<String> bodyIds = plan.nodes().stream()
                     .filter(n -> node.id().equals(n.parentId()))
                     .map(PlanNode::id)
                     .toList();
             if (bodyIds.isEmpty()) {
-                return "loop 节点 " + node.id() + " 须包含至少一个 body 节点";
+                String loopId = node.id();
+                return PlanValidationIssue.of(
+                        PlanValidationCode.LOOP_EMPTY_BODY,
+                        "loop " + loopId + " 无框内 body",
+                        """
+                        1. 至少添加 1 个 rag/tool/agent 节点，设 "parentId":"%s"
+                        2. 外图 edges：start→%s；勿写 %s→body 跨框边
+                        3. 单 body 可省略框内 edges""".formatted(loopId, loopId, loopId));
             }
-            String bodyOrderErr = validateLinearBody(bodyIds, plan, nodes);
+            PlanValidationIssue bodyOrderErr = validateLinearBody(bodyIds, plan, nodes);
             if (bodyOrderErr != null) {
                 return bodyOrderErr;
             }
@@ -212,7 +265,9 @@ public final class PlanExecutionSchedule {
                     })
                     .count();
             if (outerOut != 1) {
-                return "loop 节点 " + node.id() + " 外图出度须为 1";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.LOOP_OUTER_DEGREE,
+                        "loop " + node.id() + " 外图出度不为 1（可能连了 body 或多余外图边）");
             }
             long outerIn = inEdges.getOrDefault(node.id(), List.of()).stream()
                     .filter(e -> {
@@ -221,9 +276,11 @@ public final class PlanExecutionSchedule {
                     })
                     .count();
             if (outerIn < 1) {
-                return "loop 节点 " + node.id() + " 外图入度须 ≥ 1";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.VALIDATION_FAILED,
+                        "loop 节点 " + node.id() + " 外图入度须 ≥ 1");
             }
-            String condErr = validateLoopConditionParams(node);
+            PlanValidationIssue condErr = validateLoopConditionParams(node);
             if (condErr != null) {
                 return condErr;
             }
@@ -231,39 +288,82 @@ public final class PlanExecutionSchedule {
         return null;
     }
 
-    private static String validateLoopConditionParams(PlanNode node) {
-        Map<String, String> p = node.params();
-        String maxRaw = p.getOrDefault("maxIterations", "3").strip();
+    private static PlanValidationIssue validateLoopConditionParams(PlanNode node) {
+        Map<String, Object> p = node.params();
+        String maxRaw = paramStr(p, "maxIterations", "3").strip();
         int max;
         try {
             max = Integer.parseInt(maxRaw);
         } catch (NumberFormatException e) {
-            return "loop 节点 " + node.id() + " 的 maxIterations 须为整数";
+            return PlanValidationIssue.of(
+                    PlanValidationCode.VALIDATION_FAILED,
+                    "loop 节点 " + node.id() + " 的 maxIterations 须为整数");
         }
         if (max < 1 || max > 5) {
-            return "loop 节点 " + node.id() + " 的 maxIterations 须在 1–5";
+            return PlanValidationIssue.of(
+                    PlanValidationCode.VALIDATION_FAILED,
+                    "loop 节点 " + node.id() + " 的 maxIterations 须在 1–5");
         }
-        String onMax = p.getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        String onMax = paramStr(p, "onMaxIterations", "fail_fast").strip().toLowerCase();
         if (!ON_MAX_ITERATIONS.contains(onMax)) {
-            return "loop 节点 " + node.id() + " 的 onMaxIterations 非法: " + onMax;
+            return PlanValidationIssue.of(
+                    PlanValidationCode.VALIDATION_FAILED,
+                    "loop 节点 " + node.id() + " 的 onMaxIterations 非法: " + onMax);
         }
-        String op = p.getOrDefault("condition.op", "").strip();
-        String left = p.getOrDefault("condition.left", "").strip();
-        if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
-            return "loop 节点 " + node.id() + " 须配置 condition.op 与 condition.left";
+        // 新格式：conditions 数组 + conditionLogic
+        Object conditionsObj = p.get("conditions");
+        if (conditionsObj instanceof JsonNode conditionsNode
+                && conditionsNode.isArray() && !conditionsNode.isEmpty()) {
+            String logic = paramStr(p, "conditionLogic", "and").strip().toLowerCase();
+            if (!"and".equals(logic) && !"or".equals(logic)) {
+                return PlanValidationIssue.of(
+                        PlanValidationCode.VALIDATION_FAILED,
+                        "loop 节点 " + node.id() + " 的 conditionLogic 非法: " + logic);
+            }
+            for (JsonNode item : conditionsNode) {
+                String op = item.has("op") ? item.get("op").asText("").strip().toLowerCase() : "";
+                String left = item.has("left") ? item.get("left").asText("").strip() : "";
+                if (!StringUtils.hasText(op) || !StringUtils.hasText(left)) {
+                    return PlanValidationIssue.of(
+                            PlanValidationCode.VALIDATION_FAILED,
+                            "loop 节点 " + node.id() + " conditions 项须配置 op 与 left");
+                }
+                PlanValidationIssue opErr = validateLoopOp(node.id(), op,
+                        item.has("right") ? item.get("right").asText("") : "");
+                if (opErr != null) {
+                    return opErr;
+                }
+            }
+            return null;
         }
+        // 无 conditions -> 由其它校验保证（topology 校验已覆盖）
+        return null;
+    }
+
+    private static PlanValidationIssue validateLoopOp(String nodeId, String op, String right) {
+        // 算子集与 EdgeConditionEvaluator.matches 保持一致（in/not_in 除外——loop 条件
+        // 不支持集合判定，故此处拒绝）。新旧两种 conditions 形态共用此校验：旧格式
+        // condition.* 原仅允许 empty/not_empty/contains/eq，现放宽至全部算子，属
+        // 向后兼容的渐进增强（旧 plan 仍可通过校验，新 plan 可用 gt/lt 等）。
         if (!"empty".equals(op) && !"not_empty".equals(op)
-                && !"contains".equals(op) && !"eq".equals(op)) {
-            return "loop 节点 " + node.id() + " 的 condition.op 非法: " + op;
+                && !"contains".equals(op) && !"not_contains".equals(op)
+                && !"eq".equals(op) && !"not_eq".equals(op)
+                && !"gt".equals(op) && !"lt".equals(op)
+                && !"gte".equals(op) && !"lte".equals(op)) {
+            return PlanValidationIssue.of(
+                    PlanValidationCode.LOOP_CONDITION_OP,
+                    "loop " + nodeId + " 的 condition.op=" + op + " 非法");
         }
         if (("contains".equals(op) || "eq".equals(op))
-                && !StringUtils.hasText(p.getOrDefault("condition.right", "").strip())) {
-            return "loop 节点 " + node.id() + " 的 condition.right 不能为空";
+                && !StringUtils.hasText(right.strip())) {
+            return PlanValidationIssue.of(
+                    PlanValidationCode.VALIDATION_FAILED,
+                    "loop 节点 " + nodeId + " 的 condition.right 不能为空");
         }
         return null;
     }
 
-    private static String validateLinearBody(
+    private static PlanValidationIssue validateLinearBody(
             List<String> bodyIds,
             PlanJson plan,
             Map<String, PlanNode> nodes) {
@@ -283,22 +383,30 @@ public final class PlanExecutionSchedule {
         }
         List<String> roots = bodyIds.stream().filter(id -> indeg.getOrDefault(id, 0) == 0).toList();
         if (roots.size() != 1) {
-            return "loop body 须为单链（恰好一个入度为 0 的入口）";
+            return PlanValidationIssue.of(
+                    PlanValidationCode.LOOP_BODY_CHAIN,
+                    "loop body 须为单链（恰好一个入度为 0 的入口）");
         }
         String cur = roots.get(0);
         Set<String> seen = new HashSet<>();
         while (cur != null) {
             if (!seen.add(cur)) {
-                return "loop body 存在环";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.LOOP_BODY_CHAIN,
+                        "loop body 存在环");
             }
             List<String> nexts = out.getOrDefault(cur, List.of());
             if (nexts.size() > 1) {
-                return "loop body 须为单链（节点 " + cur + " 出度 > 1）";
+                return PlanValidationIssue.of(
+                        PlanValidationCode.LOOP_BODY_CHAIN,
+                        "loop body 须为单链（节点 " + cur + " 出度 > 1）");
             }
             cur = nexts.isEmpty() ? null : nexts.get(0);
         }
         if (seen.size() != bodyIds.size()) {
-            return "loop body 须连通为单链";
+            return PlanValidationIssue.of(
+                    PlanValidationCode.LOOP_BODY_CHAIN,
+                    "loop body 须连通为单链");
         }
         return null;
     }
@@ -339,23 +447,12 @@ public final class PlanExecutionSchedule {
         return List.copyOf(order);
     }
 
-    public static PlanEdgeCondition loopCondition(PlanNode loopNode) {
-        if (loopNode == null) {
-            return null;
-        }
-        Map<String, String> p = loopNode.params();
-        return new PlanEdgeCondition(
-                p.getOrDefault("condition.left", ""),
-                p.getOrDefault("condition.op", ""),
-                p.getOrDefault("condition.right", ""));
-    }
-
     public static int loopMaxIterations(PlanNode loopNode) {
         if (loopNode == null) {
             return 3;
         }
         try {
-            int n = Integer.parseInt(loopNode.params().getOrDefault("maxIterations", "3").strip());
+            int n = Integer.parseInt(paramStr(loopNode.params(), "maxIterations", "3").strip());
             return Math.max(1, Math.min(5, n));
         } catch (NumberFormatException e) {
             return 3;
@@ -366,7 +463,7 @@ public final class PlanExecutionSchedule {
         if (loopNode == null) {
             return "fail_fast";
         }
-        String v = loopNode.params().getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
+        String v = paramStr(loopNode.params(), "onMaxIterations", "fail_fast").strip().toLowerCase();
         return ON_MAX_ITERATIONS.contains(v) ? v : "fail_fast";
     }
 
@@ -791,5 +888,17 @@ public final class PlanExecutionSchedule {
             adj.computeIfAbsent(edge.to(), k -> new ArrayList<>()).add(edge.from());
         }
         return adj;
+    }
+
+    /** params Map<String,Object> 取字符串值（兼容 String/Number 字面量） */
+    private static String paramStr(Map<String, Object> params, String key, String def) {
+        if (params == null) {
+            return def;
+        }
+        Object v = params.get(key);
+        if (v == null) {
+            return def;
+        }
+        return v.toString();
     }
 }

@@ -36,6 +36,8 @@ import java.util.concurrent.TimeoutException;
 public class WorkflowNodeRecoveryService {
 
     private static final String REDIS_KEY_PREFIX = "sunshine:workflow-recovery:";
+    /** 无限等待时 Redis token 兜底 TTL（秒）：confirm/cancel/cleanup 后仍会显式删除 */
+    private static final long FALLBACK_REDIS_TTL_SEC = 604_800L;
 
     private final AgentHitlProperties properties;
     @Lazy
@@ -47,6 +49,26 @@ public class WorkflowNodeRecoveryService {
 
     public boolean isEnabled() {
         return properties.isEnabled() && properties.isWorkflowNodeRecovery();
+    }
+
+    /** timeoutSec<=0 = 无限等待：expiresAt 无意义（前端不展示倒计时，确认仅按 token 定位） */
+    private long resolveExpiresAt() {
+        int timeoutSec = properties.getTimeoutSec();
+        return timeoutSec <= 0 ? Long.MAX_VALUE : Instant.now().plusSeconds(timeoutSec).toEpochMilli();
+    }
+
+    private long resolveRedisTtlSec() {
+        int timeoutSec = properties.getTimeoutSec();
+        return timeoutSec <= 0 ? FALLBACK_REDIS_TTL_SEC : timeoutSec + 30L;
+    }
+
+    /** timeoutSec<=0 时无限等待，仅用户重试/跳过/终止或会话停止结束 */
+    private WorkflowRecoveryAction awaitAction(CompletableFuture<WorkflowRecoveryAction> future)
+            throws TimeoutException, InterruptedException, java.util.concurrent.ExecutionException {
+        int timeoutSec = properties.getTimeoutSec();
+        return timeoutSec <= 0
+                ? future.get()
+                : future.get(timeoutSec, TimeUnit.SECONDS);
     }
 
     /**
@@ -65,12 +87,12 @@ public class WorkflowNodeRecoveryService {
         String token = UUID.randomUUID().toString();
         CompletableFuture<WorkflowRecoveryAction> future = new CompletableFuture<>();
         waiters.put(token, new RecoveryWaiter(nodeId, generationMessageId, future));
-        long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
+        long expiresAt = resolveExpiresAt();
         storeToken(token, generationMessageId, nodeId, expiresAt);
         emitSessionStep(session, stepId, s -> s.attachNodeRecoveryOnStep(
                 stepId, token, err, expiresAt), generationMessageId);
         try {
-            WorkflowRecoveryAction action = future.get(properties.getTimeoutSec(), TimeUnit.SECONDS);
+            WorkflowRecoveryAction action = awaitAction(future);
             log.info("[WorkflowRecovery] token={} node={} action={}", token, nodeId, action);
             String resolved = switch (action) {
                 case RETRY -> NodeRecoveryMeta.STATUS_RETRY;
@@ -122,12 +144,12 @@ public class WorkflowNodeRecoveryService {
         String token = UUID.randomUUID().toString();
         CompletableFuture<WorkflowRecoveryAction> future = new CompletableFuture<>();
         waiters.put(token, new RecoveryWaiter(nodeId, generationMessageId, future));
-        long expiresAt = Instant.now().plusSeconds(properties.getTimeoutSec()).toEpochMilli();
+        long expiresAt = resolveExpiresAt();
         storeToken(token, generationMessageId, nodeId, expiresAt);
         emitSessionStep(session, stepId, s -> s.attachNodeRecoveryOnStep(
                 stepId, token, err, expiresAt), generationMessageId);
         try {
-            WorkflowRecoveryAction action = future.get(properties.getTimeoutSec(), TimeUnit.SECONDS);
+            WorkflowRecoveryAction action = awaitAction(future);
             log.info("[WorkflowRecovery] resume token={} node={} action={}", token, nodeId, action);
             String resolved = switch (action) {
                 case RETRY -> NodeRecoveryMeta.STATUS_RETRY;
@@ -239,7 +261,7 @@ public class WorkflowNodeRecoveryService {
             redis.opsForValue().set(
                     redisKey(token),
                     objectMapper.writeValueAsString(payload),
-                    Duration.ofSeconds(properties.getTimeoutSec() + 30));
+                    Duration.ofSeconds(resolveRedisTtlSec()));
         } catch (JsonProcessingException e) {
             log.warn("[WorkflowRecovery] token 序列化失败: {}", e.getMessage());
         }

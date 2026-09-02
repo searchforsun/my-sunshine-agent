@@ -1,17 +1,6 @@
 /** 时间线步骤展示：摘要、展开区、耗时 */
 import type { ProcessingStep, StepLifecycle } from './processingSteps'
-
-/** 4.5 沙箱六工具 — 主行摘要常驻；展开由 OperationCard 嵌入高亮面板（无 code 边框） */
-export const SANDBOX_TOOL_IDS = [
-  'sandbox__read',
-  'sandbox__write',
-  'sandbox__edit',
-  'sandbox__glob',
-  'sandbox__grep',
-  'sandbox__exec',
-] as const
-
-export type SandboxToolId = (typeof SANDBOX_TOOL_IDS)[number]
+import { linesFromEditDiffMeta } from './sandboxEditDiff'
 
 export function catalogToolIdFromStepId(stepId: string): string | undefined {
   if (!stepId?.startsWith('tool-')) return undefined
@@ -20,24 +9,70 @@ export function catalogToolIdFromStepId(stepId: string): string | undefined {
   return toolId || undefined
 }
 
+/** catalog id 前缀 sandbox__*（勿维护六工具硬编码名单） */
 export function isSandboxToolStep(step: { id: string; phase?: string }): boolean {
   const toolId = catalogToolIdFromStepId(step.id)
-  if (!toolId) return false
-  return (SANDBOX_TOOL_IDS as readonly string[]).includes(toolId)
+  return !!toolId?.startsWith('sandbox__')
+}
+
+/** sandbox 工具按用途细分：查看（read/glob/grep）/ 修改（write/edit）/ 查找（webfetch/websearch）/ 执行（其余） */
+export type SandboxToolKind = 'view' | 'edit' | 'fetch' | 'exec'
+
+export function sandboxToolKind(toolId: string | undefined): SandboxToolKind | null {
+  if (!toolId?.startsWith('sandbox__')) return null
+  switch (toolId) {
+    case 'sandbox__read':
+    case 'sandbox__glob':
+    case 'sandbox__grep':
+      return 'view'
+    case 'sandbox__write':
+    case 'sandbox__edit':
+      return 'edit'
+    case 'sandbox__webfetch':
+    case 'sandbox__websearch':
+      return 'fetch'
+    default:
+      return 'exec'
+  }
 }
 
 export function isSandboxExecStep(step: { id: string }): boolean {
   return catalogToolIdFromStepId(step.id) === 'sandbox__exec'
 }
 
-/** 从 after/active 解析 exec 命令（「cmd」/「… · cmd」/「正在执行 cmd」） */
+export function isSandboxReadStep(step: { id: string }): boolean {
+  return catalogToolIdFromStepId(step.id) === 'sandbox__read'
+}
+
+/** 网页检索/抓取：与工作区文件无关，点击勿打开开发工作区 */
+export function isSandboxFetchStep(step: { id: string }): boolean {
+  const toolId = catalogToolIdFromStepId(step.id)
+  return toolId === 'sandbox__webfetch' || toolId === 'sandbox__websearch'
+}
+
+/** 可 hover 取消：跟 SSE metadata.cancellable（Nacos cancellable-tools） */
+export function isCancellableSandboxTool(step: {
+  id: string
+  metadata?: { cancellable?: boolean }
+}): boolean {
+  return step.metadata?.cancellable === true
+}
+
+function isSandboxCancelLifecycle(lifecycle?: string): boolean {
+  return lifecycle === 'paused' || lifecycle === 'terminated'
+}
+
+/** 从 after/active/detail 解析 exec 命令；取消终态只信 detail（勿按中文 after 门闩） */
 export function extractSandboxExecCommand(step: {
+  lifecycle?: string
   summary?: { after?: string; active?: string }
+  detail?: string
 }): string | undefined {
+  const cancelled = isSandboxCancelLifecycle(step.lifecycle)
   const after = step.summary?.after?.trim() || ''
-  const afterMatch = after.match(/(?:完成\s*)?[·•]\s*(.+)$/s)
-  if (afterMatch?.[1]?.trim()) return afterMatch[1].trim()
-  if (after) {
+  if (after && !cancelled) {
+    const afterMatch = after.match(/(?:完成\s*)?[·•]\s*(.+)$/s)
+    if (afterMatch?.[1]?.trim()) return afterMatch[1].trim()
     const stripped = after
       .replace(/^执行命令(?:完成)?\s*/u, '')
       .replace(/^[·•]\s*/, '')
@@ -47,7 +82,71 @@ export function extractSandboxExecCommand(step: {
   const active = step.summary?.active?.trim() || ''
   const activeMatch = active.match(/正在执行\s+(.+)$/s)
   if (activeMatch?.[1]?.trim()) return activeMatch[1].trim()
+  const detail = step.detail?.trim() || ''
+  if (detail) {
+    const fromDetail = detail.match(/正在执行\s+(.+)$/s)
+    if (fromDetail?.[1]?.trim()) return fromDetail[1].trim()
+    // 取消终态：后端把 command 原样写入 detail（无 stdout）
+    if (cancelled) {
+      return detail
+    }
+    // HITL 等待确认（running 未完成）：command 经 HITL expandDetail 写入 detail，
+    // 此时主行须展示命令便于用户决策；done 态 detail 为 stdout 输出，不能当命令
+    if (step.lifecycle === 'running' && !detail.includes('等待用户确认')) {
+      return detail
+    }
+  }
   return undefined
+}
+
+/** 将 exec 命令压缩为命令头摘要：按 | || && ; 切分（引号内不切），每段取首个 token，操作符保留。
+ * 例：find ... | head -120 → find | head；ls -la && cat f → ls && cat */
+export function formatExecCommandHeader(command: string): string {
+  const segments: { text: string; op: string }[] = []
+  let buf = ''
+  let quote: string | null = null
+  const ops = ['&&', '||', '|', ';']
+  let i = 0
+  while (i < command.length) {
+    const ch = command[i]
+    if (quote) {
+      buf += ch
+      if (ch === quote) quote = null
+      i++
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch
+      buf += ch
+      i++
+      continue
+    }
+    const matched = ops.find(op => command.startsWith(op, i))
+    if (matched) {
+      segments.push({ text: buf, op: matched })
+      buf = ''
+      i += matched.length
+      continue
+    }
+    buf += ch
+    i++
+  }
+  segments.push({ text: buf, op: '' })
+
+  const heads: string[] = []
+  for (const seg of segments) {
+    const firstToken = seg.text.trim().split(/\s+/)[0] ?? ''
+    if (firstToken) heads.push(firstToken)
+    if (seg.op) heads.push(seg.op)
+  }
+  return heads.join(' ')
+}
+
+/** exec 步主行命令头文本：think_summary 摘要前置 + 命令头（如「提交一下改动 git | grep」）；无摘要仅命令头 */
+export function formatExecCommandHeaderText(command: string, summary?: string): string {
+  const head = formatExecCommandHeader(command)
+  const s = summary?.trim()
+  return s ? `${s} ${head}` : head
 }
 
 /** 从沙箱工具 after 文案解析 /workspace 或 /skills 路径（legacy；优先 metadata.sandboxPath） */
@@ -64,13 +163,36 @@ export function sandboxBasename(path: string): string {
   return i >= 0 ? normalized.slice(i + 1) : normalized
 }
 
-/** 去掉 /skills|/workspace 前缀的相对路径（展开列表展示用） */
+/** 去掉 /skills|/workspace 前缀的相对路径（展开列表展示用）；任务工作区再剥 wt-xxx/ */
 export function sandboxDisplayPath(path: string): string {
   const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
   if (normalized.startsWith('/skills/')) return normalized.slice('/skills/'.length)
-  if (normalized.startsWith('/workspace/')) return normalized.slice('/workspace/'.length)
+  if (normalized.startsWith('/workspace/')) {
+    const rest = normalized.slice('/workspace/'.length)
+    const checkout = rest.match(/^(wt-[a-zA-Z0-9]+)(?:\/(.*))?$/)
+    if (checkout) return checkout[2] ?? ''
+    return rest
+  }
   if (normalized === '/skills' || normalized === '/workspace') return ''
   return sandboxBasename(normalized) || normalized
+}
+
+/**
+ * 主行展示：剥掉任务工作区 checkout 前缀 `/workspace/wt-xxx/`（或无前导斜杠形式），
+ * 保留项目内相对路径；聚焦跳转仍用 metadata 全路径。
+ */
+export function stripWorkspaceCheckoutPrefixInText(text: string): string {
+  if (!text) return text
+  return text
+    .replace(/\/workspace\/wt-[a-zA-Z0-9]+\//g, '')
+    .replace(/(^|[\s：:])workspace\/wt-[a-zA-Z0-9]+\//g, '$1')
+}
+
+function shouldStripCheckoutInHeader(step: { id: string }): boolean {
+  const toolId = catalogToolIdFromStepId(step.id)
+  return toolId === 'sandbox__write'
+    || toolId === 'sandbox__edit'
+    || toolId === 'sandbox__read'
 }
 
 /** 解析 glob 搜索根：末尾 · /skills… */
@@ -123,6 +245,19 @@ export function resolveSandboxFocusPath(step: {
     if (embedded) return embedded
   }
   return undefined
+}
+
+/** read 步骤行范围：从 summary.after「读文件 xxx.py L20-28」解析 { start, end }；无行范围返回 undefined */
+export function resolveSandboxReadLineRange(step: {
+  summary?: { after?: string }
+}): { start: number; end: number } | undefined {
+  const after = step.summary?.after?.trim() || ''
+  const m = after.match(/\bL(\d+)-(\d+)\b/)
+  if (!m) return undefined
+  const start = Number(m[1])
+  const end = Number(m[2])
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end < start) return undefined
+  return { start, end }
 }
 
 /** glob 等：detail 中的容器路径列表 → 相对搜索根展示名 + 完整 path（点击跳转） */
@@ -236,40 +371,35 @@ function stripPlanMetaText(text: string): string {
 
 function truncateStepPreview(text: string, max = STEP_HEADER_PREVIEW_MAX): string {
   if (text.length <= max) return text
-  return `${text.slice(0, max)}…`
+  return text.slice(0, max)
 }
 
 export function isWorkflowAnswerStep(step: ProcessingStep): boolean {
   return step.id === 'node-answer'
 }
 
-function resolveExpertSpeakPreview(step: ProcessingStep): string {
-  const result = step.result?.trim()
-  if (!result) return ''
-  const line = extractFirstProseLine(result)
-  if (line) return line
-  return truncateStepPreview(result.replace(/\s+/g, ' '))
-}
-
 export function resolveStepSummaryFull(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   const title = formatStepLabel(step)
-  if (step.phase === 'expert') {
-    const preview = resolveExpertSpeakPreview(step)
-    if (preview) return preview
+  // harness worker 行：折叠主行只显示任务名（label），勿回退 result 透露正文
+  //（正文由嵌套 stack contentBlocks 承载，result 仅数据层兜底，见 v17.4）
+  if (step.phase === 'worker' || step.id.startsWith('worker-')) {
+    return ''
   }
   let header = ''
   if (lifecycle === 'running') {
-    if (step.phase === 'expert') {
-      const preview = resolveExpertSpeakPreview(step)
-      if (preview) header = preview
-    }
-    if (!header) header = step.summary?.active?.trim() || ''
-  } else if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+    header = step.summary?.active?.trim() || ''
+  } else if (
+    lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'paused'
+    || lifecycle === 'terminated'
+  ) {
+    // paused/terminated：只信 after（后端必下发）；勿回退 active
     header = step.summary?.after?.trim()
       || formatStepMetadata(step)
       || (!isWorkflowAnswerStep(step) && step.result?.trim())
-      || step.detail?.trim()
       || ''
     if (step.phase === 'plan' && header) {
       header = stripPlanMetaText(header)
@@ -277,7 +407,13 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
   } else {
     header = step.summary?.before?.trim() || ''
   }
-  if (!header || header === title) {
+  // 去重：header 与展示 label 相同时不重复出摘要行。
+  // tool 步的 step.label 带「调用工具」前缀，OperationCard 显示时剥掉前缀；
+  // 去重判断须用剥前缀后的 label，否则 after=工具中文名 时永远判不等 -> 两行重复。
+  const displayTitle = step.id.startsWith('tool-')
+    ? title.replace(/^调用工具\s*/, '').trim()
+    : title
+  if (!header || header === displayTitle) {
     return ''
   }
   return header
@@ -286,26 +422,26 @@ export function resolveStepSummaryFull(step: ProcessingStep): string {
 export function resolveStepHeaderText(step: ProcessingStep): string {
   const full = resolveStepSummaryFull(step)
   const oneLine = full.replace(/\s+/g, ' ').trim()
-  return truncateStepPreview(oneLine)
-}
-
-function extractFirstProseLine(text: string): string {
-  for (const raw of text.split('\n')) {
-    const line = raw.trim()
-    if (!line || line.startsWith('#') || /^\|/.test(line)) continue
-    if (/^[-*_]{3,}$/.test(line)) continue
-    const plain = line.replace(/\*\*|__|`/g, '').replace(/^>\s*/, '').trim()
-    if (plain.length >= 8 && /[\u4e00-\u9fff]/.test(plain)) {
-      return plain.replace(/\s+/g, ' ')
-    }
-  }
-  return ''
+  const display = shouldStripCheckoutInHeader(step)
+    ? stripWorkspaceCheckoutPrefixInText(oneLine)
+    : oneLine
+  return truncateStepPreview(display)
 }
 
 /** 展开区 lead：保留换行，供 StaticMarkdown 渲染（主行预览仍用 resolveStepHeaderText 单行截断） */
 export function resolveStepExpandLead(step: ProcessingStep): string {
+  // harness worker 行：正文由嵌套 OperationStack 的 contentBlocks 承载，lead 不再回退 result
+  if (step.phase === 'worker' || step.id.startsWith('worker-')) {
+    return ''
+  }
   const lifecycle = stepLifecycle(step)
-  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+  if (
+    lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'paused'
+    || lifecycle === 'terminated'
+  ) {
     let text = step.summary?.after?.trim() || resolveStepSummaryFull(step)
     if (step.phase === 'plan' && text) {
       text = stripPlanMetaText(text)
@@ -318,20 +454,19 @@ export function resolveStepExpandLead(step: ProcessingStep): string {
 export function resolveStepExpandSummary(step: ProcessingStep): string {
   const lifecycle = stepLifecycle(step)
   let oneLine = ''
-  if (lifecycle === 'done' || lifecycle === 'error' || lifecycle === 'skipped') {
+  if (
+    lifecycle === 'done'
+    || lifecycle === 'error'
+    || lifecycle === 'skipped'
+    || lifecycle === 'paused'
+    || lifecycle === 'terminated'
+  ) {
     oneLine = (step.summary?.after?.trim() || resolveStepSummaryFull(step)).replace(/\s+/g, ' ').trim()
     if (step.phase === 'plan' && oneLine) {
       oneLine = stripPlanMetaText(oneLine)
     }
   } else {
     oneLine = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
-  }
-  if (oneLine.endsWith('…') && step.detail?.trim()) {
-    const fromDetail = extractFirstProseLine(step.detail)
-    const prefix = oneLine.slice(0, -1).trim()
-    if (fromDetail && (fromDetail.startsWith(prefix) || prefix.length >= 12 && fromDetail.startsWith(prefix.slice(0, 12)))) {
-      return fromDetail
-    }
   }
   return oneLine
 }
@@ -341,8 +476,10 @@ export function resolveStepExpandInner(step: ProcessingStep): string {
   if (isWorkflowAnswerStep(step)) {
     return ''
   }
-  if (step.phase === 'expert') {
-    return step.result?.trim() || ''
+  // harness worker 行：正文由嵌套 OperationStack 的 contentBlocks 承载（与 spawn subagent 抽屉同构），
+  // 勿把 result 当 inner，避免展开内部与嵌套 stack 正文双份
+  if (step.phase === 'worker' || step.id.startsWith('worker-')) {
+    return ''
   }
   if (isSandboxToolStep(step)) {
     // 沙箱展开由 OperationCard 嵌入面板渲染（无 markdown code 边框）
@@ -360,6 +497,14 @@ export function resolveStepExpandInner(step: ProcessingStep): string {
 }
 
 function resolveSandboxExpandRaw(step: ProcessingStep): string {
+  const lifecycle = stepLifecycle(step)
+  // 取消：detail 存的是命令/pattern 快照，不是 stdout；由 extractSandboxExecCommand 展示
+  if (
+    isSandboxExecStep(step)
+    && (lifecycle === 'paused' || lifecycle === 'terminated')
+  ) {
+    return ''
+  }
   const detail = step.detail?.trim()
   if (detail) return detail
   const result = step.result?.trim()
@@ -385,23 +530,15 @@ export function resolveStepExpandBody(step: ProcessingStep): string {
   return resolveStepExpandPanels(step).body
 }
 
-export function parseLoadedSkillLabel(text?: string): string | undefined {
-  if (!text?.trim()) return undefined
-  const match = text.trim().match(/^已加载技能：([^\n]+)/)
-  const label = match?.[1]?.trim()
-  return label || undefined
-}
-
 export function stripLoadedSkillPrefix(text?: string): string {
   if (!text?.trim()) return ''
   return text.replace(/^已加载技能：[^\n]+\n\n?/, '').trim()
 }
 
-/** 主行摘要是否被截断（带 …），展开后可看全文 */
+/** 主行摘要是否超预览长度（宽度截断交给 CSS ellipsis），展开后可看全文 */
 export function isStepSummaryTruncated(step: ProcessingStep): boolean {
   const header = resolveStepHeaderText(step)
   if (!header) return false
-  if (header.endsWith('…')) return true
   const full = resolveStepSummaryFull(step).replace(/\s+/g, ' ').trim()
   return !!full && full.length > STEP_HEADER_PREVIEW_MAX
 }
@@ -417,14 +554,29 @@ export function hasExpandableContent(step: ProcessingStep): boolean {
   if (step.phase === 'tasks' && (step.metadata?.tasks?.length ?? 0) > 0) {
     return false
   }
-  if (step.phase === 'peer-collab' || step.id === 'peer-collab') {
+  if (step.phase === 'subagent' || step.id.startsWith('subagent-')) {
     return false
   }
-  // loop 框内 agent：嵌套 think/正文可展开
+  // loop 框内 agent / harness worker：嵌套 think/正文可展开
   if (step.id.startsWith('i') && (step.subSteps?.length || step.contentBlocks?.length)) {
     return true
   }
+  if ((step.phase === 'worker' || step.id.startsWith('worker-'))
+    && (step.subSteps?.length || step.contentBlocks?.length)) {
+    return true
+  }
+  // intent 步：有路由过程 → 可展开看「路由过程」
+  if (step.phase === 'intent' && step.metadata?.routingTraces?.length) {
+    return true
+  }
   if (isSandboxExecStep(step) && extractSandboxExecCommand(step)) {
+    return true
+  }
+  // 读文件：内容在工作区预览，不重复渲染展开（点击卡片定位到文件即可）
+  if (isSandboxReadStep(step)) {
+    return false
+  }
+  if (linesFromEditDiffMeta(step.metadata?.editDiff)?.length) {
     return true
   }
   if (resolveStepExpandInner(step)) return true
@@ -468,4 +620,101 @@ export function summarizeSteps(steps: ProcessingStep[]): string {
   const total = totalDuration(steps)
   if (total > 0) parts.push(formatDuration(total))
   return parts.join(' · ')
+}
+
+export function formatElapsedClock(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return ''
+  const totalSec = Math.floor(ms / 1000)
+  if (totalSec < 60) return `${totalSec}s`
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  if (h > 0) return `${h}h ${m}m ${s}s`
+  return `${m}m ${s}s`
+}
+
+/**
+ * 总览耗时：含正文流式。
+ * 起止优先用客户端墙钟（timelineStartedAt / timelineEndedAt），避免与步骤上服务端
+ * startedAt/endedAt 混算导致「先涨到 20s 再掉到 15s」。
+ */
+export function resolveTimelineElapsedMs(opts: {
+  steps: ProcessingStep[]
+  live: boolean
+  nowMs?: number
+  fallbackStartMs?: number
+  fallbackEndMs?: number
+}): number | undefined {
+  let stepStart: number | undefined
+  let maxEnded: number | undefined
+  for (const step of opts.steps) {
+    const t = step.startedAt ?? step.ts
+    if (typeof t === 'number' && Number.isFinite(t)) {
+      stepStart = stepStart == null ? t : Math.min(stepStart, t)
+    }
+    if (typeof step.endedAt === 'number' && Number.isFinite(step.endedAt)) {
+      maxEnded = maxEnded == null ? step.endedAt : Math.max(maxEnded, step.endedAt)
+    }
+  }
+  // 有本地 start 时不用服务端 step 时钟（防 JVM/浏览器时钟差）
+  const start = opts.fallbackStartMs ?? stepStart
+  if (start == null) return undefined
+  let end: number | undefined
+  if (opts.live) {
+    end = opts.nowMs ?? Date.now()
+  } else if (opts.fallbackEndMs != null) {
+    end = opts.fallbackEndMs
+  } else {
+    end = maxEnded
+  }
+  if (end == null || end < start) return undefined
+  return end - start
+}
+
+export type TimelineMessageStatus = 'streaming' | 'interrupted' | 'failed' | 'completed'
+
+export function resolveTimelineSummaryPrefix(opts: {
+  live: boolean
+  messageStatus?: TimelineMessageStatus
+}): string {
+  if (opts.live || opts.messageStatus === 'streaming') return '正在处理'
+  if (opts.messageStatus === 'interrupted') return '已中断'
+  if (opts.messageStatus === 'failed') return '已失败'
+  return '已完成'
+}
+
+export function formatTimelineSummaryText(prefix: string, clock: string): string {
+  const c = clock.trim()
+  return c ? `${prefix} ${c}` : prefix
+}
+
+/** 卡片运行中「当前子步正文」：subagent/worker 卡 running 时，任务名后跟内部正在执行步骤的正文内容。
+ * think/rag→reasoning 思考正文、tool→detail 输出；generate（最后正文）阶段固定显示「正在收尾回复」，
+ * 不再滚动最终答复；跳过 tasks/intent/skill/decision/plan 脚手架步（其 label 如「任务清单」非实时活动）；
+ * 正文为空回退子步 label / 阶段标题。卡片未运行或暂无 running 子步返回空。 */
+const SCAFFOLD_CHILD_PHASES = new Set(['tasks', 'intent', 'skill', 'decision', 'plan'])
+const CHILD_BODY_PREVIEW_MAX = 90
+
+export function resolveRunningChildStepBody(step: ProcessingStep): string {
+  if (!step.subSteps?.length) return ''
+  const running = step.subSteps.find(
+    s => stepLifecycle(s) === 'running' && !SCAFFOLD_CHILD_PHASES.has((s.phase ?? '').split('-')[0]),
+  )
+  if (!running) return ''
+  const phase = (running.phase ?? '').split('-')[0]
+  if (phase === 'generate' || phase.startsWith('generate')) return '正在收尾回复'
+  const body = childStepBodyText(running)
+  if (body) return body
+  const label = formatStepLabel(running).trim()
+  if (label && label !== running.id) return label
+  if (phase === 'think' || phase.startsWith('think')) return '深度思考'
+  if (phase === 'tool' || phase.startsWith('tool')) return '执行命令'
+  if (phase === 'rag') return '知识检索'
+  return ''
+}
+
+function childStepBodyText(step: ProcessingStep): string {
+  const raw = step.reasoning?.trim() || step.output?.trim() || step.detail?.trim() || ''
+  if (!raw) return ''
+  return truncateStepPreview(raw.replace(/\s+/g, ' ').trim(), CHILD_BODY_PREVIEW_MAX)
 }

@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.processing;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,7 +11,7 @@ class HitlLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        HitlLabels.bind(new HitlLabelService(new AgentPromptProperties()));
+        HitlLabels.bind(new HitlLabelService(TimelinePromptCatalog.withDefaults()));
     }
 
     @AfterEach

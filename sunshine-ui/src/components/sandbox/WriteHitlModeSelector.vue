@@ -118,31 +118,32 @@ function onShowUpdate(next: boolean) {
   height: 30px;
   max-width: 100%;
   padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
   background: transparent;
   color: var(--sun-text-secondary);
   font: inherit;
   font-size: var(--sun-font-sm, 12px);
   cursor: pointer;
   flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .write-hitl-trigger.variant-block {
   width: 100%;
   height: 36px;
   padding: 0 12px;
+  border: 1px solid var(--sun-border);
   border-radius: var(--radius-md, 10px);
   justify-content: space-between;
-  background: var(--n-color, #fff);
-  color: var(--sun-text, #212121);
+  background: var(--n-color, var(--sun-black));
+  color: var(--sun-text, #ececec);
   font-size: var(--sun-font-base, 14px);
 }
 
 .write-hitl-trigger:hover:not(:disabled) {
-  border-color: var(--sun-border-light, #ccc);
-  color: var(--sun-text, #212121);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
+  color: var(--sun-text, #ececec);
 }
 
 .write-hitl-trigger:disabled {
@@ -181,7 +182,7 @@ function onShowUpdate(next: boolean) {
 .write-hitl-menu {
   padding: 3px;
   border-radius: var(--radius-lg, 12px);
-  background: var(--n-color, #fff);
+  background: var(--n-color, var(--sun-black));
   box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
   border: 1px solid var(--sun-border, #e8e8e8);
   overflow: hidden;
@@ -219,7 +220,7 @@ function onShowUpdate(next: boolean) {
   font-size: var(--sun-font-base, 14px);
   font-weight: 500;
   line-height: 1.35;
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
   white-space: nowrap;
 }
 
@@ -241,7 +242,7 @@ function onShowUpdate(next: boolean) {
 }
 
 .write-hitl-check {
-  color: var(--sun-text, #212121);
+  color: var(--sun-text, #ececec);
 }
 </style>
 

@@ -14,11 +14,11 @@ class StaticPlanAdapterTest {
     @Test
     void convertsStaticDefinitionToPlanJson() {
         WorkflowDefinition def = WorkflowDefinition.from("finance-list", List.of(
-                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_finance_messages"), "查询待审批"),
+                new NodeSpec("finance-list", "tool", Map.of("tool", "sdk__sunshine-finance__list_my_expenses"), "查询待审批"),
                 new NodeSpec("answer", "answer", Map.of("prompt", "p"), "生成回答")
         ), List.of("finance-list", "answer"));
 
-        PlanJson plan = StaticPlanAdapter.from(def, "查待办");
+        PlanJson plan = StaticPlanAdapterTestSupport.from(def, "查待办");
 
         assertThat(plan.planId()).isNull();
         assertThat(plan.reason()).isEqualTo("查待办");

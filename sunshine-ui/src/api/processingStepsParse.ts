@@ -1,8 +1,11 @@
 /** SSE / REST steps JSON 解析 */
-import type { PlanApprovalRoundView } from './planApprovalSteps'
-import type { PlanGraph } from './executionPlans'
+import type { SandboxEditDiffMeta, SandboxDiffLine } from './sandboxEditDiff'
 import type { ContentBlock } from './contentInterleave'
 import type {
+  DecisionAnswerView,
+  DecisionMeta,
+  DecisionOptionView,
+  DecisionQuestionView,
   ProcessingStep,
   StepLifecycle,
   StepMetadata,
@@ -24,20 +27,49 @@ function parseSummary(raw: unknown): StepSummary | undefined {
 function parseTaskBoardItems(raw: unknown): StepMetadata['tasks'] {
   if (!Array.isArray(raw) || raw.length === 0) return undefined
   const items = raw
-    .map(item => {
-      if (!item || typeof item !== 'object') return null
-      const o = item as Record<string, unknown>
-      const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : ''
-      const content = typeof o.content === 'string' && o.content.trim() ? o.content.trim() : ''
-      const status = typeof o.status === 'string' ? o.status.trim() : ''
-      if (!id || !content || !status) return null
-      if (status !== 'pending' && status !== 'in_progress' && status !== 'completed' && status !== 'cancelled') {
-        return null
-      }
-      return { id, content, status } as TaskBoardItemView
-    })
+    .map(item => parseTaskBoardItem(item, 0))
     .filter((item): item is NonNullable<typeof item> => !!item)
   return items.length > 0 ? items : undefined
+}
+
+/** depth 限制避免异常嵌套；二级不再解析 deeper secondary */
+function parseTaskBoardItem(raw: unknown, depth: number): TaskBoardItemView | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === 'string' && o.id.trim()
+    ? o.id.trim()
+    : (typeof o.taskId === 'string' && o.taskId.trim() ? o.taskId.trim() : '')
+  const content = typeof o.content === 'string' && o.content.trim()
+    ? o.content.trim()
+    : (typeof o.label === 'string' && o.label.trim() ? o.label.trim() : '')
+  const status = normalizeTaskBoardStatus(typeof o.status === 'string' ? o.status.trim() : '')
+  if (!id || !content || !status) return null
+  const dependsOn = Array.isArray(o.dependsOn)
+    ? o.dependsOn.filter((d): d is string => typeof d === 'string' && !!d.trim()).map(d => d.trim())
+    : undefined
+  let secondary: TaskBoardItemView[] | undefined
+  if (depth < 1 && Array.isArray(o.secondary) && o.secondary.length > 0) {
+    const nested = o.secondary
+      .map(child => parseTaskBoardItem(child, depth + 1))
+      .filter((child): child is TaskBoardItemView => !!child)
+    if (nested.length > 0) secondary = nested
+  }
+  const view: TaskBoardItemView = { id, content, status }
+  if (dependsOn && dependsOn.length > 0) view.dependsOn = dependsOn
+  if (secondary) view.secondary = secondary
+  return view
+}
+
+/** H1 TaskItem status → TaskBoard 状态；ReAct 四态原样保留 */
+function normalizeTaskBoardStatus(
+  status: string,
+): TaskBoardItemView['status'] | null {
+  if (status === 'pending' || status === 'in_progress' || status === 'completed' || status === 'cancelled') {
+    return status
+  }
+  if (status === 'done') return 'completed'
+  if (status === 'fail' || status === 'obsolete') return 'cancelled'
+  return null
 }
 
 function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
@@ -60,6 +92,118 @@ function parseNodeAttempts(raw: unknown): StepMetadata['nodeAttempts'] {
     })
     .filter((a): a is NonNullable<typeof a> => !!a)
   return attempts.length > 0 ? attempts : undefined
+}
+
+function parseEditDiff(raw: unknown): SandboxEditDiffMeta | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const obj = raw as Record<string, unknown>
+  if (!Array.isArray(obj.lines) || obj.lines.length === 0) return undefined
+  const lines = obj.lines
+    .map(item => {
+      if (!item || typeof item !== 'object') return null
+      const o = item as Record<string, unknown>
+      const kind = o.kind
+      if (kind !== 'del' && kind !== 'add' && kind !== 'ctx' && kind !== 'fold') return null
+      const text = typeof o.text === 'string' ? o.text : ''
+      const oldLine = typeof o.oldLine === 'number'
+        ? o.oldLine
+        : o.oldLine === null ? null : undefined
+      const newLine = typeof o.newLine === 'number'
+        ? o.newLine
+        : o.newLine === null ? null : undefined
+      return { kind, text, oldLine, newLine } as SandboxDiffLine
+    })
+    .filter((line): line is SandboxDiffLine => line != null)
+  if (lines.length === 0) return undefined
+  const path = typeof obj.path === 'string' && obj.path.trim() ? obj.path.trim() : undefined
+  const contextRadius = typeof obj.contextRadius === 'number' ? obj.contextRadius : undefined
+  return { path, contextRadius, lines }
+}
+
+/** request_decision：仅认 questions[{id,prompt,options[{id,label}]}]，忽略旧扁平 question/options */
+function parseDecisionOptions(raw: unknown): DecisionOptionView[] {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  const options: DecisionOptionView[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const id = typeof o.id === 'string' ? o.id.trim() : ''
+    const label = typeof o.label === 'string' ? o.label : ''
+    if (!id || !label) continue
+    options.push({ id, label })
+  }
+  return options
+}
+
+function parseDecisionQuestions(raw: unknown): DecisionQuestionView[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const questions: DecisionQuestionView[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const id = typeof o.id === 'string' ? o.id.trim() : ''
+    const prompt = typeof o.prompt === 'string' ? o.prompt : ''
+    if (!id || !prompt) continue
+    const question: DecisionQuestionView = {
+      id,
+      prompt,
+      options: parseDecisionOptions(o.options),
+    }
+    if (o.allowMultiple === true) question.allowMultiple = true
+    questions.push(question)
+  }
+  return questions.length > 0 ? questions : undefined
+}
+
+function parseDecisionAnswers(raw: unknown): DecisionAnswerView[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const answers: DecisionAnswerView[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const questionId = typeof o.questionId === 'string' ? o.questionId.trim() : ''
+    if (!questionId) continue
+    const selectedOptionIds = Array.isArray(o.selectedOptionIds)
+      ? o.selectedOptionIds.filter((id): id is string => typeof id === 'string' && !!id.trim())
+          .map(id => id.trim())
+      : []
+    const answer: DecisionAnswerView = { questionId, selectedOptionIds }
+    if (typeof o.customInput === 'string' && o.customInput.trim()) {
+      answer.customInput = o.customInput
+    }
+    answers.push(answer)
+  }
+  return answers
+}
+
+function parseDecision(raw: unknown): DecisionMeta | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const token = typeof o.token === 'string' && o.token.trim() ? o.token.trim() : undefined
+  const title = typeof o.title === 'string' ? o.title : undefined
+  const questions = parseDecisionQuestions(o.questions)
+  const expiresAt = typeof o.expiresAt === 'number' ? o.expiresAt : undefined
+  const outcome = typeof o.outcome === 'string' && o.outcome.trim() ? o.outcome.trim() : undefined
+  const answers = parseDecisionAnswers(o.answers)
+  if (!token && title == null && !questions?.length && outcome == null && answers == null) {
+    return undefined
+  }
+  return { token, title, questions, expiresAt, outcome, answers }
+}
+
+function parseRoutingTraces(raw: unknown): StepMetadata['routingTraces'] {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const traces: StepMetadata['routingTraces'] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const layer = typeof o.layer === 'string' && o.layer.trim() ? o.layer.trim() : undefined
+    const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim() : undefined
+    const detail = typeof o.detail === 'string' && o.detail.trim() ? o.detail.trim() : undefined
+    if (!layer && !label && !detail) continue
+    traces.push({ layer, label, detail })
+  }
+  return traces.length > 0 ? traces : undefined
 }
 
 function parseMetadata(raw: unknown): StepMetadata | undefined {
@@ -126,44 +270,8 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     : undefined
   const recoveryExpiresAt = typeof recoveryRaw?.expiresAt === 'number' ? recoveryRaw.expiresAt : undefined
   const nodeAttempts = parseNodeAttempts(obj.nodeAttempts)
-  const planApprovalRaw = obj.planApproval && typeof obj.planApproval === 'object'
-    ? obj.planApproval as Record<string, unknown>
-    : null
-  const planApprovalStatus = typeof planApprovalRaw?.status === 'string'
-    ? planApprovalRaw.status as StepMetadata['planApproval'] extends { status?: infer S } ? S : never
-    : undefined
-  const planApprovalToken = typeof planApprovalRaw?.token === 'string' && planApprovalRaw.token.trim()
-    ? planApprovalRaw.token.trim()
-    : undefined
-  const planApprovalExpiresAt = typeof planApprovalRaw?.expiresAt === 'number'
-    ? planApprovalRaw.expiresAt
-    : undefined
-  const planApprovalRounds = Array.isArray(planApprovalRaw?.rounds)
-    ? planApprovalRaw.rounds
-        .filter((r): r is Record<string, unknown> => r && typeof r === 'object')
-        .map((r) => ({
-          roundNo: typeof r.roundNo === 'number' ? r.roundNo : 0,
-          status: (typeof r.status === 'string' ? r.status : 'awaiting') as PlanApprovalRoundView['status'],
-          userHint: typeof r.userHint === 'string' ? r.userHint : undefined,
-          chainSummary: typeof r.chainSummary === 'string' ? r.chainSummary : undefined,
-          createdAt: typeof r.createdAt === 'number' ? r.createdAt : undefined,
-          resolvedAt: typeof r.resolvedAt === 'number' ? r.resolvedAt : undefined,
-        }))
-    : undefined
-  const planApprovalGraphRaw = planApprovalRaw?.planGraph
-  const planApprovalPlanGraph = planApprovalGraphRaw && typeof planApprovalGraphRaw === 'object'
-    ? planApprovalGraphRaw as PlanGraph
-    : undefined
-  const planApproval = planApprovalRaw
-    ? {
-        status: planApprovalStatus,
-        token: planApprovalToken,
-        expiresAt: planApprovalExpiresAt,
-        rounds: planApprovalRounds,
-        planGraph: planApprovalPlanGraph,
-      }
-    : undefined
   const tasks = parseTaskBoardItems(obj.tasks)
+  const taskQueue = parseTaskBoardItems(obj.taskQueue)
   const taskRevision = typeof obj.taskRevision === 'number' ? obj.taskRevision : undefined
   const taskProgress = typeof obj.taskProgress === 'string' && obj.taskProgress.trim()
     ? obj.taskProgress.trim()
@@ -174,6 +282,16 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
   const sandboxSearchRoot = typeof obj.sandboxSearchRoot === 'string' && obj.sandboxSearchRoot.trim()
     ? obj.sandboxSearchRoot.trim()
     : undefined
+  const spawnPrompt = typeof obj.spawnPrompt === 'string' && obj.spawnPrompt.trim()
+    ? obj.spawnPrompt.trim()
+    : undefined
+  const workerRunId = typeof obj.workerRunId === 'string' && obj.workerRunId.trim()
+    ? obj.workerRunId.trim()
+    : undefined
+  const cancellable = obj.cancellable === true ? true : undefined
+  const editDiff = parseEditDiff(obj.editDiff)
+  const decision = parseDecision(obj.decision)
+  const routingTraces = parseRoutingTraces(obj.routingTraces)
   if (
     hitCount == null
     && (!sources || sources.length === 0)
@@ -186,12 +304,18 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     && !hitlStatus
     && !recoveryStatus
     && !nodeAttempts?.length
-    && !planApproval
     && !tasks?.length
+    && !taskQueue?.length
     && taskRevision == null
     && !taskProgress
     && !sandboxPath
     && !sandboxSearchRoot
+    && !spawnPrompt
+    && !workerRunId
+    && !cancellable
+    && !editDiff
+    && !decision
+    && !routingTraces?.length
   ) {
     return undefined
   }
@@ -219,16 +343,22 @@ function parseMetadata(raw: unknown): StepMetadata | undefined {
     recoveryError,
     recoveryExpiresAt,
     nodeAttempts,
-    planApproval,
     tasks,
+    taskQueue,
     taskRevision,
     taskProgress,
     sandboxPath,
     sandboxSearchRoot,
+    spawnPrompt,
+    workerRunId,
+    cancellable,
+    editDiff,
+    decision,
+    routingTraces,
   }
 }
 
-/** upsert 时合并 metadata（含 HITL/Recovery/PlanApproval） */
+/** upsert 时合并 metadata（含 HITL/Recovery） */
 export function mergeStepMetadata(
   prev?: StepMetadata,
   incoming?: StepMetadata,
@@ -257,24 +387,29 @@ export function mergeStepMetadata(
   if (incomingAttempts > prevAttempts) {
     merged.nodeAttempts = incoming.nodeAttempts
   }
-  if (incoming.planApproval || prev.planApproval) {
-    merged.planApproval = {
-      ...prev.planApproval,
-      ...incoming.planApproval,
-      rounds: incoming.planApproval?.rounds?.length
-        ? incoming.planApproval.rounds
-        : prev.planApproval?.rounds,
-      planGraph: incoming.planApproval?.planGraph?.nodes?.length
-        ? incoming.planApproval.planGraph
-        : prev.planApproval?.planGraph,
-    }
-  }
   const prevRevision = prev.taskRevision ?? 0
   const incomingRevision = incoming.taskRevision ?? 0
   if (incoming.tasks?.length && incomingRevision >= prevRevision) {
     merged.tasks = incoming.tasks
     merged.taskRevision = incoming.taskRevision
     merged.taskProgress = incoming.taskProgress ?? merged.taskProgress
+  }
+  // harness H1：taskQueue 全量替换（无 revision；有则覆盖）
+  if (incoming.taskQueue?.length) {
+    merged.taskQueue = incoming.taskQueue
+    merged.taskProgress = incoming.taskProgress ?? merged.taskProgress
+  }
+  if (incoming.decision || prev.decision) {
+    merged.decision = {
+      ...prev.decision,
+      ...incoming.decision,
+      questions: incoming.decision?.questions?.length
+        ? incoming.decision.questions
+        : prev.decision?.questions,
+      answers: incoming.decision?.answers !== undefined
+        ? incoming.decision.answers
+        : prev.decision?.answers,
+    }
   }
   return merged
 }
@@ -312,7 +447,8 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
   ) as StepLifecycle
   const label = typeof raw.label === 'string' ? raw.label : undefined
   const summary = parseSummary(raw.summary)
-  if (!summary) return null
+  // 无 summary 不丢弃：worker/subagent 骨架步仅有 label+phase，由 WorkerTimelineBridge.begin() 下发，
+  // 丢弃会导致整卡不渲染（subSteps 随父步一并丢失）
   return {
     id: raw.id,
     phase,
@@ -330,5 +466,6 @@ export function normalizeStep(raw: Record<string, unknown>): ProcessingStep | nu
     metadata: parseMetadata(raw.metadata),
     subSteps: parseSubSteps(raw.subSteps),
     contentBlocks: parseContentBlocks(raw.contentBlocks),
+    stepSummary: typeof raw.stepSummary === 'string' && raw.stepSummary.trim() ? raw.stepSummary : undefined,
   }
 }

@@ -125,6 +125,10 @@ provide(WORKFLOWS_PAGE_KEY, workflowsPage)
   min-height: 240px;
 }
 
+:deep(.more-menu-delete) {
+  color: var(--n-color-error);
+}
+
 @media (max-width: 900px) {
   .workflows-layout {
     grid-template-columns: 1fr;

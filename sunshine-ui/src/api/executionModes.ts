@@ -1,49 +1,34 @@
-/** Chat 底栏执行模式 — 与后端 ExecutionPreference / ExecutionMode 对齐 */
+/** Chat 底栏执行模式 — 与后端 ExecutionMode 对齐（routing v6） */
 
-export type ExecutionPreference =
-  | 'auto'
-  | 'simple-llm'
-  | 'react'
-  | 'workflow'
-  | 'plan-workflow'
-  | 'peer-collab'
+export type ExecutionMode = 'fast' | 'pro' | 'workflow'
 
 export interface ExecutionModeOption {
-  value: ExecutionPreference
+  value: ExecutionMode
   label: string
   shortLabel: string
   description: string
   allowsSkillMention: boolean
-  allowsExpertMention: boolean
+  allowsAgentMention: boolean
   allowsWorkflowMention: boolean
 }
 
 export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
   {
-    value: 'auto',
-    label: '自动',
-    shortLabel: '自动',
-    description: '根据提问意图自动选择执行方式',
+    value: 'fast',
+    label: '快速',
+    shortLabel: '快速',
+    description: 'ReAct 多工具自主分析，可委派子智能体',
     allowsSkillMention: true,
-    allowsExpertMention: true,
-    allowsWorkflowMention: true,
-  },
-  {
-    value: 'simple-llm',
-    label: '简单对话',
-    shortLabel: '简单',
-    description: '单轮直答，不走企业知识库与工具',
-    allowsSkillMention: false,
-    allowsExpertMention: false,
+    allowsAgentMention: true,
     allowsWorkflowMention: false,
   },
   {
-    value: 'react',
-    label: '自主推理',
-    shortLabel: '推理',
-    description: 'ReAct 多工具自主分析',
+    value: 'pro',
+    label: '专业',
+    shortLabel: '专业',
+    description: 'Planner-Executor 规划并执行复杂任务',
     allowsSkillMention: true,
-    allowsExpertMention: false,
+    allowsAgentMention: true,
     allowsWorkflowMention: false,
   },
   {
@@ -52,52 +37,36 @@ export const EXECUTION_MODE_OPTIONS: ExecutionModeOption[] = [
     shortLabel: '流程',
     description: '按预置 workflow 模板执行',
     allowsSkillMention: false,
-    allowsExpertMention: false,
+    allowsAgentMention: false,
     allowsWorkflowMention: true,
-  },
-  {
-    value: 'plan-workflow',
-    label: '动态规划',
-    shortLabel: '规划',
-    description: 'Planner 动态编排多步 DAG',
-    allowsSkillMention: true,
-    allowsExpertMention: false,
-    allowsWorkflowMention: false,
-  },
-  {
-    value: 'peer-collab',
-    label: '多专家协作',
-    shortLabel: '协作',
-    description: '多位 Expert 对等讨论后引擎汇总作答',
-    allowsSkillMention: false,
-    allowsExpertMention: true,
-    allowsWorkflowMention: false,
   },
 ]
 
-export function findExecutionModeOption(value: ExecutionPreference): ExecutionModeOption {
+export function findExecutionModeOption(value: ExecutionMode): ExecutionModeOption {
   return EXECUTION_MODE_OPTIONS.find(o => o.value === value) ?? EXECUTION_MODE_OPTIONS[0]
 }
 
-export function allowsSkillMention(preference: ExecutionPreference): boolean {
+export function allowsSkillMention(preference: ExecutionMode): boolean {
   return findExecutionModeOption(preference).allowsSkillMention
 }
 
-export function allowsExpertMention(preference: ExecutionPreference): boolean {
-  return findExecutionModeOption(preference).allowsExpertMention
+export function allowsAgentMention(preference: ExecutionMode): boolean {
+  return findExecutionModeOption(preference).allowsAgentMention
 }
 
-export function allowsWorkflowMention(preference: ExecutionPreference): boolean {
+export function allowsWorkflowMention(preference: ExecutionMode): boolean {
   return findExecutionModeOption(preference).allowsWorkflowMention
 }
 
 export const EXECUTION_PREFERENCE_STORAGE_KEY = 'sunshine-execution-preference'
 
-export function isExecutionPreference(raw: unknown): raw is ExecutionPreference {
-  return raw === 'auto'
-    || raw === 'simple-llm'
-    || raw === 'react'
-    || raw === 'workflow'
-    || raw === 'plan-workflow'
-    || raw === 'peer-collab'
+/** 新 wire 三值；旧 localStorage / API 值经 normalize 映射 */
+export function isExecutionMode(raw: unknown): raw is ExecutionMode {
+  return raw === 'fast' || raw === 'pro' || raw === 'workflow'
+}
+
+/** 读路径仅认协议三值；未知/旧值一律回退 fast */
+export function normalizeExecutionMode(raw: unknown): ExecutionMode {
+  if (isExecutionMode(raw)) return raw
+  return 'fast'
 }

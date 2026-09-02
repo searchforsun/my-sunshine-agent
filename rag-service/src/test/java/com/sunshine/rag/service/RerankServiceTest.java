@@ -30,8 +30,10 @@ class RerankServiceTest {
     @Test
     void parseResultsMapsRelevanceScore() throws Exception {
         List<RetrievalCandidate> input = List.of(
-                new RetrievalCandidate("a#0", "A", "弱相关", 0.5f, RetrievalCandidate.SOURCE_RRF),
-                new RetrievalCandidate("b#0", "B", "强相关", 0.5f, RetrievalCandidate.SOURCE_RRF));
+                new RetrievalCandidate("a#0", "A", "弱相关", 0.5f, RetrievalCandidate.SOURCE_RRF,
+                        RetrievalCandidate.LEVEL_CHUNK, null),
+                new RetrievalCandidate("b#0", "B", "强相关", 0.5f, RetrievalCandidate.SOURCE_RRF,
+                        RetrievalCandidate.LEVEL_CHUNK, null));
         String json = """
                 {
                   "output": {
@@ -52,7 +54,8 @@ class RerankServiceTest {
     @Test
     void hybridFallbackWhenAllBelowMinRelevance() throws Exception {
         List<RetrievalCandidate> input = List.of(
-                new RetrievalCandidate("a#0", "A", "无关", 1.0f, RetrievalCandidate.SOURCE_RRF));
+                new RetrievalCandidate("a#0", "A", "无关", 1.0f, RetrievalCandidate.SOURCE_RRF,
+                        RetrievalCandidate.LEVEL_CHUNK, null));
         String json = """
                 {
                   "output": {

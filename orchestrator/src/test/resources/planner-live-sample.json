@@ -4,7 +4,7 @@
   "nodes": [
     {"id": "start", "type": "start", "label": "开始"},
     {"id": "rag_retrieve", "type": "rag", "label": "检索差旅报销制度", "config": {"query": "差旅报销制度", "tool": "search_knowledge"}},
-    {"id": "agent_compliance", "type": "agent", "label": "合规分析", "config": {"tools": ["list_finance_messages", "get_finance_message_detail"]}},
+    {"id": "agent_compliance", "type": "agent", "label": "合规分析", "config": {"tools": ["list_my_expenses", "get_expense_detail"]}},
     {"id": "answer", "type": "answer", "label": "输出结论"}
   ],
   "edges": [

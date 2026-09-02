@@ -34,6 +34,30 @@ public class UserEntity {
     @Column(name = "default_write_hitl_mode", nullable = false, length = 16)
     private String defaultWriteHitlMode = "never";
 
+    /** vertical|horizontal 侧栏平台/对话/任务排布 */
+    @Column(name = "sidebar_sections_layout", nullable = false, length = 16)
+    private String sidebarSectionsLayout = "vertical";
+
+    /** 对话默认知识库 ID（账号级）；null 表示未配置，由会话或租户兜底解析 */
+    @Column(name = "default_kb_id", length = 64)
+    private String defaultKbId;
+
+    /** 用户个人规则（soul），注入系统提示；null 表示未配置 */
+    @Column(name = "personal_rules", columnDefinition = "TEXT")
+    private String personalRules;
+
+    @Column(name = "github_url", length = 255)
+    private String githubUrl = "";
+
+    @Column(name = "github_token", length = 255)
+    private String githubToken = "";
+
+    @Column(name = "gitlab_url", length = 255)
+    private String gitlabUrl = "";
+
+    @Column(name = "gitlab_token", length = 255)
+    private String gitlabToken = "";
+
     @Column(nullable = false, columnDefinition = "TINYINT")
     private Byte status = 1;
 

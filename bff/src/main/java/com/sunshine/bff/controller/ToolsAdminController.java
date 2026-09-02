@@ -9,10 +9,10 @@ import com.sunshine.common.tool.admin.ToolDefinitionView;
 import com.sunshine.common.tool.admin.ToolPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberAddResult;
-import com.sunshine.common.tool.admin.ToolSetMemberCriticalPatchRequest;
 import com.sunshine.common.tool.admin.ToolSetMemberRemoveRequest;
 import com.sunshine.common.tool.admin.ToolSetMembersPageResponse;
 import com.sunshine.common.tool.admin.ToolSetPickerResponse;
+import com.sunshine.common.tool.admin.ToolSetToolIdsResponse;
 import com.sunshine.bff.client.ToolManagerAdminClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -118,6 +118,14 @@ public class ToolsAdminController {
         return toolManagerAdminClient.toolSetPicker(kind, tenantId, q);
     }
 
+    /** A-4：skill/agent 声明 picker 按 (tenant, kind) 集过滤候选；kind=all = chat∪task 并集 */
+    @GetMapping("/api/admin/tools/sets/{kind}/tool-ids")
+    public Mono<R<ToolSetToolIdsResponse>> toolSetToolIds(
+            @PathVariable String kind,
+            @RequestParam(required = false) String tenantId) {
+        return toolManagerAdminClient.toolSetToolIds(kind, tenantId);
+    }
+
     @PostMapping("/api/admin/tools/sets/{kind}/members:add")
     public Mono<R<ToolSetMemberAddResult>> addToolSetMembers(
             @PathVariable String kind,
@@ -132,13 +140,5 @@ public class ToolsAdminController {
             @RequestParam(required = false) String tenantId,
             @RequestBody ToolSetMemberRemoveRequest body) {
         return toolManagerAdminClient.removeToolSetMembers(kind, tenantId, body);
-    }
-
-    @PatchMapping("/api/admin/tools/sets/plan-workflow/members/{toolId}")
-    public Mono<R<Void>> patchPlanWorkflowMemberCritical(
-            @PathVariable String toolId,
-            @RequestParam(required = false) String tenantId,
-            @RequestBody ToolSetMemberCriticalPatchRequest body) {
-        return toolManagerAdminClient.patchPlanWorkflowMemberCritical(tenantId, toolId, body);
     }
 }

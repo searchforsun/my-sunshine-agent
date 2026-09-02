@@ -13,29 +13,47 @@ spring:
       host: ecs4c16g
       port: 6379
       password: redis123
+  mvc:
+    async:
+      # 非流式 async 超时须大于上游 adapter response-timeout（120s），
+      # 确保上游慢时先触发 ModelRouter 降级，而非 servlet 超时直接返回 503
+      request-timeout: 180000
+
+resource-manager:
+  base-url: http://sunshine-resource-manager
+
+# phase5 5.2 用量计量：MQ 生产（消费端 orchestrator 落库 llm_usage_record）
+rocketmq:
+  producer:
+    endpoints: ecs4c16g:8081
+    topic: llm-usage
 
 llm:
   io-trace:
     enabled: true
   webclient:
     insecure-ssl: true
-  providers:
-    deepseek:
-      base-url: https://api.deepseek.com
-      api-key: ${DEEPSEEK_API_KEY:sk-1e18dbd6edd4477bac49a0a290e92462}
-      models:
-        - deepseek-v4-pro
-        - deepseek-v4-flash
-    qwen:
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${QWEN_API_KEY:sk-22e7ab6f7bbb4078b7163facb4d3aee0}
-      models:
-        - qwen-plus
-        - qwen-max
-  fallback:
-    routes:
-      deepseek-v4-pro: qwen-plus
-      deepseek-v4-flash: qwen-plus
+    # 上游 connect/response 超时：慢或挂起时快速失败，交由 ModelRouter 降级到备用模型
+    connect-timeout: 10s
+    response-timeout: 120s
+    # SSE 数据静默超时：两次 data 事件之间静默超过该阈值即断开（上游半挂时快速降级，避免前端干等满 response-timeout）；
+    # 在 OpenAiCompatibleAdapter 直接作用于 bodyToFlux 的 data 事件流（SSE 解码器已消化心跳注释，无需字节级 ReadTimeoutHandler）
+    read-idle-timeout: 60s
+  usage:
+    # 用量计量（5.2）：MQ topic 由 rocketmq.producer.topic 提供；消费端 orchestrator
+    enabled: true
+    tenant-id: default
+    # 5.2.4 租户配额请求前校验（默认关，热切）：调 orchestrator /api/usage/quota/check，结果本地缓存
+    quota:
+      enabled: false
+      orchestrator-base-url: http://sunshine-orchestrator
+      check-ttl-seconds: 30
+
+# 模型注册表 SSOT = resource-manager；此处仅保留加解密密钥材料
+# 生产强制 env 注入（禁默认材料）；缺失时启动失败（fail-fast）
+model:
+  crypto:
+    aes-key: ${MODEL_AES_KEY}
 
 logging:
   level:

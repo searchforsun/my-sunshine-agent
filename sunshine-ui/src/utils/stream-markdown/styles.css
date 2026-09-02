@@ -96,7 +96,7 @@
 
 .smd-loading-spinner {
   width: 28px; height: 28px;
-  border: 3px solid var(--sun-border, #263348);
+  border: 3px solid var(--sun-border, #5a5a5a);
   border-top: 3px solid var(--sun-text-muted, #8e8e8e);
   border-radius: 50%;
   animation: smd-spin 0.8s linear infinite;
@@ -110,6 +110,12 @@
   padding: 16px; overflow-x: auto;
 }
 .smd-mermaid-chart svg { max-width: 100%; height: auto; background: transparent; }
+
+/* 全局 theme-switching 期间隐藏旧 SVG，等新主题 renderInto 完成后再显示 */
+html.theme-switching .smd-mermaid-chart,
+html.theme-switching .smd-mermaid-error {
+  visibility: hidden;
+}
 
 /* Mermaid 网页内全屏 — 100vw × 100vh 撑满视口 */
 .smd-mermaid-overlay {
@@ -308,4 +314,26 @@ body.smd-mermaid-overlay-open {
 /* ── 浅色主题适配 ── */
 [data-theme="light"] .smd-toolbtn:hover {
   background: rgba(0, 0, 0, 0.06);
+}
+
+/* ── 沙箱路径链接（inline code 增强为蓝色可点击，保留 code 原有样式仅改色） ── */
+.msg-md code.smd-sandbox-path {
+  color: var(--sun-blue, #58a6ff);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.msg-md code.smd-sandbox-path:hover {
+  color: color-mix(in srgb, var(--sun-blue, #58a6ff) 88%, var(--sun-text));
+  text-decoration: underline;
+}
+
+/* 标准 markdown 链接增强为工作区路径：移除 href 后保持链接观感（蓝色+下划线） */
+.msg-md a.smd-sandbox-path {
+  color: var(--sun-blue, #58a6ff);
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.msg-md a.smd-sandbox-path:hover {
+  color: color-mix(in srgb, var(--sun-blue, #58a6ff) 88%, var(--sun-text));
 }

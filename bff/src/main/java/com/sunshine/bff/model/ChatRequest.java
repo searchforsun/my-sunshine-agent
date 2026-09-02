@@ -12,8 +12,8 @@ public class ChatRequest {
     /** 续传目标 assistant 消息 id，与 content 互斥 */
     private String resumeMessageId;
 
-    /** auto | simple-llm | react | workflow | plan-workflow */
-    private String executionPreference;
+    /** 执行模式（v6 wire）：fast | pro | workflow */
+    private String executionMode;
 
     /** 强制 workflow 模式时可选指定 catalog id */
     private String workflowId;
@@ -26,4 +26,10 @@ public class ChatRequest {
 
     /** never | always | smart — 沙箱写操作 HITL 跳过；缺省 never */
     private String writeHitlMode;
+
+    /** 用户个人规则（soul）；透传字段，BFF 不加工 */
+    private String personalRules;
+
+    /** 会话级模型覆盖（可选）；透传 orchestrator，BFF 不加工 */
+    private String modelName;
 }

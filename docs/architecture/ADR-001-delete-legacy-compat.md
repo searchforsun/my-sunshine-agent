@@ -10,7 +10,7 @@
 
 仓库存在三类互相冲突的指引：
 
-1. **[locked-architecture-decisions.md](../superpowers/specs/2026-06-19-locked-architecture-decisions.md)** 文首「已锁定 — 后续须一致」— 易被误读为**禁止删任何曾写入 spec 的 API/方法**。
+1. **[locked-architecture-decisions.md](../superpowers/specs/archive/2026-06-19-locked-architecture-decisions.md)** 文首「已锁定 — 后续须一致」— 易被误读为**禁止删任何曾写入 spec 的 API/方法**。
 2. **[2026-06-20-phase2-closure.md](../superpowers/plans/2026-06-20-phase2-closure.md) Task 8** 曾写：`toLegacyIntentLabel` **保留** `@Deprecated` 仅供测试。
 3. **`/tech-debt-refactor` §0**：P3 删 > 包 > 迁；P7 质疑文档；P9 开发阶段禁止为旧 wire format 写兼容。
 
@@ -40,4 +40,4 @@
 ## 参考
 
 - [tech-debt-register.md](../tech-debt-register.md) — TD-004、TD-010
-- [phase2-closure-design.md](../superpowers/specs/2026-06-20-phase2-closure-design.md) D6 — 与实现一致（删 Legacy executor）
+- [phase2-closure-design.md](../superpowers/specs/archive/2026-06-20-phase2-closure-design.md) D6 — 与实现一致（删 Legacy executor）

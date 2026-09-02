@@ -1,122 +1,181 @@
 package com.sunshine.orchestrator.agent;
 
+import com.sunshine.common.model.ModelSceneKey;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.client.LlmGatewayClient;
 import com.sunshine.orchestrator.conversation.ChatTurn;
-import com.sunshine.orchestrator.expert.ExpertCollaborationPlanSanitizer;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
+import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
 import com.sunshine.orchestrator.routing.WorkflowCatalog;
 import com.sunshine.orchestrator.routing.policy.RoutingContext;
+import com.sunshine.orchestrator.skill.SkillBindingOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 意图识别 — 输出 ExecutionPlan（simple-llm / workflow / react + 可选 skillId）
+ * 意图识别 — 分轨收集绑定（轨 A：skill/agent；轨 B：workflow）；禁止改写 executionMode。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class IntentRouter {
 
-    private static final int MAX_STM_TURNS = 4;
+    /** 意图分类注入的近期轮次上限（L1 mid/near 尾部）。 */
+    private static final int MAX_INTENT_CONTEXT_TURNS = 4;
+    private static final String PARAM_AGENT_IDS = "agentIds";
 
-    private final AgentPromptProperties prompts;
+    private final PromptCatalogHolder catalogHolder;
     private final WorkflowCatalog workflowCatalog;
     private final SkillCatalogService skillCatalogService;
-    private final ExpertCollaborationPlanSanitizer expertCollaborationPlanSanitizer;
+    private final AgentCatalogService agentCatalogService;
     private final ExecutionPlanParser planParser;
-
-    @Value("${agent.model.base-url:http://127.0.0.1:8300/v1}")
-    private String baseUrl;
-
-    @Value("${agent.model.api-key:}")
-    private String apiKey;
-
-    private WebClient webClient;
-
-    private WebClient client() {
-        if (webClient == null) {
-            webClient = WebClient.builder().baseUrl(baseUrl).build();
-        }
-        return webClient;
-    }
-
-    /** 兼容仅传用户句的调用方 */
-    public Mono<ExecutionPlan> classifyPlan(String userMessage) {
-        return classifyPlan(new RoutingContext(userMessage, null));
-    }
+    private final LlmGatewayClient llmGateway;
+    private final ModelSceneResolver modelSceneResolver;
 
     /**
      * 分类并返回结构化执行计划（L3 主入口 — 含 Skill Catalog + 会话上下文）
      */
     @SuppressWarnings("unchecked")
     public Mono<ExecutionPlan> classifyPlan(RoutingContext ctx) {
-        String classifierPrompt = renderClassifierPrompt();
+        String classifierPrompt = renderClassifierPrompt(ctx);
         if (classifierPrompt.isEmpty()) {
-            log.warn("[IntentRouter] agent.intent.classifier-prompt 未配置，默认 react");
-            return Mono.just(ExecutionPlan.reactFallback("no classifier prompt"));
+            log.warn("[IntentRouter] catalog intent.classifier.* 未配置（轨 A/B），默认 react");
+            return Mono.just(applyLockedMode(
+                    ExecutionPlan.reactFallback("no classifier prompt"), ctx.effectiveLockedMode()));
         }
         String userContent = buildClassifierUserMessage(ctx);
 
-        Map<String, Object> request = Map.of(
-                "model", prompts.intentModelOrDefault(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", classifierPrompt),
-                        Map.of("role", "user", "content", userContent)
-                ),
-                "max_tokens", 256,
-                "temperature", 0
-        );
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.INTENT.key(), null);
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", model.effectiveModel());
+        request.put("messages", List.of(
+                Map.of("role", "system", "content", classifierPrompt),
+                Map.of("role", "user", "content", userContent)
+        ));
+        request.put("max_tokens", 256);
+        request.put("temperature", 0);
+        request.put("call_site", LlmGatewayClient.CALL_SITE_REWRITE);
+        if (StringUtils.hasText(model.fallbackModel())) {
+            request.put("fallback_model", model.fallbackModel());
+        }
 
-        return client().post()
-                .uri("/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .map(resp -> extractContent(resp))
+        return llmGateway.completeRaw(request)
+                .map(IntentRouter::extractContent)
                 .defaultIfEmpty("")
                 .map(planParser::parse)
-                .map(workflowCatalog::sanitize)
-                .map(skillCatalogService::sanitizeSkillPlan)
-                .map(expertCollaborationPlanSanitizer::sanitize)
-                .doOnNext(plan -> log.info("[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}",
+                .map(plan -> ctx.lockedMode() != null || ctx.preference() != null
+                        ? applyLockedMode(plan, ctx.effectiveLockedMode())
+                        : workflowCatalog.sanitize(plan))
+                .map(plan -> skillCatalogService.sanitizeSkillPlan(plan, ctx.tenantIdOrDefault()))
+                .doOnNext(plan -> log.info(
+                        "[IntentRouter] 计划: mode={}, workflowId={}, skill={}, reason={}, locked={}, kind={}",
                         plan.mode(),
                         plan.workflowId(),
-                        plan.params() != null ? plan.params().get("skill") : null,
-                        plan.reason()));
+                        plan.params() != null ? plan.params().get(SkillBindingOutcome.PARAM_SKILL) : null,
+                        plan.reason(),
+                        ctx.effectiveLockedMode(),
+                        ctx.kindOrDefault()));
     }
 
-    private String renderClassifierPrompt() {
-        String prompt = prompts.intentClassifierPromptOrEmpty();
-        prompt = workflowCatalog.renderIntoClassifier(prompt);
-        return skillCatalogService.renderIntoClassifier(prompt);
+    /**
+     * 强制模式：锁死 mode，并按轨裁剪绑定（轨 A 去 workflowId；轨 B 去 skill/agent）。
+     * 忽略 LLM 输出的 planMode / executionMode（解析阶段亦不采纳）。
+     */
+    public static ExecutionPlan applyLockedMode(ExecutionPlan plan, ExecutionMode locked) {
+        if (plan == null) {
+            return null;
+        }
+        if (locked == null) {
+            return plan;
+        }
+        String workflowId = locked == ExecutionMode.WORKFLOW ? plan.workflowId() : null;
+        Map<String, String> params = filterParamsForTrack(plan.params(), locked);
+        return new ExecutionPlan(locked, workflowId, params, plan.reason(), plan.ruleId(), plan.routingTraces());
+    }
+
+    private static Map<String, String> filterParamsForTrack(Map<String, String> params, ExecutionMode locked) {
+        if (params == null || params.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : params.entrySet()) {
+            if (!StringUtils.hasText(e.getKey()) || !StringUtils.hasText(e.getValue())) {
+                continue;
+            }
+            if (locked == ExecutionMode.WORKFLOW) {
+                if (SkillBindingOutcome.PARAM_SKILL.equals(e.getKey())
+                        || PARAM_AGENT_IDS.equals(e.getKey())
+                        || SkillBindingOutcome.PARAM_PLANNER_MODE.equals(e.getKey())) {
+                    continue;
+                }
+            }
+            out.put(e.getKey(), e.getValue());
+        }
+        return out.isEmpty() ? Map.of() : Map.copyOf(out);
+    }
+
+    /** 轨 A（FAST/PRO）收集 skill+agent；轨 B（WORKFLOW）只收集 workflowId，目录与输出契约互不干扰 */
+    private static final String CLASSIFIER_PROMPT_TRACK_A = "intent.classifier.skill-agent";
+    private static final String CLASSIFIER_PROMPT_TRACK_B = "intent.classifier.workflow";
+
+    /**
+     * lockedMode 时跳过 {@link WorkflowCatalog#sanitize}：sanitize 会把未知/缺定义 workflow
+     * 降级为 react，随后再锁回 WORKFLOW 会丢掉 workflowId；强制路径由 ForcedExecutionRouter 校验。
+     */
+    private String renderClassifierPrompt(RoutingContext ctx) {
+        boolean workflowTrack = ctx.effectiveLockedMode() == ExecutionMode.WORKFLOW;
+        String promptId = workflowTrack ? CLASSIFIER_PROMPT_TRACK_B : CLASSIFIER_PROMPT_TRACK_A;
+        String prompt = catalogHolder.snapshot().text(promptId).map(String::strip).orElse("");
+        if (!StringUtils.hasText(prompt)) {
+            return "";
+        }
+        if (workflowTrack) {
+            return workflowCatalog.renderIntoClassifier(prompt, ctx.kindOrDefault());
+        }
+        // 目录按会话 kind + 租户过滤（保留 all + 同 kind）；输出字段由【模式锁定·轨A】+ applyLockedMode 约束
+        prompt = skillCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault(), ctx.tenantIdOrDefault());
+        return agentCatalogService.renderIntoClassifier(prompt, ctx.kindOrDefault());
     }
 
     static String buildClassifierUserMessage(RoutingContext ctx) {
         StringBuilder sb = new StringBuilder();
-        if (StringUtils.hasText(ctx.clientSkillId())) {
+        ExecutionMode locked = ctx.lockedMode() != null ? ctx.lockedMode() : null;
+        if (locked != null) {
+            sb.append(trackLockInstruction(locked));
+        }
+        if (StringUtils.hasText(ctx.clientSkillId()) && ctx.isAgentSkillTrack()) {
             sb.append("【会话态】UI 已选 Skill: ").append(ctx.clientSkillId().strip()).append('\n');
         }
-        MemoryContext memory = ctx.memory();
+        AssembledContext memory = ctx.memory();
         if (memory != null) {
-            if (StringUtils.hasText(memory.mtmSnippet())) {
-                sb.append("【近期摘要】\n").append(memory.mtmSnippet().strip()).append("\n\n");
+            String summary = StringUtils.hasText(memory.farSummaryBlock())
+                    ? memory.farSummaryBlock()
+                    : memory.l2SystemBlock();
+            if (StringUtils.hasText(summary)) {
+                sb.append("【近期摘要】\n").append(summary.strip()).append("\n\n");
             }
-            List<ChatTurn> turns = memory.stmTurns();
-            if (turns != null && !turns.isEmpty()) {
-                int from = Math.max(0, turns.size() - MAX_STM_TURNS);
+            List<ChatTurn> turns = new java.util.ArrayList<>();
+            if (memory.midTurns() != null) {
+                turns.addAll(memory.midTurns());
+            }
+            if (memory.nearTurns() != null) {
+                turns.addAll(memory.nearTurns());
+            }
+            if (!turns.isEmpty()) {
+                int from = Math.max(0, turns.size() - MAX_INTENT_CONTEXT_TURNS);
                 sb.append("【近期对话】\n");
                 for (int i = from; i < turns.size(); i++) {
                     ChatTurn turn = turns.get(i);
@@ -129,6 +188,25 @@ public class IntentRouter {
         }
         sb.append("【当前问题】\n").append(ctx.userMessage());
         return sb.toString();
+    }
+
+    private static String trackLockInstruction(ExecutionMode locked) {
+        return switch (locked) {
+            case FAST, PRO -> "【模式锁定·轨A】执行模式已固定为 " + lockedModeLabel(locked)
+                    + "。只回复一行 JSON，字段仅允许 agentIds/skillIds/confidence/reason"
+                    + "（可用 skillId 单数）；禁止输出 executionMode、planMode、mode、workflowId。\n";
+            case WORKFLOW -> "【模式锁定·轨B】执行模式已固定为 workflow。"
+                    + "只回复一行 JSON，字段仅允许 workflowId/confidence/reason；"
+                    + "禁止输出 executionMode、planMode、mode、agentIds、skillIds、skillId。\n";
+        };
+    }
+
+    private static String lockedModeLabel(ExecutionMode mode) {
+        return switch (mode) {
+            case FAST -> "fast";
+            case PRO -> "pro";
+            case WORKFLOW -> "workflow";
+        };
     }
 
     @SuppressWarnings("unchecked")

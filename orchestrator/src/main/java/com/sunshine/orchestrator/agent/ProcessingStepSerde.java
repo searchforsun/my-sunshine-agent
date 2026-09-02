@@ -2,10 +2,14 @@ package com.sunshine.orchestrator.agent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.common.sandbox.SandboxEditDiff;
+import com.sunshine.common.sandbox.SandboxEditDiffLine;
 import com.sunshine.orchestrator.processing.ContentBlock;
+import com.sunshine.orchestrator.processing.DecisionStepMeta;
 import com.sunshine.orchestrator.processing.NodeAttemptMeta;
 import com.sunshine.orchestrator.processing.StepMetadata;
 import com.sunshine.orchestrator.processing.StepSummary;
+import com.sunshine.orchestrator.routing.RoutingTrace;
 import com.sunshine.orchestrator.taskboard.TaskBoardItemView;
 
 import java.util.ArrayList;
@@ -58,7 +62,9 @@ public final class ProcessingStepSerde {
         return switch (lifecycle) {
             case "pending" -> nonEmptySummary(s.before(), null, null);
             case "running" -> nonEmptySummary(null, s.active(), null);
-            case "done", "error", "skipped", "terminated" -> nonEmptySummary(null, null, s.after());
+            // paused：用户取消/中断终态，与 done 一样下发 after（如「已取消」）
+            case "done", "error", "skipped", "terminated", "paused" ->
+                    nonEmptySummary(null, null, s.after());
             default -> nonEmptySummary(null, s.active(), null);
         };
     }
@@ -114,6 +120,9 @@ public final class ProcessingStepSerde {
         map.put("ts", step.ts());
         if (step.label() != null) {
             map.put("label", step.label());
+        }
+        if (hasText(step.stepSummary())) {
+            map.put("stepSummary", step.stepSummary());
         }
         if (step.metadata() != null && !step.metadata().isEmpty()) {
             map.put("metadata", metadataToMap(step.metadata()));
@@ -243,52 +252,6 @@ public final class ProcessingStepSerde {
             }
             map.put("nodeAttempts", attempts);
         }
-        if (metadata.planApproval() != null) {
-            Map<String, Object> approval = new LinkedHashMap<>();
-            com.sunshine.orchestrator.processing.PlanApprovalMeta pa = metadata.planApproval();
-            if (hasText(pa.status())) {
-                approval.put("status", pa.status());
-            }
-            if (hasText(pa.token())) {
-                approval.put("token", pa.token());
-            }
-            if (pa.expiresAt() != null) {
-                approval.put("expiresAt", pa.expiresAt());
-            }
-            if (pa.planGraph() != null && !pa.planGraph().isEmpty()) {
-                approval.put("planGraph", pa.planGraph());
-            }
-            if (pa.rounds() != null && !pa.rounds().isEmpty()) {
-                List<Map<String, Object>> rounds = new ArrayList<>();
-                for (com.sunshine.orchestrator.processing.PlanApprovalRoundMeta round : pa.rounds()) {
-                    if (round == null) {
-                        continue;
-                    }
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("roundNo", round.roundNo());
-                    if (hasText(round.status())) {
-                        item.put("status", round.status());
-                    }
-                    if (hasText(round.userHint())) {
-                        item.put("userHint", round.userHint());
-                    }
-                    if (hasText(round.chainSummary())) {
-                        item.put("chainSummary", round.chainSummary());
-                    }
-                    if (round.createdAt() != null) {
-                        item.put("createdAt", round.createdAt());
-                    }
-                    if (round.resolvedAt() != null) {
-                        item.put("resolvedAt", round.resolvedAt());
-                    }
-                    rounds.add(item);
-                }
-                approval.put("rounds", rounds);
-            }
-            if (!approval.isEmpty()) {
-                map.put("planApproval", approval);
-            }
-        }
         if (metadata.tasks() != null && !metadata.tasks().isEmpty()) {
             List<Map<String, Object>> tasks = new ArrayList<>();
             for (TaskBoardItemView item : metadata.tasks()) {
@@ -296,6 +259,9 @@ public final class ProcessingStepSerde {
                 row.put("id", item.id());
                 row.put("content", item.content());
                 row.put("status", item.status());
+                if (item.dependsOn() != null && !item.dependsOn().isEmpty()) {
+                    row.put("dependsOn", item.dependsOn());
+                }
                 tasks.add(row);
             }
             map.put("tasks", tasks);
@@ -306,13 +272,314 @@ public final class ProcessingStepSerde {
         if (hasText(metadata.taskProgress())) {
             map.put("taskProgress", metadata.taskProgress());
         }
+        if (metadata.taskQueue() != null && !metadata.taskQueue().isEmpty()) {
+            List<Map<String, Object>> queue = new ArrayList<>();
+            for (TaskBoardItemView item : metadata.taskQueue()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", item.id());
+                row.put("content", item.content());
+                row.put("status", item.status());
+                if (item.dependsOn() != null && !item.dependsOn().isEmpty()) {
+                    row.put("dependsOn", item.dependsOn());
+                }
+                queue.add(row);
+            }
+            map.put("taskQueue", queue);
+        }
         if (hasText(metadata.sandboxPath())) {
             map.put("sandboxPath", metadata.sandboxPath());
         }
         if (hasText(metadata.sandboxSearchRoot())) {
             map.put("sandboxSearchRoot", metadata.sandboxSearchRoot());
         }
+        if (hasText(metadata.spawnPrompt())) {
+            map.put("spawnPrompt", metadata.spawnPrompt());
+        }
+        if (Boolean.TRUE.equals(metadata.cancellable())) {
+            map.put("cancellable", true);
+        }
+        if (hasText(metadata.workerRunId())) {
+            map.put("workerRunId", metadata.workerRunId());
+        }
+        if (hasText(metadata.toolArgs())) {
+            map.put("toolArgs", metadata.toolArgs());
+        }
+        if (metadata.toolExitCode() != null) {
+            map.put("toolExitCode", metadata.toolExitCode());
+        }
+        if (metadata.editDiff() != null) {
+            map.put("editDiff", editDiffToMap(metadata.editDiff()));
+        }
+        if (metadata.decision() != null) {
+            map.put("decision", decisionToMap(metadata.decision()));
+        }
+        if (metadata.routingTraces() != null && !metadata.routingTraces().isEmpty()) {
+            List<Map<String, Object>> traces = new ArrayList<>();
+            for (RoutingTrace trace : metadata.routingTraces()) {
+                if (trace == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                if (hasText(trace.layer())) {
+                    row.put("layer", trace.layer());
+                }
+                if (hasText(trace.label())) {
+                    row.put("label", trace.label());
+                }
+                if (hasText(trace.detail())) {
+                    row.put("detail", trace.detail());
+                }
+                if (!row.isEmpty()) {
+                    traces.add(row);
+                }
+            }
+            if (!traces.isEmpty()) {
+                map.put("routingTraces", traces);
+            }
+        }
         return map;
+    }
+
+    public static StepMetadata metadataFromMap(Map<String, Object> map) {
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+        StepMetadata base = null;
+        SandboxEditDiff editDiff = editDiffFromMap(map.get("editDiff"));
+        if (editDiff != null) {
+            base = StepMetadata.withEditDiff(base, editDiff);
+        }
+        DecisionStepMeta decision = decisionFromMap(map.get("decision"));
+        if (decision != null) {
+            base = StepMetadata.withDecision(base, decision);
+        }
+        return base;
+    }
+
+    private static Map<String, Object> decisionToMap(DecisionStepMeta decision) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (hasText(decision.token())) {
+            map.put("token", decision.token());
+        }
+        if (hasText(decision.title())) {
+            map.put("title", decision.title());
+        }
+        List<Map<String, Object>> questions = new ArrayList<>();
+        if (decision.questions() != null) {
+            for (DecisionQuestion question : decision.questions()) {
+                if (question == null) {
+                    continue;
+                }
+                Map<String, Object> qRow = new LinkedHashMap<>();
+                if (hasText(question.id())) {
+                    qRow.put("id", question.id());
+                }
+                if (hasText(question.prompt())) {
+                    qRow.put("prompt", question.prompt());
+                }
+                List<Map<String, Object>> options = new ArrayList<>();
+                if (question.options() != null) {
+                    for (DecisionOption option : question.options()) {
+                        if (option == null) {
+                            continue;
+                        }
+                        Map<String, Object> optRow = new LinkedHashMap<>();
+                        if (hasText(option.id())) {
+                            optRow.put("id", option.id());
+                        }
+                        if (hasText(option.label())) {
+                            optRow.put("label", option.label());
+                        }
+                        options.add(optRow);
+                    }
+                }
+                qRow.put("options", options);
+                qRow.put("allowMultiple", question.allowMultiple());
+                questions.add(qRow);
+            }
+        }
+        map.put("questions", questions);
+        if (decision.expiresAt() != null) {
+            map.put("expiresAt", decision.expiresAt());
+        }
+        if (hasText(decision.outcome())) {
+            map.put("outcome", decision.outcome());
+        }
+        List<Map<String, Object>> answers = new ArrayList<>();
+        if (decision.answers() != null) {
+            for (DecisionAnswer answer : decision.answers()) {
+                if (answer == null) {
+                    continue;
+                }
+                Map<String, Object> aRow = new LinkedHashMap<>();
+                if (hasText(answer.questionId())) {
+                    aRow.put("questionId", answer.questionId());
+                }
+                List<String> selected = answer.selectedOptionIds() != null
+                        ? List.copyOf(answer.selectedOptionIds())
+                        : List.of();
+                aRow.put("selectedOptionIds", selected);
+                if (hasText(answer.customInput())) {
+                    aRow.put("customInput", answer.customInput());
+                }
+                answers.add(aRow);
+            }
+        }
+        if (!answers.isEmpty()) {
+            map.put("answers", answers);
+        }
+        return map;
+    }
+
+    private static DecisionStepMeta decisionFromMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return null;
+        }
+        String token = stringValue(map.get("token"));
+        String title = stringValue(map.get("title"));
+        List<DecisionQuestion> questions = readDecisionQuestions(map.get("questions"));
+        Long expiresAt = map.get("expiresAt") instanceof Number n ? n.longValue() : null;
+        String outcome = stringValue(map.get("outcome"));
+        List<DecisionAnswer> answers = readDecisionAnswers(map.get("answers"));
+        if (token == null && title == null && questions.isEmpty() && answers.isEmpty()
+                && outcome == null && expiresAt == null) {
+            return null;
+        }
+        return new DecisionStepMeta(
+                token,
+                title,
+                List.copyOf(questions),
+                expiresAt,
+                outcome,
+                answers.isEmpty() ? null : List.copyOf(answers));
+    }
+
+    private static List<DecisionQuestion> readDecisionQuestions(Object raw) {
+        List<DecisionQuestion> questions = new ArrayList<>();
+        if (!(raw instanceof List<?> rows)) {
+            return questions;
+        }
+        for (Object rowObj : rows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String id = stringValue(row.get("id"));
+            String prompt = stringValue(row.get("prompt"));
+            List<DecisionOption> options = new ArrayList<>();
+            Object optionsObj = row.get("options");
+            if (optionsObj instanceof List<?> optionRows) {
+                for (Object optObj : optionRows) {
+                    if (!(optObj instanceof Map<?, ?> optRow)) {
+                        continue;
+                    }
+                    String optId = stringValue(optRow.get("id"));
+                    String label = stringValue(optRow.get("label"));
+                    if (optId == null && label == null) {
+                        continue;
+                    }
+                    options.add(new DecisionOption(optId, label));
+                }
+            }
+            boolean allowMultiple = Boolean.TRUE.equals(row.get("allowMultiple"))
+                    || "true".equalsIgnoreCase(String.valueOf(row.get("allowMultiple")));
+            if (id == null && prompt == null && options.isEmpty()) {
+                continue;
+            }
+            questions.add(new DecisionQuestion(id, prompt, List.copyOf(options), allowMultiple));
+        }
+        return questions;
+    }
+
+    private static List<DecisionAnswer> readDecisionAnswers(Object raw) {
+        List<DecisionAnswer> answers = new ArrayList<>();
+        if (!(raw instanceof List<?> rows)) {
+            return answers;
+        }
+        for (Object rowObj : rows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String questionId = stringValue(row.get("questionId"));
+            List<String> selected = new ArrayList<>();
+            Object selectedObj = row.get("selectedOptionIds");
+            if (selectedObj instanceof List<?> ids) {
+                for (Object idObj : ids) {
+                    if (idObj != null) {
+                        selected.add(String.valueOf(idObj));
+                    }
+                }
+            }
+            String customInput = stringValue(row.get("customInput"));
+            if (questionId == null && selected.isEmpty() && customInput == null) {
+                continue;
+            }
+            answers.add(new DecisionAnswer(questionId, List.copyOf(selected), customInput));
+        }
+        return answers;
+    }
+
+    private static Map<String, Object> editDiffToMap(SandboxEditDiff editDiff) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (hasText(editDiff.path())) {
+            map.put("path", editDiff.path());
+        }
+        map.put("contextRadius", editDiff.contextRadius());
+        List<Map<String, Object>> lines = new ArrayList<>();
+        for (SandboxEditDiffLine line : editDiff.lines()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("kind", line.kind());
+            row.put("text", line.text() != null ? line.text() : "");
+            if (line.oldLine() != null) {
+                row.put("oldLine", line.oldLine());
+            }
+            if (line.newLine() != null) {
+                row.put("newLine", line.newLine());
+            }
+            lines.add(row);
+        }
+        map.put("lines", lines);
+        return map;
+    }
+
+    private static SandboxEditDiff editDiffFromMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return null;
+        }
+        String path = stringValue(map.get("path"));
+        int contextRadius = 0;
+        if (map.get("contextRadius") instanceof Number radius) {
+            contextRadius = radius.intValue();
+        }
+        Object linesObj = map.get("lines");
+        if (!(linesObj instanceof List<?> lineRows) || lineRows.isEmpty()) {
+            return null;
+        }
+        List<SandboxEditDiffLine> lines = new ArrayList<>();
+        for (Object rowObj : lineRows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String kind = stringValue(row.get("kind"));
+            if (kind == null) {
+                continue;
+            }
+            String text = row.get("text") != null ? String.valueOf(row.get("text")) : "";
+            Integer oldLine = row.get("oldLine") instanceof Number n ? n.intValue() : null;
+            Integer newLine = row.get("newLine") instanceof Number n ? n.intValue() : null;
+            lines.add(new SandboxEditDiffLine(kind, text, oldLine, newLine));
+        }
+        if (lines.isEmpty()) {
+            return null;
+        }
+        return new SandboxEditDiff(path, contextRadius, List.copyOf(lines));
+    }
+
+    private static String stringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).strip();
+        return text.isEmpty() ? null : text;
     }
 
     public static Map<String, Object> summaryToMap(StepSummary summary) {

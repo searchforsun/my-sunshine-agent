@@ -119,6 +119,7 @@
 .msg-md .katex { font-size: 1.05em; }
 .msg-md .katex-display > .katex { font-size: 1.15em; }
 .msg-md.streaming .katex-error { display: none !important; }
+.msg-md.streaming .smd-mermaid-error { display: none !important; }
 .msg-md .mermaid-container {
   display: flex;
   justify-content: center;

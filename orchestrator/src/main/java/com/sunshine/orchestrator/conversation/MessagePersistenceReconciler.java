@@ -76,7 +76,6 @@ public class MessagePersistenceReconciler {
             ExecutionPlanStatus planStatus) {
         linkPlanIfMissing(msg, plan);
         String messageStatus = planStatus == ExecutionPlanStatus.FAILED
-                || planStatus == ExecutionPlanStatus.REJECTED
                 ? MessageStatus.FAILED
                 : MessageStatus.COMPLETED;
         msg.setStatus(messageStatus);
@@ -96,7 +95,6 @@ public class MessagePersistenceReconciler {
         return status == ExecutionPlanStatus.COMPLETED
                 || status == ExecutionPlanStatus.COMPLETED_WITH_ERRORS
                 || status == ExecutionPlanStatus.FAILED
-                || status == ExecutionPlanStatus.REJECTED
                 || status == ExecutionPlanStatus.DEGRADED_REACT;
     }
 }

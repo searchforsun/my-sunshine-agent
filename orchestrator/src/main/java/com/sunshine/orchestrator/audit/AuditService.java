@@ -64,6 +64,13 @@ public class AuditService {
             if (!RoutingAuditExtractor.toPayloadMap(routingSummary).isEmpty()) {
                 payload.put("routing", RoutingAuditExtractor.toPayloadMap(routingSummary));
             }
+            if (message.getUsageJson() != null && !message.getUsageJson().isBlank()) {
+                try {
+                    payload.put("usage", objectMapper.readTree(message.getUsageJson()));
+                } catch (Exception ignored) {
+                    // 脏数据不阻断审计
+                }
+            }
             String payloadJson = objectMapper.writeValueAsString(payload);
             AuditEvent event = new AuditEvent(
                     UUID.randomUUID().toString().replace("-", ""),
@@ -78,8 +85,8 @@ public class AuditService {
                     payloadJson,
                     Instant.now());
             auditPublisher.publish(event);
-        } catch (Exception e) {
-            log.warn("[Audit] 构建事件失败 msgId={}: {}", message.getId(), e.getMessage());
+        } catch (Throwable e) {
+            log.warn("[Audit] 构建事件失败 msgId={}: {}", message.getId(), e.toString());
         }
     }
 }

@@ -1,5 +1,5 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
-import { readSandboxWorkspaceFile } from '../api/sandboxWorkspace'
+import { readSandboxWorkspaceFile, readWorkspaceSandboxFile } from '../api/sandboxWorkspace'
 import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
 import { copyText } from '../utils/stream-markdown/clipboard'
 import markdown from 'highlight.js/lib/languages/markdown'
@@ -12,6 +12,76 @@ if (!hljs.getLanguage('markdown')) {
 export function tabFileName(path: string): string {
   const parts = path.split('/').filter(Boolean)
   return parts[parts.length - 1] || path
+}
+
+/**
+ * 预览读失败时的展示：空内容、不报错、不缓存。
+ * 写入中文件未落盘或会话忙时会出现 5xx「系统繁忙」；不应把错误文案写进编辑区。
+ */
+export function resolvePreviewReadFailureDisplay(_err?: unknown): {
+  content: string
+  meta: string
+  shouldCache: boolean
+} {
+  return { content: '', meta: '', shouldCache: false }
+}
+
+/** 去掉工作区项目根前缀的显示路径（/workspace/wt-xxx/README.md -> README.md） */
+export function stripWorkspaceRootPath(path: string, root: string | null | undefined): string {
+  if (!root || !path.startsWith(root)) return path
+  const rel = path.slice(root.length)
+  return rel || path
+}
+
+function escapeHtmlForLine(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * 将 highlight.js 输出的整段 HTML 按行切分。
+ * highlight.js 的输出中 `\n` 均为纯文本换行（不在标签内），
+ * 因此可安全地按 `\n` 切分，再用 open-tag 栈补齐每行的未闭合标签。
+ */
+function splitHighlightedHtmlByLines(html: string): string[] {
+  const rawLines = html.split('\n')
+  const out: string[] = new Array(rawLines.length)
+  let openTags: string[] = []
+  for (let i = 0; i < rawLines.length; i++) {
+    let line = rawLines[i]
+    // 行首补齐上一行遗留的未闭合标签
+    if (openTags.length) {
+      line = openTags.map((t) => `<${t}>`).join('') + line
+    }
+    // 解析本行标签状态
+    const tagRe = /<\/?([a-zA-Z][\w-]*)([^>]*)>/g
+    let m: RegExpExecArray | null
+    const stack: string[] = []
+    while ((m = tagRe.exec(line)) !== null) {
+      const isClose = m[0][1] === '/'
+      const name = m[1].toLowerCase()
+      if (isClose) {
+        // 弹出到匹配的开标签
+        const idx = stack.lastIndexOf(name)
+        if (idx >= 0) stack.splice(idx, 1)
+      } else if (!/\/\s*$/.test(m[2])) {
+        stack.push(name)
+      }
+    }
+    // 行尾补齐本行未闭合标签
+    if (stack.length) {
+      line += stack
+        .slice()
+        .reverse()
+        .map((t) => `</${t}>`)
+        .join('')
+    }
+    out[i] = line
+    openTags = stack
+  }
+  return out
 }
 
 function langFromPath(path: string): string | null {
@@ -29,6 +99,8 @@ function langFromPath(path: string): string | null {
     '.xml': 'xml',
     '.html': 'xml',
     '.htm': 'xml',
+    '.css': 'css',
+    '.scss': 'scss',
     '.js': 'javascript',
     '.ts': 'typescript',
     '.jsx': 'javascript',
@@ -44,7 +116,25 @@ function langFromPath(path: string): string | null {
 
 export interface UseSandboxPreviewTabsOptions {
   getConversationId: () => string
+  getWorkspaceId?: () => string | null
+  /** 工作区模式项目根（/workspace/{checkoutId}），面包屑/显示路径去掉此前缀 */
+  getWorkspaceRootPath?: () => string | null
   selectedKeys: Ref<string[]>
+}
+
+interface PreviewEntry {
+  content: string
+  meta: string
+  offset: number
+  totalSize: number
+  truncated: boolean
+}
+
+function computeHasMore(entry: PreviewEntry): boolean {
+  return entry.truncated && (entry.offset + entry.content.length) < entry.totalSize
+}
+function computeNextOffset(entry: PreviewEntry): number {
+  return entry.offset + entry.content.length
 }
 
 export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
@@ -55,8 +145,12 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   const preview = ref('')
   const previewMeta = ref('')
   const previewLoading = ref(false)
-  const previewCache = ref<Record<string, { content: string; meta: string }>>({})
+  const previewLoadingMore = ref(false)
+  const previewCache = ref<Record<string, PreviewEntry>>({})
   const copyDone = ref(false)
+  const focusLine = ref(0)
+  /** 定位行范围终点（0 = 仅 focusLine 单行定位） */
+  const focusLineEnd = ref(0)
   let copyTimer: ReturnType<typeof setTimeout> | null = null
 
   function scrollActiveTabIntoView() {
@@ -75,16 +169,21 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   const showMarkdownRendered = computed(() => isMarkdownFile.value && !mdRawMode.value)
 
   const previewCodeHtml = computed(() => {
-    if (!preview.value || !selectedPath.value || showMarkdownRendered.value) return ''
+    if (!preview.value || !selectedPath.value || showMarkdownRendered.value) return [] as string[]
     const lang = langFromPath(selectedPath.value)
+    let html = ''
     try {
       if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(preview.value, { language: lang }).value
+        html = hljs.highlight(preview.value, { language: lang }).value
+      } else {
+        html = hljs.highlightAuto(preview.value).value
       }
-      return hljs.highlightAuto(preview.value).value
     } catch {
-      return ''
+      // 降级：按行转义
+      return preview.value.split('\n').map(escapeHtmlForLine)
     }
+    // highlight.js 输出的是带 span 的 HTML，按行切分需保证标签闭合
+    return splitHighlightedHtmlByLines(html)
   })
 
   const previewLangClass = computed(() => {
@@ -93,10 +192,18 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
   })
 
   const canCopyPreview = computed(() => !!preview.value && !previewLoading.value)
+  const hasMoreContent = computed(() => {
+    if (!selectedPath.value) return false
+    const entry = previewCache.value[selectedPath.value]
+    if (!entry) return false
+    return computeHasMore(entry)
+  })
 
   const breadcrumbs = computed(() => {
     if (!selectedPath.value) return [] as { label: string; path: string }[]
-    const parts = selectedPath.value.split('/').filter(Boolean)
+    // 工作区模式去掉 /workspace/{checkoutId} 前缀，面包屑从项目根开始展示
+    const display = stripWorkspaceRootPath(selectedPath.value, options.getWorkspaceRootPath?.())
+    const parts = display.split('/').filter(Boolean)
     const out: { label: string; path: string }[] = []
     let acc = ''
     for (const p of parts) {
@@ -118,9 +225,14 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     }, 2000)
   }
 
-  async function openFile(path: string) {
+  async function openFile(path: string, focusLineArg?: number, focusLineEndArg?: number) {
     const conversationId = options.getConversationId()
-    if (!conversationId || !path || path === '/workspace' || path === '/skills') return
+    const wsId = options.getWorkspaceId?.()
+    if ((!conversationId && !wsId) || !path || path === '/workspace' || path === '/skills') return
+    focusLine.value = typeof focusLineArg === 'number' && focusLineArg > 0 ? focusLineArg : 0
+    focusLineEnd.value = typeof focusLineEndArg === 'number' && focusLineEndArg >= focusLine.value && focusLine.value > 0
+      ? focusLineEndArg
+      : focusLine.value
     if (!openTabs.value.some((t) => t.path === path)) {
       openTabs.value = [...openTabs.value, { path }]
     }
@@ -137,31 +249,88 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview.value = ''
     previewMeta.value = ''
     try {
-      const data = await readSandboxWorkspaceFile(conversationId, path)
+      let data: { content?: string; binary?: boolean; truncated?: boolean; offset?: number; totalSize?: number }
+      if (conversationId) {
+        data = await readSandboxWorkspaceFile(conversationId, path, 0)
+      } else if (wsId) {
+        data = await readWorkspaceSandboxFile(wsId, path, 0)
+      } else {
+        return
+      }
       let content = ''
       let meta = ''
       if (data.binary) {
         meta = '二进制文件，暂不支持预览'
       } else {
         content = data.content ?? ''
-        meta = data.truncated ? '内容已截断' : ''
+        const newOffset = data.offset ?? 0
+        meta = data.truncated ? '内容已截断，可滚动加载更多' : ''
+        previewCache.value = {
+          ...previewCache.value,
+          [path]: { content, meta, offset: newOffset, totalSize: data.totalSize ?? content.length, truncated: data.truncated ?? false },
+        }
+        if (selectedPath.value === path) {
+          preview.value = content
+          previewMeta.value = meta
+        }
+        return
       }
-      previewCache.value = { ...previewCache.value, [path]: { content, meta } }
+      previewCache.value = {
+        ...previewCache.value,
+        [path]: { content, meta, offset: 0, totalSize: 0, truncated: false },
+      }
       if (selectedPath.value === path) {
         preview.value = content
         previewMeta.value = meta
       }
     } catch (e) {
-      const meta = e instanceof Error ? e.message : '读取失败'
-      previewCache.value = { ...previewCache.value, [path]: { content: '', meta } }
+      // 写入中读失败属预期：空预览、不报错、不缓存，等工具终态刷新后再读
+      const failure = resolvePreviewReadFailureDisplay(e)
       if (selectedPath.value === path) {
-        preview.value = ''
-        previewMeta.value = meta
+        preview.value = failure.content
+        previewMeta.value = failure.meta
       }
     } finally {
       if (selectedPath.value === path) {
         previewLoading.value = false
       }
+    }
+  }
+
+  async function loadMore(path: string) {
+    const entry = previewCache.value[path]
+    if (!entry || !computeHasMore(entry)) return
+    const conversationId = options.getConversationId()
+    const wsId = options.getWorkspaceId?.()
+    if (!conversationId && !wsId) return
+    previewLoadingMore.value = true
+    try {
+      let data: { content?: string; binary?: boolean; truncated?: boolean; offset?: number; totalSize?: number }
+      if (conversationId) {
+        data = await readSandboxWorkspaceFile(conversationId, path, computeNextOffset(entry))
+      } else if (wsId) {
+        data = await readWorkspaceSandboxFile(wsId, path, computeNextOffset(entry))
+      } else {
+        return
+      }
+      const chunk = data.content ?? ''
+      const newOffset = data.offset ?? 0
+      const newTotalSize = data.totalSize ?? (entry.offset + chunk.length)
+      const newTruncated = data.truncated ?? false
+      const newContent = entry.content + chunk
+      const newMeta = newTruncated ? '内容已截断，可滚动加载更多' : ''
+      previewCache.value = {
+        ...previewCache.value,
+        [path]: { content: newContent, meta: newMeta, offset: entry.offset, totalSize: newTotalSize, truncated: newTruncated },
+      }
+      if (selectedPath.value === path) {
+        preview.value = newContent
+        previewMeta.value = newMeta
+      }
+    } catch (e) {
+      // silently ignore load-more failures
+    } finally {
+      previewLoadingMore.value = false
     }
   }
 
@@ -207,7 +376,10 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview.value = ''
     previewMeta.value = ''
     previewLoading.value = false
+    previewLoadingMore.value = false
     mdRawMode.value = false
+    focusLine.value = 0
+    focusLineEnd.value = 0
     options.selectedKeys.value = []
   }
 
@@ -218,6 +390,9 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     options.selectedKeys.value = []
     preview.value = ''
     previewMeta.value = ''
+    previewLoadingMore.value = false
+    focusLine.value = 0
+    focusLineEnd.value = 0
   }
 
   function clearCache() {
@@ -246,6 +421,7 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     preview,
     previewMeta,
     previewLoading,
+    previewLoadingMore,
     previewCache,
     copyDone,
     isMarkdownFile,
@@ -253,14 +429,18 @@ export function useSandboxPreviewTabs(options: UseSandboxPreviewTabsOptions) {
     previewCodeHtml,
     previewLangClass,
     canCopyPreview,
+    hasMoreContent,
     breadcrumbs,
     copyPreview,
     openFile,
+    loadMore,
     activateTab,
     closeTab,
     resetPreview,
     resetTabsOnConversationChange,
     clearCache,
     clearCacheUnder,
+    focusLine,
+    focusLineEnd,
   }
 }

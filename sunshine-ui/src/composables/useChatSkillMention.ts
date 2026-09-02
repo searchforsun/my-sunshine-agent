@@ -1,13 +1,15 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { listSkillCatalogIndex, type SkillCatalogIndexEntry } from '../api/skills'
-import { allowsSkillMention, type ExecutionPreference } from '../api/executionModes'
+import { allowsSkillMention, type ExecutionMode } from '../api/executionModes'
+import { matchesSessionKind } from '../utils/kindFilter'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
-/** Composer @ Skill 补全 */
+/** Composer / Skill 补全 */
 export function useChatSkillMention(
   inputText: Ref<string>,
-  preference: Ref<ExecutionPreference>,
+  preference: Ref<ExecutionMode>,
   loading: Ref<boolean>,
+  sessionKind: Ref<string>,
 ) {
   const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
   const skillCatalog = ref<SkillCatalogIndexEntry[]>([])
@@ -19,18 +21,20 @@ export function useChatSkillMention(
   const skillMentionAllowed = computed(() => allowsSkillMention(preference.value))
   const inputPlaceholder = computed(() =>
     skillMentionAllowed.value
-      ? '发消息，Enter 发送；输入 @ 指定 Skill'
+      ? '发消息，Enter 发送；输入 / 指定 Skill'
       : '发消息，Enter 发送',
   )
 
   const filteredSkills = computed(() => {
     const q = skillQuery.value.trim().toLowerCase()
     return skillCatalog.value
-      .filter(s => s.enabled && (
-        !q
-        || s.id.toLowerCase().includes(q)
-        || s.displayName.toLowerCase().includes(q)
-      ))
+      .filter(s => s.enabled
+        && matchesSessionKind(sessionKind.value, s.kind)
+        && (
+          !q
+          || s.id.toLowerCase().includes(q)
+          || s.displayName.toLowerCase().includes(q)
+        ))
       .slice(0, 8)
   })
 
@@ -39,14 +43,14 @@ export function useChatSkillMention(
       showSkillSuggest.value = false
       return
     }
-    const match = text.match(/@([\w\u4e00-\u9fff-]*)$/)
+    const match = text.match(/\/([\w\u4e00-\u9fff-]*)$/)
     if (!match || match.index == null) {
       showSkillSuggest.value = false
       return
     }
     skillMentionStart.value = match.index
     skillQuery.value = match[1]
-    showSkillSuggest.value = skillCatalog.value.some(s => s.enabled)
+    showSkillSuggest.value = filteredSkills.value.length > 0
     skillSuggestIndex.value = 0
   }
 
@@ -58,7 +62,7 @@ export function useChatSkillMention(
   function applySkillSuggest(skill: SkillCatalogIndexEntry) {
     if (skillMentionStart.value < 0) return
     const prefix = inputText.value.slice(0, skillMentionStart.value)
-    inputText.value = `${prefix}@${skill.id} `
+    inputText.value = `${prefix}/${skill.id} `
     showSkillSuggest.value = false
     nextTick(() => inputRef.value?.focus())
   }

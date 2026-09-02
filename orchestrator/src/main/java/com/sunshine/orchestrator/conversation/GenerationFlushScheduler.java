@@ -5,13 +5,13 @@ import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
 import com.sunshine.orchestrator.agent.ProcessingStepSerde;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.processing.StepSummary;
 import com.sunshine.orchestrator.client.DesensitizeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -28,22 +28,46 @@ public class GenerationFlushScheduler {
     private final DesensitizeClient desensitizeClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public Consumer<String> createChunkAppender(StringBuilder buffer, String messageId, long flushIntervalMs) {
+    /**
+     * 流式增量 appender：每间隔 flush 时仅提交上次之后的新 delta（而非全量 buffer），
+     * 配合 {@link #flushPartial} 的 MySQL CONCAT 追加，消除大字段全量重写导致的 binlog 膨胀。
+     *
+     * @param flushedOffset 初始已落库长度（续跑时 = 预填 existingContent 长度），避免重复追加
+     */
+    public Consumer<String> createChunkAppender(StringBuilder buffer, String messageId,
+            long flushIntervalMs, int flushedOffset) {
         AtomicLong lastFlush = new AtomicLong(0);
+        AtomicLong flushedLen = new AtomicLong(flushedOffset);
         return chunk -> {
             buffer.append(chunk);
             long now = System.currentTimeMillis();
             if (now - lastFlush.get() >= flushIntervalMs) {
-                lastFlush.set(now);
-                flushPartial(messageId, buffer.toString());
+                long flushed = flushedLen.get();
+                int len = buffer.length();
+                if (len > flushed) {
+                    lastFlush.set(now);
+                    flushedLen.set(len);
+                    flushPartial(messageId, buffer.substring((int) flushed));
+                }
             }
         };
     }
 
-    public void flushPartial(String messageId, String content) {
-        Mono.fromRunnable(() -> conversationService.updateMessageContentIfStreaming(
-                        messageId, content))
-                .subscribeOn(Schedulers.boundedElastic())
+    /**
+     * 流式增量落库：scrub 按批执行（间隔级而非 token 级），再以 CONCAT 追加 delta。
+     * 整体转投虚拟线程执行：scrub 内部是 {@code Mono.block()} 同步 HTTP 调用，
+     * 而 flush 会被 StepEventBridge hook 路径（LLM 流回调）在 reactor 事件循环线程同步触发，
+     * 直接调用会抛 IllegalStateException 并中断整条生成流。
+     */
+    public void flushPartial(String messageId, String delta) {
+        if (delta == null || delta.isEmpty()) {
+            return;
+        }
+        Mono.fromRunnable(() -> {
+                    String scrubbed = desensitizeClient.scrub(delta);
+                    conversationService.appendStreamingDelta(messageId, scrubbed);
+                })
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         null,
                         e -> {
@@ -61,7 +85,7 @@ public class GenerationFlushScheduler {
     /** HITL/Recovery 待确认步 upsert 后增量落库 steps */
     public void flushStepsPartial(String messageId, String stepsJson) {
         Mono.fromRunnable(() -> conversationService.updateMessageStepsIfStreaming(messageId, stepsJson))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         null,
                         e -> {
@@ -94,8 +118,19 @@ public class GenerationFlushScheduler {
             String status,
             String stepsJson,
             String contentBlocksJson) {
+        commitFinal(messageId, content, reasoning, status, stepsJson, contentBlocksJson, null);
+    }
+
+    public void commitFinal(
+            String messageId,
+            String content,
+            String reasoning,
+            String status,
+            String stepsJson,
+            String contentBlocksJson,
+            String usageJson) {
         String scrubbed = desensitizeClient.scrub(content);
-        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson, contentBlocksJson);
+        conversationService.updateMessage(messageId, scrubbed, reasoning, status, stepsJson, contentBlocksJson, usageJson);
     }
 
     public String metaConversation(String convId) {
@@ -329,6 +364,25 @@ public class GenerationFlushScheduler {
             return "{\"type\":\"confirmation\",\"toolId\":\"" + toolId
                     + "\",\"confirmationToken\":\"" + confirmationToken + "\"}";
         }
+    }
+
+    /** 会话标题 LLM 摘要生成完成 — type:title，前端据此即时更新侧栏/header */
+    public String metaTitle(String conversationId, String title) {
+        try {
+            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("type", "title");
+            map.put("conversationId", conversationId != null ? conversationId : "");
+            map.put("title", title != null ? title : "");
+            return objectMapper.writeValueAsString(map);
+        } catch (Exception e) {
+            return "{\"type\":\"title\",\"conversationId\":\""
+                    + conversationId + "\",\"title\":\"" + title + "\"}";
+        }
+    }
+
+    /** LLM usage 计量帧 — wire JSON 由 UsageJsonSupport 构造，此处原样包装下发 */
+    public String metaUsage(String usageJson) {
+        return usageJson != null ? usageJson : "{\"type\":\"usage\"}";
     }
 
     private String metaText(String type, String text) {

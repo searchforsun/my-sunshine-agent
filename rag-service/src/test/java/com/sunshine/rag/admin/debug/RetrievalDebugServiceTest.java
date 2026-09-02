@@ -52,9 +52,11 @@ class RetrievalDebugServiceTest {
     @Test
     void debugSearchReturnsHybridStagesInOrder() {
         RetrievalCandidate vectorHit = new RetrievalCandidate(
-                "a#0", "报销制度", "餐费报销规则", 0.72f, RetrievalCandidate.SOURCE_VECTOR);
+                "a#0", "报销制度", "餐费报销规则", 0.72f, RetrievalCandidate.SOURCE_VECTOR,
+                RetrievalCandidate.LEVEL_CHUNK, null);
         RetrievalCandidate bm25Hit = new RetrievalCandidate(
-                "a#0", "报销制度", "餐费报销规则", 9.1f, RetrievalCandidate.SOURCE_BM25);
+                "a#0", "报销制度", "餐费报销规则", 9.1f, RetrievalCandidate.SOURCE_BM25,
+                RetrievalCandidate.LEVEL_CHUNK, null);
         List<RetrievalDebugStage> stages = List.of(
                 RetrievalDebugStage.retrieval("vector", List.of(vectorHit), null, 10),
                 RetrievalDebugStage.retrieval("bm25", List.of(bm25Hit), null, 8),

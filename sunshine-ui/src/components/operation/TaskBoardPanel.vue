@@ -1,30 +1,40 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { ProcessingStep, TaskBoardItemView } from '../../api/processingSteps'
-import { hasRealTaskBoardItems, stepLifecycle } from '../../api/processingSteps'
+import { hasRealTaskBoardItems, resolveTaskBoardPrimaryItems, stepLifecycle } from '../../api/processingSteps'
+import { hasSecondaryTodos } from '../../api/taskBoardWaves'
+import { formatTaskUnitId } from '../../api/harnessTimeline'
 
 const props = withDefaults(defineProps<{
   step: ProcessingStep
   live?: boolean
+  /** 初始折叠（悬浮场景默认收一行进度，避免遮挡输入区） */
+  defaultCollapsed?: boolean
+  /** 悬浮态：去掉左侧 gutter，横向撑满，hover 时头部图标切换为展开/收起箭头 */
+  floating?: boolean
 }>(), {
   live: false,
+  defaultCollapsed: false,
+  floating: false,
 })
 
-const expanded = ref(true)
+const expanded = ref(!props.defaultCollapsed)
 const userToggled = ref(false)
 
 const lifecycle = computed(() => stepLifecycle(props.step))
 const isRunning = computed(() => lifecycle.value === 'running')
 const isPending = computed(() => lifecycle.value === 'pending')
-const tasks = computed(() => props.step.metadata?.tasks ?? [])
+const tasks = computed(() => resolveTaskBoardPrimaryItems(props.step))
 const hasRealTasks = computed(() => hasRealTaskBoardItems(props.step))
 const showPanel = computed(() => hasRealTasks.value)
+/** harness taskQueue 一级项带执行单元 id（t1-1/t1-2…），展示在任务名前 */
+const isHarnessBoard = computed(() => (props.step.metadata?.taskQueue?.length ?? 0) > 0)
 
 const doneCount = computed(() =>
   tasks.value.filter(t => t.status === 'completed').length,
 )
 
-/** 卡片头：对齐参考图 "1 of 4 Done" */
+/** 卡片头：优先后端 taskProgress（如 0/1、1/2 已完成）；缺失时兜底简单表达 */
 const progressLabel = computed(() => {
   if (!hasRealTasks.value) {
     return props.step.summary?.before?.trim() || '规划任务清单'
@@ -33,7 +43,7 @@ const progressLabel = computed(() => {
   if (progress) return progress
   const total = tasks.value.length
   if (!total) return '规划任务清单'
-  return `${doneCount.value} of ${total} Done`
+  return `${doneCount.value} / ${total}`
 })
 
 watch(isRunning, running => {
@@ -73,30 +83,10 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
       'is-expanded': expanded,
       'is-collapsed': !expanded,
       'is-running': isRunning && live,
+      'is-floating': floating,
     }"
   >
     <div class="taskboard-row">
-      <button
-        type="button"
-        class="op-gutter taskboard-gutter"
-        :aria-expanded="expanded"
-        aria-label="展开或收起任务清单"
-        @click="toggleExpand"
-      >
-        <svg
-          class="taskboard-chevron"
-          width="9"
-          height="9"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          aria-hidden="true"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
       <div class="taskboard-card">
         <button
           type="button"
@@ -104,31 +94,68 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
           :aria-expanded="expanded"
           @click="toggleExpand"
         >
-          <svg class="taskboard-list-icon" viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M2 4.5h12M2 8h8M2 11.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-            <circle cx="12.5" cy="8" r="1.1" fill="currentColor" />
-            <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" />
+          <svg class="taskboard-list-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4 2.5h8l1.5 2v9a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 13.5V4.5L4 2.5Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" />
+            <path d="M5.5 8h5M5.5 10.5h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+          </svg>
+          <svg class="taskboard-head-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
           </svg>
           <span class="taskboard-progress">{{ progressLabel }}</span>
         </button>
-        <ul v-show="expanded && hasRealTasks" class="taskboard-list" role="list">
-        <li
-          v-for="item in tasks"
-          :key="item.id"
-          class="taskboard-item"
-          :class="itemClass(item)"
-        >
-          <span class="taskboard-marker" :class="markerClass(item)" aria-hidden="true">
-            <svg v-if="item.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
-              <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <svg v-else-if="item.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
-              <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </span>
-          <span class="taskboard-content">{{ item.content }}</span>
-        </li>
-      </ul>
+        <div v-show="expanded && hasRealTasks" class="taskboard-body">
+          <!-- 与 todo_write 一致：始终竖向清单；多波按依赖顺序串行竖排 -->
+          <ul class="taskboard-list" role="list">
+            <li
+              v-for="item in tasks"
+              :key="item.id"
+              class="taskboard-item"
+              :class="itemClass(item)"
+            >
+              <span class="taskboard-marker" :class="markerClass(item)" aria-hidden="true">
+                <svg v-if="item.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+                  <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <svg v-else-if="item.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+                  <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <svg v-else-if="item.status === 'cancelled'" class="marker-icon" viewBox="0 0 16 16">
+                  <path d="M5.2 5.2 10.8 10.8M10.8 5.2 5.2 10.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                </svg>
+              </span>
+              <div class="taskboard-item-body">
+                <span class="taskboard-content">
+                  <span v-if="isHarnessBoard" class="taskboard-task-id">{{ formatTaskUnitId(item.id) }}</span>{{ item.content }}
+                </span>
+                <ul
+                  v-if="hasSecondaryTodos(item)"
+                  class="taskboard-secondary"
+                  role="list"
+                >
+                  <li
+                    v-for="sub in item.secondary"
+                    :key="sub.id"
+                    class="taskboard-item is-secondary"
+                    :class="itemClass(sub)"
+                  >
+                    <span class="taskboard-marker" :class="markerClass(sub)" aria-hidden="true">
+                      <svg v-if="sub.status === 'completed'" class="marker-icon" viewBox="0 0 16 16">
+                        <path d="M3.5 8.2 6.5 11.2 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      <svg v-else-if="sub.status === 'in_progress'" class="marker-icon" viewBox="0 0 16 16">
+                        <path d="M6.5 4.5 10.5 8 6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      <svg v-else-if="sub.status === 'cancelled'" class="marker-icon" viewBox="0 0 16 16">
+                        <path d="M5.2 5.2 10.8 10.8M10.8 5.2 5.2 10.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                      </svg>
+                    </span>
+                    <span class="taskboard-content">{{ sub.content }}</span>
+                  </li>
+                </ul>
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -136,15 +163,23 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
 
 <style scoped>
 .taskboard-wrap {
-  --op-gutter: 12px;
   --panel-radius: var(--radius-sm, 6px);
   margin: 6px 0;
 }
 
+/* 悬浮态：卡片横向撑满；悬浮面板自身已有外边框，内部卡片去边框 */
+.taskboard-wrap.is-floating {
+  margin: 0;
+}
+
+.taskboard-wrap.is-floating .taskboard-card {
+  border: none;
+  background: transparent;
+}
+
 .taskboard-row {
   display: grid;
-  grid-template-columns: var(--op-gutter) minmax(0, 1fr);
-  column-gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -152,39 +187,16 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   align-items: center;
 }
 
-.taskboard-gutter {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  width: var(--op-gutter);
-  height: 100%;
-  padding: 4px 0 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.taskboard-wrap.is-collapsed .taskboard-gutter {
-  align-items: center;
-  align-self: stretch;
-  padding-top: 0;
-}
-
-.taskboard-gutter:hover .taskboard-chevron {
-  opacity: 0.75;
-}
-
-.op-gutter {
-  flex-shrink: 0;
-}
-
 .taskboard-card {
   min-width: 0;
   border: 1px solid var(--sun-border);
   border-radius: var(--panel-radius);
   background: var(--sun-black);
+}
+
+/* 普通态卡片左缘与上下时间线文字对齐（gutter 已移除，无需偏移） */
+.taskboard-wrap:not(.is-floating) {
+  margin-left: 0;
 }
 
 .taskboard-card-head {
@@ -216,17 +228,17 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   color: var(--sun-text-secondary);
 }
 
-.taskboard-chevron {
-  flex-shrink: 0;
+.taskboard-progress {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
   color: var(--sun-text-muted);
-  opacity: 0.45;
-  transition: transform 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.taskboard-wrap.is-expanded .taskboard-chevron {
-  transform: rotate(90deg);
-}
-
+/* 行首三条杠：默认常驻；hover 时切换为展开箭头（同 chat 输入框上方悬浮 todolist 样式） */
 .taskboard-list-icon {
   width: 14px;
   height: 14px;
@@ -234,9 +246,38 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   opacity: 0.72;
 }
 
-.taskboard-progress {
-  font-variant-numeric: tabular-nums;
-  color: var(--sun-text-muted);
+/* hover 切换：三条杠隐藏，显示 > / ^ 箭头；与三条杠同宽（14px）居中，避免 progress 左右移动 */
+.taskboard-head-chevron {
+  display: none;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  padding: 1px;
+  color: var(--sun-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.taskboard-card-head:hover .taskboard-list-icon {
+  display: none;
+}
+
+.taskboard-card-head:hover .taskboard-head-chevron {
+  display: block;
+}
+
+/* 折叠态右箭头 >，展开态上箭头 ^ */
+.taskboard-wrap.is-collapsed .taskboard-card-head:hover .taskboard-head-chevron {
+  transform: rotate(0deg);
+}
+
+.taskboard-wrap.is-expanded .taskboard-card-head:hover .taskboard-head-chevron {
+  transform: rotate(-90deg);
+}
+
+.taskboard-body {
+  max-height: min(36vh, 280px);
+  overflow-y: auto;
 }
 
 .taskboard-list {
@@ -246,8 +287,6 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: min(36vh, 280px);
-  overflow-y: auto;
 }
 
 .taskboard-item {
@@ -255,6 +294,32 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   grid-template-columns: 16px minmax(0, 1fr);
   column-gap: 8px;
   align-items: start;
+}
+
+.taskboard-item-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.taskboard-secondary {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0 0 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 1px solid color-mix(in srgb, var(--sun-border) 80%, transparent);
+  padding-left: 8px;
+}
+
+.taskboard-item.is-secondary {
+  opacity: 0.92;
+}
+
+.taskboard-item.is-secondary .taskboard-content {
+  font-size: calc(var(--sun-font-sm) * 0.95);
 }
 
 .taskboard-marker {
@@ -297,6 +362,15 @@ function markerClass(item: TaskBoardItemView): Record<string, boolean> {
   line-height: 1.45;
   word-break: break-word;
   color: var(--sun-text-muted);
+}
+
+.taskboard-task-id {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: var(--sun-font-sm);
+  line-height: 1.45;
+  color: var(--sun-text-muted);
+  vertical-align: baseline;
 }
 
 .taskboard-item.is-in-progress .taskboard-content {

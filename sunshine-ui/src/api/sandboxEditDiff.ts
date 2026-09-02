@@ -1,53 +1,43 @@
-/** 沙箱 edit 展开：git 风格行级 unified diff（同屏 +/-） */
+/** 沙箱 write/edit 展开：结构化 editDiff metadata + write 全文 add 行 */
+
+export type SandboxDiffLineKind = 'del' | 'add' | 'ctx' | 'fold' | 'hunk'
 
 export type SandboxDiffLine = {
-  kind: 'del' | 'add' | 'ctx'
+  kind: SandboxDiffLineKind
   text: string
+  oldLine?: number | null
+  newLine?: number | null
 }
 
-function splitLines(text: string): string[] {
-  if (text === '') return ['']
-  return text.split('\n')
+export type SandboxEditDiffMeta = {
+  path?: string
+  contextRadius?: number
+  lines: SandboxDiffLine[]
 }
 
-/** 行级 LCS → unified（公共行 ctx，删除 -，新增 +） */
-export function lineUnifiedDiff(oldText: string, newText: string): SandboxDiffLine[] {
-  const a = splitLines(oldText ?? '')
-  const b = splitLines(newText ?? '')
-  const n = a.length
-  const m = b.length
-  const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0))
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j]
-        ? dp[i + 1][j + 1] + 1
-        : Math.max(dp[i + 1][j], dp[i][j + 1])
-    }
-  }
-  const out: SandboxDiffLine[] = []
-  let i = 0
-  let j = 0
-  while (i < n && j < m) {
-    if (a[i] === b[j]) {
-      out.push({ kind: 'ctx', text: a[i] })
-      i++
-      j++
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({ kind: 'del', text: a[i++] })
-    } else {
-      out.push({ kind: 'add', text: b[j++] })
-    }
-  }
-  while (i < n) out.push({ kind: 'del', text: a[i++] })
-  while (j < m) out.push({ kind: 'add', text: b[j++] })
-  return out
+function parseDiffLineKind(raw: unknown): SandboxDiffLineKind | null {
+  if (raw === 'del' || raw === 'add' || raw === 'ctx' || raw === 'fold' || raw === 'hunk') return raw
+  return null
 }
 
-export function formatDiffLinesAsText(lines: SandboxDiffLine[]): string {
-  return lines.map(l => {
-    const p = l.kind === 'del' ? '-' : l.kind === 'add' ? '+' : ' '
-    return `${p}${l.text}`
-  }).join('\n')
+function parseDiffLine(raw: unknown): SandboxDiffLine | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const kind = parseDiffLineKind(o.kind)
+  if (!kind) return null
+  const text = typeof o.text === 'string' ? o.text : ''
+  const oldLine = typeof o.oldLine === 'number' ? o.oldLine : o.oldLine === null ? null : undefined
+  const newLine = typeof o.newLine === 'number' ? o.newLine : o.newLine === null ? null : undefined
+  return { kind, text, oldLine, newLine }
+}
+
+/** SSE metadata.editDiff → 渲染行（无有效 lines 时 null） */
+export function linesFromEditDiffMeta(meta?: SandboxEditDiffMeta | null): SandboxDiffLine[] | null {
+  if (!meta || !Array.isArray(meta.lines) || meta.lines.length === 0) return null
+  const lines = meta.lines
+    .map(line => parseDiffLine(line))
+    .filter((line): line is SandboxDiffLine => line != null)
+  return lines.length > 0 ? lines : null
 }
 
 export function summarizeDiffCounts(lines: SandboxDiffLine[]): { add: number; del: number } {
@@ -60,30 +50,29 @@ export function summarizeDiffCounts(lines: SandboxDiffLine[]): { add: number; de
   return { add, del }
 }
 
-/** 解析 expand detail：仅认 +/-/空格 前缀的 unified 文本（后端 HitlParamSupport 产出） */
-export function parseSandboxEditDiff(raw: string): SandboxDiffLine[] | null {
-  if (!raw?.trim()) return null
-  const trimmed = raw.replace(/^\uFEFF/, '')
-  const lines = trimmed.split('\n')
-  const prefixed = lines.filter(l => /^[+\- ]/.test(l))
-  if (prefixed.length >= 1 && prefixed.length === lines.length) {
-    return lines.map(line => {
-      const mark = line[0]
-      const text = line.slice(1)
-      if (mark === '-') return { kind: 'del' as const, text }
-      if (mark === '+') return { kind: 'add' as const, text }
-      return { kind: 'ctx' as const, text }
-    })
+/** write 主行 +N：只计数，避免折叠态为摘要分配整文件 diff 行数组 */
+export function countWriteAddLines(raw: string): number {
+  if (raw == null || raw === '') return 0
+  const normalized = raw.endsWith('\n') ? raw.slice(0, -1) : raw
+  if (normalized === '') return 1
+  let n = 1
+  for (let i = 0; i < normalized.length; i++) {
+    if (normalized.charCodeAt(i) === 10) n++
   }
-  return null
+  return n
 }
 
-/** write 展开：全文视为新增行（绿底 +N） */
+/** write 展开：全文视为新增行（绿底 + 新侧行号 1..N） */
 export function writeContentAsAddLines(raw: string): SandboxDiffLine[] {
   if (raw == null || raw === '') return []
   const normalized = raw.endsWith('\n') ? raw.slice(0, -1) : raw
-  if (normalized === '') return [{ kind: 'add', text: '' }]
-  return normalized.split('\n').map(text => ({ kind: 'add' as const, text }))
+  if (normalized === '') return [{ kind: 'add', text: '', oldLine: null, newLine: 1 }]
+  return normalized.split('\n').map((text, i) => ({
+    kind: 'add' as const,
+    text,
+    oldLine: null,
+    newLine: i + 1,
+  }))
 }
 
 export function isSandboxWriteStep(step: { id: string }): boolean {

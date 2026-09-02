@@ -1,32 +1,44 @@
 package com.sunshine.orchestrator.execution;
 
+import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.plan.harness.PlannerHarnessExecutor;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 /**
- * 按 ExecutionPlan.mode 分发至对应 Executor
+ * ResourceDispatcher（类名过渡保留 ExecutionDispatcher）：按用户钉死的
+ * {@link ExecutionMode} 分发 — FAST→ReAct、PRO→PlannerHarness、WORKFLOW→静态 Workflow。
+ * <p>PRO 在 {@code harness.enabled=false} 时显式失败，禁止回落旧动态规划、禁止静默改 FAST。
  */
 @Component
 @RequiredArgsConstructor
 public class ExecutionDispatcher {
 
-    private final SimpleLlmExecutor simpleLlmExecutor;
     private final WorkflowExecutor workflowExecutor;
     private final ReactExecutor reactExecutor;
-    private final PlanWorkflowExecutor planWorkflowExecutor;
-    private final ExpertConsultationExecutor expertConsultationExecutor;
+    private final PlannerHarnessExecutor plannerHarnessExecutor;
+    private final AgentExecutionProperties executionProperties;
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
-        ExecutionMode mode = ctx.plan() != null ? ctx.plan().mode() : ExecutionMode.REACT;
+        ExecutionMode mode = ctx.plan() != null ? ctx.plan().mode() : ExecutionMode.FAST;
         return switch (mode) {
-            case SIMPLE_LLM -> simpleLlmExecutor.execute(ctx);
+            case FAST -> reactExecutor.execute(ctx);
+            case PRO -> {
+                if (!harnessEnabled()) {
+                    yield Flux.error(new BizException(OrchestratorErrorCode.HARNESS_DISABLED));
+                }
+                yield plannerHarnessExecutor.execute(ctx);
+            }
             case WORKFLOW -> workflowExecutor.execute(ctx);
-            case REACT -> reactExecutor.execute(ctx);
-            case PLAN_WORKFLOW -> planWorkflowExecutor.execute(ctx);
-            case PEER_COLLAB -> expertConsultationExecutor.execute(ctx);
         };
+    }
+
+    private boolean harnessEnabled() {
+        return executionProperties.getHarness() != null && executionProperties.getHarness().isEnabled();
     }
 }

@@ -40,9 +40,12 @@ public class ChatCompletionResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public static class Message {
         private String role;
         private String content;
+        @com.fasterxml.jackson.annotation.JsonProperty("reasoning_content")
+        private String reasoningContent;
     }
 
     @Data
@@ -50,8 +53,11 @@ public class ChatCompletionResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Usage {
+        @com.fasterxml.jackson.annotation.JsonProperty("prompt_tokens")
         private Integer promptTokens;
+        @com.fasterxml.jackson.annotation.JsonProperty("completion_tokens")
         private Integer completionTokens;
+        @com.fasterxml.jackson.annotation.JsonProperty("total_tokens")
         private Integer totalTokens;
     }
 }

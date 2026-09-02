@@ -15,10 +15,12 @@ class WorkflowNodeTypeTest {
 
     @Test
     void plannerAndLoopBodyAlign() {
+        // planner 允许业务 + 路由 type（start/answer 由引擎固定）
         assertThat(WorkflowNodeType.plannerTypeIds())
-                .containsExactlyInAnyOrder("rag", "tool", "agent");
+                .contains("rag", "tool", "agent", "join", "parallel-gateway", "exclusive-gateway", "loop");
+        // loop body 仅业务节点 + variable-assignment（parameter-extractor 不进 loop body）
         assertThat(WorkflowNodeType.loopBodyTypeIds())
-                .isEqualTo(WorkflowNodeType.plannerTypeIds());
+                .containsExactlyInAnyOrder("rag", "tool", "agent", "variable-assignment");
     }
 
     @Test

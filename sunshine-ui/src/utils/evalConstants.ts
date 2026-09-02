@@ -1,3 +1,7 @@
+import type { EvalJobSummary } from '../api/ragAdmin'
+import type { KbAppliedConfig } from '../composables/useKbWorkbenchContext'
+import { formatDateTimeLocal } from './formatSkillVersionTime'
+
 export const DEFAULT_EVAL_SUITE_KEY = 'sunshine-regression'
 
 export const BUILTIN_SUITE_KEYS = [
@@ -179,10 +183,6 @@ export function formatEvalCategory(category: string | null | undefined): string 
   return EVAL_CATEGORY_LABEL[key] ?? key
 }
 
-export function isEvalNegativeCategory(category: string | null | undefined): boolean {
-  return category?.trim() === 'negative'
-}
-
 export function kbCustomSuiteKey(kbId: string): string {
   const safe = kbId.trim().replace(/[^a-zA-Z0-9_-]/g, '-')
   return `${safe || 'default'}-custom`
@@ -215,9 +215,6 @@ export function evalJobProgressText(job: {
   return EVAL_JOB_STATUS_LABEL[job.status] ?? job.status
 }
 
-import type { EvalJobSummary } from '../api/ragAdmin'
-import type { KbAppliedConfig } from '../composables/useKbWorkbenchContext'
-
 export function isEvalJobActive(status: string): boolean {
   return status === 'pending' || status === 'running'
 }
@@ -234,7 +231,7 @@ export function jobMatchesAppliedConfig(
   return job.configVersionId == null
 }
 
+/** 评测记录时间：ISO Instant → 本地时区 yyyy-MM-dd HH:mm:ss */
 export function formatEvalTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return iso.replace('T', ' ').slice(0, 19)
+  return formatDateTimeLocal(iso)
 }

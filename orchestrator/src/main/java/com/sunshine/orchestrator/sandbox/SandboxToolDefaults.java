@@ -20,6 +20,8 @@ public final class SandboxToolDefaults {
         tools.put(SandboxIds.GLOB, glob());
         tools.put(SandboxIds.GREP, grep());
         tools.put(SandboxIds.EXEC, exec());
+        tools.put(SandboxIds.WEBFETCH, webfetch());
+        tools.put(SandboxIds.WEBSEARCH, websearch());
         return tools;
     }
 
@@ -90,6 +92,27 @@ public final class SandboxToolDefaults {
                 "工作目录（可选，默认 /workspace；须在 /skills/{skillId}/... 或 /workspace）"));
         def.getProperties().put("timeout_sec", param("integer", "超时秒数（可选，默认 30）"));
         def.setRequired(List.of("command"));
+        return def;
+    }
+
+    private static AgentSandboxProperties.ToolDef webfetch() {
+        AgentSandboxProperties.ToolDef def = base(
+                "抓取网页",
+                "获取指定 http/https URL 的网页正文（HTML 转纯文本；禁止内网地址；常用以核验搜索结果或读取文档）");
+        def.getProperties().put("url", param("string",
+                "目标 URL（仅 http/https；禁内网/本机/保留地址）"));
+        def.getProperties().put("max_chars", param("integer", "返回正文最大字符数（可选，默认 200000）"));
+        def.setRequired(List.of("url"));
+        return def;
+    }
+
+    private static AgentSandboxProperties.ToolDef websearch() {
+        AgentSandboxProperties.ToolDef def = base(
+                "搜索网页",
+                "通过 Bing 搜索网页，返回标题 / URL / 摘要（通常随后用 webfetch 打开原文）");
+        def.getProperties().put("query", param("string", "搜索关键词（建议中文/英文均可）"));
+        def.getProperties().put("count", param("integer", "返回结果条数（可选，默认 5，最多 10）"));
+        def.setRequired(List.of("query"));
         return def;
     }
 

@@ -11,10 +11,14 @@ import {
   resolveSandboxFocusPath,
   resolveStepExpandInner,
 } from '../api/processingSteps'
+import { catalogToolIdFromStepId } from '../api/processingStepsDisplay'
+import { linkifyWebSearchText } from '../utils/webSearchLinkify'
 import {
-  parseSandboxEditDiff,
   writeContentAsAddLines,
+  countWriteAddLines,
+  linesFromEditDiffMeta,
   isSandboxWriteStep,
+  isSandboxEditStep,
   summarizeDiffCounts,
   type SandboxDiffLine,
 } from '../api/sandboxEditDiff'
@@ -62,18 +66,14 @@ function highlightCode(text: string, lang: string | null): string {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
 /** 沙箱工具步展开区：路径列表 / diff / exec / 高亮正文 */
 export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep>) {
   const isSandboxTool = computed(() => isSandboxToolStep(toValue(stepSource)))
   const isSandboxExec = computed(() => isSandboxExecStep(toValue(stepSource)))
+  /** 网页搜索：结果以标题/URL/摘要文本展示，URL 需链接化（webfetch 保持原文高亮） */
+  const isWebSearch = computed(() =>
+    catalogToolIdFromStepId(toValue(stepSource).id) === 'sandbox__websearch',
+  )
   const execCommand = computed(() => extractSandboxExecCommand(toValue(stepSource)) ?? '')
   const sandboxRaw = computed(() => {
     if (!isSandboxTool.value) return ''
@@ -92,32 +92,39 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
   })
   const sandboxEditDiffLines = computed((): SandboxDiffLine[] => {
     const step = toValue(stepSource)
-    if (!isSandboxTool.value || isSandboxExec.value || !sandboxRaw.value) return []
+    if (!isSandboxTool.value || isSandboxExec.value) return []
     if (sandboxPathEntries.value.length) return []
-    const parsed = parseSandboxEditDiff(sandboxRaw.value)
-    if (parsed?.length) return parsed
-    if (isSandboxWriteStep(step)) {
+    if (isSandboxEditStep(step)) {
+      return linesFromEditDiffMeta(step.metadata?.editDiff) ?? []
+    }
+    if (isSandboxWriteStep(step) && sandboxRaw.value) {
       return writeContentAsAddLines(sandboxRaw.value)
     }
     return []
   })
   const editDiffSummary = computed(() => {
-    const lines = sandboxEditDiffLines.value
-    if (!lines.length) return null
-    const { add, del } = summarizeDiffCounts(lines)
-    if (!add && !del) return null
-    return { add, del }
+    const step = toValue(stepSource)
+    if (!isSandboxTool.value || isSandboxExec.value) return null
+    if (sandboxPathEntries.value.length) return null
+    // 折叠主行：write 只计数，勿构建整文件行数组（密集脚手架写文件时主路径）
+    if (isSandboxWriteStep(step) && sandboxRaw.value) {
+      const add = countWriteAddLines(sandboxRaw.value)
+      return add > 0 ? { add, del: 0 } : null
+    }
+    if (isSandboxEditStep(step)) {
+      const lines = linesFromEditDiffMeta(step.metadata?.editDiff) ?? []
+      if (!lines.length) return null
+      const { add, del } = summarizeDiffCounts(lines)
+      if (!add && !del) return null
+      return { add, del }
+    }
+    return null
   })
   const editDiffLang = computed(() => {
-    const path = resolveSandboxFocusPath(toValue(stepSource))
+    const step = toValue(stepSource)
+    const metaPath = step.metadata?.editDiff?.path?.trim()
+    const path = metaPath || resolveSandboxFocusPath(step)
     return path ? langFromPath(path) : null
-  })
-  const editDiffRendered = computed(() => {
-    const lang = editDiffLang.value
-    return sandboxEditDiffLines.value.map(line => ({
-      kind: line.kind,
-      html: highlightCode(line.text || ' ', lang) || escapeHtml(line.text || ' '),
-    }))
   })
   const execCommandHtml = computed(() => {
     if (!execCommand.value) return ''
@@ -130,6 +137,7 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
   const sandboxContentHtml = computed(() => {
     if (!isSandboxTool.value || isSandboxExec.value || !sandboxRaw.value) return ''
     if (sandboxPathEntries.value.length || sandboxEditDiffLines.value.length) return ''
+    if (isWebSearch.value) return linkifyWebSearchText(sandboxRaw.value)
     const path = resolveSandboxFocusPath(toValue(stepSource))
     return highlightCode(sandboxRaw.value, path ? langFromPath(path) : null)
   })
@@ -162,11 +170,13 @@ export function useSandboxToolExpand(stepSource: MaybeRefOrGetter<ProcessingStep
   return {
     isSandboxTool,
     isSandboxExec,
+    isWebSearch,
     execCommand,
     sandboxRaw,
     sandboxPathEntries,
+    sandboxEditDiffLines,
     editDiffSummary,
-    editDiffRendered,
+    editDiffLang,
     execCommandHtml,
     execOutputHtml,
     sandboxContentHtml,

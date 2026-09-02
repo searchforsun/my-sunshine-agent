@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -186,6 +187,34 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("listUsers 带 token 返回租户启用用户")
+    void listUsers_withToken_returnsAliceId() throws Exception {
+        registerUser("alice01");
+        String token = loginAndGetToken("alice01");
+        String aliceId = userRepository.findByUsername("alice01").orElseThrow().getId();
+
+        MvcResult result = mockMvc.perform(get("/api/auth/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+
+        JsonNode users = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertThat(users.isArray()).isTrue();
+        List<String> ids = new java.util.ArrayList<>();
+        users.forEach(u -> ids.add(u.path("userId").asText()));
+        assertThat(ids).contains(aliceId);
+    }
+
+    @Test
+    @DisplayName("listUsers 无 token 401")
+    void listUsers_withoutToken_unauthorized() throws Exception {
+        mockMvc.perform(get("/api/auth/users"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
     void register_withTenantId_persistsTenant() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -287,6 +316,174 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.defaultWriteHitlMode").value("never"));
     }
 
+    @Test
+    @DisplayName("profile 写 defaultKbId 后 me / login 可读到；空串清空")
+    void updateProfile_changesDefaultKbId() throws Exception {
+        registerUser("kbpref01");
+        String token = loginAndGetToken("kbpref01");
+
+        MvcResult profileResult = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"KbPref","tenantId":"default","defaultKbId":"finance"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.defaultKbId").value("finance"))
+                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andReturn();
+
+        JsonNode profileBody = objectMapper.readTree(profileResult.getResponse().getContentAsString());
+        String newToken = profileBody.path("data").path("token").asText();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultKbId").value("finance"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"kbpref01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultKbId").value("finance"));
+
+        String token2 = loginAndGetToken("kbpref01");
+        MvcResult cleared = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token2)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"KbPref","tenantId":"default","defaultKbId":"  "}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.defaultKbId").doesNotExist())
+                .andReturn();
+        String token3 = objectMapper.readTree(cleared.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token3))
+                .andExpect(jsonPath("$.data.defaultKbId").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("profile 写 sidebarSectionsLayout=horizontal 后 me 可读到；非法值回落 vertical")
+    void updateProfile_changesSidebarSectionsLayout() throws Exception {
+        registerUser("sidebar01");
+        String token = loginAndGetToken("sidebar01");
+
+        MvcResult profileResult = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Sidebar","tenantId":"default","sidebarSectionsLayout":"horizontal"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("horizontal"))
+                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andReturn();
+
+        JsonNode profileBody = objectMapper.readTree(profileResult.getResponse().getContentAsString());
+        String newToken = profileBody.path("data").path("token").asText();
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("horizontal"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"sidebar01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("horizontal"));
+
+        String token2 = loginAndGetToken("sidebar01");
+        MvcResult bad = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token2)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"Sidebar","tenantId":"default","sidebarSectionsLayout":"diagonal"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("vertical"))
+                .andReturn();
+        String token3 = objectMapper.readTree(bad.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token3))
+                .andExpect(jsonPath("$.data.sidebarSectionsLayout").value("vertical"));
+    }
+
+    @Test
+    @DisplayName("profile 写 personalRules 后 me 与 login 可读到")
+    void updateProfileSavesAndReturnsPersonalRules() throws Exception {
+        registerUser("rules01");
+        String token = loginAndGetToken("rules01");
+
+        String newToken = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"回答用文言文"}
+                """);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.personalRules").value("回答用文言文"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"rules01","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.personalRules").value("回答用文言文"));
+    }
+
+    @Test
+    @DisplayName("profile personalRules 空串清空为 null")
+    void updateProfileBlankPersonalRulesClearsToNull() throws Exception {
+        registerUser("rules02");
+        String token = loginAndGetToken("rules02");
+        token = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"回答用文言文"}
+                """);
+
+        token = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"  "}
+                """);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.personalRules").doesNotExist());
+        var user = userRepository.findByUsername("rules02");
+        assertThat(user).isPresent();
+        assertThat(user.get().getPersonalRules()).isNull();
+    }
+
+    @Test
+    @DisplayName("profile 不带 personalRules 字段保持原值")
+    void updateProfileNullPersonalRulesKeepsExisting() throws Exception {
+        registerUser("rules03");
+        String token = loginAndGetToken("rules03");
+        token = patchProfile(token, """
+                {"nickname":"Rules","tenantId":"default","personalRules":"回答用文言文"}
+                """);
+
+        token = patchProfile(token, """
+                {"nickname":"Rules2","tenantId":"default"}
+                """);
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("Rules2"))
+                .andExpect(jsonPath("$.data.personalRules").value("回答用文言文"));
+    }
+
     private void registerUser(String username) throws Exception {
         mockMvc.perform(post("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -306,5 +503,17 @@ class AuthControllerTest {
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
         assertThat(root.path("code").asInt()).isEqualTo(200);
         return root.path("data").path("token").asText();
+    }
+
+    private String patchProfile(String token, String body) throws Exception {
+        MvcResult result = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("token").asText();
     }
 }

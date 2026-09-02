@@ -25,6 +25,10 @@ defineProps<{
   border: 1px solid var(--sun-border);
   border-radius: var(--radius-md);
   background: var(--sun-black);
+  margin-bottom: 12px;
+}
+.wf-sec:last-child {
+  margin-bottom: 0;
 }
 .wf-sec-head {
   display: flex;

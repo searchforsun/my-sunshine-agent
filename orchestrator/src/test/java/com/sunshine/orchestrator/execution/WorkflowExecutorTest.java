@@ -8,7 +8,7 @@ import com.sunshine.orchestrator.grounding.GroundingVerdict;
 import com.sunshine.orchestrator.execution.handler.AnswerNodeHandler;
 import com.sunshine.orchestrator.execution.handler.RagNodeHandler;
 import com.sunshine.orchestrator.execution.handler.StartNodeHandler;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.execution.workflow.WorkflowNodeFinalizer;
 import com.sunshine.orchestrator.execution.workflow.WorkflowNodeRunner;
@@ -116,7 +116,7 @@ class WorkflowExecutorTest {
 
     @BeforeEach
     void setUp() {
-        when(retryPolicyResolver.resolve(any(), any(Boolean.class), any()))
+        when(retryPolicyResolver.resolve(any()))
                 .thenReturn(com.sunshine.orchestrator.execution.retry.NodeRetryPolicy.noRetry(
                         com.sunshine.orchestrator.execution.retry.OnFailureAction.CONTINUE));
         when(nodeRetryExecutor.runWithRetry(any(), any(), any()))
@@ -134,10 +134,12 @@ class WorkflowExecutorTest {
         when(registry.require("answer")).thenReturn(answerNodeHandler);
 
         when(startNodeHandler.run(any(), any(), any()))
-                .thenReturn(Mono.just(NodeResult.ok(Map.of("userQuery", "请假制度"))));
+                .thenReturn(Mono.just(NodeResult.ok(Map.of("userQuery", TypedValue.scalar("请假制度")))));
         when(ragNodeHandler.run(any(), any(), any()))
                 .thenReturn(Mono.just(NodeResult.ok(Map.of(
-                        "output", "rag-hit", "detail", "命中 1 条", "hitCount", "1"))));
+                        "output", TypedValue.scalar("rag-hit"),
+                        "detail", TypedValue.scalar("命中 1 条"),
+                        "hitCount", TypedValue.scalar("1")))));
         when(answerNodeHandler.createStreamCollector(any(), any()))
                 .thenReturn(new WorkflowStreamCollector());
         when(answerNodeHandler.streamTokens(any(), any(), any(), any(), any()))
@@ -146,10 +148,10 @@ class WorkflowExecutorTest {
                 .thenReturn(Flux.just(StreamToken.content("请假需提前申请")));
         when(answerNodeHandler.buildResult(any()))
                 .thenReturn(NodeResult.ok(Map.of(
-                        "answer", "请假需提前申请",
-                        "output", "请假需提前申请",
-                        "reasoning", "先核对制度条款再归纳要点",
-                        "detail", "先核对制度条款再归纳要点")));
+                        "answer", TypedValue.scalar("请假需提前申请"),
+                        "output", TypedValue.scalar("请假需提前申请"),
+                        "reasoning", TypedValue.scalar("先核对制度条款再归纳要点"),
+                        "detail", TypedValue.scalar("先核对制度条款再归纳要点"))));
 
         when(executionPlanStore.createDraft(any(), any(PlanJson.class))).thenReturn("static-plan-1");
         when(displayNameEnricher.enrich(any(PlanJson.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -180,10 +182,21 @@ class WorkflowExecutorTest {
                 new NodeSpec("answer", "answer", Map.of("prompt", "test"), "生成回答")
         ), List.of("start", "rag", "answer"));
 
-        when(loader.load("knowledge-qa")).thenReturn(java.util.Optional.of(def));
+        when(loader.loadBundle("knowledge-qa")).thenReturn(java.util.Optional.of(
+                new WorkflowDefinitionLoader.WorkflowLoadBundle(def, new PlanJson(
+                        null, "查制度",
+                        List.of(
+                                new com.sunshine.orchestrator.plan.PlanNode("start", "start", Map.of()),
+                                new com.sunshine.orchestrator.plan.PlanNode("rag", "rag", Map.of("topK", "3")),
+                                new com.sunshine.orchestrator.plan.PlanNode("answer", "answer", Map.of("prompt", "test"), "生成回答")
+                        ),
+                        List.of(
+                                new com.sunshine.orchestrator.plan.PlanEdge("start", "rag"),
+                                new com.sunshine.orchestrator.plan.PlanEdge("rag", "answer")
+                        )))));
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "m1", "请假制度是什么", MemoryContext.empty(),
+                "c1", "m1", "青松假怎么申请", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "查制度"));
 
@@ -201,10 +214,10 @@ class WorkflowExecutorTest {
 
     @Test
     void returnsErrorWhenDefinitionMissing() {
-        when(loader.load("unknown")).thenReturn(java.util.Optional.empty());
+        when(loader.loadBundle("unknown")).thenReturn(java.util.Optional.empty());
 
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "c1", "m1", "test", MemoryContext.empty(),
+                "c1", "m1", "test", AssembledContext.empty(),
                 null, null, "u1", "default",
                 new ExecutionPlan(ExecutionMode.WORKFLOW, "unknown", Map.of(), "test"));
 

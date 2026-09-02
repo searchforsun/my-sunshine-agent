@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.loop.LoopBodyFlushFold;
 import com.sunshine.orchestrator.execution.loop.LoopBodyTimelineBridge;
 import com.sunshine.orchestrator.execution.retry.OnFailureAction;
@@ -11,6 +12,7 @@ import com.sunshine.orchestrator.execution.workflow.WorkflowStaticPlanRunner;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PausePhase;
 import com.sunshine.orchestrator.plan.PlanEdgeCondition;
+import com.sunshine.orchestrator.plan.PlanEdgeConditionGroup;
 import com.sunshine.orchestrator.plan.PlanExecutionSchedule;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
@@ -22,15 +24,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-
 /** Workflow DAG 执行引擎（串行 + 并行 fan-out/join） */
 @Slf4j
 @Component
@@ -47,7 +48,7 @@ public class WorkflowExecutor {
         return staticPlanRunner.execute(ctx, this::executeDynamicDefinition);
     }
 
-    /** 动态 Plan 物化后的 DAG 执行（plan 步由 PlanWorkflowExecutor 前置下发） */
+    /** 物化后 DAG 执行（静态 Workflow 与暂停续跑共用） */
     public Flux<StreamToken> executeDynamicDefinition(WorkflowDefinition def, ExecutionStreamContext streamCtx) {
         return executeDynamicDefinition(def, streamCtx, new WorkflowRunSession());
     }
@@ -61,16 +62,16 @@ public class WorkflowExecutor {
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
         session.bindTraceMessageId(streamCtx.assistantMsgId());
-        boolean planWorkflow = StringUtils.hasText(streamCtx.persistedPlanId());
-        if (planWorkflow) {
+        boolean planRun = StringUtils.hasText(streamCtx.persistedPlanId());
+        if (planRun) {
             workflowPauseService.bindRun(streamCtx.assistantMsgId(), streamCtx.persistedPlanId());
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
-        return executeSchedule(def, session, def.executionSteps(), wfCtx, streamCtx, runSession, planWorkflow)
-                .subscribeOn(Schedulers.boundedElastic())
+        return executeSchedule(def, session, def.executionSteps(), wfCtx, streamCtx, runSession, planRun)
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
-                    if (planWorkflow) {
+                    if (planRun) {
                         workflowPauseService.clearRun(streamCtx.assistantMsgId());
                     }
                 });
@@ -95,17 +96,17 @@ public class WorkflowExecutor {
         ProcessingTimelineSession session = ProcessingTimelineSupport.newSession();
         session.bindUserQuery(streamCtx.userContent());
         session.bindTraceMessageId(streamCtx.assistantMsgId());
-        boolean planWorkflow = StringUtils.hasText(streamCtx.persistedPlanId());
-        if (planWorkflow) {
+        boolean planRun = StringUtils.hasText(streamCtx.persistedPlanId());
+        if (planRun) {
             workflowPauseService.bindRun(streamCtx.assistantMsgId(), streamCtx.persistedPlanId());
             workflowPauseService.commitContext(streamCtx.assistantMsgId(), wfCtx);
         }
         List<PlanExecutionSchedule.Step> steps = resolveResumeSteps(def, checkpoint.resumeNodeId(), wfCtx);
-        return executeSchedule(def, session, steps, wfCtx, streamCtx, runSession, planWorkflow)
-                .subscribeOn(Schedulers.boundedElastic())
+        return executeSchedule(def, session, steps, wfCtx, streamCtx, runSession, planRun)
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doFinally(signal -> {
                     labelService.clearRuntimeNodeLabels();
-                    if (planWorkflow) {
+                    if (planRun) {
                         workflowPauseService.clearRun(streamCtx.assistantMsgId());
                     }
                 });
@@ -118,12 +119,12 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (steps == null || steps.isEmpty()) {
-            return executeNodeOrder(def.linearOrder(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeNodeOrder(def.linearOrder(), session, def, wfCtx, streamCtx, runSession, planRun);
         }
         return Flux.fromIterable(steps)
-                .concatMap(step -> executeStep(step, session, def, wfCtx, streamCtx, runSession, planWorkflow));
+                .concatMap(step -> executeStep(step, session, def, wfCtx, streamCtx, runSession, planRun));
     }
 
     private Flux<StreamToken> executeStep(
@@ -133,9 +134,9 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (step instanceof PlanExecutionSchedule.Single single) {
-            return executeOneNode(single.nodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeOneNode(single.nodeId(), session, def, wfCtx, streamCtx, runSession, planRun);
         }
         if (step instanceof PlanExecutionSchedule.Parallel parallel) {
             List<String> pending = parallel.branchNodeIds().stream()
@@ -144,19 +145,19 @@ public class WorkflowExecutor {
             Flux<StreamToken> branches = pending.isEmpty()
                     ? Flux.empty()
                     : Flux.merge(pending.stream()
-                            .map(id -> executeOneNode(id, session, def, wfCtx, streamCtx, runSession, planWorkflow))
+                            .map(id -> executeOneNode(id, session, def, wfCtx, streamCtx, runSession, planRun))
                             .toList());
             if (isNodeCompleted(wfCtx, parallel.joinNodeId())) {
                 return branches;
             }
             return branches.concatWith(executeOneNode(
-                    parallel.joinNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow));
+                    parallel.joinNodeId(), session, def, wfCtx, streamCtx, runSession, planRun));
         }
         if (step instanceof PlanExecutionSchedule.Exclusive exclusive) {
-            return executeExclusive(exclusive, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeExclusive(exclusive, session, def, wfCtx, streamCtx, runSession, planRun);
         }
         if (step instanceof PlanExecutionSchedule.Loop loop) {
-            return executeLoop(loop, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeLoop(loop, session, def, wfCtx, streamCtx, runSession, planRun);
         }
         return Flux.empty();
     }
@@ -168,7 +169,7 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         String loopId = loop.loopNodeId();
         NodeSpec loopSpec = def.node(loopId);
         String loopLabel = loopSpec != null && StringUtils.hasText(loopSpec.displayName())
@@ -183,10 +184,10 @@ public class WorkflowExecutor {
         }
         Flux<StreamToken> open = hasLoopSettled(wfCtx, loopId)
                 ? Flux.empty()
-                : executeOneNode(loopId, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                : executeOneNode(loopId, session, def, wfCtx, streamCtx, runSession, planRun);
         return open.concatWith(Flux.defer(() ->
                         runLoopIterations(
-                                loop, bridge, foldIter, session, def, wfCtx, streamCtx, runSession, planWorkflow)))
+                                loop, bridge, foldIter, session, def, wfCtx, streamCtx, runSession, planRun)))
                 .doFinally(sig -> {
                     if (StringUtils.hasText(streamCtx.assistantMsgId())) {
                         StepEventBridge.clearLoopBodyFold(streamCtx.assistantMsgId());
@@ -203,30 +204,46 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         if (hasLoopSettled(wfCtx, loop.loopNodeId())) {
             return Flux.empty();
         }
         NodeSpec loopSpec = def.node(loop.loopNodeId());
-        Map<String, String> params = loopSpec != null ? loopSpec.params() : Map.of();
+        Map<String, Object> params = loopSpec != null ? loopSpec.params() : Map.of();
         int maxIterations = parseMaxIterations(params);
-        String onMax = params.getOrDefault("onMaxIterations", "fail_fast").strip().toLowerCase();
-        PlanEdgeCondition condition = new PlanEdgeCondition(
-                params.getOrDefault("condition.left", ""),
-                params.getOrDefault("condition.op", ""),
-                params.getOrDefault("condition.right", ""));
+        String onMax = readParamString(params, "onMaxIterations", "fail_fast").strip().toLowerCase();
+        PlanEdgeConditionGroup conditionGroup = parseLoopConditionGroup(params);
         AtomicInteger iter = new AtomicInteger(0);
         AtomicReference<String> buffer = new AtomicReference<>("");
         return loopCycle(
-                loop, bridge, foldIter, condition, maxIterations, onMax, iter, buffer,
-                session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                loop, bridge, foldIter, conditionGroup, maxIterations, onMax, iter, buffer,
+                session, def, wfCtx, streamCtx, runSession, planRun);
+    }
+
+    private static PlanEdgeConditionGroup parseLoopConditionGroup(Map<String, Object> params) {
+        Object conditionsObj = params.get("conditions");
+        if (conditionsObj instanceof JsonNode conditionsNode && conditionsNode.isArray()) {
+            String logic = readParamString(params, "conditionLogic", "and");
+            List<PlanEdgeCondition> items = new ArrayList<>();
+            for (JsonNode item : conditionsNode) {
+                String left = item.has("left") ? item.get("left").asText("") : "";
+                String op = item.has("op") ? item.get("op").asText("") : "";
+                String right = item.has("right") ? item.get("right").asText("") : "";
+                if (!op.isBlank()) {
+                    items.add(new PlanEdgeCondition(left, op, right));
+                }
+            }
+            return new PlanEdgeConditionGroup(logic, items);
+        }
+        // 无条件 -> 空组（永远继续，靠 maxIterations 兜底）
+        return PlanEdgeConditionGroup.empty();
     }
 
     private Flux<StreamToken> loopCycle(
             PlanExecutionSchedule.Loop loop,
             LoopBodyTimelineBridge bridge,
             AtomicInteger foldIter,
-            PlanEdgeCondition condition,
+            PlanEdgeConditionGroup conditionGroup,
             int maxIterations,
             String onMax,
             AtomicInteger iter,
@@ -236,7 +253,7 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         // do-while：至少一轮；继续条件在 body 之后求值
         if (iter.get() >= maxIterations) {
             return applyLoopMaxIterations(loop.loopNodeId(), onMax, buffer.get(), iter.get(), wfCtx, runSession)
@@ -253,7 +270,7 @@ public class WorkflowExecutor {
         }
         int round = iter.get() + 1;
         foldIter.set(round);
-        return executeNodeOrder(body, session, def, wfCtx, streamCtx, runSession, planWorkflow)
+        return executeNodeOrder(body, session, def, wfCtx, streamCtx, runSession, planRun)
                 .concatMap(token -> {
                     if (bridge.isBodyToken(token)) {
                         return Flux.fromIterable(bridge.wrap(token, round));
@@ -263,7 +280,7 @@ public class WorkflowExecutor {
                 .concatWith(Flux.defer(() -> {
                     buffer.set(resolveBodyTailOutput(wfCtx, body));
                     iter.incrementAndGet();
-                    if (!EdgeConditionEvaluator.matches(condition, wfCtx)) {
+                    if (!EdgeConditionEvaluator.matchesGroup(conditionGroup, wfCtx)) {
                         settleLoop(wfCtx, loop.loopNodeId(), buffer.get(), iter.get(), "completed");
                         return Flux.just(loopCompleteToken(
                                 loop.loopNodeId(),
@@ -273,8 +290,8 @@ public class WorkflowExecutor {
                                 bridge.subSteps()));
                     }
                     return loopCycle(
-                            loop, bridge, foldIter, condition, maxIterations, onMax, iter, buffer,
-                            session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                            loop, bridge, foldIter, conditionGroup, maxIterations, onMax, iter, buffer,
+                            session, def, wfCtx, streamCtx, runSession, planRun);
                 }));
     }
 
@@ -335,7 +352,8 @@ public class WorkflowExecutor {
                 label,
                 null,
                 null,
-                subSteps);
+                subSteps,
+                null);
     }
 
     private static void settleLoop(
@@ -344,38 +362,39 @@ public class WorkflowExecutor {
             String output,
             int iterations,
             String status) {
-        Map<String, String> out = new LinkedHashMap<>();
-        out.put("output", output != null ? output : "");
-        out.put("status", status);
+        Map<String, TypedValue> out = new LinkedHashMap<>();
+        out.put("output", TypedValue.scalar(output != null ? output : ""));
+        out.put("status", TypedValue.scalar(status));
         if (iterations >= 0) {
-            out.put("iterations", String.valueOf(iterations));
+            out.put("iterations", TypedValue.scalar(String.valueOf(iterations)));
         }
         wfCtx.putNode(loopId, out);
     }
 
     private static String resolveBodyTailOutput(WorkflowContext wfCtx, List<String> body) {
         String last = body.get(body.size() - 1);
-        Map<String, String> node = wfCtx.node(last);
-        if (StringUtils.hasText(node.get("answer"))) {
-            return node.get("answer");
+        Map<String, TypedValue> node = wfCtx.node(last);
+        String answer = renderScalar(node, "answer");
+        if (StringUtils.hasText(answer)) {
+            return answer;
         }
-        return node.getOrDefault("output", "");
+        return renderScalar(node, "output");
     }
 
     private static boolean hasLoopSettled(WorkflowContext wfCtx, String loopId) {
-        Map<String, String> node = wfCtx.node(loopId);
+        Map<String, TypedValue> node = wfCtx.node(loopId);
         if (node == null || node.isEmpty()) {
             return false;
         }
-        String status = node.get("status");
+        String status = renderScalar(node, "status");
         return "completed".equals(status) || "max_exit".equals(status)
                 || "max_fail".equals(status) || "max_fallback".equals(status)
-                || StringUtils.hasText(node.get("output")) && !"looping".equals(status);
+                || StringUtils.hasText(renderScalar(node, "output")) && !"looping".equals(status);
     }
 
-    private static int parseMaxIterations(Map<String, String> params) {
+    private static int parseMaxIterations(Map<String, Object> params) {
         try {
-            int n = Integer.parseInt(params.getOrDefault("maxIterations", "3").strip());
+            int n = Integer.parseInt(readParamString(params, "maxIterations", "3").strip());
             return Math.max(1, Math.min(5, n));
         } catch (NumberFormatException e) {
             return 3;
@@ -389,10 +408,10 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         Flux<StreamToken> gateway = isNodeCompleted(wfCtx, exclusive.gatewayNodeId())
                 ? Flux.empty()
-                : executeOneNode(exclusive.gatewayNodeId(), session, def, wfCtx, streamCtx, runSession, planWorkflow);
+                : executeOneNode(exclusive.gatewayNodeId(), session, def, wfCtx, streamCtx, runSession, planRun);
         return gateway.concatWith(Flux.defer(() -> {
             PlanExecutionSchedule.ExclusiveArm picked = pickExclusiveArm(exclusive.arms(), wfCtx);
             if (picked == null) {
@@ -402,7 +421,7 @@ public class WorkflowExecutor {
             List<String> pending = picked.pathNodeIds().stream()
                     .filter(id -> !isNodeCompleted(wfCtx, id))
                     .toList();
-            return executeNodeOrder(pending, session, def, wfCtx, streamCtx, runSession, planWorkflow);
+            return executeNodeOrder(pending, session, def, wfCtx, streamCtx, runSession, planRun);
         }));
     }
 
@@ -415,7 +434,12 @@ public class WorkflowExecutor {
                 fallback = arm;
                 continue;
             }
-            if (EdgeConditionEvaluator.matches(arm.condition(), wfCtx)) {
+            // 空条件组（PlanEdge 构造时把空 group 折叠为 null）不可作为命中条件，
+            // 否则 matchesGroup(null, ctx) 会返回 true 导致误选；跳过，回落到 default。
+            if (arm.condition() == null) {
+                continue;
+            }
+            if (EdgeConditionEvaluator.matchesGroup(arm.condition(), wfCtx)) {
                 return arm;
             }
         }
@@ -429,12 +453,12 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
-        if (planWorkflow && workflowPauseService.consumePauseRequested(streamCtx.assistantMsgId())) {
+            boolean planRun) {
+        if (planRun && workflowPauseService.consumePauseRequested(streamCtx.assistantMsgId())) {
             return pauseBeforeNode(session, def, nodeId, wfCtx, streamCtx);
         }
         workflowPauseService.setCurrentNode(streamCtx.assistantMsgId(), nodeId);
-        return nodeRunner.executeNode(session, def, nodeId, wfCtx, streamCtx, runSession, planWorkflow);
+        return nodeRunner.executeNode(session, def, nodeId, wfCtx, streamCtx, runSession, planRun);
     }
 
     private List<PlanExecutionSchedule.Step> resolveResumeSteps(
@@ -497,18 +521,18 @@ public class WorkflowExecutor {
     }
 
     private static boolean isNodeCompleted(WorkflowContext wfCtx, String nodeId) {
-        Map<String, String> node = wfCtx.node(nodeId);
+        Map<String, TypedValue> node = wfCtx.node(nodeId);
         if (node == null || node.isEmpty()) {
             return false;
         }
-        if (StringUtils.hasText(node.get("output")) || StringUtils.hasText(node.get("answer"))) {
-            String status = node.get("status");
+        if (StringUtils.hasText(renderScalar(node, "output")) || StringUtils.hasText(renderScalar(node, "answer"))) {
+            String status = renderScalar(node, "status");
             if ("looping".equals(status)) {
                 return false;
             }
             return true;
         }
-        String status = node.get("status");
+        String status = renderScalar(node, "status");
         return "joined".equals(status) || "routed".equals(status) || "forked".equals(status);
     }
 
@@ -519,10 +543,10 @@ public class WorkflowExecutor {
             WorkflowContext wfCtx,
             ExecutionStreamContext streamCtx,
             WorkflowRunSession runSession,
-            boolean planWorkflow) {
+            boolean planRun) {
         return Flux.fromIterable(nodeOrder)
                 .concatMap(nodeId -> executeOneNode(
-                        nodeId, session, def, wfCtx, streamCtx, runSession, planWorkflow));
+                        nodeId, session, def, wfCtx, streamCtx, runSession, planRun));
     }
 
     private Flux<StreamToken> pauseBeforeNode(
@@ -535,7 +559,7 @@ public class WorkflowExecutor {
         String ctxJson = workflowPauseService.getCommittedContextJson(streamCtx.assistantMsgId());
         WorkflowCheckpoint checkpoint = new WorkflowCheckpoint(resumeNodeId, ctxJson, PausePhase.EXECUTING, null);
         Mono.fromRunnable(() -> executionPlanStore.markPaused(planId, checkpoint))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe();
         NodeSpec spec = def.node(resumeNodeId);
         String displayName = spec != null ? spec.displayName() : null;
@@ -548,15 +572,30 @@ public class WorkflowExecutor {
 
     private static WorkflowContext initContext(ExecutionStreamContext streamCtx) {
         WorkflowContext wfCtx = new WorkflowContext();
-        Map<String, String> start = new LinkedHashMap<>();
+        Map<String, TypedValue> start = new LinkedHashMap<>();
         if (StringUtils.hasText(streamCtx.userContent())) {
-            start.put("userQuery", streamCtx.userContent());
+            start.put("userQuery", TypedValue.scalar(streamCtx.userContent()));
         }
         wfCtx.putNode("start", start);
         ExecutionPlan plan = streamCtx.plan();
         if (plan != null && plan.params() != null) {
-            wfCtx.putNode("plan", new LinkedHashMap<>(plan.params()));
+            Map<String, TypedValue> planParams = new LinkedHashMap<>();
+            plan.params().forEach((k, v) -> planParams.put(k, TypedValue.scalar(v)));
+            wfCtx.putNode("plan", planParams);
         }
         return wfCtx;
+    }
+
+    private static String renderScalar(Map<String, TypedValue> outputs, String key) {
+        TypedValue v = outputs.get(key);
+        return v != null ? v.render() : null;
+    }
+
+    private static String readParamString(Map<String, Object> params, String key, String defaultValue) {
+        if (params == null) {
+            return defaultValue;
+        }
+        Object v = params.get(key);
+        return v != null ? v.toString() : defaultValue;
     }
 }

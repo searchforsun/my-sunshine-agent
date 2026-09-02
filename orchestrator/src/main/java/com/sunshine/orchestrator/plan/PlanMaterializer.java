@@ -44,6 +44,7 @@ public class PlanMaterializer {
                         n.id(),
                         n.type(),
                         n.params(),
+                        n.inputs(),
                         StringUtils.hasText(n.displayName()) ? n.displayName() : null))
                 .toList();
         return WorkflowDefinition.from(id, specs, linearOrder, steps);

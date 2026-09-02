@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CopyToggleIcon from '../icons/CopyToggleIcon.vue'
+import SandboxDiffView from '../sandbox/SandboxDiffView.vue'
 import type { ProcessingStep } from '../../api/processingSteps'
 import { useSandboxToolExpand } from '../../composables/useSandboxToolExpand'
 
@@ -13,10 +14,12 @@ const emit = defineEmits<{
 
 const {
   isSandboxExec,
+  isWebSearch,
   execCommand,
   sandboxRaw,
   sandboxPathEntries,
-  editDiffRendered,
+  sandboxEditDiffLines,
+  editDiffLang,
   execCommandHtml,
   execOutputHtml,
   sandboxContentHtml,
@@ -53,17 +56,16 @@ const {
         </li>
       </ul>
     </template>
-    <template v-else-if="editDiffRendered.length">
-      <pre class="op-sandbox-diff"><code
-        v-for="(line, idx) in editDiffRendered"
-        :key="idx"
-        class="op-diff-line hljs"
-        :class="`is-${line.kind}`"
-        v-html="line.html"
-      /></pre>
+    <template v-else-if="sandboxEditDiffLines.length">
+      <SandboxDiffView :lines="sandboxEditDiffLines" :lang="editDiffLang" />
     </template>
     <template v-else>
-      <pre v-if="sandboxContentHtml" class="op-sandbox-code"><code class="hljs" v-html="sandboxContentHtml" /></pre>
+      <div
+        v-if="isWebSearch && sandboxContentHtml"
+        class="op-sandbox-links"
+        v-html="sandboxContentHtml"
+      />
+      <pre v-else-if="sandboxContentHtml" class="op-sandbox-code"><code class="hljs" v-html="sandboxContentHtml" /></pre>
       <pre v-else-if="sandboxRaw" class="op-sandbox-code">{{ sandboxRaw }}</pre>
       <p v-else class="op-exec-empty">无输出</p>
     </template>
@@ -76,7 +78,6 @@ const {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-right: 28px;
   font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace);
   font-size: var(--sun-font-sm, 12px);
   font-weight: 400;
@@ -97,16 +98,18 @@ const {
 }
 
 .op-sandbox-copy {
-  position: absolute;
-  top: -2px;
-  right: 0;
-  z-index: 1;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  align-self: flex-end;
+  margin-bottom: -28px;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .op-exec-cmd,
 .op-exec-out,
-.op-sandbox-code,
-.op-sandbox-diff {
+.op-sandbox-code {
   margin: 0;
   padding: 0;
   white-space: pre-wrap;
@@ -167,6 +170,27 @@ const {
   opacity: 0.85;
 }
 
+/* 网页搜索结果：非等宽正文，URL 超链接展示 */
+.op-sandbox-links {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+  font-size: var(--sun-font-base, 13px);
+  line-height: 1.6;
+  color: var(--sun-text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.op-sandbox-links :deep(a) {
+  color: var(--sun-blue, #58a6ff);
+  text-decoration: none;
+}
+
+.op-sandbox-links :deep(a:hover) {
+  text-decoration: underline;
+}
+
 .op-sandbox-paths {
   margin: 0;
   padding: 0;
@@ -192,41 +216,5 @@ const {
 .op-sandbox-path-link:hover {
   color: var(--sun-accent, #6cb6ff);
   text-decoration: underline;
-}
-
-.op-sandbox-diff {
-  margin: 0;
-  padding: 0;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
-  background: transparent;
-  border: none;
-  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace);
-  font-size: var(--sun-font-sm, 12px);
-  line-height: 1.45;
-  letter-spacing: 0;
-  font-variant-ligatures: none;
-  tab-size: 4;
-}
-
-.op-diff-line {
-  display: block;
-  padding: 0 4px;
-  background: transparent !important;
-  white-space: pre-wrap;
-  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
-}
-
-.op-sandbox-diff :deep(span) {
-  font-family: var(--sun-font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
-}
-
-.op-diff-line.is-del {
-  background: color-mix(in srgb, #c44 14%, transparent) !important;
-}
-
-.op-diff-line.is-add {
-  background: color-mix(in srgb, #2a9a5c 14%, transparent) !important;
 }
 </style>

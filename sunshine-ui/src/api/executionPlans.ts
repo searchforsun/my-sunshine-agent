@@ -37,9 +37,8 @@ export interface PlanGraphEdge {
   from: string
   to: string
   condition?: {
-    left: string
-    op: string
-    right?: string
+    logic: 'and' | 'or'
+    items: { left: string; op: string; right?: string }[]
   }
   default?: boolean
 }
@@ -58,24 +57,12 @@ export interface ExecutionPlanDetail {
   conversationId: string
   messageId: string
   status: string
-  plannerModel?: string
-  plannerReason?: string
-  rejectReason?: string
   plan: PlanGraph
   validatedPlan?: PlanGraph
   nodes: PlanNodeTrace[]
   createdAt?: string
   validatedAt?: string
   startedAt?: string
-  completedAt?: string
-}
-
-export interface ExecutionPlanSummary {
-  id: string
-  messageId: string
-  status: string
-  plannerReason?: string
-  createdAt?: string
   completedAt?: string
 }
 
@@ -94,54 +81,22 @@ export async function getExecutionPlan(planId: string): Promise<ExecutionPlanDet
   return parseJson<ExecutionPlanDetail>(res)
 }
 
-export async function listExecutionPlans(conversationId: string): Promise<ExecutionPlanSummary[]> {
-  const res = await fetch(
-    apiUrl(`/api/execution-plans?conversationId=${encodeURIComponent(conversationId)}`),
-    { headers: apiHeaders() },
-  )
-  return parseJson<ExecutionPlanSummary[]>(res)
-}
-
-export async function getExecutionPlanNodes(planId: string): Promise<PlanNodeTrace[]> {
-  const res = await fetch(apiUrl(`/api/execution-plans/${encodeURIComponent(planId)}/nodes`), {
-    headers: apiHeaders(),
-  })
-  return parseJson<PlanNodeTrace[]>(res)
-}
-
-export function formatPlanStatus(status: string): string {
-  const map: Record<string, string> = {
-    awaiting_approval: '待确认',
-    validated: '已校验',
-    running: '执行中',
-    completed: '已完成',
-    failed: '失败',
-    rejected: '已拒绝',
-  }
-  return map[status] ?? status
-}
-
 export function formatPlanNodeType(type: string): string {
   const map: Record<string, string> = {
     rag: '知识检索',
     tool: '工具调用',
     llm: '综合分析',
     agent: '子 Agent',
+    worker: '执行单元',
     join: '并行汇总',
     'parallel-gateway': '并行分叉',
     'exclusive-gateway': '条件分支',
     loop: '循环',
+    'variable-assignment': '变量赋值',
+    'parameter-extractor': '参数提取',
     answer: '回答',
     start: '开始',
+    task: '任务',
   }
   return map[type] ?? type
-}
-
-export function formatTraceStatus(status: string): string {
-  const map: Record<string, string> = {
-    completed: '完成',
-    failed: '失败',
-    running: '执行中',
-  }
-  return map[status] ?? status
 }

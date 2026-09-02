@@ -1,6 +1,6 @@
 package com.sunshine.orchestrator.sandbox;
 
-import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +14,7 @@ class SandboxTimelineLabelServiceTest {
 
     @BeforeEach
     void setUp() {
-        labels = new SandboxTimelineLabelService(new AgentPromptProperties());
+        labels = new SandboxTimelineLabelService(TimelinePromptCatalog.withDefaults());
     }
 
     @Test
@@ -25,6 +25,37 @@ class SandboxTimelineLabelServiceTest {
                 .isEqualTo("test.txt");
         assertThat(labels.after(SandboxIds.EDIT, "编辑文件", Map.of("path", "/workspace/a.py")))
                 .isEqualTo("a.py");
+    }
+
+    @Test
+    void readAfter_includesLineRange() {
+        // 读全部：L1-{n}
+        assertThat(labels.readAfter("读文件",
+                Map.of("path", "/workspace/readme.md"),
+                "line1\nline2\nline3\n"))
+                .isEqualTo("readme.md L1-3");
+        // 读部分：offset/limit
+        assertThat(labels.readAfter("读文件",
+                Map.of("path", "/workspace/test.py", "offset", 20, "limit", 9),
+                "line20\nline21\nline22\nline23\nline24\nline25\nline26\nline27\nline28\n"))
+                .isEqualTo("test.py L20-28");
+        // 空内容：无行范围
+        assertThat(labels.readAfter("读文件",
+                Map.of("path", "/workspace/empty.txt"), ""))
+                .isEqualTo("empty.txt");
+    }
+
+    @Test
+    void readAfter_missingPath_fallsBackEmpty() {
+        assertThat(labels.readAfter("读文件", Map.of(), "line1\n"))
+                .isEqualTo("");
+    }
+
+    @Test
+    void lineRangeText_computesRange() {
+        assertThat(SandboxTimelineLabelService.lineRangeText(null, 129)).isEqualTo("L1-129");
+        assertThat(SandboxTimelineLabelService.lineRangeText(20, 9)).isEqualTo("L20-28");
+        assertThat(SandboxTimelineLabelService.lineRangeText(20, 0)).isEmpty();
     }
 
     @Test
@@ -75,7 +106,7 @@ class SandboxTimelineLabelServiceTest {
     @Test
     void active_includesTarget() {
         assertThat(labels.active(SandboxIds.READ, "读文件", Map.of("path", "/skills/demo/a.py")))
-                .isEqualTo("正在读取 /skills/demo/a.py");
+                .isEqualTo("正在读取 demo/a.py");
         assertThat(labels.active(SandboxIds.EXEC, "执行命令", Map.of("command", "pwd")))
                 .isEqualTo("正在执行 pwd");
     }
@@ -88,6 +119,18 @@ class SandboxTimelineLabelServiceTest {
                 .isEqualTo("/skills");
         assertThat(SandboxTimelineLabelService.inferSearchRootFromPaths(
                 "/skills/a.md\n/skills/b.py\n")).isEqualTo("/skills");
+    }
+
+    @Test
+    void displayPath_stripsWorkspaceCheckout() {
+        assertThat(SandboxTimelineLabelService.displayPath(
+                "/workspace/wt-123466/docs/superpowers/specs/a.md"))
+                .isEqualTo("docs/superpowers/specs/a.md");
+        assertThat(SandboxTimelineLabelService.displayPath("/workspace/plain.txt"))
+                .isEqualTo("plain.txt");
+        assertThat(labels.active(SandboxIds.WRITE, "写文件",
+                Map.of("path", "/workspace/wt-123466/docs/a.md")))
+                .isEqualTo("正在写入 docs/a.md");
     }
 
     @Test

@@ -33,8 +33,9 @@ public class ChatController {
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
 
-        log.info("[BFF] 用户 {} 发送消息 conv={} pref={} resume={}",
-                userId, request.getConversationId(), request.getExecutionPreference(), request.getResumeMessageId());
+        String modeWire = request.getExecutionMode();
+        log.info("[BFF] 用户 {} 发送消息 conv={} mode={} resume={}",
+                userId, request.getConversationId(), modeWire, request.getResumeMessageId());
 
         return client.stream(request, userId, tenantId)
                 .doOnComplete(() -> log.info("[BFF] 流式完成"))
@@ -55,13 +56,5 @@ public class ChatController {
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.confirmWorkflowNodeRecovery(request, userId, tenantId);
-    }
-
-    @PostMapping("/api/chat/confirm-plan")
-    public Mono<Map<String, Object>> confirmPlan(
-            @RequestBody com.sunshine.bff.model.ConfirmPlanRequest request,
-            @RequestHeader("x-user-id") String userId,
-            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.confirmPlan(request, userId, tenantId);
     }
 }

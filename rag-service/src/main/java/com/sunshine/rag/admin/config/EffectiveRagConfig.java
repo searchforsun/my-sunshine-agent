@@ -9,8 +9,7 @@ public record EffectiveRagConfig(
         String strategy,
         int rrfK,
         int hybridPoolSize,
-        float rerankMinScore,
-        int chunkMaxSize) {
+        float rerankMinScore) {
 
     public EffectiveRagConfig merge(EffectiveRagConfig override) {
         if (override == null) {
@@ -21,7 +20,6 @@ public record EffectiveRagConfig(
                 override.strategy != null && !override.strategy.isBlank() ? override.strategy : strategy,
                 override.rrfK > 0 ? override.rrfK : rrfK,
                 override.hybridPoolSize > 0 ? override.hybridPoolSize : hybridPoolSize,
-                override.rerankMinScore > 0 ? override.rerankMinScore : rerankMinScore,
-                override.chunkMaxSize > 0 ? override.chunkMaxSize : chunkMaxSize);
+                override.rerankMinScore > 0 ? override.rerankMinScore : rerankMinScore);
     }
 }

@@ -25,7 +25,7 @@ public class WorkflowStudioProperties {
     @Setter
     public static class CatalogDefaults {
 
-        private String intentAfter = "{query}将按「{displayName}」流程处理";
+        private String intentAfter = "将按「{displayName}」流程处理";
     }
 
     @Getter
@@ -55,7 +55,6 @@ public class WorkflowStudioProperties {
     public static class NodeDefaults {
 
         private RetryDefaults defaults = new RetryDefaults();
-        private String criticalOnFailure = "fail_fast";
         private Map<String, TypeRetryDefaults> byType = defaultByType();
 
         private static Map<String, TypeRetryDefaults> defaultByType() {

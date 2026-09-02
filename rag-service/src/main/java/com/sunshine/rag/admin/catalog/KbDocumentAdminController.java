@@ -2,6 +2,8 @@ package com.sunshine.rag.admin.catalog;
 
 import com.sunshine.common.core.result.R;
 import com.sunshine.rag.admin.catalog.dto.ChunkPreviewDto;
+import com.sunshine.rag.admin.catalog.dto.ChunkPreviewRequest;
+import com.sunshine.rag.admin.catalog.dto.ChunkPreviewResponse;
 import com.sunshine.rag.admin.catalog.dto.CreateDocumentRequest;
 import com.sunshine.rag.admin.catalog.dto.DocumentContentView;
 import com.sunshine.rag.admin.catalog.dto.DocumentDetail;
@@ -10,6 +12,7 @@ import com.sunshine.rag.admin.catalog.dto.DocumentSummary;
 import com.sunshine.rag.admin.catalog.dto.DocumentUploadResponse;
 import com.sunshine.rag.admin.catalog.dto.IngestResult;
 import com.sunshine.rag.admin.catalog.dto.IngestTextRequest;
+import com.sunshine.rag.admin.catalog.dto.PublishRequest;
 import com.sunshine.rag.admin.catalog.dto.SaveDocumentContentRequest;
 import com.sunshine.rag.admin.catalog.dto.UpdateDocumentRequest;
 import lombok.RequiredArgsConstructor;
@@ -125,13 +128,23 @@ public class KbDocumentAdminController {
         return R.ok(null);
     }
 
+    @PostMapping("/documents/{docId}/chunk-preview")
+    public R<ChunkPreviewResponse> chunkPreview(
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @PathVariable String kbId,
+            @PathVariable String docId,
+            @RequestBody ChunkPreviewRequest request) {
+        return R.ok(documentCatalogService.chunkPreview(tenantId, kbId, docId, request));
+    }
+
     @PostMapping("/documents/{docId}/publish")
     public Mono<R<IngestResult>> publishVersion(
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
             @PathVariable String kbId,
             @PathVariable String docId,
-            @RequestParam String version) {
-        return documentCatalogService.publishVersion(tenantId, kbId, docId, version).map(R::ok);
+            @RequestBody PublishRequest request) {
+        String previewId = request == null ? null : request.previewId();
+        return documentCatalogService.publishVersion(tenantId, kbId, docId, previewId).map(R::ok);
     }
 
     @PostMapping("/documents/{docId}/versions/{version}/fork")

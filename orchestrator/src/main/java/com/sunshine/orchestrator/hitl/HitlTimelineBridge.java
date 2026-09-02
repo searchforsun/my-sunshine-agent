@@ -98,6 +98,28 @@ public class HitlTimelineBridge {
         flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
     }
 
+    /** 按工具步精确 progress（一轮多 tool_calls 时 currentToolStepId 不可信，须用 toolUse→stepId 定位） */
+    public void progressBridgeToolStepOnStep(
+            String timelineBridgeId,
+            String stepId,
+            String activeSummary,
+            String generationMessageId,
+            String boundGenerationId,
+            long epoch) {
+        if (stepId == null || stepId.isBlank()) {
+            return;
+        }
+        if (!isActiveTimelineBridge(timelineBridgeId)) {
+            return;
+        }
+        ensureHitlEpoch(generationMessageId, epoch);
+        if (!isGenerationBound(generationMessageId, boundGenerationId)) {
+            return;
+        }
+        StepEventBridge.emit(timelineBridgeId, session -> session.progress(stepId, activeSummary));
+        flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
+    }
+
     public void flushTimeline(String timelineBridgeId) {
         String generationMessageId = StepEventBridge.hitlAssistantMessageId(timelineBridgeId);
         if (generationMessageId == null) {

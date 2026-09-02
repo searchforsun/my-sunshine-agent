@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 沙箱工具 HITL 策略：读免确认；write/edit 确认；exec 按只读命令白名单。
+ * 沙箱工具 HITL 策略：读免确认；write/edit 在 never 下确认、smart 下免确认；exec 按只读命令白名单。
  */
 public final class SandboxHitlPolicy {
 
@@ -19,7 +19,8 @@ public final class SandboxHitlPolicy {
 
     /**
      * Catalog / shouldConfirmForBridge 层：只看 toolId。
-     * EXEC 恒为 true（具体白名单在工具内再判）；read/glob/grep 为 false。
+     * EXEC 恒为 true（具体白名单在工具内再判）；write/edit 恒为 true（smart 下由工具内按 mode 豁免）；
+     * read/glob/grep 为 false。
      */
     public static boolean catalogDefault(String toolId) {
         if (SandboxIds.READ.equals(toolId)
@@ -27,12 +28,9 @@ public final class SandboxHitlPolicy {
                 || SandboxIds.GREP.equals(toolId)) {
             return false;
         }
-        if (SandboxIds.WRITE.equals(toolId)
+        return SandboxIds.WRITE.equals(toolId)
                 || SandboxIds.EDIT.equals(toolId)
-                || SandboxIds.EXEC.equals(toolId)) {
-            return true;
-        }
-        return false;
+                || SandboxIds.EXEC.equals(toolId);
     }
 
     /** 含参数的确认判定（exec 读当前 session policy 白名单）；mode 缺省等同 {@link SandboxWriteHitlMode#NEVER} */
@@ -42,7 +40,8 @@ public final class SandboxHitlPolicy {
 
     /**
      * 写确认门闸 + Chat 工作区跳过模式。
-     * {@code always}：写相关全部免确认；{@code smart}：write/edit 免确认，exec 仍走只读白名单。
+     * {@code always}：写相关全部免确认；{@code smart}：write/edit 免确认，exec 仍走只读白名单；
+     * {@code never}：write/edit 确认，exec 仍走只读白名单。
      */
     public static boolean requiresConfirmation(
             String toolId, Map<String, ?> params, SandboxWriteHitlMode mode) {

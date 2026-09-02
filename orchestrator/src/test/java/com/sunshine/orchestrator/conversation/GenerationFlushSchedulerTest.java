@@ -35,6 +35,7 @@ class GenerationFlushSchedulerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -97,5 +98,16 @@ class GenerationFlushSchedulerTest {
 
         JsonNode end = OM.readTree(scheduler.metaContentEnd("content-1", "node-a1"));
         assertThat(end.get("nodeStepId").asText()).isEqualTo("node-a1");
+    }
+
+    @Test
+    @DisplayName("metaTitle SSE 下发会话 id 与标题")
+    void metaTitle_emitsConversationAndTitle() throws Exception {
+        GenerationFlushScheduler scheduler = new GenerationFlushScheduler(mock(), mock());
+
+        JsonNode node = OM.readTree(scheduler.metaTitle("conv-1", "排查订单支付失败"));
+        assertThat(node.get("type").asText()).isEqualTo("title");
+        assertThat(node.get("conversationId").asText()).isEqualTo("conv-1");
+        assertThat(node.get("title").asText()).isEqualTo("排查订单支付失败");
     }
 }

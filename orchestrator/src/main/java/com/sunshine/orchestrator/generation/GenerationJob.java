@@ -8,6 +8,7 @@ import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.util.StreamErrorMessages;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
@@ -15,16 +16,16 @@ import com.sunshine.orchestrator.hitl.HitlWaitInterruptedException;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.orchestrator.plan.PendingInteraction;
 import com.sunshine.orchestrator.plan.WorkflowCheckpoint;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.processing.ContentBlockAccumulator;
 import com.sunshine.orchestrator.processing.ThinkStepMapper;
+import com.sunshine.orchestrator.processing.TimelineStepId;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -46,7 +47,7 @@ public class GenerationJob {
     private final GenerationStreamService streamService;
     private final GenerationProperties properties;
     private final GenerationFlushScheduler flushScheduler;
-    private final MemoryLifecycleService memoryLifecycleService;
+    private final ContextLifecycle contextLifecycle;
     private final WorkflowPauseService workflowPauseService;
     private final ExecutionPlanStore executionPlanStore;
     private final AgentPauseProperties pauseProperties;
@@ -54,6 +55,11 @@ public class GenerationJob {
 
     private final AtomicLong seq = new AtomicLong(0);
     private final AtomicBoolean finished = new AtomicBoolean(false);
+    /**
+     * 串行化 {@code seq++ + XADD}。工具/spawn 可并行执行，但显式 Stream ID（{@code seq-0}）
+     * 要求写入单调递增；并发 XADD 会触发 Redis「equal or smaller than the target stream top item」。
+     */
+    private final Object streamAppendLock = new Object();
 
     private volatile Disposable llmSubscription;
     private volatile Disposable orphanTimer;
@@ -70,7 +76,7 @@ public class GenerationJob {
             GenerationStreamService streamService,
             GenerationProperties properties,
             GenerationFlushScheduler flushScheduler,
-            MemoryLifecycleService memoryLifecycleService,
+            ContextLifecycle contextLifecycle,
             WorkflowPauseService workflowPauseService,
             ExecutionPlanStore executionPlanStore,
             AgentPauseProperties pauseProperties,
@@ -85,7 +91,7 @@ public class GenerationJob {
         this.streamService = streamService;
         this.properties = properties;
         this.flushScheduler = flushScheduler;
-        this.memoryLifecycleService = memoryLifecycleService;
+        this.contextLifecycle = contextLifecycle;
         this.workflowPauseService = workflowPauseService;
         this.executionPlanStore = executionPlanStore;
         this.pauseProperties = pauseProperties != null ? pauseProperties : new AgentPauseProperties();
@@ -100,7 +106,7 @@ public class GenerationJob {
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
             Consumer<String> flushPartial, Runnable onComplete, Consumer<Throwable> onError) {
         start(llmFlux, mysqlBuffer, "", java.util.List.of(), flushPartial, onComplete, onError,
-                new AtomicReference<>(ExecutionMode.REACT));
+                new AtomicReference<>(ExecutionMode.FAST));
     }
 
     public void start(Flux<StreamToken> llmFlux, StringBuilder mysqlBuffer,
@@ -119,6 +125,9 @@ public class GenerationJob {
         if (initialSteps != null && !initialSteps.isEmpty()) {
             stepsBuffer.clear();
             stepsBuffer.addAll(initialSteps);
+            // 与 ChatStreamExecutor resume 对齐：截断后最后一个 done think（流式中途被误标 done）将重生成，
+            // 重置为 paused 并清 reasoning，保证 Redis 落库与 SSE 下发一致
+            resetTrailingDoneThinkToPaused(stepsBuffer);
         }
         this.thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery, executionMode);
         this.chunkEmitter = newChunkEmitter();
@@ -126,7 +135,7 @@ public class GenerationJob {
         Consumer<String> guardedFlush = guardFlush(flushPartial);
         AtomicLong lastFlush = new AtomicLong(0);
         llmSubscription = llmFlux
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         chunk -> chunkEmitter.onChunk(chunk, mysqlBuffer, guardedFlush, lastFlush),
                         error -> finishOnce(() -> handleError(error, onError)),
@@ -134,10 +143,16 @@ public class GenerationJob {
                 );
     }
 
+    /** 续跑：预填中断前 content_blocks，终态落库与本轮新块合并 */
+    public void seedResumeContentBlocks(String contentBlocksJson) {
+        contentBlockAccumulator.seedMessageBlocks(
+                com.sunshine.orchestrator.processing.ContentBlocksJson.parse(contentBlocksJson));
+    }
+
     public void onSubscriberGone() {
         cancelOrphanTimer();
         orphanTimer = Mono.delay(Duration.ofSeconds(properties.orphanTimeoutSec()))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(v -> {
                     if (!finished.get()) {
                         log.info("[GenerationJob] orphan-timeout fired genId={}", generationId);
@@ -155,6 +170,7 @@ public class GenerationJob {
         finishOnce(() -> {
             cancelOrphanTimer();
             persistWorkflowPauseIfNeeded();
+            dropUnfinishedIntentStep();
             emitFinishSteps(true);
             emitPausedWorkflowSteps();
             disposeLlmSubscription();
@@ -168,8 +184,10 @@ public class GenerationJob {
         if (wireJson == null || wireJson.isBlank() || finished.get() || !isStreamEpochValid()) {
             return;
         }
-        long nextSeq = seq.incrementAndGet();
-        streamService.appendChunk(generationId, nextSeq, wireJson);
+        synchronized (streamAppendLock) {
+            long nextSeq = seq.incrementAndGet();
+            streamService.appendChunk(generationId, nextSeq, wireJson);
+        }
     }
 
     /** Hook 队列中的 step / step_delta / 分段 content 即时刷入 Redis（HITL 阻塞前须先下发 think / tool 步骤） */
@@ -185,7 +203,7 @@ public class GenerationJob {
         if (chunkEmitter == null) {
             if (thinkMapper == null) {
                 thinkMapper = new ThinkStepMapper(stepsBuffer, userQuery,
-                        new AtomicReference<>(ExecutionMode.REACT));
+                        new AtomicReference<>(ExecutionMode.FAST));
             }
             chunkEmitter = newChunkEmitter();
         }
@@ -211,11 +229,10 @@ public class GenerationJob {
             ProcessingStepLifecycleOps.pauseRunningWorkflowNodes(stepsBuffer, nodeId, skipNodeId);
         }
         ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
-        ProcessingStepLifecycleOps.pauseRunningExpertSteps(stepsBuffer);
         StringBuilder mysqlBuffer = mysqlBufferRef;
         Consumer<String> flushPartial = directPartialFlush();
         if (chunkEmitter != null) {
-            for (ProcessingStep step : stepsBuffer) {
+            for (ProcessingStep step : new java.util.ArrayList<>(stepsBuffer)) {
                 if ("paused".equals(step.lifecycle())) {
                     chunkEmitter.emitPausedStep(StreamToken.step(step), mysqlBuffer, flushPartial);
                 }
@@ -229,20 +246,47 @@ public class GenerationJob {
         emitFinishSteps();
         streamService.updateStatus(generationId, GenerationStatus.COMPLETED);
         persistFinal(MessageStatus.COMPLETED, () -> {
-            refreshMemoryAfterComplete();
+            refreshContextAfterComplete();
             onComplete.run();
         });
     }
 
-    private void refreshMemoryAfterComplete() {
-        if (memoryLifecycleService == null) {
+    /** 中断时若意图识别尚未完成：删除 running 的 intent 步，续跑重新意图识别后以下发的新步为准 */
+    private void dropUnfinishedIntentStep() {
+        stepsBuffer.removeIf(step -> TimelineStepId.INTENT.matches(step.id()) && !"done".equals(step.lifecycle()));
+    }
+
+    /** 续跑预填后：截断锚点之后最后一个 done think（流式中途被误标 done）将重生成，重置为 paused 并清 reasoning */
+    private static void resetTrailingDoneThinkToPaused(java.util.List<ProcessingStep> steps) {
+        for (int i = steps.size() - 1; i >= 0; i--) {
+            ProcessingStep s = steps.get(i);
+            if (!com.sunshine.orchestrator.processing.ThinkStepIds.isThinkStep(s.id())) {
+                continue;
+            }
+            if ("done".equals(s.lifecycle())) {
+                com.sunshine.orchestrator.processing.StepSummary summary = s.summary();
+                steps.set(i, new ProcessingStep(
+                        s.id(), s.phase(), "paused",
+                        new com.sunshine.orchestrator.processing.StepSummary(
+                                summary != null ? summary.before() : null, "已暂停", "已暂停"),
+                        s.startedAt(), null, null,
+                        s.detail(), null, s.output(), s.result(),
+                        System.currentTimeMillis(), s.label(), s.metadata(),
+                        s.contentBlocks(), s.subSteps(), s.stepSummary()));
+            }
+            return;
+        }
+    }
+
+    private void refreshContextAfterComplete() {
+        if (contextLifecycle == null) {
             return;
         }
         try {
-            memoryLifecycleService.onAssistantCompleted(
+            contextLifecycle.onTurnCompleted(
                     messageId, userId, tenantId, MessageStatus.COMPLETED);
         } catch (Exception e) {
-            log.warn("[GenerationJob] STM 刷新失败 msg={}: {}", messageId, e.getMessage());
+            log.warn("[GenerationJob] Context 刷新失败 msg={}: {}", messageId, e.getMessage());
         }
     }
 
@@ -254,6 +298,7 @@ public class GenerationJob {
                 || (error.getCause() instanceof HitlWaitInterruptedException)) {
             cancelOrphanTimer();
             disposeLlmSubscription();
+            dropUnfinishedIntentStep();
             emitFinishSteps(true);
             emitPausedWorkflowSteps();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
@@ -262,31 +307,35 @@ public class GenerationJob {
         }
         cancelOrphanTimer();
         disposeLlmSubscription();
+        dropUnfinishedIntentStep();
         emitFinishSteps(true);
         String errMsg = StreamErrorMessages.resolve(error);
         if (errMsg != null && !errMsg.isBlank()) {
-            long nextSeq = seq.incrementAndGet();
-            streamService.appendChunk(generationId, nextSeq, flushScheduler.metaError(errMsg));
-            StringBuilder buf = mysqlBufferRef;
-            if (buf != null) {
-                if (buf.length() > 0) {
-                    buf.append("\n\n");
+            synchronized (streamAppendLock) {
+                long nextSeq = seq.incrementAndGet();
+                streamService.appendChunk(generationId, nextSeq, flushScheduler.metaError(errMsg));
+                StringBuilder buf = mysqlBufferRef;
+                if (buf != null) {
+                    if (buf.length() > 0) {
+                        buf.append("\n\n");
+                    }
+                    buf.append(errMsg);
                 }
-                buf.append(errMsg);
             }
         }
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
         persistFinal(MessageStatus.FAILED, () -> onError.accept(error));
     }
 
-    /** commitFinal 含脱敏 block 调用，须在 boundedElastic 执行，避免 reactor 线程 IllegalStateException */
+    /** commitFinal 含脱敏 block 调用，须在虚拟线程执行，避免 reactor 线程 IllegalStateException */
     private void persistFinal(String status, Runnable afterPersist) {
         String buffered = bufferContent();
         String reasoning = bufferReasoning();
         contentBlockAccumulator.mergeIntoSteps(stepsBuffer);
         String steps = stepsJson();
         String contentBlocks = contentBlockAccumulator.messageBlocksJson();
-        // ReAct 旁路 emitStreamToken 曾漏写 mysqlBuffer：用 content_blocks 回填，保证 STM SSOT
+        final String usageJson = chunkEmitter != null ? chunkEmitter.lastUsageJson() : null;
+        // ReAct 旁路 emitStreamToken 曾漏写 mysqlBuffer：用 content_blocks 回填，保证 content SSOT（L1/历史）
         final String content;
         if (!StringUtils.hasText(buffered)) {
             String fromBlocks = contentBlockAccumulator.messageBlocksPlainText();
@@ -297,11 +346,11 @@ public class GenerationJob {
         Mono.fromRunnable(() -> {
                     try {
                         if (flushLock == null || flushLock.isHeldByThisInstance(generationId)) {
-                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks);
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks, usageJson);
                         } else {
                             log.warn("[GenerationJob] 终态落库时 flush 锁已丢失，仍强制 commitFinal genId={} msg={}",
                                     generationId, messageId);
-                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks);
+                            flushScheduler.commitFinal(messageId, content, reasoning, status, steps, contentBlocks, usageJson);
                         }
                         afterPersist.run();
                     } finally {
@@ -310,7 +359,7 @@ public class GenerationJob {
                         }
                     }
                 })
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .subscribe(
                         null,
                         e -> log.error("[GenerationJob] 落库失败 msg={} status={}: {}",
@@ -369,6 +418,7 @@ public class GenerationJob {
                 generationId,
                 messageId,
                 seq,
+                streamAppendLock,
                 finished,
                 boundStreamEpoch,
                 stepsBuffer,

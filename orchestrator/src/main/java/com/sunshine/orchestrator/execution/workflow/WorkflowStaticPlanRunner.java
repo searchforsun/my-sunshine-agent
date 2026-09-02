@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution.workflow;
 
 import com.sunshine.orchestrator.client.StreamToken;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.WorkflowDefinition;
 import com.sunshine.orchestrator.execution.WorkflowDefinitionLoader;
@@ -21,7 +22,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Optional;
@@ -62,7 +62,7 @@ public class WorkflowStaticPlanRunner {
         WorkflowDefinition def = bundle.definition();
         PlanJson rawPlan = StaticPlanAdapter.fromStoredPlan(bundle.sourcePlan(), plan.reason());
         return Mono.fromCallable(() -> executionPlanStore.createDraft(ctx, rawPlan))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doOnSuccess(planId -> planExecutionAuditService.created(
                         ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), planId))
                 .flatMapMany(planId -> runStaticAsPlan(ctx, planId, def, rawPlan, dagExecutor));
@@ -88,7 +88,7 @@ public class WorkflowStaticPlanRunner {
                     executionPlanStore.markValidated(planId, enriched);
                     executionPlanStore.markRunning(planId);
                 })
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doOnSuccess(v -> planExecutionAuditService.validated(
                         ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
                         planId, nodeCount))

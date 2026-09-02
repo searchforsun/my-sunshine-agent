@@ -3,13 +3,15 @@
  */
 import { reactive } from 'vue'
 import type { ChatMessage } from './chat'
-import type { ExecutionPreference } from './executionModes'
+import type { ExecutionMode } from './executionModes'
 
 export interface SendOptions {
-  executionPreference?: ExecutionPreference
+  executionPreference?: ExecutionMode
   workflowId?: string | null
   skillId?: string
   kbId?: string | null
+  /** 会话绑定模型（注册表 model_name）；空串清绑定 */
+  modelName?: string | null
   /** never | always | smart — 沙箱写 HITL 跳过 */
   writeHitlMode?: 'never' | 'always' | 'smart'
 }
@@ -43,12 +45,9 @@ export function getSessionRegistry(): Map<string, SessionState> {
   return sessions
 }
 
+/** reasoning 等通道：后端增量帧直接追加（续跑前已清空旧 reasoning） */
 export function appendChunk(existing: string, chunk: string): string {
-  const maxOverlap = Math.min(existing.length, chunk.length, 64)
-  for (let n = maxOverlap; n > 0; n--) {
-    if (existing.endsWith(chunk.slice(0, n))) return existing + chunk.slice(n)
-  }
-  return existing + chunk
+  return (existing ?? '') + (chunk ?? '')
 }
 
 export function getOrCreateSession(id: string): SessionState {

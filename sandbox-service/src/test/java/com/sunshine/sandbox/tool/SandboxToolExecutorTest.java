@@ -1,11 +1,14 @@
 package com.sunshine.sandbox.tool;
 
 import com.sunshine.common.core.exception.BizException;
+import com.sunshine.common.sandbox.SandboxEditDiff;
+import com.sunshine.common.sandbox.SandboxEditDiffLine;
 import com.sunshine.common.sandbox.SandboxPolicy;
 import com.sunshine.common.sandbox.ToolInvokeResponse;
 import com.sunshine.sandbox.config.SandboxProperties;
 import com.sunshine.sandbox.docker.DockerCli;
 import com.sunshine.sandbox.docker.ExecResult;
+import com.sunshine.sandbox.docker.SandboxInvocationRegistry;
 import com.sunshine.sandbox.exception.SandboxErrorCode;
 import com.sunshine.sandbox.session.SandboxSession;
 import com.sunshine.sandbox.session.SandboxSessionStore;
@@ -37,7 +40,8 @@ class SandboxToolExecutorTest {
     void setUp() throws Exception {
         store = new SandboxSessionStore();
         SandboxProperties props = new SandboxProperties();
-        executor = new SandboxToolExecutor(store, new StubDockerCli(props), props, null);
+        executor = new SandboxToolExecutor(
+                store, new StubDockerCli(props), props, null, new SandboxInvocationRegistry());
         sessionId = "sess-tool-001";
         Path hostRoot = tempRoot.resolve(sessionId);
         hostSkill = hostRoot.resolve("skills").resolve("demo");
@@ -51,7 +55,8 @@ class SandboxToolExecutorTest {
                 "fake-cid",
                 hostRoot,
                 new SandboxPolicy("docker", "sunshine-sandbox-python:3.11-slim", 30, 256, 0.5,
-                        List.of(), List.of())));
+                        List.of(), List.of(), null),
+                null));
     }
 
     @Test
@@ -61,7 +66,22 @@ class SandboxToolExecutorTest {
                 "old_string", "bbb",
                 "new_string", "CCC"));
         assertThat(ok.ok()).isTrue();
+        assertThat(ok.output()).isEqualTo("edited /workspace/note.txt");
         assertThat(hostWorkspace.resolve("note.txt")).hasContent("aaa\nCCC\naaa\n");
+        assertThat(ok.meta()).isNotNull().containsKey("editDiff");
+        SandboxEditDiff editDiff = (SandboxEditDiff) ok.meta().get("editDiff");
+        assertThat(editDiff.path()).isEqualTo("/workspace/note.txt");
+        assertThat(editDiff.contextRadius()).isEqualTo(3);
+        SandboxEditDiffLine del = editDiff.lines().stream()
+                .filter(l -> "del".equals(l.kind())).findFirst().orElseThrow();
+        SandboxEditDiffLine add = editDiff.lines().stream()
+                .filter(l -> "add".equals(l.kind())).findFirst().orElseThrow();
+        assertThat(del.text()).isEqualTo("bbb");
+        assertThat(del.oldLine()).isEqualTo(2);
+        assertThat(del.newLine()).isNull();
+        assertThat(add.text()).isEqualTo("CCC");
+        assertThat(add.newLine()).isEqualTo(2);
+        assertThat(add.oldLine()).isNull();
 
         assertThatThrownBy(() -> executor.invoke(sessionId, SandboxToolNames.EDIT, Map.of(
                 "path", "/workspace/note.txt",
@@ -128,6 +148,7 @@ class SandboxToolExecutorTest {
                 "path", "/workspace/out/a.txt",
                 "content", "hello\nworld\n"));
         assertThat(written.ok()).isTrue();
+        assertThat(written.output()).isEqualTo("wrote /workspace/out/a.txt");
         assertThat(hostWorkspace.resolve("out/a.txt")).hasContent("hello\nworld\n");
 
         ToolInvokeResponse read = executor.invoke(sessionId, SandboxToolNames.READ, Map.of(
@@ -194,12 +215,18 @@ class SandboxToolExecutorTest {
 
     static final class StubDockerCli extends DockerCli {
         StubDockerCli(SandboxProperties properties) {
-            super(properties);
+            super(properties, new SandboxInvocationRegistry());
         }
 
         @Override
         public ExecResult exec(String containerId, String workingDir, List<String> cmd, Duration timeout) {
             return new ExecResult(0, "", "");
+        }
+
+        @Override
+        public ExecResult exec(
+                String containerId, String workingDir, List<String> cmd, Duration timeout, String invocationId) {
+            return exec(containerId, workingDir, cmd, timeout);
         }
     }
 }

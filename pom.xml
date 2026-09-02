@@ -13,21 +13,18 @@
     <modules>
         <module>common/sunshine-common</module>
         <module>common/sunshine-tool-sdk</module>
+        <module>common/sunshine-routing</module>
         <module>gateway</module>
         <module>bff</module>
+        <module>biz-simulator</module>
         <module>auth-center</module>
         <module>orchestrator</module>
-        <module>tool-manager</module>
-        <module>skill-manager</module>
+        <module>tool-service</module>
         <module>sandbox-service</module>
         <module>workflow-manager</module>
-        <module>expert-manager</module>
         <module>llm-gateway</module>
         <module>rag-service</module>
-        <module>prompt-manager</module>
-        <module>desensitize</module>
-        <module>oa-service</module>
-        <module>finance-service</module>
+        <module>resource-manager</module>
     </modules>
 
     <properties>
@@ -38,7 +35,8 @@
         <spring-boot.version>3.2.9</spring-boot.version>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <spring-cloud-alibaba.version>2023.0.3.4</spring-cloud-alibaba.version>
-        <agentscope.version>1.0.7</agentscope.version>
+        <!-- AS 2.0：模型提供者（OpenAI 等）迁出 core 至 agentscope-extensions-model-openai -->
+        <agentscope.version>2.0.0</agentscope.version>
         <sa-token.version>1.45.0</sa-token.version>
         <milvus-sdk.version>2.6.15</milvus-sdk.version>
         <rocketmq-spring.version>2.3.3</rocketmq-spring.version>
@@ -73,6 +71,16 @@
             <dependency>
                 <groupId>io.agentscope</groupId>
                 <artifactId>agentscope</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-model-openai</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-harness</artifactId>
                 <version>${agentscope.version}</version>
             </dependency>
             <dependency>

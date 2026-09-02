@@ -5,7 +5,7 @@
 | **状态** | Accepted |
 | **日期** | 2026-07-01 |
 | **范围** | 阶段四 4.1 前置 · RAG 检索 / 改写 / rerank 职责边界 |
-| **关联** | [rag-knowledge-studio-design.md](../superpowers/specs/2026-06-27-rag-knowledge-studio-design.md) · [phase4-platformization-design.md](../superpowers/specs/phase4-platformization-design.md) §4.1 |
+| **关联** | [rag-knowledge-studio-design.md](../superpowers/specs/archive/2026-06-27-rag-knowledge-studio-design.md) · [phase4-platformization-design.md](../superpowers/specs/phase4-platformization-design.md) §4.1 |
 
 ---
 
@@ -126,5 +126,5 @@ Admin debug：`POST /api/rag/admin/search/debug` 与 pipeline 共用同一实现
 
 ## 相关文档
 
-- [2026-06-27-rag-knowledge-studio-design.md](../superpowers/specs/2026-06-27-rag-knowledge-studio-design.md) §2、§6、§8
+- [2026-06-27-rag-knowledge-studio-design.md](../superpowers/specs/archive/2026-06-27-rag-knowledge-studio-design.md) §2、§6、§8
 - [2026-06-27-rag-knowledge-studio.md](../superpowers/plans/2026-06-27-rag-knowledge-studio.md) Task T0

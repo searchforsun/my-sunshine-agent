@@ -52,7 +52,7 @@ class PlanExecutionScheduleTest {
                         new PlanEdge("start", "rag"),
                         new PlanEdge("rag", "join-1"),
                         new PlanEdge("join-1", "answer")));
-        assertThat(PlanExecutionSchedule.validateParallelTopology(plan))
+        assertThat(PlanExecutionSchedule.validateParallelTopology(plan).message())
                 .contains("入度须 ≥ 2");
     }
 
@@ -98,11 +98,11 @@ class PlanExecutionScheduleTest {
                         new PlanNode("answer", "answer", Map.of())),
                 List.of(
                         new PlanEdge("start", "xg-1"),
-                        new PlanEdge("xg-1", "a", new PlanEdgeCondition("{{a.output}}", "not_empty", ""), false),
-                        new PlanEdge("xg-1", "b", new PlanEdgeCondition("{{a.output}}", "empty", ""), false),
+                        new PlanEdge("xg-1", "a", PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{a.output}}", "not_empty", "")), false),
+                        new PlanEdge("xg-1", "b", PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{a.output}}", "empty", "")), false),
                         new PlanEdge("a", "answer"),
                         new PlanEdge("b", "answer")));
-        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan))
+        assertThat(PlanExecutionSchedule.validateExclusiveTopology(plan).message())
                 .contains("须恰好 1 条 default");
     }
 
@@ -124,25 +124,29 @@ class PlanExecutionScheduleTest {
         PlanJson plan = new PlanJson("bad-loop", "test",
                 List.of(
                         new PlanNode("loop-1", "loop", Map.of(
-                                "condition.left", "{{start.userQuery}}",
-                                "condition.op", "contains",
-                                "condition.right", "x",
+                                "conditions", List.of(Map.of(
+                                        "left", "{{start.userQuery}}",
+                                        "op", "contains",
+                                        "right", "x")),
+                                "conditionLogic", "and",
                                 "maxIterations", "3",
                                 "onMaxIterations", "fail_fast")),
                         new PlanNode("answer", "answer", Map.of())),
                 List.of(
                         new PlanEdge("start", "loop-1"),
                         new PlanEdge("loop-1", "answer")));
-        assertThat(PlanExecutionSchedule.validateLoopTopology(plan)).contains("至少一个 body");
+        assertThat(PlanExecutionSchedule.validateLoopTopology(plan).message()).contains("无框内 body");
     }
 
     private static PlanJson loopPlan() {
         return new PlanJson("loop-ok", "test",
                 List.of(
                         new PlanNode("loop-1", "loop", Map.of(
-                                "condition.left", "{{start.userQuery}}",
-                                "condition.op", "contains",
-                                "condition.right", "继续",
+                                "conditions", List.of(Map.of(
+                                        "left", "{{start.userQuery}}",
+                                        "op", "contains",
+                                        "right", "继续")),
+                                "conditionLogic", "and",
                                 "maxIterations", "3",
                                 "onMaxIterations", "exit",
                                 "retry.maxAttempts", "1",
@@ -166,7 +170,7 @@ class PlanExecutionScheduleTest {
                 List.of(
                         new PlanEdge("start", "xg-1"),
                         new PlanEdge("xg-1", "rag-hit",
-                                new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销"), false),
+                                PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{start.userQuery}}", "contains", "报销")), false),
                         new PlanEdge("xg-1", "rag-miss", null, true),
                         new PlanEdge("rag-hit", "answer"),
                         new PlanEdge("rag-miss", "answer")));

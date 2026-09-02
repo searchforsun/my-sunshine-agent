@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 将 LLM 累积式 delta（每帧携带已生成全文）转为真正增量 token。
- * 仅做前缀单调 diff，供 simple-llm / LLM Gateway 路径使用；ReAct 正文分段由 {@link com.sunshine.orchestrator.processing.ContentSegmentCoordinator} 负责。
+ * 仅做前缀单调 diff，供直连 Gateway / DIRECT 路径使用；ReAct 正文分段由 {@link com.sunshine.orchestrator.processing.ContentSegmentCoordinator} 负责。
  */
 public final class StreamDeltaNormalizer {
 

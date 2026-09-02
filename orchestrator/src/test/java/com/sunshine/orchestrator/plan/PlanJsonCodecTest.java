@@ -39,7 +39,7 @@ class PlanJsonCodecTest {
                 List.of(new PlanNode("xg", "exclusive-gateway", Map.of())),
                 List.of(
                         new PlanEdge("start", "xg"),
-                        new PlanEdge("xg", "a", new PlanEdgeCondition("{{q}}", "contains", "报销"), false),
+                        new PlanEdge("xg", "a", PlanEdgeConditionGroup.single(new PlanEdgeCondition("{{q}}", "contains", "报销")), false),
                         new PlanEdge("xg", "b", null, true)));
         String json = codec.toJson(plan);
         assertThat(json).contains("\"op\":\"contains\"");

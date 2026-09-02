@@ -2,6 +2,8 @@ package com.sunshine.orchestrator.plan;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.orchestrator.execution.InputBinding;
+import com.sunshine.orchestrator.execution.VarType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -59,15 +61,48 @@ public class PlanJsonParser {
             if (id == null || type == null) {
                 continue;
             }
-            Map<String, String> params = parseParams(node.get("params"));
+            Map<String, Object> params = parseParams(node.get("params"));
             if (params.isEmpty()) {
                 params = parseParams(node.get("config"));
             }
+            List<InputBinding> inputs = parseInputs(node.get("inputs"));
             String displayName = text(node, "displayName");
             String parentId = text(node, "parentId");
-            nodes.add(new PlanNode(id, type, params, displayName, parentId));
+            nodes.add(new PlanNode(id, type, params, inputs, displayName, parentId));
         }
         return List.copyOf(nodes);
+    }
+
+    private static List<InputBinding> parseInputs(JsonNode inputsNode) {
+        List<InputBinding> inputs = new ArrayList<>();
+        if (inputsNode == null || !inputsNode.isArray()) {
+            return inputs;
+        }
+        for (JsonNode item : inputsNode) {
+            String name = text(item, "name");
+            String source = text(item, "source");
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            String typeStr = text(item, "type");
+            VarType type = parseVarType(typeStr);
+            boolean required = item.has("required") && item.get("required").asBoolean(false);
+            inputs.add(new InputBinding(name, source != null ? source : "", type, required));
+        }
+        return List.copyOf(inputs);
+    }
+
+    private static VarType parseVarType(String typeStr) {
+        if (typeStr == null || typeStr.isBlank()) {
+            return VarType.STRING;
+        }
+        return switch (typeStr.toLowerCase()) {
+            case "number" -> VarType.NUMBER;
+            case "boolean" -> VarType.BOOLEAN;
+            case "object" -> VarType.OBJECT;
+            case "array" -> VarType.ARRAY;
+            default -> VarType.STRING;
+        };
     }
 
     private static Map<String, PlanLayoutPoint> parseLayout(JsonNode layoutNode) {
@@ -114,13 +149,35 @@ public class PlanJsonParser {
                 continue;
             }
             boolean isDefault = edge.has("default") && edge.get("default").asBoolean(false);
-            PlanEdgeCondition condition = parseCondition(edge.get("condition"));
+            PlanEdgeConditionGroup condition = parseConditionGroup(edge.get("condition"));
             edges.add(new PlanEdge(from, to, condition, isDefault));
         }
         return List.copyOf(edges);
     }
 
-    private static PlanEdgeCondition parseCondition(JsonNode node) {
+    private static PlanEdgeConditionGroup parseConditionGroup(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        JsonNode itemsNode = node.get("items");
+        if (itemsNode == null || !itemsNode.isArray()) {
+            return null;
+        }
+        String logic = text(node, "logic");
+        List<PlanEdgeCondition> items = new ArrayList<>();
+        for (JsonNode item : itemsNode) {
+            PlanEdgeCondition c = parseSingleCondition(item);
+            if (c != null) {
+                items.add(c);
+            }
+        }
+        if (items.isEmpty() && logic == null) {
+            return null;
+        }
+        return new PlanEdgeConditionGroup(logic, items);
+    }
+
+    private static PlanEdgeCondition parseSingleCondition(JsonNode node) {
         if (node == null || !node.isObject()) {
             return null;
         }
@@ -136,15 +193,26 @@ public class PlanJsonParser {
                 right != null ? right : "");
     }
 
-    private static Map<String, String> parseParams(JsonNode paramsNode) {
-        Map<String, String> params = new HashMap<>();
+    private static Map<String, Object> parseParams(JsonNode paramsNode) {
+        Map<String, Object> params = new HashMap<>();
         if (paramsNode == null || !paramsNode.isObject()) {
             return params;
         }
         Iterator<Map.Entry<String, JsonNode>> it = paramsNode.fields();
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> e = it.next();
-            params.put(e.getKey(), e.getValue().asText(""));
+            JsonNode v = e.getValue();
+            if (v == null || v.isNull()) {
+                params.put(e.getKey(), null);
+            } else if (v.isObject() || v.isArray()) {
+                params.put(e.getKey(), v);
+            } else if (v.isNumber()) {
+                params.put(e.getKey(), v.numberValue());
+            } else if (v.isBoolean()) {
+                params.put(e.getKey(), v.booleanValue());
+            } else {
+                params.put(e.getKey(), v.asText(""));
+            }
         }
         return params;
     }

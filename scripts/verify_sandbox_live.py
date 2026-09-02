@@ -442,7 +442,7 @@ def chat_sse(
     conv_id: str,
     query: str,
     *,
-    execution_preference: str = "react",
+    execution_preference: str = "fast",
     write_hitl_mode: str | None = None,
     auto_approve: bool = False,
     stop_on_confirmation: bool = False,
@@ -455,7 +455,7 @@ def chat_sse(
             body: dict[str, Any] = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": execution_preference,
+                "executionMode": execution_preference,
             }
             if write_hitl_mode:
                 body["writeHitlMode"] = write_hitl_mode
@@ -518,7 +518,7 @@ def assert_write_skip_hitl(
             f"@{skill_id} 请用 sandbox__write 把字符串 {marker} 写入 "
             f"/workspace/hitl-{mode}.txt，不要用 exec，完成后简短确认。"
         ),
-        execution_preference="react",
+        execution_preference="fast",
         write_hitl_mode=mode,
         # 若误触发 HITL 则立刻停，避免挂死等确认
         stop_on_confirmation=True,
@@ -711,7 +711,7 @@ def run_chat(gw: str, report: Report) -> None:
             gw, headers, conv,
             "请用 sandbox__write 把 hello-scheme-b 写入 /workspace/scheme-b.txt，然后简短确认。"
             "不要使用其他工具。",
-            execution_preference="react",
+            execution_preference="fast",
             auto_approve=True,
         )
         leaked = sandbox_tool_step_ids(coll.steps)
@@ -739,7 +739,7 @@ def run_chat(gw: str, report: Report) -> None:
             coll = chat_sse(
                 gw, headers, conv,
                 f"@{skill_id} 请用 sandbox__write 把字符串 hello-hitl 写入 /workspace/hitl.txt，不要用 exec",
-                execution_preference="react",
+                execution_preference="fast",
                 stop_on_confirmation=True,
             )
             conf = coll.confirmation
@@ -772,7 +772,7 @@ def run_chat(gw: str, report: Report) -> None:
                     "4) sandbox__exec 执行 cat /workspace/demo.txt；"
                     "完成后简短确认。"
                 ),
-                execution_preference="react",
+                execution_preference="fast",
                 auto_approve=True,
             )
             ids = sandbox_tool_step_ids(coll.steps)
@@ -825,7 +825,7 @@ def run_chat(gw: str, report: Report) -> None:
                     f"#{wf_id} 请在工作区新建 /workspace/{fname}，"
                     f"内容仅为 {marker}，只用 sandbox__write，写完后简短确认。"
                 ),
-                execution_preference="auto",
+                execution_preference="workflow",
                 write_hitl_mode="always",
                 auto_approve=True,
             )

@@ -1,8 +1,10 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.agent.ProcessingStep;
+import lombok.extern.slf4j.Slf4j;
 
 /** ReAct think 轮次 + 正文段锚点 */
+@Slf4j
 final class TimelineSessionThinkFlow {
 
     private final TimelineSessionState state;
@@ -48,38 +50,56 @@ final class TimelineSessionThinkFlow {
             if (isThinkRunning()) {
                 completeThinkIfRunning();
             }
-            openNextThink();
+            // 业务 tool 后：下一轮有 Thinking 再开新 think；无 Thinking（纯 tool_call）不开空步
+            state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.FRESH;
+            log.debug("[ThinkFlow] begin: pendingFresh afterTool");
             return;
         }
-        // 无业务 tool 间隔的连续 reasoning（如终态前空转多轮）复用同一 think，避免堆叠「综合分析」
+        // 无业务 tool 间隔的连续 reasoning：有 Thinking 时 RESUME 复用；无 Thinking 不开空 running
         if (state.lastCompletedThinkId != null && !emitter.isStepRunning(state.lastCompletedThinkId)) {
-            state.currentThinkId = state.lastCompletedThinkId;
-            lifecycle.pending(state.currentThinkId, TimelineStepId.THINK.phase());
-            lifecycle.start(state.currentThinkId, TimelineStepId.THINK.phase());
+            state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.REUSE;
+            log.debug("[ThinkFlow] begin: pendingReuse think={}", state.lastCompletedThinkId);
             return;
         }
         if (isThinkRunning()) {
             completeThinkIfRunning();
         }
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.FRESH;
+        log.debug("[ThinkFlow] begin: pendingFresh");
+    }
+
+    /** 首个 ThinkingBlockStart/Delta：按 pending 意图开/复用 think */
+    void ensureThinkOpen() {
+        if (isThinkRunning()) {
+            return;
+        }
+        TimelineSessionState.PendingThinkOpen intent = state.pendingThinkOpen;
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.NONE;
+        if (intent == TimelineSessionState.PendingThinkOpen.REUSE
+                && state.lastCompletedThinkId != null) {
+            state.currentThinkId = state.lastCompletedThinkId;
+            lifecycle.resume(state.currentThinkId, TimelineStepId.THINK.phase());
+            log.debug("[ThinkFlow] ensureOpen: reuseThink={}", state.currentThinkId);
+            return;
+        }
         openNextThink();
+        log.debug("[ThinkFlow] ensureOpen: openThink={}", state.currentThinkId);
     }
 
     void endReasoningRound() {
         long endedAt = System.currentTimeMillis();
         String thinkId = resolveRunningThinkId();
-        if (thinkId == null) {
+        if (thinkId == null || !emitter.isStepRunning(thinkId)) {
+            // 本轮未 materialize think（无 ThinkingBlock）：保留 pending 意图，
+            // 供 onActing think_summary / 正文补开本轮 think，避免落到上一轮已 done 的旧 think
+            log.debug("[ThinkFlow] end: noRunningThink keepPending={}", state.pendingThinkOpen);
             return;
         }
+        state.pendingThinkOpen = TimelineSessionState.PendingThinkOpen.NONE;
         state.lastCompletedThinkId = thinkId;
-        if (emitter.isStepRunning(thinkId)) {
-            lifecycle.completeAt(thinkId, null, endedAt);
-            state.lastCompletedThinkEndedAt = endedAt;
-            return;
-        }
-        state.lastCompletedThinkEndedAt = state.aggregator.get(thinkId)
-                .map(ProcessingStep::endedAt)
-                .filter(ts -> ts > 0)
-                .orElse(endedAt);
+        lifecycle.completeAt(thinkId, null, endedAt);
+        state.lastCompletedThinkEndedAt = endedAt;
+        log.debug("[ThinkFlow] end: completeThink={}", thinkId);
     }
 
     private String resolveRunningThinkId() {
@@ -98,6 +118,11 @@ final class TimelineSessionThinkFlow {
         if (delta == null || delta.isEmpty()) {
             return;
         }
+        // 无 ThinkingBlock 直接出正文的轮（如终态作答）：先按 pending 意图补开本轮 think，
+        // 使正文锚定到本轮新建 think（位于最后一个工具之后），而非上一轮已 done 的旧 think
+        if (state.pendingThinkOpen != TimelineSessionState.PendingThinkOpen.NONE) {
+            ensureThinkOpen();
+        }
         completeThinkIfRunning();
         String anchor = contentAnchorAfterStepId();
         if (anchor == null || anchor.isBlank()) {
@@ -106,11 +131,62 @@ final class TimelineSessionThinkFlow {
         state.contentSegments.ingest(delta, anchor, sink);
     }
 
+    /** think_summary 工具参数摘要 → 最近一轮 think 步 step_summary（写回 aggregator + 下发前端主行） */
+    void applyThinkStepSummary(String summary, java.util.function.Consumer<com.sunshine.orchestrator.client.StreamToken> sink) {
+        if (summary == null || summary.isBlank()) {
+            return;
+        }
+        // 无 ThinkingBlock 的轮（含终态作答轮）：think_summary 到达时按 pending 意图补开本轮 think，
+        // 禁止把终态摘要写进上一轮已 done 的 think（否则该 think 被重新贴标、正文锚点跑到最后一个工具之前）
+        if (state.pendingThinkOpen != TimelineSessionState.PendingThinkOpen.NONE) {
+            ensureThinkOpen();
+        }
+        String thinkId = state.currentThinkId;
+        if (thinkId == null) {
+            thinkId = state.lastCompletedThinkId;
+        }
+        if (thinkId == null) {
+            log.info("[ThinkSummary] applyStepSummary drop: noThinkId cur={} last={} summary={}",
+                    state.currentThinkId, state.lastCompletedThinkId, summary);
+            return;
+        }
+        String trimmed = summary.strip();
+        log.info("[ThinkSummary] applyStepSummary thinkId={} cur={} last={} running={} summary={}",
+                thinkId, state.currentThinkId, state.lastCompletedThinkId,
+                emitter.isStepRunning(thinkId), trimmed);
+        state.aggregator.appendDelta(thinkId, "step_summary", trimmed, System.currentTimeMillis());
+        sink.accept(com.sunshine.orchestrator.client.StreamToken.stepDelta(thinkId, "step_summary", trimmed));
+    }
+
     String contentSegmentBaseline() {
         return state.contentSegments.currentBaseline();
     }
 
     String contentAnchorAfterStepId() {
+        String current = state.currentThinkId;
+        if (current != null && emitter.hasStep(current)) {
+            // 若当前 think 之后（快照插入序）已存在工具步（同轮思考中穿插工具，如先思考后调工具），
+            // 正文须锚定这些工具步**之后**，否则前端按 startedAt 排序后正文被渲染在工具步之前 →
+            // 「时间线放错位置」/「正文最后多一个执行时间线」。
+            java.util.List<ProcessingStep> snap = emitter.snapshot();
+            int thinkIdx = -1;
+            for (int i = 0; i < snap.size(); i++) {
+                if (current.equals(snap.get(i).id())) {
+                    thinkIdx = i;
+                    break;
+                }
+            }
+            if (thinkIdx >= 0) {
+                for (int i = snap.size() - 1; i > thinkIdx; i--) {
+                    ProcessingStep s = snap.get(i);
+                    if (!ThinkStepIds.isThinkStep(s.id())) {
+                        return s.id();
+                    }
+                }
+            }
+            return current;
+        }
+        // 无当前 think（流式中尚未开本轮）：回退最后一个 done think
         String lastDoneThink = null;
         for (ProcessingStep step : emitter.snapshot()) {
             if (ThinkStepIds.isThinkStep(step.id()) && "done".equals(step.lifecycle())) {

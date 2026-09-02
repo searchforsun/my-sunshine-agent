@@ -1,6 +1,12 @@
 package com.sunshine.autoconfigure.orchestrator;
 
+import com.sunshine.orchestrator.agent.AsyncToolRunRegistry;
+import com.sunshine.orchestrator.agent.DecisionRegistry;
+import com.sunshine.orchestrator.agent.SpawnRunRegistry;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
+import com.sunshine.orchestrator.sandbox.CancellableToolRunRegistry;
 import com.sunshine.orchestrator.config.AgentPauseProperties;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
@@ -10,7 +16,6 @@ import com.sunshine.orchestrator.generation.GenerationJobFactory;
 import com.sunshine.orchestrator.generation.GenerationProperties;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
 import com.sunshine.orchestrator.generation.GenerationStreamService;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -40,13 +45,13 @@ public class GenerationAutoConfiguration {
             GenerationStreamService streamService,
             GenerationProperties properties,
             GenerationFlushScheduler flushScheduler,
-            MemoryLifecycleService memoryLifecycleService,
+            ContextLifecycle contextLifecycle,
             WorkflowPauseService workflowPauseService,
             ExecutionPlanStore executionPlanStore,
             AgentPauseProperties pauseProperties,
             DistributedGenerationLock flushLock) {
         return new GenerationJobFactory(
-                streamService, properties, flushScheduler, memoryLifecycleService,
+                streamService, properties, flushScheduler, contextLifecycle,
                 workflowPauseService, executionPlanStore, pauseProperties, flushLock);
     }
 
@@ -56,8 +61,15 @@ public class GenerationAutoConfiguration {
             GenerationRegistry registry,
             GenerationFlushScheduler flushScheduler,
             GenerationProperties generationProperties,
-            ConversationService conversationService) {
+            ConversationService conversationService,
+            SpawnRunRegistry spawnRunRegistry,
+            CancellableToolRunRegistry cancellableToolRunRegistry,
+            AgentSandboxProperties sandboxProperties,
+            DecisionRegistry decisionRegistry,
+            AsyncToolRunRegistry asyncToolRunRegistry) {
         return new GenerationController(
-                streamService, registry, flushScheduler, generationProperties, conversationService);
+                streamService, registry, flushScheduler, generationProperties,
+                conversationService, spawnRunRegistry, cancellableToolRunRegistry, sandboxProperties,
+                decisionRegistry, asyncToolRunRegistry);
     }
 }

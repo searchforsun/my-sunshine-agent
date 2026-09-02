@@ -147,7 +147,7 @@ def chat_sse(
             body = {
                 "content": query,
                 "conversationId": conv_id,
-                "executionPreference": "react",
+                "executionMode": "fast",
             }
             with requests.post(
                 f"{gw}/api/chat/stream",

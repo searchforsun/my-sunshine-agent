@@ -35,7 +35,7 @@ public class StartNodeHandler implements NodeHandler {
         outputs.put("originalUserQuery", original);
         outputs.put("userId", streamCtx.userId() != null ? streamCtx.userId() : "");
         outputs.put("tenantId", streamCtx.tenantId() != null ? streamCtx.tenantId() : "");
-        return Mono.just(NodeResult.ok(outputs));
+        return Mono.just(NodeResult.okString(outputs));
     }
 
     static String resolveEffectiveUserQuery(String original, String assistantMsgId) {

@@ -2,8 +2,10 @@ package com.sunshine.orchestrator.plan;
 
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.config.VirtualThreadExecutors;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.ReactExecutor;
+import com.sunshine.orchestrator.execution.TypedValue;
 import com.sunshine.orchestrator.execution.retry.WorkflowRunSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
@@ -12,11 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /** Plan 工作流执行终态：状态落库、审计与可选 ReAct 降级 */
 @Component
@@ -33,10 +33,10 @@ public class PlanRunFinalizer {
             String planId,
             WorkflowRunSession runSession) {
         if (runSession.isFallbackReact()
-                && executionProperties.getPlanWorkflow().getFallbackReact().isEnabled()) {
+                && executionProperties.getFallbackReact().isEnabled()) {
             return Mono.fromRunnable(() -> executionPlanStore.markDegradedReact(
                             planId, runSession.getAbortReason()))
-                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribeOn(VirtualThreadExecutors.scheduler())
                     .doOnSuccess(v -> {
                         planExecutionAuditService.fallbackReact(
                                 ctx.conversationId(), ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(),
@@ -48,7 +48,7 @@ public class PlanRunFinalizer {
                     .thenMany(reactWithPartialContext(ctx, runSession, runSession.getAbortReason()));
         }
         return Mono.fromRunnable(() -> finalizePlanStatus(planId, runSession))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .doOnSuccess(v -> emitPlanTerminalAudit(ctx, planId, runSession))
                 .thenMany(Flux.empty());
     }
@@ -90,7 +90,7 @@ public class PlanRunFinalizer {
         session.bindTraceMessageId(ctx.assistantMsgId());
         List<StreamToken> fallbackPlan = PlanTimeline.planFallbackStep(
                 session, reason + "；改由自主智能体接续执行");
-        if (!executionProperties.getPlanWorkflow().getFallbackReact().isInjectPartialContext()) {
+        if (!executionProperties.getFallbackReact().isInjectPartialContext()) {
             return Flux.concat(Flux.fromIterable(fallbackPlan), reactExecutor.execute(ctx));
         }
         List<String> injected = buildPartialContext(runSession);
@@ -105,7 +105,8 @@ public class PlanRunFinalizer {
         }
         List<String> blocks = new ArrayList<>();
         runSession.getPartialOutputs().forEach((nodeId, outputs) -> {
-            String text = outputs.getOrDefault("output", outputs.getOrDefault("answer", ""));
+            TypedValue outVal = outputs.getOrDefault("output", outputs.get("answer"));
+            String text = outVal != null ? outVal.render() : "";
             if (StringUtils.hasText(text)) {
                 blocks.add("【节点 " + nodeId + "】\n" + text.strip());
             }

@@ -18,11 +18,3 @@ export function adminHeaders(tenantId: TenantId): Record<string, string> {
     'X-Admin-Token': ADMIN_TOKEN,
   }
 }
-
-export function ragHeaders(tenantId: TenantId): Record<string, string> {
-  const tid = tenantId.trim() || 'default'
-  return {
-    ...apiHeaders(),
-    'x-tenant-id': tid,
-  }
-}

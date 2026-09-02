@@ -26,6 +26,18 @@ class ContentSegmentCoordinatorTest {
     }
 
     @Test
+    void ingest_plainIncrementalWithoutSummaryMarkers() {
+        ContentSegmentCoordinator coordinator = new ContentSegmentCoordinator();
+        List<StreamToken> sink = new ArrayList<>();
+
+        coordinator.ingest("好的", "think", sink::add);
+        coordinator.ingest("，我先同时查询 OA 待办和财务待办。", "think", sink::add);
+
+        assertThat(sink.stream().filter(t -> t.isContent() && t.segmentId() != null).map(StreamToken::text).toList())
+                .containsExactly("好的", "，我先同时查询 OA 待办和财务待办。");
+    }
+
+    @Test
     void ingest_emitsStartAndMonotonicChunks() {
         ContentSegmentCoordinator coordinator = new ContentSegmentCoordinator();
         List<StreamToken> sink = new ArrayList<>();
@@ -109,7 +121,7 @@ class ContentSegmentCoordinatorTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("合规分析");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingTimelineSupport.run(session, () -> session.ingestStreamingContentDelta("|"));
         List<StreamToken> out = ProcessingTimelineSupport.run(session, () ->
                 session.ingestStreamingContentDelta("\n"));
@@ -122,7 +134,7 @@ class ContentSegmentCoordinatorTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
 
         List<StreamToken> out = ProcessingTimelineSupport.run(session, () ->
                 session.ingestStreamingContentDelta("好的，我先同时查询 OA 待办和财务待办。"));
@@ -137,7 +149,7 @@ class ContentSegmentCoordinatorTest {
         ProcessingTimelineSession session = new ProcessingTimelineSession();
         session.bindUserQuery("查待办");
         session.beginReasoningRound();
-        session.endReasoningRound();
+        session.ensureThinkOpen();        session.endReasoningRound();
         ProcessingTimelineSupport.run(session, () ->
                 session.ingestStreamingContentDelta("第一轮过渡语。"));
 

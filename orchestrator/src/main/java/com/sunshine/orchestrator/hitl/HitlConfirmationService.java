@@ -1,21 +1,29 @@
 package com.sunshine.orchestrator.hitl;
 
+import com.sunshine.common.sandbox.EditDiffBuilder;
+import com.sunshine.common.sandbox.FsContentDto;
+import com.sunshine.common.sandbox.SandboxEditDiff;
 import com.sunshine.orchestrator.agent.ProcessingStep;
 import com.sunshine.orchestrator.agent.StepEventBridge;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.client.SandboxClient;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
+import com.sunshine.orchestrator.config.AgentSandboxProperties;
 import com.sunshine.orchestrator.plan.PendingInteraction;
 import com.sunshine.orchestrator.processing.HitlLabels;
 import com.sunshine.orchestrator.processing.HitlStepMeta;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSession;
 import com.sunshine.orchestrator.processing.ProcessingTimelineSupport;
 import com.sunshine.orchestrator.processing.ToolStepIds;
+import com.sunshine.orchestrator.sandbox.SandboxIds;
+import com.sunshine.orchestrator.sandbox.SandboxSessionHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -33,13 +41,19 @@ public class HitlConfirmationService {
     private final HitlTokenRegistry tokenRegistry;
     private final HitlTimelineBridge timelineBridge;
     private final HitlWriteToolSerialGate writeToolSerialGate;
+    private final SandboxClient sandboxClient;
+    private final AgentSandboxProperties sandboxProperties;
 
     public boolean awaitConfirmation(String timelineBridgeId, String toolId, Map<String, String> params) {
+        return awaitConfirmation(timelineBridgeId, toolId, params, null);
+    }
+
+    public boolean awaitConfirmation(String timelineBridgeId, String toolId, Map<String, String> params, String stepId) {
         String generationMessageId = StepEventBridge.hitlAssistantMessageId(timelineBridgeId);
         if (generationMessageId == null) {
             generationMessageId = timelineBridgeId;
         }
-        return awaitConfirmation(timelineBridgeId, generationMessageId, toolId, params);
+        return awaitConfirmation(timelineBridgeId, generationMessageId, toolId, params, stepId);
     }
 
     public boolean awaitConfirmation(
@@ -47,6 +61,15 @@ public class HitlConfirmationService {
             String generationMessageId,
             String toolId,
             Map<String, String> params) {
+        return awaitConfirmation(timelineBridgeId, generationMessageId, toolId, params, null);
+    }
+
+    public boolean awaitConfirmation(
+            String timelineBridgeId,
+            String generationMessageId,
+            String toolId,
+            Map<String, String> params,
+            String stepId) {
         if (!timelineBridge.isActiveTimelineBridge(timelineBridgeId)) {
             throw new HitlWaitInterruptedException();
         }
@@ -56,7 +79,7 @@ public class HitlConfirmationService {
         }
         long epoch = timelineBridge.currentHitlEpoch(generationMessageId);
         return writeToolSerialGate.callExclusive(boundGenerationId, () ->
-                awaitConfirmationLocked(timelineBridgeId, generationMessageId, boundGenerationId, epoch, toolId, params));
+                awaitConfirmationLocked(timelineBridgeId, generationMessageId, boundGenerationId, epoch, toolId, params, stepId));
     }
 
     private boolean awaitConfirmationLocked(
@@ -65,22 +88,32 @@ public class HitlConfirmationService {
             String boundGenerationId,
             long epoch,
             String toolId,
-            Map<String, String> params) {
+            Map<String, String> params,
+            String stepId) {
         timelineBridge.ensureHitlEpoch(generationMessageId, epoch);
         String displayName = toolCatalogService.displayName(toolId);
         timelineBridge.flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
         timelineBridge.ensureHitlEpoch(generationMessageId, epoch);
-        timelineBridge.progressBridgeToolStep(timelineBridgeId, HitlLabels.pending(displayName),
+        progressHitlStep(timelineBridgeId, stepId, HitlLabels.pending(displayName),
                 generationMessageId, boundGenerationId, epoch);
-        timelineBridge.progressBridgeToolStep(timelineBridgeId, HitlLabels.awaiting(),
+        progressHitlStep(timelineBridgeId, stepId, HitlLabels.awaiting(),
                 generationMessageId, boundGenerationId, epoch);
 
-        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(generationMessageId, toolId);
+        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(generationMessageId, toolId, resolveHitlUserId(generationMessageId));
         timelineBridge.ensureHitlEpoch(generationMessageId, epoch);
         String paramsSummary = HitlParamSupport.summarizeParams(params);
-        String expandBody = HitlParamSupport.expandBodyFromParams(params);
-        StepEventBridge.emit(timelineBridgeId, session -> session.attachHitlPending(
-                reg.token(), displayName, paramsSummary, reg.expiresAt(), expandBody));
+        HitlExpandPayload expand = resolveHitlExpand(timelineBridgeId, toolId, params);
+        StepEventBridge.emit(timelineBridgeId, session -> {
+            if (stepId != null && !stepId.isBlank()) {
+                session.attachHitlPendingOnStep(
+                        stepId, reg.token(), displayName, paramsSummary, reg.expiresAt(),
+                        expand.expandBody(), expand.editDiff());
+            } else {
+                session.attachHitlPending(
+                        reg.token(), displayName, paramsSummary, reg.expiresAt(),
+                        expand.expandBody(), expand.editDiff());
+            }
+        });
         timelineBridge.flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
         timelineBridge.emitConfirmation(generationMessageId, toolId, params, reg.token(), reg.expiresAt(),
                 epoch, boundGenerationId);
@@ -92,24 +125,53 @@ public class HitlConfirmationService {
                 },
                 approved -> {
                     if (approved) {
-                        timelineBridge.progressBridgeToolStep(timelineBridgeId, HitlLabels.approved(displayName),
+                        progressHitlStep(timelineBridgeId, stepId, HitlLabels.approved(displayName),
                                 generationMessageId, boundGenerationId, epoch);
                     } else {
-                        timelineBridge.progressBridgeToolStep(timelineBridgeId, HitlLabels.denied(),
+                        progressHitlStep(timelineBridgeId, stepId, HitlLabels.denied(),
                                 generationMessageId, boundGenerationId, epoch);
                     }
                     String hitlStatus = approved ? HitlStepMeta.STATUS_APPROVED : HitlStepMeta.STATUS_DENIED;
-                    StepEventBridge.emit(timelineBridgeId, session -> session.resolveHitlPending(hitlStatus));
+                    StepEventBridge.emit(timelineBridgeId, session -> {
+                        if (stepId != null && !stepId.isBlank()) {
+                            session.resolveHitlPendingOnStep(stepId, hitlStatus);
+                        } else {
+                            session.resolveHitlPending(hitlStatus);
+                        }
+                    });
                     timelineBridge.flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
                 },
                 () -> {
-                    timelineBridge.progressBridgeToolStep(timelineBridgeId, HitlLabels.denied(),
+                    progressHitlStep(timelineBridgeId, stepId, HitlLabels.denied(),
                             generationMessageId, boundGenerationId, epoch);
-                    StepEventBridge.emit(timelineBridgeId, session -> session.resolveHitlPending(HitlStepMeta.STATUS_DENIED));
+                    StepEventBridge.emit(timelineBridgeId, session -> {
+                        if (stepId != null && !stepId.isBlank()) {
+                            session.resolveHitlPendingOnStep(stepId, HitlStepMeta.STATUS_DENIED);
+                        } else {
+                            session.resolveHitlPending(HitlStepMeta.STATUS_DENIED);
+                        }
+                    });
                     timelineBridge.flushHookTimeline(timelineBridgeId, generationMessageId, boundGenerationId);
                 },
-                () -> timelineBridge.progressBridgeToolStep(timelineBridgeId, HitlLabels.denied(),
+                () -> progressHitlStep(timelineBridgeId, stepId, HitlLabels.denied(),
                         generationMessageId, boundGenerationId, epoch));
+    }
+
+    /** 一轮多 tool_calls 时按精确 stepId progress（currentToolStepId 可能已被其它工具覆盖） */
+    private void progressHitlStep(
+            String timelineBridgeId,
+            String stepId,
+            String activeSummary,
+            String generationMessageId,
+            String boundGenerationId,
+            long epoch) {
+        if (stepId != null && !stepId.isBlank()) {
+            timelineBridge.progressBridgeToolStepOnStep(
+                    timelineBridgeId, stepId, activeSummary, generationMessageId, boundGenerationId, epoch);
+        } else {
+            timelineBridge.progressBridgeToolStep(
+                    timelineBridgeId, activeSummary, generationMessageId, boundGenerationId, epoch);
+        }
     }
 
     public boolean awaitWorkflowConfirmation(
@@ -124,11 +186,12 @@ public class HitlConfirmationService {
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.pending(displayName)), genMsgId);
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.awaiting()), genMsgId);
 
-        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, toolId);
+        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, toolId, resolveHitlUserId(genMsgId));
         String paramsSummary = HitlParamSupport.summarizeParams(params);
-        String expandBody = HitlParamSupport.expandBodyFromParams(params);
+        HitlExpandPayload expand = resolveHitlExpand(genMsgId, toolId, params);
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.attachHitlPendingOnStep(
-                nodeStepId, reg.token(), displayName, paramsSummary, reg.expiresAt(), expandBody), genMsgId);
+                nodeStepId, reg.token(), displayName, paramsSummary, reg.expiresAt(),
+                expand.expandBody(), expand.editDiff()), genMsgId);
         timelineBridge.emitConfirmation(genMsgId, toolId, params, reg.token(), reg.expiresAt());
 
         return waitForDecision(reg, toolId, "HITL workflow", () -> {
@@ -175,7 +238,7 @@ public class HitlConfirmationService {
             s.progress(toolStepId, HitlLabels.awaiting());
         }, genMsgId);
 
-        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, toolId);
+        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, toolId, resolveHitlUserId(genMsgId));
         String paramsSummary = StringUtils.hasText(hitl.paramsSummary())
                 ? hitl.paramsSummary() : HitlParamSupport.summarizeParams(params);
         timelineBridge.emitSessionStep(session, toolStepId, s -> s.attachHitlPendingOnStep(
@@ -225,7 +288,7 @@ public class HitlConfirmationService {
         String genMsgId = generationMessageId != null ? generationMessageId : workflow.generationMessageId();
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.progress(nodeStepId, HitlLabels.awaiting()), genMsgId);
 
-        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, resolvedToolId);
+        HitlTokenRegistry.HitlRegistration reg = tokenRegistry.register(genMsgId, resolvedToolId, resolveHitlUserId(genMsgId));
         String paramsSummary = StringUtils.hasText(pending.hitlParamsSummary())
                 ? pending.hitlParamsSummary() : HitlParamSupport.summarizeParams(params);
         timelineBridge.emitSessionStep(session, nodeStepId, s -> s.attachHitlPendingOnStep(
@@ -294,8 +357,51 @@ public class HitlConfirmationService {
         tokenRegistry.cancelWaitersForMessage(messageId);
     }
 
+    public boolean confirm(String token, boolean approved, String userId) {
+        return tokenRegistry.confirm(token, approved, userId);
+    }
+
     public boolean confirm(String token, boolean approved) {
         return tokenRegistry.confirm(token, approved);
+    }
+
+    private String resolveHitlUserId(String messageId) {
+        StepEventBridge.ToolAuditContext ctx = StepEventBridge.toolAuditContext(messageId);
+        return ctx != null ? ctx.userId() : null;
+    }
+
+    private record HitlExpandPayload(String expandBody, SandboxEditDiff editDiff) {}
+
+    private HitlExpandPayload resolveHitlExpand(String bridgeId, String toolId, Map<String, String> params) {
+        String expandBody = HitlParamSupport.expandBodyFromParams(params);
+        if (!SandboxIds.EDIT.equals(toolId)) {
+            return new HitlExpandPayload(expandBody, null);
+        }
+        SandboxEditDiff preview = null;
+        try {
+            String sid = Optional.ofNullable(SandboxSessionHolder.get(bridgeId))
+                    .map(SandboxSessionHolder.Binding::sessionId)
+                    .orElse(null);
+            String path = params != null ? params.get("path") : null;
+            if (sid != null && StringUtils.hasText(path)) {
+                FsContentDto fs = sandboxClient.readFsContent(
+                        sid, path, sandboxProperties.getWorkspaceContentMaxChars(), 0);
+                String before = fs != null ? fs.content() : null;
+                preview = EditDiffBuilder.tryBuild(
+                                before,
+                                params.get("old_string"),
+                                params.get("new_string"),
+                                3)
+                        .map(d -> d.withPath(path))
+                        .orElse(null);
+            }
+        } catch (Exception e) {
+            log.debug("HITL editDiff preview skipped: {}", e.getMessage());
+        }
+        if (preview != null) {
+            return new HitlExpandPayload(preview.toUnifiedText(), preview);
+        }
+        return new HitlExpandPayload(null, null);
     }
 
     private boolean waitForDecision(
@@ -307,7 +413,11 @@ public class HitlConfirmationService {
             Runnable onTimeout,
             Runnable onError) {
         try {
-            boolean approved = reg.future().get(tokenRegistry.timeoutSec(), TimeUnit.SECONDS);
+            int timeoutSec = tokenRegistry.timeoutSec();
+            // timeoutSec<=0 = 无限等待，仅用户确认/取消/停止结束（对齐 request_decision / recovery 语义）
+            boolean approved = timeoutSec <= 0
+                    ? reg.future().get()
+                    : reg.future().get(timeoutSec, TimeUnit.SECONDS);
             beforeSuccess.run();
             log.info("[{}] token={} tool={} approved={}", logTag, reg.token(), toolId, approved);
             onSuccess.accept(approved);

@@ -1,0 +1,28 @@
+# ============================================================
+# sunshine-biz-simulator — Nacos 配置
+# Data ID: sunshine-biz-simulator.yaml
+# Group:   DEFAULT_GROUP
+# 业务模拟聚合服务（OA / Finance / HR）
+# 表结构 SSOT：docker/mysql/init/18-sunshine-biz.sql（禁止 Flyway）
+# ============================================================
+
+server:
+  port: 8700
+
+spring:
+  datasource:
+    url: jdbc:mysql://ecs4c16g:3306/sunshine_biz?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root123
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+sunshine:
+  biz:
+    admin-token: sunshine-biz-admin-dev
+
+logging:
+  level:
+    com.sunshine: debug

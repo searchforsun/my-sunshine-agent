@@ -10,11 +10,14 @@ export type ExclusiveBranchView = {
 function formatCondition(edge: PlanGraphEdge): string {
   if (edge.default) return '默认分支'
   const c = edge.condition
-  if (!c?.op) return '未配置条件'
-  return formatConditionExpr(c.left, c.op, c.right)
+  if (!c?.items?.length) return '未配置条件'
+  const logic = c.logic === 'or' ? ' 或 ' : ' 且 '
+  return c.items
+    .map(item => formatConditionExpr(item.left, item.op, item.right))
+    .join(logic)
 }
 
-/** 与 exclusive / loop 共用的条件文案（empty / not_empty / contains / eq） */
+/** 与 exclusive / loop 共用的条件文案 */
 export function formatConditionExpr(
   left: string | undefined,
   op: string | undefined,
@@ -26,7 +29,13 @@ export function formatConditionExpr(
   if (op === 'empty') return `${l} 为空`
   if (op === 'not_empty') return `${l} 非空`
   if (op === 'contains') return `${l} 包含「${r}」`
+  if (op === 'not_contains') return `${l} 不包含「${r}」`
   if (op === 'eq') return `${l} 等于「${r}」`
+  if (op === 'not_eq') return `${l} 不等于「${r}」`
+  if (op === 'gt') return `${l} > ${r}`
+  if (op === 'lt') return `${l} < ${r}`
+  if (op === 'gte') return `${l} ≥ ${r}`
+  if (op === 'lte') return `${l} ≤ ${r}`
   return `${l} ${op} ${r}`.trim()
 }
 

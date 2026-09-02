@@ -1,10 +1,9 @@
 package com.sunshine.orchestrator.plan;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sunshine.orchestrator.config.AgentPromptProperties;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,7 +19,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,17 +36,16 @@ class ExecutionPlanStoreTest {
 
     @BeforeEach
     void setUp() {
-        AgentPromptProperties props = new AgentPromptProperties();
         store = new ExecutionPlanStore(repository, new PlanJsonCodec(new ObjectMapper()),
-                planJsonParser, props, conversationService);
+                planJsonParser, conversationService);
     }
 
     @Test
     void createDraft_persistsAndLinksMessage() {
         ExecutionStreamContext ctx = new ExecutionStreamContext(
-                "conv-1", "msg-1", "query", MemoryContext.empty(),
+                "conv-1", "msg-1", "query", AssembledContext.empty(),
                 null, null, "u1", "default",
-                new ExecutionPlan(ExecutionMode.PLAN_WORKFLOW, null, Map.of(), "test"));
+                new ExecutionPlan(ExecutionMode.PRO, null, Map.of(), "test"));
         PlanJson planJson = new PlanJson(null, "跨领域", List.of(
                 new PlanNode("n1", "llm", Map.of()),
                 new PlanNode("ans", "answer", Map.of())), List.of());
@@ -83,17 +80,16 @@ class ExecutionPlanStoreTest {
     }
 
     @Test
-    void markRejected_setsTerminalStatus() {
+    void markFailed_setsTerminalStatus() {
         ExecutionPlanEntity entity = new ExecutionPlanEntity();
         entity.setId("p1");
-        entity.setStatus("draft");
+        entity.setStatus("running");
         when(repository.findById("p1")).thenReturn(Optional.of(entity));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        store.markRejected("p1", "非法节点");
+        store.markFailed("p1", "节点失败");
 
-        assertThat(entity.getStatus()).isEqualTo("rejected");
-        assertThat(entity.getRejectReason()).isEqualTo("非法节点");
+        assertThat(entity.getStatus()).isEqualTo("failed");
         assertThat(entity.getCompletedAt()).isNotNull();
     }
 
@@ -134,18 +130,5 @@ class ExecutionPlanStoreTest {
         when(repository.findByMessageId("msg-1")).thenReturn(Optional.of(entity));
 
         assertThat(store.findResumableForMessage("msg-1")).isPresent();
-    }
-
-    @Test
-    void inferPlanningResumeNodeId_returnsFirstBusinessNode() {
-        ExecutionPlanEntity entity = new ExecutionPlanEntity();
-        entity.setValidatedJson("{\"nodes\":[{\"id\":\"n1\",\"type\":\"llm\"}],"
-                + "\"edges\":[{\"from\":\"start\",\"to\":\"n1\"}]}");
-        PlanJson plan = new PlanJson("p1", "r",
-                List.of(new PlanNode("n1", "llm", Map.of())),
-                List.of(new PlanEdge("start", "n1")));
-        when(planJsonParser.parse(entity.getValidatedJson())).thenReturn(plan);
-
-        assertThat(store.inferPlanningResumeNodeId(entity)).isEqualTo("n1");
     }
 }

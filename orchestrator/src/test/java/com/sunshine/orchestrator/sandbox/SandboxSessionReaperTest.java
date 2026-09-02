@@ -22,13 +22,15 @@ class SandboxSessionReaperTest {
     @Mock
     private ConversationSandboxStore store;
     @Mock
+    private WorkspaceSandboxStore workspaceStore;
+    @Mock
     private SandboxClient sandboxClient;
 
     private SandboxSessionReaper reaper;
 
     @BeforeEach
     void setUp() {
-        reaper = new SandboxSessionReaper(store, sandboxClient);
+        reaper = new SandboxSessionReaper(store, workspaceStore, sandboxClient);
     }
 
     @Test

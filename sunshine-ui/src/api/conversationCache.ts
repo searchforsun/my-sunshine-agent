@@ -31,6 +31,9 @@ export interface CachedConversationMeta {
   title: string
   createdAt: number
   updatedAt: number
+  /** 与库 SSOT 对齐，供刷新后侧栏横向 Tab 直接定位 */
+  kind?: string
+  workspaceId?: string | null
 }
 
 function safeParse<T>(raw: string | null): T | null {
@@ -53,8 +56,14 @@ function saveCachedIndex(list: CachedConversationMeta[]): void {
 }
 
 export function upsertCachedIndex(meta: CachedConversationMeta): void {
+  const prev = loadCachedIndex().find(c => c.id === meta.id)
   const list = loadCachedIndex().filter(c => c.id !== meta.id)
-  list.unshift(meta)
+  // 标题等局部更新勿冲掉已缓存的 kind / workspaceId
+  list.unshift({
+    ...meta,
+    kind: meta.kind ?? prev?.kind,
+    workspaceId: meta.workspaceId !== undefined ? meta.workspaceId : prev?.workspaceId,
+  })
   saveCachedIndex(list.slice(0, 80))
 }
 
@@ -74,6 +83,8 @@ export function cacheMessages(convId: string, messages: ChatMessage[], meta?: Pa
       title: meta?.title ?? '新对话',
       createdAt: meta?.createdAt ?? Date.now(),
       updatedAt: meta?.updatedAt ?? Date.now(),
+      kind: meta?.kind,
+      workspaceId: meta?.workspaceId,
     })
   } catch { /* quota */ }
 }
@@ -115,6 +126,12 @@ function pickPreferredStatus(
   return api ?? cached
 }
 
+function pickLaterMs(a?: number, b?: number): number | undefined {
+  if (a == null) return b
+  if (b == null) return a
+  return Math.max(a, b)
+}
+
 /** API 与本地缓存合并：取更长正文，保留 reasoning */
 export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] | null): ChatMessage[] {
   if (!cached?.length) return api
@@ -144,7 +161,9 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       executionPlanId: a.executionPlanId ?? c.executionPlanId,
       executionPreference: a.executionPreference ?? c.executionPreference,
       pendingHitlConfirmations: mergedPending.length ? mergedPending : undefined,
-      pendingHitlConfirmation: undefined,
+      // 本地墙钟优先于 API hydrate，避免刷新后 20s→15s
+      timelineStartedAt: c.timelineStartedAt ?? a.timelineStartedAt,
+      timelineEndedAt: pickLaterMs(c.timelineEndedAt, a.timelineEndedAt),
     }
     if (mergedMsg.role === 'assistant') {
       normalizeRestoredInterleavedContent(mergedMsg)
@@ -153,8 +172,17 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
     if (a.id) byId.delete(a.id)
   }
 
-  if (api.length < cached.length) {
-    merged.push(...cached.slice(api.length))
+  // 本地缓存可能比 API 多出「后端尚未落库的最新消息」：按 seq 增量追加尾部。
+  // 不能按 cached.slice(api.length) 追加——分页场景下 API 只返回最近窗口，会与缓存窗口重复。
+  const apiMaxSeq = api.reduce((max, m) => Math.max(max, m.seq ?? 0), 0)
+  const mergedIds = new Set(merged.filter(m => m.id).map(m => m.id!))
+  for (const c of cached) {
+    if (!c.id || mergedIds.has(c.id)) continue
+    // 流式消息在 SSE 中仅分配 id、不分配 seq（seq 在后端 commitFinal 落库后才补齐）。
+    // 不能按 (seq ?? 0) <= apiMaxSeq 判断——会把「后端尚未落库」的最新缓存消息全部丢弃，
+    // 导致刷新时 API 仅返回旧窗口、本地最新消息反而丢失，须等后端落库后才显示。
+    if (typeof c.seq === 'number' && c.seq <= apiMaxSeq) continue
+    merged.push(c)
   }
 
   return merged

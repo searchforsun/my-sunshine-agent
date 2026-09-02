@@ -7,7 +7,6 @@ import java.util.Optional;
 public enum ConfigScope {
     RAG_SEARCH("rag-search", "检索参数", "sunshine-rag.yaml", "rag.search"),
     RAG_RERANK("rag-rerank", "Rerank 参数", "sunshine-rag.yaml", "rag.rerank"),
-    RAG_CHUNK("rag-chunk", "分段参数", "sunshine-rag.yaml", "rag.chunk"),
     REWRITE_RAG("rewrite-rag", "RAG 改写", "sunshine-rag.yaml", "rag.rewrite.rag"),
     REWRITE_HYDE("rewrite-hyde", "HyDE", "sunshine-rag.yaml", "rag.rewrite.rag.hyde"),
     REWRITE_EMPTY_RECALL("rewrite-empty-recall", "零命中改写", "sunshine-rag.yaml", "rag.rewrite.empty-recall");

@@ -9,6 +9,24 @@ export interface AuthUser {
   tenantId: string
   /** never|always|smart */
   defaultWriteHitlMode?: string
+  /** vertical|horizontal 侧栏平台/对话/任务排布 */
+  sidebarSectionsLayout?: string
+  /** 对话默认知识库 ID；null/缺省表示未配置 */
+  defaultKbId?: string | null
+  /** 用户个人规则（soul），注入系统提示；null/缺省表示未配置 */
+  personalRules?: string | null
+  /** GitHub 基础地址 */
+  githubUrl?: string | null
+  /** GitHub PAT 明文（本人设置回显） */
+  githubToken?: string | null
+  /** GitHub PAT 是否已配置 */
+  githubTokenSet?: boolean
+  /** GitLab 基础地址 */
+  gitlabUrl?: string | null
+  /** GitLab PAT 明文（本人设置回显） */
+  gitlabToken?: string | null
+  /** GitLab PAT 是否已配置 */
+  gitlabTokenSet?: boolean
 }
 
 export interface LoginResult extends AuthUser {
@@ -55,11 +73,38 @@ export async function updateProfile(
   nickname: string,
   tenantId: string,
   defaultWriteHitlMode?: string,
+  personalRules?: string | null,
+  githubUrl?: string | null,
+  githubToken?: string | null,
+  gitlabUrl?: string | null,
+  gitlabToken?: string | null,
+  sidebarSectionsLayout?: string,
+  defaultKbId?: string | null,
 ): Promise<UpdateProfileResult> {
+  const body: Record<string, unknown> = { nickname, tenantId }
+  if (defaultWriteHitlMode !== undefined) body.defaultWriteHitlMode = defaultWriteHitlMode
+  if (personalRules !== undefined) body.personalRules = personalRules
+  if (githubUrl !== undefined) body.githubUrl = githubUrl
+  if (githubToken !== undefined) body.githubToken = githubToken
+  if (gitlabUrl !== undefined) body.gitlabUrl = gitlabUrl
+  if (gitlabToken !== undefined) body.gitlabToken = gitlabToken
+  if (sidebarSectionsLayout !== undefined) body.sidebarSectionsLayout = sidebarSectionsLayout
+  if (defaultKbId !== undefined) body.defaultKbId = defaultKbId ?? ''
   const res = await fetch(`${resolveApiBase()}/api/auth/profile`, {
     method: 'PATCH',
     headers: apiHeaders(),
-    body: JSON.stringify({ nickname, tenantId, defaultWriteHitlMode }),
+    body: JSON.stringify(body),
   })
   return parseApiResponse<UpdateProfileResult>(res)
+}
+
+/** 租户下启用用户列表（业务数据页 userId 下拉）；字段为 userId，非 id。 */
+export async function listAuthUsers(
+  tenantId = 'default',
+): Promise<Array<{ userId: string; username: string; nickname: string }>> {
+  const q = new URLSearchParams({ tenantId })
+  const res = await fetch(`${resolveApiBase()}/api/auth/users?${q}`, {
+    headers: apiHeaders(),
+  })
+  return parseApiResponse<Array<{ userId: string; username: string; nickname: string }>>(res)
 }

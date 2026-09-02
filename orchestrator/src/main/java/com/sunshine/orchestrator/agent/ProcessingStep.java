@@ -27,7 +27,9 @@ public record ProcessingStep(
         /** ReAct / 子 Agent 正文分段（抽屉 OperationStack 穿插） */
         java.util.List<ContentBlock> contentBlocks,
         /** Workflow agent 节点：子 Agent 完整 ReAct 步骤（仅抽屉展示，不上主 Timeline 顶层） */
-        java.util.List<ProcessingStep> subSteps
+        java.util.List<ProcessingStep> subSteps,
+        /** think_summary 元工具结构化摘要（20 字内），经 step_summary 通道下发并落库 */
+        String stepSummary
 ) {
     public ProcessingStep {
         contentBlocks = contentBlocks != null && !contentBlocks.isEmpty()
@@ -50,6 +52,7 @@ public record ProcessingStep(
                 null,
                 ts,
                 label,
+                null,
                 null,
                 null,
                 null
@@ -75,6 +78,7 @@ public record ProcessingStep(
                 label,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -97,7 +101,15 @@ public record ProcessingStep(
                 label,
                 null,
                 null,
+                null,
                 null
         );
+    }
+
+    public ProcessingStep withMetadata(StepMetadata metadata) {
+        return new ProcessingStep(
+                id, phase, lifecycle, summary, startedAt, endedAt, durationMs,
+                detail, reasoning, output, result, ts, label, metadata,
+                contentBlocks, subSteps, stepSummary);
     }
 }

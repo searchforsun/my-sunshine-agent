@@ -6,6 +6,9 @@ import WorkflowNodeExecutionPolicy from './WorkflowNodeExecutionPolicy.vue'
 import WorkflowNodeConfigSection from './WorkflowNodeConfigSection.vue'
 import WorkflowNodeIoSection from './WorkflowNodeIoSection.vue'
 import WorkflowExclusiveEdgesSection from './WorkflowExclusiveEdgesSection.vue'
+import ToolNodeEditor from './node-editors/ToolNodeEditor.vue'
+import VariableAssignmentNodeEditor from './node-editors/VariableAssignmentNodeEditor.vue'
+import ParameterExtractorNodeEditor from './node-editors/ParameterExtractorNodeEditor.vue'
 import PlanNodeIcon from '../plan/PlanNodeIcon.vue'
 import { formatPlanNodeType } from '../../api/executionPlans'
 import { workflowFlowFieldHelp, workflowNodeFieldHelp } from './workflowFieldHelp'
@@ -13,7 +16,6 @@ import { WORKFLOWS_PAGE_KEY, type WorkflowsPageApi } from '../../composables/use
 import {
   defaultCatalogIntentAfter,
   formatAgentToolsParam,
-  mergeToolExtraParams,
   parseAgentToolsParam,
   patchKbIdFromSelect,
   patchNodeParams,
@@ -22,15 +24,22 @@ import {
   readRagTopK,
   resolveKbSelectValue,
   SESSION_KB_VALUE,
-  toolExtraParamsLines,
 } from '../../utils/workflowNodeParams'
-import {
-  parseToolSchemaFields,
-  readToolParamValue,
-  type ToolOutputMode,
-} from '../../utils/workflowNodeIo'
+import { upstreamNodesOf } from '../../utils/workflowVariableRefs'
 import { countNodeDegree } from '../../utils/workflowPlanValidation'
-import { loopConditionLeft } from '../../utils/workflowPlan'
+import {
+  normalizeLoopConditionGroup,
+  updateBusinessNode,
+  writeLoopConditionGroup,
+} from '../../utils/workflowPlan'
+import ConditionGroupEditor from './ConditionGroupEditor.vue'
+import type { WorkflowPlanEdgeConditionGroup, WorkflowPlanInputBinding } from '../../api/workflows'
+
+const workflowKindOptions = [
+  { label: '全部', value: 'all' },
+  { label: '对话', value: 'chat' },
+  { label: '任务', value: 'task' },
+]
 
 defineProps<{
   open: boolean
@@ -63,7 +72,40 @@ const selectedToolCatalog = computed(() => {
   return page.toolOptions.find(t => t.id === toolId) ?? null
 })
 
-const selectedToolSchemaFields = computed(() => parseToolSchemaFields(selectedToolCatalog.value))
+/** 当前选中节点的上游节点列表（按拓扑序），供 VariableReferencePicker 与新编辑器使用 */
+const upstreamNodesForSelected = computed(() => {
+  const node = page.selectedNode
+  if (!node || !page.plan) return []
+  return upstreamNodesOf(page.plan, node.id)
+})
+
+/** loop 容器：当前条件组（从 params 规范化得到） */
+const loopConditionGroup = computed(() =>
+  normalizeLoopConditionGroup(page.selectedNode?.params),
+)
+
+/** loop 容器：上游节点列表（供 ConditionGroupEditor 的变量选择器） */
+const loopUpstreamNodes = computed(() => {
+  if (!page.plan || !page.selectedNode) return []
+  return upstreamNodesOf(page.plan, page.selectedNode.id)
+})
+
+/** loop 容器：条件组更新 -> 写回 params（conditions + conditionLogic） */
+function onLoopConditionUpdate(group: WorkflowPlanEdgeConditionGroup) {
+  if (!page.plan || readOnly.value || !page.selectedNode) return
+  const params = writeLoopConditionGroup(
+    page.selectedNode.params ?? {},
+    group,
+  )
+  page.plan = updateBusinessNode(page.plan, page.selectedNode.id, { params })
+}
+
+const JOIN_MERGE_STRATEGY_OPTIONS = [
+  { label: 'collect · 收集为数组（默认）', value: 'collect' },
+  { label: 'merge · 浅合并为对象', value: 'merge' },
+  { label: 'first · 取第一个非空', value: 'first' },
+  { label: 'last · 取最后一个非空', value: 'last' },
+]
 
 const kbSelectOptions = computed(() => {
   const sessionLabel = ragKbIdEmptyLabel(page.nodeDefaults)
@@ -140,13 +182,6 @@ const ON_MAX_ITERATIONS_OPTIONS = [
   { label: '降级 ReAct fallback_react', value: 'fallback_react' },
 ]
 
-const CONDITION_OP_OPTIONS = [
-  { label: '为空 empty', value: 'empty' },
-  { label: '非空 not_empty', value: 'not_empty' },
-  { label: '包含 contains', value: 'contains' },
-  { label: '等于 eq', value: 'eq' },
-]
-
 const defaultIntentAfter = computed(() => defaultCatalogIntentAfter(page.nodeDefaults))
 
 const catalogIntentAfterDisplay = computed({
@@ -213,28 +248,30 @@ function updateAnswerParams(params: Record<string, unknown>) {
   page.plan = { ...page.plan, nodes }
 }
 
-function updateToolExtraParams(text: string) {
+/** 工具节点：更新 inputs 绑定数组（WF-1 结构化 I/O） */
+function updateToolInputs(inputs: WorkflowPlanInputBinding[]) {
   if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(mergeToolExtraParams(page.selectedNode.params, text))
+  page.updateSelectedNode({ inputs })
 }
 
-function updateToolSchemaParam(name: string, val: string) {
+/** variable-assignment 节点：更新 params.assignments（存为原生数组） */
+function updateVariableAssignments(assignments: { name: string; source: string; type: string }[]) {
   if (readOnly.value || !page.selectedNode) return
-  updateNodeParam(name, val)
+  updateNodeParams({ ...page.selectedNode.params, assignments })
 }
 
-function updateToolOutputMode(mode: ToolOutputMode) {
+/** parameter-extractor 节点：更新 input / instruction / schema（string） */
+function updateExtractorInput(input: string) {
   if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(patchNodeParams(page.selectedNode.params, {
-    'output.mode': mode === 'full' ? null : mode,
-  }))
+  updateNodeParam('input', input)
 }
-
-function updateToolOutputExtract(json: string) {
+function updateExtractorInstruction(instruction: string) {
   if (readOnly.value || !page.selectedNode) return
-  updateNodeParams(patchNodeParams(page.selectedNode.params, {
-    'output.extract': json.trim() ? json : null,
-  }))
+  updateNodeParam('instruction', instruction)
+}
+function updateExtractorSchema(schemaJson: string) {
+  if (readOnly.value || !page.selectedNode) return
+  updateNodeParam('schema', schemaJson)
 }
 
 function onToolSelect(toolId: string) {
@@ -298,6 +335,18 @@ function expand() {
                     type="textarea"
                     :disabled="readOnly"
                     :autosize="{ minRows: 2, maxRows: 5 }"
+                  />
+                </NFormItem>
+                <NFormItem>
+                  <template #label>
+                    <span class="field-label-row">会话形态<ConfigFieldHelp :text="workflowFlowFieldHelp('kind')" /></span>
+                  </template>
+                  <NSelect
+                    v-model:value="page.definitionKind"
+                    class="sun-field"
+                    :options="workflowKindOptions"
+                    size="small"
+                    :disabled="readOnly"
                   />
                 </NFormItem>
                 <NFormItem>
@@ -445,62 +494,18 @@ function expand() {
                   <WorkflowNodeIoSection :node="page.selectedNode" :read-only="readOnly" />
                 </template>
                 <template v-else-if="page.selectedNode.type === 'tool'">
-                  <WorkflowNodeConfigSection title="工具">
-                    <NFormItem>
-                      <template #label>
-                        <span class="field-label-row">Catalog 工具<ConfigFieldHelp :text="workflowNodeFieldHelp('tool')" /></span>
-                      </template>
-                      <NSelect
-                        class="sun-field"
-                        filterable
-                        :disabled="readOnly"
-                        :value="String(page.selectedNode.params?.tool ?? '')"
-                        :options="toolSelectOptions"
-                        @update:value="onToolSelect"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
-                  <WorkflowNodeConfigSection title="入参" :help="workflowNodeFieldHelp('nodeInputs')">
-                    <template v-if="selectedToolSchemaFields.length">
-                      <NFormItem v-for="field in selectedToolSchemaFields" :key="field.name">
-                        <template #label>
-                          <span class="wf-param-label">
-                            <code class="wf-param-name">{{ field.name }}</code>
-                            <span v-if="field.required" class="required-mark">*</span>
-                          </span>
-                        </template>
-                        <div class="wf-param-field">
-                          <p v-if="field.description" class="wf-param-hint">{{ field.description }}</p>
-                          <NInput
-                            class="sun-field wf-mono-field"
-                            :disabled="readOnly"
-                            placeholder="如 pending 或 {{start.userQuery}}"
-                            :value="readToolParamValue(page.selectedNode.params, field.name)"
-                            @update:value="v => updateToolSchemaParam(field.name, v)"
-                          />
-                        </div>
-                      </NFormItem>
-                    </template>
-                    <NFormItem v-else>
-                      <template #label>
-                        <span class="field-label-row">工具入参<ConfigFieldHelp :text="workflowNodeFieldHelp('toolExtra')" /></span>
-                      </template>
-                      <NInput
-                        class="sun-field wf-mono-field"
-                        type="textarea"
-                        :disabled="readOnly"
-                        :autosize="{ minRows: 3, maxRows: 8 }"
-                        :value="toolExtraParamsLines(page.selectedNode.params)"
-                        @update:value="updateToolExtraParams"
-                      />
-                    </NFormItem>
-                  </WorkflowNodeConfigSection>
+                  <ToolNodeEditor
+                    :node="page.selectedNode"
+                    :read-only="readOnly"
+                    :tool-catalog="selectedToolCatalog"
+                    :upstream-nodes="upstreamNodesForSelected"
+                    @update:inputs="updateToolInputs"
+                    @update:tool="onToolSelect"
+                  />
                   <WorkflowNodeIoSection
                     :node="page.selectedNode"
                     :read-only="readOnly"
                     :tool-catalog="selectedToolCatalog"
-                    @update:output-mode="updateToolOutputMode"
-                    @update:output-extract="updateToolOutputExtract"
                   />
                 </template>
                 <template v-else-if="page.selectedNode.type === 'agent'">
@@ -616,6 +621,40 @@ function expand() {
                     </p>
                     <p class="join-topology-hint">多条并行路线在此汇合，再进入后续步骤。</p>
                   </WorkflowNodeConfigSection>
+                  <WorkflowNodeConfigSection title="合并策略">
+                    <NFormItem>
+                      <template #label>
+                        <span class="field-label-row">mergeStrategy<ConfigFieldHelp :text="workflowNodeFieldHelp('joinMergeStrategy')" /></span>
+                      </template>
+                      <NSelect
+                        class="sun-field"
+                        :disabled="readOnly"
+                        :value="String(page.selectedNode.params?.mergeStrategy ?? 'collect')"
+                        :options="JOIN_MERGE_STRATEGY_OPTIONS"
+                        @update:value="v => updateNodeParam('mergeStrategy', String(v))"
+                      />
+                    </NFormItem>
+                  </WorkflowNodeConfigSection>
+                </template>
+                <template v-else-if="page.selectedNode.type === 'variable-assignment'">
+                  <VariableAssignmentNodeEditor
+                    :node="page.selectedNode"
+                    :read-only="readOnly"
+                    :upstream-nodes="upstreamNodesForSelected"
+                    @update:assignments="updateVariableAssignments"
+                  />
+                  <WorkflowNodeIoSection :node="page.selectedNode" :read-only="readOnly" />
+                </template>
+                <template v-else-if="page.selectedNode.type === 'parameter-extractor'">
+                  <ParameterExtractorNodeEditor
+                    :node="page.selectedNode"
+                    :read-only="readOnly"
+                    :upstream-nodes="upstreamNodesForSelected"
+                    @update:input="updateExtractorInput"
+                    @update:instruction="updateExtractorInstruction"
+                    @update:schema="updateExtractorSchema"
+                  />
+                  <WorkflowNodeIoSection :node="page.selectedNode" :read-only="readOnly" />
                 </template>
                 <template v-else-if="page.selectedNode.type === 'parallel-gateway'">
                   <WorkflowNodeConfigSection title="并行分叉" :help="workflowNodeFieldHelp('parallelGatewayTopology')">
@@ -632,34 +671,15 @@ function expand() {
                 </template>
                 <template v-else-if="page.selectedNode.type === 'loop'">
                   <WorkflowNodeConfigSection title="循环" :help="workflowNodeFieldHelp('loopTopology')">
-                    <NFormItem label="继续条件 · 左值（随上游自动填入）" :show-feedback="false">
-                      <NInput
-                        :value="loopConditionLeft(page.plan!, page.selectedNode.id)"
-                        disabled
-                        placeholder="{{start.userQuery}}"
-                      />
-                    </NFormItem>
-                    <NFormItem label="继续条件 · 算子" :show-feedback="false">
-                      <NSelect
-                        :value="String(page.selectedNode.params?.['condition.op'] || 'contains')"
-                        :options="CONDITION_OP_OPTIONS"
+                    <div class="loop-condition-group">
+                      <span class="condition-label">继续条件</span>
+                      <ConditionGroupEditor
+                        :model-value="loopConditionGroup"
+                        :upstream-nodes="loopUpstreamNodes"
                         :disabled="readOnly"
-                        @update:value="v => updateNodeParam('condition.op', String(v))"
+                        @update:modelValue="onLoopConditionUpdate"
                       />
-                    </NFormItem>
-                    <NFormItem
-                      v-if="page.selectedNode.params?.['condition.op'] !== 'empty'
-                        && page.selectedNode.params?.['condition.op'] !== 'not_empty'"
-                      label="继续条件 · 右值"
-                      :show-feedback="false"
-                    >
-                      <NInput
-                        :value="String(page.selectedNode.params?.['condition.right'] ?? '')"
-                        :disabled="readOnly"
-                        placeholder="比较值"
-                        @update:value="v => updateNodeParam('condition.right', v)"
-                      />
-                    </NFormItem>
+                    </div>
                     <NFormItem label="最大轮次" :show-feedback="false">
                       <NInputNumber
                         :value="Number(page.selectedNode.params?.maxIterations ?? 3)"
@@ -1005,6 +1025,18 @@ function expand() {
 
 .catalog-bind-hint code {
   font-family: var(--sun-font-mono, ui-monospace, monospace);
+  color: var(--sun-text-secondary);
+}
+
+.loop-condition-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.loop-condition-group .condition-label {
+  font-size: 12px;
   color: var(--sun-text-secondary);
 }
 

@@ -13,12 +13,10 @@ final class TimelineLabelTemplates {
     }
 
     static String modeConfigKey(ExecutionMode mode) {
-        return switch (mode != null ? mode : ExecutionMode.REACT) {
-            case SIMPLE_LLM -> "simple-llm";
+        return switch (mode != null ? mode : ExecutionMode.FAST) {
             case WORKFLOW -> "workflow";
-            case PLAN_WORKFLOW -> "plan-workflow";
-            case PEER_COLLAB -> "peer-collab";
-            default -> "react";
+            case PRO -> "pro";
+            case FAST -> "fast";
         };
     }
 

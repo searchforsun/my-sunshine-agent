@@ -1,6 +1,7 @@
 package com.sunshine.bff.controller;
 
 import com.sunshine.bff.client.OrchestratorClient;
+import com.sunshine.bff.model.UpdateCheckoutRequest;
 import com.sunshine.bff.model.UpdateTitleRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,17 +25,30 @@ public class ConversationController {
     private final OrchestratorClient client;
 
     @GetMapping("/api/conversations")
-    public Mono<List<Map<String, Object>>> list(
+    public Mono<Object> list(
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @RequestParam(value = "kind", required = false) String kind,
+            @RequestParam(value = "workspaceId", required = false) String workspaceId,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "offset", defaultValue = "0") int offset) {
+        return client.listConversations(userId, tenantId, kind, workspaceId, limit, offset);
+    }
+
+    @GetMapping("/api/conversations/search")
+    public Mono<List<Map<String, Object>>> search(
+            @RequestParam("q") String keyword,
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.listConversations(userId, tenantId);
+        return client.searchConversations(keyword, userId, tenantId);
     }
 
     @PostMapping("/api/conversations")
     public Mono<Map<String, Object>> create(
             @RequestHeader("x-user-id") String userId,
-            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.createConversation(userId, tenantId);
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        return client.createConversation(body != null ? body : Map.of(), userId, tenantId);
     }
 
     @GetMapping("/api/conversations/{id}")
@@ -45,6 +59,16 @@ public class ConversationController {
         return client.getConversation(id, userId, tenantId);
     }
 
+    @GetMapping("/api/conversations/{id}/messages")
+    public Mono<Map<String, Object>> getMessagesPage(
+            @PathVariable String id,
+            @RequestParam(value = "beforeSeq", defaultValue = "0") int beforeSeq,
+            @RequestParam(value = "limit", defaultValue = "30") int limit,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.getConversationMessages(id, beforeSeq, limit, userId, tenantId);
+    }
+
     @PatchMapping("/api/conversations/{id}")
     public Mono<Map<String, Object>> updateTitle(
             @PathVariable String id,
@@ -52,6 +76,15 @@ public class ConversationController {
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
         return client.updateConversationTitle(id, body, userId, tenantId);
+    }
+
+    @PatchMapping("/api/conversations/{id}/checkout")
+    public Mono<Map<String, Object>> updateCheckout(
+            @PathVariable String id,
+            @RequestBody UpdateCheckoutRequest body,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.updateConversationCheckout(id, body, userId, tenantId);
     }
 
     @DeleteMapping("/api/conversations/{id}")
@@ -71,13 +104,23 @@ public class ConversationController {
         return client.listSandboxWorkspace(id, path, userId, tenantId);
     }
 
+    @GetMapping("/api/conversations/{id}/sandbox/workspace/index")
+    public Mono<Map<String, Object>> listSandboxFileIndex(
+            @PathVariable String id,
+            @RequestParam(value = "path", required = false, defaultValue = "/workspace") String path,
+            @RequestHeader("x-user-id") String userId,
+            @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
+        return client.listSandboxFileIndex(id, path, userId, tenantId);
+    }
+
     @GetMapping("/api/conversations/{id}/sandbox/workspace/content")
     public Mono<Map<String, Object>> readSandboxWorkspace(
             @PathVariable String id,
             @RequestParam("path") String path,
+            @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return client.readSandboxWorkspaceFile(id, path, userId, tenantId);
+        return client.readSandboxWorkspaceFile(id, path, offset, userId, tenantId);
     }
 
     @GetMapping("/api/conversations/{id}/sandbox/workspace/status")

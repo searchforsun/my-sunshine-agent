@@ -1,26 +1,26 @@
 package com.sunshine.orchestrator.controller.stream;
 
-import com.sunshine.orchestrator.agent.ProcessingStep;
-import com.sunshine.orchestrator.agent.ProcessingStepLifecycleOps;
-import com.sunshine.orchestrator.agent.ProcessingStepSerde;
+import com.sunshine.orchestrator.agent.ReactCheckpointService;
 import com.sunshine.orchestrator.client.DesensitizeClient;
-import com.sunshine.orchestrator.conversation.ChatTurn;
 import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.MessageBodyText;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.generation.GenerationRegistry;
-import com.sunshine.orchestrator.memory.MemoryComposer;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.context.ContextAssembler;
+import com.sunshine.orchestrator.context.SessionTurn;
 import com.sunshine.orchestrator.model.ChatMessage;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import com.sunshine.orchestrator.rag.DefaultKbResolver;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 import com.sunshine.orchestrator.routing.ExecutionPlanParser;
-import com.sunshine.orchestrator.routing.ExecutionPreference;
+import com.sunshine.orchestrator.routing.RoutingSeed;
 import com.sunshine.orchestrator.skill.SkillBindingParser;
+import com.sunshine.orchestrator.taskboard.TaskBoardRestoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/** 新消息 / 续跑前的会话落库与 Memory 组装 */
+/** 新消息 / 续跑前的会话落库与 Context 组装 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -41,10 +41,16 @@ public class ChatStreamContextFactory {
     private final ConversationService conversationService;
     private final DesensitizeClient desensitizeClient;
     private final SkillBindingParser skillBindingParser;
-    private final MemoryComposer memoryComposer;
+    private final ContextAssembler contextAssembler;
     private final ExecutionPlanStore executionPlanStore;
     private final ExecutionPlanParser executionPlanParser;
     private final DefaultKbResolver defaultKbResolver;
+    private final ReactCheckpointService checkpointService;
+    private final PromptCatalogHolder catalogHolder;
+    private final TaskBoardRestoreService taskBoardRestoreService;
+
+    /** INTERRUPTED assistant 折叠注记的 Catalog id（方案 A · 中断感知，见五层 spec §5.5.7 v16） */
+    private static final String INTERRUPTED_MARKER = "context.l1.interrupted-marker";
 
     @Autowired(required = false)
     private GenerationRegistry registry;
@@ -54,15 +60,17 @@ public class ChatStreamContextFactory {
 
     public ChatStreamContext prepareNewMessage(ChatMessage msg, String userId, String tenantId) {
         ChatConversationEntity conv = resolveConversation(msg.getConversationId(), userId, tenantId);
+        final String kind = conv.getKind();
         // 先加载历史再落库本轮 user/assistant，避免 history + userContent 重复注入 LLM
-        List<ChatTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
+        List<SessionTurn> loadedHistory = conversationService.loadHistory(conv.getId(), maxHistoryMessages).stream()
                 .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
-                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .map(m -> SessionTurn.fromMessage(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m), m.getSteps(), kind))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toList());
 
-        ExecutionPreference preference = ExecutionPreference.from(msg.getExecutionPreference());
+        ExecutionMode preference = ExecutionMode.from(msg.resolveExecutionModeWire());
         String userContent = desensitizeClient.scrub(msg.getContent());
+        boolean firstMessage = ConversationService.DEFAULT_TITLE.equals(conv.getTitle());
         conversationService.appendMessage(conv.getId(), "user",
                 userContent, MessageStatus.COMPLETED, preference.wireValue());
         ChatMessageEntity assistant = conversationService.appendMessage(
@@ -74,16 +82,29 @@ public class ChatStreamContextFactory {
         if (StringUtils.hasText(msg.getKbId()) || !StringUtils.hasText(conv.getKbId())) {
             conversationService.updateKbId(conv.getId(), userId, tenantId, kbId);
         }
+        String modelOverride = resolveSessionModelName(msg.getModelName(), conv.getModelName());
+        if (msg.getModelName() != null) {
+            conversationService.updateModelName(conv.getId(), userId, tenantId, modelOverride);
+        }
         String executionQuery = userContent;
-        if (preference.isForced() && !preference.allowsSkillBinding()) {
-            executionQuery = skillBindingParser.stripAtMention(userContent);
+        if (!preference.allowsSkillBinding()) {
+            executionQuery = skillBindingParser.stripSlashMention(userContent);
         } else if (StringUtils.hasText(msg.getSkillId())) {
             executionQuery = skillBindingParser.stripSkillMentions(userContent);
         }
-        MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
-                userId, tenantId, conv.getId(), loadedHistory, executionQuery));
+        AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
+                userId, tenantId, conv.getId(), loadedHistory, executionQuery, modelOverride,
+                conv.getKind(), conv.getWorkspaceId(), preference.wireValue(),
+                // M0（authority §2.2 方案 A）：fast×chat 路由前仅底座，L3 延后到资源召回后
+                // 由 ReactExecutor.attachL3 装配（与业务块并行）；pro/workflow 保持现状。
+                preference == ExecutionMode.FAST && "chat".equals(kind)));
+        // fast 跨轮任务板恢复（M0）：仅 fast 会话注入最近快照的未完成任务清单，恢复块由服务端渲染
+        if (preference == ExecutionMode.FAST) {
+            memory = memory.withTaskListRestoreBlock(
+                    taskBoardRestoreService.renderRestoreBlock(conv.getId()).orElse(""));
+        }
         if (!loadedHistory.isEmpty() && !memory.hasAnyLayer()) {
-            log.debug("[Orchestrator] 记忆块为空 loaded={} user={}",
+            log.debug("[Orchestrator] 上下文为空 loaded={} user={}",
                     loadedHistory.size(),
                     executionQuery.length() > 40 ? executionQuery.substring(0, 40) + "..." : executionQuery);
         }
@@ -98,14 +119,45 @@ public class ChatStreamContextFactory {
                 "",
                 null,
                 null,
-                true,
+                firstMessage,
                 userId,
                 tenantId,
                 preference,
                 msg.getWorkflowId(),
                 msg.getSkillId(),
                 kbId,
-                false);
+                false,
+                msg.getPersonalRules(),
+                conv.getKind(),
+                modelOverride,
+                // S-1：上轮轻 sticky seed（无新触发时继承已触发 skill / 可调度 agent）
+                conversationService.loadRoutingSeed(conv.getId()));
+    }
+    /**
+     * 中断感知（方案 A · 五层 spec §5.5.7 v16）：INTERRUPTED 的 assistant 消息折叠为显式中断注记，
+     * 使后续轮次从 Near 中感知「上一轮被中断」；正文非空时连同已生成部分一起注入（信息不丢），
+     * 正文为空时仅注记（保证不再被 hasText 过滤掉）。COMPLETED/FAILED 与 user 消息保持原样。
+     * Catalog 缺失或读取失败时降级保留原正文（行为等同现状）。
+     */
+    private String resolveBodyWithInterruptMark(ChatMessageEntity m) {
+        String body = MessageBodyText.resolve(m);
+        if (!"assistant".equals(m.getRole()) || !MessageStatus.INTERRUPTED.equals(m.getStatus())) {
+            return body;
+        }
+        String marker;
+        try {
+            marker = catalogHolder.requireText(INTERRUPTED_MARKER);
+        } catch (RuntimeException e) {
+            log.warn("[ChatStreamContextFactory] interrupted-marker 读取失败，降级原文: {}", e.getMessage());
+            return body;
+        }
+        if (!StringUtils.hasText(marker)) {
+            return body;
+        }
+        if (!StringUtils.hasText(body)) {
+            return marker;
+        }
+        return marker + "\n\n已生成部分：\n" + body;
     }
 
     private String resolveSessionKbId(String requestKbId, String storedKbId, String tenantId) {
@@ -118,11 +170,24 @@ public class ChatStreamContextFactory {
         return defaultKbResolver.resolveBlocking(tenantId, null);
     }
 
+    /** 请求显式传 modelName（含空串清绑定）优先；否则沿用会话已存值 */
+    private static String resolveSessionModelName(String requestModelName, String storedModelName) {
+        if (requestModelName != null) {
+            return StringUtils.hasText(requestModelName) ? requestModelName.strip() : null;
+        }
+        return StringUtils.hasText(storedModelName) ? storedModelName.strip() : null;
+    }
+
     public ChatResumePreparation buildResumePreparation(ChatMessage msg, String userId, String tenantId) {
         ChatMessageEntity assistant = conversationService.getMessageOwned(
                 msg.getResumeMessageId(), userId, tenantId);
-        if (registry != null && MessageStatus.STREAMING.equals(assistant.getStatus())
-                && registry.findByMessageId(assistant.getId()).isEmpty()) {
+        // 消息仍在流式（DB STREAMING）时 resume：先取消该消息的活跃 generation（若有），
+        // 再强制标中断后继续。resume 语义即「取消旧 run 重来」，与 startResumeWithRedis 的
+        // findByMessageId.cancel 对齐；否则 validateResumeAllowed 会因 STREAMING 直接拒绝，
+        // 导致刷新失联后用户点「重新生成」永远无法恢复（旧 job 的异步 persistFinal 又更新滞后）。
+        if (registry != null && MessageStatus.STREAMING.equals(assistant.getStatus())) {
+            registry.findByMessageId(assistant.getId())
+                    .ifPresent(job -> registry.cancel(job.getGenerationId()));
             conversationService.forceInterruptedIfStreaming(assistant.getId());
             assistant = conversationService.getMessageOwned(msg.getResumeMessageId(), userId, tenantId);
         }
@@ -130,13 +195,15 @@ public class ChatStreamContextFactory {
         conversationService.validateResumeAllowed(assistant, userId, tenantId);
         ChatConversationEntity conv = conversationService.getOwned(assistant.getConversationId(), userId, tenantId);
         String kbId = resolveSessionKbId(msg.getKbId(), conv.getKbId(), tenantId);
-        List<ProcessingStep> existingSteps = ProcessingStepSerde.fromJson(assistant.getSteps());
-        boolean planWorkflowResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
+        boolean planRunResume = executionPlanStore.findResumableForMessage(assistant.getId()).isPresent();
         ExecutionPlan storedPlan = executionPlanParser.parseStoredIntent(
                 assistant.getIntent() != null ? assistant.getIntent() : "");
-        boolean reactRestartResume = !planWorkflowResume
-                && (storedPlan.mode() == ExecutionMode.REACT
-                || storedPlan.mode() == ExecutionMode.PEER_COLLAB);
+        boolean reactRestartResume = !planRunResume
+                && storedPlan.mode() == ExecutionMode.FAST;
+        boolean hasNativeCheckpoint = reactRestartResume
+                && checkpointService.hasCheckpoint(userId, assistantId);
+        log.info("[ChatStreamContextFactory] resume userId={} msg={} reactRestart={} hasNativeCheckpoint={}",
+                userId, assistantId, reactRestartResume, hasNativeCheckpoint);
 
         String resumeContent;
         String resumeReasoning;
@@ -145,9 +212,11 @@ public class ChatStreamContextFactory {
         if (reactRestartResume) {
             resumeContent = "";
             resumeReasoning = "";
-            stepsJson = ProcessingStepSerde.toJson(ProcessingStepLifecycleOps.retainIntentStepsOnly(existingSteps));
-            contentBlocksJson = "[]";
-        } else if (planWorkflowResume) {
+            // 无论有无 native checkpoint，时间线都保留（截断在 ChatController）；
+            // 无 checkpoint 时靠 injectedBlocks 续进度，勿只留 intent
+            stepsJson = assistant.getSteps();
+            contentBlocksJson = assistant.getContentBlocks();
+        } else if (planRunResume) {
             resumeContent = "";
             resumeReasoning = "";
             stepsJson = assistant.getSteps();
@@ -165,9 +234,9 @@ public class ChatStreamContextFactory {
                 .map(MessageBodyText::resolve)
                 .orElse("");
 
-        List<ChatTurn> history = historyEntities.stream()
+        List<SessionTurn> history = historyEntities.stream()
                 .filter(m -> !m.getId().equals(assistantId))
-                .map(m -> new ChatTurn(m.getRole(), MessageBodyText.resolve(m)))
+                .map(m -> SessionTurn.fromMessage(m.getId(), m.getRole(), resolveBodyWithInterruptMark(m), m.getSteps(), conv.getKind()))
                 .filter(t -> StringUtils.hasText(t.content()))
                 .collect(Collectors.toCollection(ArrayList::new));
         if (!history.isEmpty()
@@ -176,10 +245,13 @@ public class ChatStreamContextFactory {
             history.remove(history.size() - 1);
         }
 
-        MemoryContext memory = memoryComposer.compose(new MemoryComposer.ComposeRequest(
-                userId, tenantId, assistant.getConversationId(), history, userContent));
-        // ReAct 续跑重规划：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
-        // STM 仅含更早已完成轮次，不含本轮 tool/正文执行史；Agent 侧靠新 ReActAgent + stream epoch 隔离。
+        AssembledContext memory = contextAssembler.assemble(new ContextAssembler.AssembleRequest(
+                userId, tenantId, assistant.getConversationId(), history, userContent, conv.getModelName(),
+                conv.getKind(), conv.getWorkspaceId(), conv.getExecutionPreference(),
+                // M0：ReAct 续跑同样走 ReactExecutor（路由后 attachL3），延后 L3；pro 续跑保持现状
+                reactRestartResume && "chat".equals(conv.getKind())));
+        // ReAct 继续生成：loadHistoryForResume 已在当前 assistant 前截断，并去掉同轮 user（作 query）；
+        // Near 仅含更早已完成轮次；本轮进度靠 checkpoint（若有）+ injectedBlocks（skill/tasks/think/tool）。
 
         return new ChatResumePreparation(
                 assistant.getId(),
@@ -194,7 +266,21 @@ public class ChatStreamContextFactory {
                 reactRestartResume,
                 userId,
                 tenantId,
-                kbId);
+                kbId,
+                conv.getKind(),
+                conv.getModelName(),
+                // S-0：续跑复用该消息已存 RoutingResult（不重跑收集、不重触发决策）
+                new RoutingSeed(csvToList(assistant.getRoutingSkillIds()), csvToList(assistant.getRoutingAgentIds())));
+    }
+
+    private static List<String> csvToList(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::strip)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     private ChatConversationEntity resolveConversation(String conversationId, String userId, String tenantId) {

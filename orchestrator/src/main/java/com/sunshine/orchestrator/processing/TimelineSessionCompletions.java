@@ -40,32 +40,21 @@ final class TimelineSessionCompletions {
     }
 
     void completePlanAt(String after, String detail, long endedAt) {
-        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome plannerRewrite =
-                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.plannerOutcome(state.traceMessageId).orElse(null);
-        StepMetadata metadata = StepMetadata.fromRewrite(plannerRewrite);
+        com.sunshine.orchestrator.rewrite.QueryRewriteOutcome rewrite =
+                com.sunshine.orchestrator.rewrite.QueryRewriteTrace.intentOutcome(state.traceMessageId).orElse(null);
+        StepMetadata metadata = StepMetadata.fromRewrite(rewrite);
         emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.COMPLETE, after, detail, metadata, endedAt);
         if (TimelineStepId.PLAN.matches(state.activeStepId)) {
             state.activeStepId = null;
         }
     }
 
-    void beginPlanAwaitingApproval(String detail, StepMetadata metadata) {
-        long ts = System.currentTimeMillis();
-        emitter.apply(TimelineStepId.PLAN.id(), TimelineStepId.PLAN.phase(), EventKind.PENDING,
-                summaries.resolveBefore(TimelineStepId.PLAN.id()), null);
-        startAt(TimelineStepId.PLAN.id(), TimelineStepId.PLAN.phase(), ts);
-        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.PROGRESS, PlanApprovalLabels.awaiting(), detail, metadata, ts);
-        state.activeStepId = TimelineStepId.PLAN.id();
-    }
-
-    void updatePlanApproval(StepMetadata metadata, String activeSummary) {
-        String summary = activeSummary != null && !activeSummary.isBlank()
-                ? activeSummary
-                : PlanApprovalLabels.awaiting();
-        emitter.applyAt(TimelineStepId.PLAN.id(), null, EventKind.PROGRESS, summary, null, metadata, System.currentTimeMillis());
-    }
-
     void completeSkillLoad(String skillId) {
+        completeSkillLoad(skillId, null);
+    }
+
+    /** skill 步完成：expandDetail 承载技能正文（L0 首现与动态加载统一，供前端下拉查看） */
+    void completeSkillLoad(String skillId, String expandDetail) {
         if (skillId == null || skillId.isBlank()) {
             return;
         }
@@ -75,7 +64,7 @@ final class TimelineSessionCompletions {
         startAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), ts);
         String after = SkillLoadLabels.after(skillId.strip());
         StepMetadata metadata = StepMetadata.fromSkillLoad(skillId.strip());
-        emitter.applyAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), EventKind.COMPLETE, after, null, metadata, ts);
+        emitter.applyAt(TimelineStepId.SKILL.id(), TimelineStepId.SKILL.phase(), EventKind.COMPLETE, after, expandDetail, metadata, ts);
         if (TimelineStepId.SKILL.matches(state.activeStepId)) {
             state.activeStepId = null;
         }
@@ -91,7 +80,7 @@ final class TimelineSessionCompletions {
         emitter.applyAt(stepId, phase, EventKind.PROGRESS, activeSummary, null, metadata, ts);
     }
 
-    /** tasks 步首建锚定在刚结束的 think 之后，不随 manage_tasks 实际调用时刻漂移 */
+    /** tasks 步首建锚定在刚结束的 think 之后，不随 todo_write 实际调用时刻漂移 */
     private long taskBoardAnchorStart(long fallback) {
         if (state.lastCompletedThinkEndedAt <= 0) {
             return fallback;
@@ -188,7 +177,10 @@ final class TimelineSessionCompletions {
         if (state.activeStepId == null) {
             return;
         }
-        if (ThinkStepIds.isThinkStep(state.activeStepId) || TimelineStepId.GENERATE.matches(state.activeStepId)
+        // 并行 tool：同轮 PreActing 连续 start 时勿用空 detail 提前 complete；终态由 PostActing 写入
+        if (ToolStepIds.isToolStep(state.activeStepId)
+                || ThinkStepIds.isThinkStep(state.activeStepId)
+                || TimelineStepId.GENERATE.matches(state.activeStepId)
                 || TimelineStepId.TASKS.matches(state.activeStepId)) {
             return;
         }

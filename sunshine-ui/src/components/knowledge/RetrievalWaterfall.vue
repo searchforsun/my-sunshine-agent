@@ -9,7 +9,8 @@ const props = defineProps<{
 }>()
 
 const activeStage = ref<string>('')
-const expandedKeys = ref<Set<string>>(new Set())
+/** 与 L1 一致：当前阶段内同时仅展开一条 */
+const expandedKey = ref<string | null>(null)
 
 const STAGE_LABELS: Record<string, string> = {
   rag: 'Query 改写',
@@ -61,7 +62,18 @@ watch(
 )
 
 watch(activeStage, (key) => {
-  expandedKeys.value = key ? new Set([`${key}:c:0`]) : new Set()
+  if (!key) {
+    expandedKey.value = null
+    return
+  }
+  const item = stageItems.value.find((s) => s.key === key)
+  if (item?.stage.candidates?.length) {
+    expandedKey.value = `${key}:c:0`
+  } else if (item?.stage.dropped?.length) {
+    expandedKey.value = `${key}:d:0`
+  } else {
+    expandedKey.value = null
+  }
 })
 
 function selectStage(key: string) {
@@ -69,23 +81,11 @@ function selectStage(key: string) {
 }
 
 function isExpanded(key: string): boolean {
-  return expandedKeys.value.has(key)
+  return expandedKey.value === key
 }
 
 function toggleRow(key: string) {
-  const next = new Set(expandedKeys.value)
-  if (next.has(key)) {
-    next.delete(key)
-  } else {
-    next.add(key)
-  }
-  expandedKeys.value = next
-}
-
-function preview(content: string, max = 96): string {
-  const text = content.replace(/\s+/g, ' ').trim()
-  if (text.length <= max) return text
-  return `${text.slice(0, max)}…`
+  expandedKey.value = expandedKey.value === key ? null : key
 }
 </script>
 
@@ -140,24 +140,22 @@ function preview(content: string, max = 96): string {
             <article
               v-for="(c, cIdx) in activeItem.stage.candidates"
               :key="`c-${cIdx}`"
-              class="candidate-row"
+              class="hit-row"
               :class="{ expanded: isExpanded(rowKey('c', cIdx)) }"
+              role="button"
+              tabindex="0"
+              @click="toggleRow(rowKey('c', cIdx))"
+              @keydown.enter.prevent="toggleRow(rowKey('c', cIdx))"
+              @keydown.space.prevent="toggleRow(rowKey('c', cIdx))"
             >
-              <button
-                type="button"
-                class="candidate-head"
-                @click="toggleRow(rowKey('c', cIdx))"
-              >
-                <span class="cell-doc-name">{{ c.docName }}</span>
+              <header class="hit-row-head">
+                <MetricBadge :value="`#${cIdx + 1}`" />
+                <span class="hit-doc">{{ c.docName }}</span>
                 <MetricBadge :value="c.score.toFixed(4)" />
-                <NText depth="3" class="expand-hint">
-                  {{ isExpanded(rowKey('c', cIdx)) ? '收起' : '展开' }}
-                </NText>
-              </button>
-              <p v-if="!isExpanded(rowKey('c', cIdx))" class="candidate-preview">
-                {{ preview(c.content) }}
-              </p>
-              <div v-else class="candidate-content">{{ c.content }}</div>
+              </header>
+              <div class="hit-row-scroll">
+                <div class="hit-content">{{ c.content }}</div>
+              </div>
             </article>
           </div>
 
@@ -166,24 +164,22 @@ function preview(content: string, max = 96): string {
             <article
               v-for="(c, dIdx) in activeItem.stage.dropped"
               :key="`d-${dIdx}`"
-              class="candidate-row dropped"
+              class="hit-row dropped"
               :class="{ expanded: isExpanded(rowKey('d', dIdx)) }"
+              role="button"
+              tabindex="0"
+              @click="toggleRow(rowKey('d', dIdx))"
+              @keydown.enter.prevent="toggleRow(rowKey('d', dIdx))"
+              @keydown.space.prevent="toggleRow(rowKey('d', dIdx))"
             >
-              <button
-                type="button"
-                class="candidate-head"
-                @click="toggleRow(rowKey('d', dIdx))"
-              >
-                <span class="cell-doc-name">{{ c.docName }}</span>
+              <header class="hit-row-head">
+                <MetricBadge :value="`#${dIdx + 1}`" />
+                <span class="hit-doc">{{ c.docName }}</span>
                 <MetricBadge :value="c.score.toFixed(4)" />
-                <NText depth="3" class="expand-hint">
-                  {{ isExpanded(rowKey('d', dIdx)) ? '收起' : '展开' }}
-                </NText>
-              </button>
-              <p v-if="!isExpanded(rowKey('d', dIdx))" class="candidate-preview">
-                {{ preview(c.content) }}
-              </p>
-              <div v-else class="candidate-content">{{ c.content }}</div>
+              </header>
+              <div class="hit-row-scroll">
+                <div class="hit-content">{{ c.content }}</div>
+              </div>
             </article>
           </div>
 
@@ -335,42 +331,57 @@ function preview(content: string, max = 96): string {
   word-break: break-word;
 }
 
-.candidate-list {
+.candidate-list,
+.dropped-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.candidate-row {
+.dropped-title {
+  font-size: 11px;
+  color: var(--sun-text-muted);
+}
+
+.hit-row {
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid var(--sun-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
   background: var(--sun-black);
-  overflow: hidden;
+  cursor: pointer;
+  transition: height 0.18s ease, border-color 0.15s ease;
 }
 
-.candidate-row.expanded {
-  box-shadow: inset 0 0 0 1px var(--sun-border-light);
+.hit-row:hover {
+  border-color: var(--sun-text-muted);
 }
 
-.candidate-row.dropped {
+.hit-row.expanded {
+  height: 480px;
+  border-color: var(--sun-text);
+}
+
+.hit-row.dropped {
   opacity: 0.72;
 }
 
-.candidate-head {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+.hit-row-head {
+  flex-shrink: 0;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
+  margin-bottom: 10px;
+  min-width: 0;
 }
 
-.cell-doc-name {
-  font-size: 12px;
+.hit-doc {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 600;
   color: var(--sun-text);
   overflow: hidden;
@@ -378,37 +389,17 @@ function preview(content: string, max = 96): string {
   white-space: nowrap;
 }
 
-.expand-hint {
-  font-size: 11px;
+.hit-row-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
-.candidate-preview {
-  margin: 0;
-  padding: 0 10px 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--sun-text-muted);
-}
-
-.candidate-content {
-  margin: 0 10px 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--sun-border);
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--sun-text-secondary);
+.hit-content {
+  font-size: var(--sun-font-base, 14px);
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.dropped-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.dropped-title {
-  font-size: 11px;
-  color: var(--sun-text-muted);
+  color: var(--sun-text);
 }
 </style>

@@ -25,6 +25,7 @@ Thumbs.db
 sunshine-ui/node_modules/
 sunshine-ui/dist/
 sunshine-ui/.vite/
+*.tsbuildinfo
 
 # ===== 运行时 =====
 logs/
@@ -49,3 +50,5 @@ agent-workspace/
 __pycache__/
 
 .superpowers/
+.agentscope/
+.worktrees/

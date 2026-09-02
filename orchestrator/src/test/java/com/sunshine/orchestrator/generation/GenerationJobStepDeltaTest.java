@@ -141,7 +141,7 @@ class GenerationJobStepDeltaTest {
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         assertThat(reasoningCaptor.getValue()).isEqualTo("思考过程");
         assertThat(stepsCaptor.getValue()).contains("think").contains("思考过程");
     }

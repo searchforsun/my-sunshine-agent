@@ -6,5 +6,6 @@ import java.util.concurrent.CompletableFuture;
 record HitlPendingWaiter(
         String messageId,
         String toolId,
+        String userId,
         CompletableFuture<Boolean> future) {
 }

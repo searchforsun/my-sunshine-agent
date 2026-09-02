@@ -1,5 +1,14 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue'
-import type { DropdownOption } from 'naive-ui'
+import { computed, h, ref, type ComputedRef, type Ref } from 'vue'
+import { NIcon, type DropdownOption } from 'naive-ui'
+import {
+  CloudUploadOutline,
+  CopyOutline,
+  CreateOutline,
+  DocumentTextOutline,
+  DownloadOutline,
+  DuplicateOutline,
+  TrashOutline,
+} from '@vicons/ionicons5'
 import {
   createWorkflow,
   deleteWorkflow,
@@ -88,9 +97,9 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
   const showEdit = ref(false)
   const showDeleteConfirm = ref(false)
   const showDeleteVersionConfirm = ref(false)
-  const createDraft = ref({ id: '', displayName: '', description: '' })
+  const createDraft = ref({ id: '', displayName: '', description: '', kind: 'all' })
   const createSeedPackage = ref<{ plan: WorkflowPlan; catalog: Record<string, unknown> } | null>(null)
-  const editForm = ref({ displayName: '', description: '' })
+  const editForm = ref({ displayName: '', description: '', kind: 'all' })
   const editTarget = ref<WorkflowEntry | null>(null)
   const deleteTarget = ref<WorkflowEntry | null>(null)
 
@@ -114,9 +123,22 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
   const isDuplicateCreate = computed(() => createSeedPackage.value != null)
 
   const cardMenuOptions: DropdownOption[] = [
-    { label: '修改', key: 'edit' },
-    { label: '导出 JSON', key: 'export' },
-    { label: '删除', key: 'delete' },
+    {
+      label: '修改',
+      key: 'edit',
+      icon: () => h(NIcon, { component: CreateOutline, size: 14 }),
+    },
+    {
+      label: '导出 JSON',
+      key: 'export',
+      icon: () => h(NIcon, { component: DownloadOutline, size: 14 }),
+    },
+    { type: 'divider', key: 'divider-card-delete' },
+    {
+      label: () => h('span', { class: 'more-menu-delete' }, '删除'),
+      key: 'delete',
+      icon: () => h(NIcon, { component: TrashOutline, size: 14, class: 'more-menu-delete' }),
+    },
   ]
 
   const moreMenuOptions = computed((): DropdownOption[] => {
@@ -124,22 +146,53 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
     if (workflowPhase.value === 'live' || workflowPhase.value === 'history') {
       const hasDraft = versions.value.some(v => v.status === 'draft')
       if (!hasDraft) {
-        opts.push({ label: '复制为草稿', key: 'fork' })
+        opts.push({
+          label: '复制为草稿',
+          key: 'fork',
+          icon: () => h(NIcon, { component: CreateOutline, size: 14 }),
+        })
       }
     }
     if (canEditPlan.value || workflowPhase.value === 'live' || workflowPhase.value === 'history') {
-      opts.push({ label: '导入 JSON', key: 'import' })
+      opts.push({
+        label: '导入 JSON',
+        key: 'import',
+        icon: () => h(NIcon, { component: CloudUploadOutline, size: 14 }),
+      })
     }
     if (selectedVersion.value != null) {
-      opts.push({ label: '导出 JSON', key: 'export' })
-      opts.push({ label: '复制 JSON', key: 'copy-export' })
-      opts.push({ label: '另存为新工作流', key: 'duplicate' })
+      opts.push({
+        label: '导出 JSON',
+        key: 'export',
+        icon: () => h(NIcon, { component: DownloadOutline, size: 14 }),
+      })
+      opts.push({
+        label: '复制 JSON',
+        key: 'copy-export',
+        icon: () => h(NIcon, { component: CopyOutline, size: 14 }),
+      })
+      opts.push({
+        label: '另存为新工作流',
+        key: 'duplicate',
+        icon: () => h(NIcon, { component: DuplicateOutline, size: 14 }),
+      })
     }
     if (canCompareVersions.value && selectedVersion.value != null) {
-      opts.push({ label: '版本对比', key: 'diff' })
+      opts.push({
+        label: '版本对比',
+        key: 'diff',
+        icon: () => h(NIcon, { component: DocumentTextOutline, size: 14 }),
+      })
     }
     if (versions.value.length > 1 && selectedVersion.value != null) {
-      opts.push({ label: '删除此版本', key: 'delete-version' })
+      if (opts.length > 0) {
+        opts.push({ type: 'divider', key: 'divider-before-delete-version' })
+      }
+      opts.push({
+        label: () => h('span', { class: 'more-menu-delete' }, '删除此版本'),
+        key: 'delete-version',
+        icon: () => h(NIcon, { component: TrashOutline, size: 14, class: 'more-menu-delete' }),
+      })
     }
     return opts
   })
@@ -156,7 +209,11 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
 
   function openEdit(wf: WorkflowEntry) {
     editTarget.value = wf
-    editForm.value = { displayName: wf.displayName, description: wf.description ?? '' }
+    editForm.value = {
+      displayName: wf.displayName,
+      description: wf.description ?? '',
+      kind: wf.kind || 'all',
+    }
     showEdit.value = true
   }
 
@@ -171,6 +228,7 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
         editTarget.value.id,
         editForm.value.displayName.trim(),
         editForm.value.description.trim(),
+        editForm.value.kind || 'all',
       )
       showEdit.value = false
       await refreshPage()
@@ -317,6 +375,7 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
         newId,
         createDraft.value.displayName.trim(),
         createDraft.value.description.trim(),
+        createDraft.value.kind || 'all',
       )
       if (seed) {
         const normalized = applyPlanDefaults(
@@ -347,10 +406,12 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
   function openDuplicateAsNew() {
     if (!plan.value || !selectedId.value) return
     const id = selectedId.value
+    const sourceKind = workflows.value.find(w => w.id === id)?.kind || 'all'
     createDraft.value = {
       id: suggestDuplicateWorkflowId(id),
       displayName: `${definitionDisplayName.value.trim() || id} 副本`,
       description: definitionDescription.value.trim(),
+      kind: sourceKind,
     }
     const examples = catalogExamples.value.split('\n').map(s => s.trim()).filter(Boolean)
     createSeedPackage.value = {
@@ -362,12 +423,12 @@ export function useWorkflowLifecycleActions(deps: UseWorkflowLifecycleActionsDep
 
   function closeCreateModal() {
     showCreate.value = false
-    createDraft.value = { id: '', displayName: '', description: '' }
+    createDraft.value = { id: '', displayName: '', description: '', kind: 'all' }
     createSeedPackage.value = null
   }
 
   function openCreateModal() {
-    createDraft.value = { id: '', displayName: '', description: '' }
+    createDraft.value = { id: '', displayName: '', description: '', kind: 'all' }
     createSeedPackage.value = null
     showCreate.value = true
   }

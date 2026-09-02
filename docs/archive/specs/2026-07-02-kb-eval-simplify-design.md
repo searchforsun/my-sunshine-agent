@@ -1,7 +1,7 @@
 # 知识库评测 Tab 简化设计
 
 > **状态**：已归档（2026-07-03）  
-> **并入**：[2026-07-02-kb-eval-ui-redesign.md](../../superpowers/specs/2026-07-02-kb-eval-ui-redesign.md)（§1–2、§12）  
+> **并入**：[2026-07-02-kb-eval-ui-redesign.md](../../superpowers/specs/archive/2026-07-02-kb-eval-ui-redesign.md)（§1–2、§12）  
 > **索引**：[docs/rag/README.md](../../rag/README.md)
 
 本文档仅保留历史决策摘要；实施与验收以 **eval-ui-redesign** 为准。

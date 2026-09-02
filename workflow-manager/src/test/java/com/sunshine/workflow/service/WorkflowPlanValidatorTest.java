@@ -48,7 +48,7 @@ class WorkflowPlanValidatorTest {
     @Test
     void validLinearToolToAnswer() {
         WorkflowPlanValidationResult result = validator.validateDetailed(linearPlan(
-                toolNode("tool-a1b2c3d4", "sdk__sunshine-finance__list_finance_messages"),
+                toolNode("tool-a1b2c3d4", "sdk__sunshine-finance__list_my_expenses"),
                 answerNode("请回答\n\n{{tool-a1b2c3d4.output}}")));
         assertThat(result.isValid()).isTrue();
     }
@@ -56,8 +56,8 @@ class WorkflowPlanValidatorTest {
     @Test
     void rejectsDownstreamReference() {
         WorkflowPlanValidationResult result = validator.validateDetailed(linearPlan(
-                toolNode("tool-a1b2c3d4", "sdk__sunshine-finance__list_finance_messages",
-                        Map.of("tool", "sdk__sunshine-finance__list_finance_messages",
+                toolNode("tool-a1b2c3d4", "sdk__sunshine-finance__list_my_expenses",
+                        Map.of("tool", "sdk__sunshine-finance__list_my_expenses",
                                 "note", "{{tool-b2c3d4e5.output}}")),
                 toolNode("tool-b2c3d4e5", "sdk__sunshine-finance__sum"),
                 answerNode("{{tool-b2c3d4e5.output}}")));
@@ -68,7 +68,7 @@ class WorkflowPlanValidatorTest {
     @Test
     void rejectsInvalidAgentField() {
         WorkflowPlanValidationResult result = validator.validateDetailed(linearPlan(
-                toolNode("tool-a1b2c3d4", "sdk__sunshine-finance__list_finance_messages"),
+                toolNode("tool-a1b2c3d4", "sdk__sunshine-finance__list_my_expenses"),
                 agentNode("agent-b2c3d4e5", "{{tool-a1b2c3d4.output}}"),
                 answerNode("{{tool-a1b2c3d4.answer}}")));
         assertThat(result.isValid()).isFalse();
@@ -179,9 +179,11 @@ class WorkflowPlanValidatorTest {
     @Test
     void validLoopWithRagToolAgentBody() {
         Map<String, Object> loopParams = new LinkedHashMap<>(Map.of(
-                "condition.left", "{{start.userQuery}}",
-                "condition.op", "contains",
-                "condition.right", "继续",
+                "conditions", List.of(Map.of(
+                        "left", "{{start.userQuery}}",
+                        "op", "contains",
+                        "right", "继续")),
+                "conditionLogic", "and",
                 "maxIterations", "2",
                 "onMaxIterations", "exit",
                 "retry.maxAttempts", "1",
@@ -195,7 +197,7 @@ class WorkflowPlanValidatorTest {
 
         Map<String, Object> rag = ragNode("rag-l1o2o3p4", "知识检索");
         rag.put("parentId", "loop-a1b2c3d4");
-        Map<String, Object> tool = toolNode("tool-t1o2o3p4", "sdk__sunshine-finance__list_finance_messages");
+        Map<String, Object> tool = toolNode("tool-t1o2o3p4", "sdk__sunshine-finance__list_my_expenses");
         tool.put("parentId", "loop-a1b2c3d4");
         Map<String, Object> agent = new LinkedHashMap<>(agentNode(
                 "agent-a1g2e3n4",

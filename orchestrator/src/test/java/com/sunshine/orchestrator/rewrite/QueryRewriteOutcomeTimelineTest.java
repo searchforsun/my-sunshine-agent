@@ -1,28 +1,10 @@
 package com.sunshine.orchestrator.rewrite;
 
-import com.sunshine.orchestrator.config.AgentRewriteProperties;
-import com.sunshine.orchestrator.processing.RewriteTimelineLabels;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class QueryRewriteOutcomeTimelineTest {
-
-    @BeforeEach
-    void setUp() {
-        AgentRewriteProperties props = new AgentRewriteProperties();
-        AgentRewriteProperties.Timeline timeline = new AgentRewriteProperties.Timeline();
-        timeline.setIntent("补全问句");
-        props.setTimeline(timeline);
-        RewriteTimelineLabels.bind(props);
-    }
-
-    @AfterEach
-    void tearDown() {
-        RewriteTimelineLabels.bind(null);
-    }
 
     @Test
     void timelineDetailUsesTraceScenarioLabelForRag() {
@@ -54,8 +36,10 @@ class QueryRewriteOutcomeTimelineTest {
     }
 
     @Test
-    void intentTimelineDetailUsesOrchestratorNacosLabel() {
+    void intentOutcomeWithoutLabel_noPrefixInTimelineDetail() {
         QueryRewriteOutcome outcome = QueryRewriteOutcome.of("intent", "待审批", "查询待审批报销", 15L);
-        assertThat(outcome.timelineDetail()).startsWith("补全问句");
+        assertThat(outcome.timelineDetail())
+                .startsWith("原问题：待审批")
+                .doesNotStartWith("补全问句");
     }
 }

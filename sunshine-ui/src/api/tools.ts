@@ -191,7 +191,20 @@ export async function patchTool(toolId: string, body: ToolPatchBody): Promise<To
   return parseApiResponse<ToolDefinition>(res)
 }
 
-export type ToolSetKindPath = 'react-default' | 'plan-workflow'
+export type ToolSetKindPath = 'chat' | 'task' | 'all'
+
+/** (tenant, kind) 集成员（all=chat∪task 并集，声明候选用；skill-sticky A-4） */
+export async function fetchToolSetToolIds(
+  kind: ToolSetKindPath,
+  tenantId?: TenantId,
+): Promise<string[]> {
+  const params = new URLSearchParams()
+  if (tenantId) params.set('tenantId', tenantId)
+  const qs = params.toString()
+  const res = await fetch(apiUrl(`/api/admin/tools/sets/${kind}/tool-ids${qs ? `?${qs}` : ''}`), { headers: apiHeaders() })
+  const data = await parseApiResponse<{ toolIds: string[] }>(res)
+  return data.toolIds ?? []
+}
 
 export interface ToolSetMemberItem {
   toolId: string
@@ -201,7 +214,6 @@ export interface ToolSetMemberItem {
   sourceRef: string
   sourceLabel: string
   sideEffect: string
-  critical: boolean
   sortOrder: number
 }
 
@@ -231,7 +243,6 @@ export interface ToolSetPickerResponse {
 
 export interface ToolSetMemberAddItem {
   toolId: string
-  critical?: boolean
 }
 
 export interface ToolSetMemberAddResult {
@@ -294,22 +305,6 @@ export async function removeToolSetMembers(
     headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ toolIds }),
   })
-  await parseApiResponse<void>(res, { allowEmptyData: true })
-}
-
-export async function patchPlanWorkflowMemberCritical(
-  toolId: string,
-  critical: boolean,
-  tenantId?: TenantId,
-): Promise<void> {
-  const res = await fetch(
-    apiUrl(`/api/admin/tools/sets/plan-workflow/members/${encodeURIComponent(toolId)}${toolSetTenantQs(tenantId)}`),
-    {
-      method: 'PATCH',
-      headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ critical }),
-    },
-  )
   await parseApiResponse<void>(res, { allowEmptyData: true })
 }
 

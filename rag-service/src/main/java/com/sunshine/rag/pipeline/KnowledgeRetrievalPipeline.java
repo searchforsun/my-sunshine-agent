@@ -7,13 +7,13 @@ import com.sunshine.rag.admin.config.RewriteSettings;
 import com.sunshine.rag.admin.debug.RetrievalDebugResult;
 import com.sunshine.rag.admin.debug.RetrievalDebugStage;
 import com.sunshine.rag.config.RagRewriteProperties;
+import com.sunshine.rag.config.VirtualThreadExecutors;
 import com.sunshine.rag.service.RetrievalService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,7 +43,7 @@ public class KnowledgeRetrievalPipeline {
     public Mono<PipelineSearchResult> searchWithConfig(PipelineSearchRequest request, EffectiveRagConfig config) {
         ResolvedKbConfig production = effectiveConfigResolver.resolve(request.tenantId(), request.kbId());
         ResolvedKbConfig resolved = new ResolvedKbConfig(
-                config, production.rewrite(), production.defaultTopK(), production.chunkMaxSize());
+                config, production.rewrite(), production.defaultTopK());
         return searchWithResolved(request, resolved);
     }
 
@@ -111,7 +111,7 @@ public class KnowledgeRetrievalPipeline {
                     }
                     return outcome.effectiveQuery();
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private Mono<String> resolveInitialSearchQueryDebug(
@@ -124,7 +124,7 @@ public class KnowledgeRetrievalPipeline {
                     stages.add(toDebugRewriteStage(outcome));
                     return outcome.effectiveQuery();
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(VirtualThreadExecutors.scheduler());
     }
 
     private Mono<List<RetrievalService.DocFragment>> executeRetrieval(
@@ -163,7 +163,7 @@ public class KnowledgeRetrievalPipeline {
             return retryWithEmptyRecallFragments(request, trace, List.of(), config, rewrite);
         }
         return Mono.fromCallable(() -> queryRewritePipeline.hydeForRag(request.query(), rewrite))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMap(hyde -> {
                     if (trace != null) {
                         trace.addStage(toTraceStage(hyde));
@@ -192,7 +192,7 @@ public class KnowledgeRetrievalPipeline {
             return retryWithEmptyRecallDebug(request, config, stages, rewrite);
         }
         return Mono.fromCallable(() -> queryRewritePipeline.hydeForRag(request.query(), rewrite))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMap(hyde -> {
                     stages.add(toDebugRewriteStage(hyde));
                     String hydeDoc = hyde.applied() ? hyde.rewrittenQuery() : null;
@@ -222,7 +222,7 @@ public class KnowledgeRetrievalPipeline {
             return Mono.just(new RetrievalDebugResult(List.copyOf(stages), List.of()));
         }
         return Mono.fromCallable(() -> queryRewritePipeline.rewriteEmptyRecall(request.query(), rewrite))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMap(result -> {
                     stages.add(toDebugRewriteStage(result.outcome()));
                     List<String> alternatives = result.alternatives();
@@ -247,7 +247,7 @@ public class KnowledgeRetrievalPipeline {
             return Mono.just(emptyFirst);
         }
         return Mono.fromCallable(() -> queryRewritePipeline.rewriteEmptyRecall(request.query(), rewrite))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(VirtualThreadExecutors.scheduler())
                 .flatMap(result -> {
                     if (trace != null) {
                         trace.addStage(toTraceStage(result.outcome()));

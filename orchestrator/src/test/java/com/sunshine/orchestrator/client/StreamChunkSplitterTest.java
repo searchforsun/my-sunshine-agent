@@ -66,7 +66,7 @@ class StreamChunkSplitterTest {
     void stepDeltaResult_notSplit() {
         String table = "| 审查维度 | 制度依据 |\n|----------|----------|\n| **关联出差审批单 | 不合规 |";
         List<StreamToken> out = collect(
-                StreamToken.stepDelta("expert-policy-expert-s1", StreamChunkSplitter.STEP_DELTA_RESULT, table),
+                StreamToken.stepDelta("react-policy-reasoning-s1", StreamChunkSplitter.STEP_DELTA_RESULT, table),
                 32);
         assertThat(out).hasSize(1);
         assertThat(out.get(0).text()).isEqualTo(table);

@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.processing;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -13,7 +14,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class HitlLabelService {
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     @PostConstruct
     void init() {
@@ -41,8 +42,7 @@ public class HitlLabelService {
     }
 
     private AgentPromptProperties.HitlTimeline template() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getHitl() != null ? timeline.getHitl() : defaults();
+        return timelinePromptCatalog.hitl();
     }
 
     private static AgentPromptProperties.HitlTimeline defaults() {

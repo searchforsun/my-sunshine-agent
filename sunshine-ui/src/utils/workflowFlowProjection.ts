@@ -91,9 +91,24 @@ export function resolveNodePositions(plan: WorkflowPlan): Record<string, Workflo
   return { ...(plan.layout ?? {}) }
 }
 
-function edgePairsFingerprint(pairs: { from: string; to: string; default?: boolean; condition?: { left?: string; op?: string; right?: string } }[]): string {
+type EdgeFingerprintCondition =
+  | { left?: string; op?: string; right?: string }
+  | { logic?: string; items?: { left?: string; op?: string; right?: string }[] }
+
+function conditionFingerprint(condition: EdgeFingerprintCondition | undefined): string {
+  if (!condition) return ''
+  if ('items' in condition && Array.isArray(condition.items)) {
+    return `${condition.logic ?? ''}:[${condition.items
+      .map(it => `${it?.op ?? ''}:${it?.left ?? ''}:${it?.right ?? ''}`)
+      .join('|')}]`
+  }
+  const c = condition as { left?: string; op?: string; right?: string }
+  return `${c.op ?? ''}:${c.left ?? ''}:${c.right ?? ''}`
+}
+
+function edgePairsFingerprint(pairs: { from: string; to: string; default?: boolean; condition?: EdgeFingerprintCondition }[]): string {
   return JSON.stringify(pairs.map(p =>
-    `${p.from}->${p.to}|${p.default ? 'd' : ''}|${p.condition?.op ?? ''}:${p.condition?.left ?? ''}:${p.condition?.right ?? ''}`,
+    `${p.from}->${p.to}|${p.default ? 'd' : ''}|${conditionFingerprint(p.condition)}`,
   ).sort())
 }
 

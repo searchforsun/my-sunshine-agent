@@ -9,24 +9,38 @@ import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
 import { useChatTimelineView } from '../composables/useChatTimelineView'
 import { useChatScroll } from '../composables/useChatScroll'
 import { useChatSkillMention } from '../composables/useChatSkillMention'
-import { useChatExpertMention } from '../composables/useChatExpertMention'
+import { useChatAgentMention } from '../composables/useChatAgentMention'
 import { useChatWorkflowMention } from '../composables/useChatWorkflowMention'
 import { useChatWorkspacePathMention } from '../composables/useChatWorkspacePathMention'
-import { requestSandboxWorkspaceRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { requestSandboxWorkspaceRefresh, sandboxPathIndexReady, sandboxPathIndexRefresh } from '../composables/sandboxWorkspaceRefresh'
+import { flashWorkspaceBanner } from '../composables/sandboxWorkspaceBanner'
+import { useSandboxPathIndex } from '../composables/useSandboxPathIndex'
 import { useChatStreamMarkdown } from '../composables/useChatStreamMarkdown'
+import { reEnhanceAllSandboxPathLinks } from '../utils/stream-markdown/StaticEnhancer'
 import { useChatSessionHydration } from '../composables/useChatSessionHydration'
-import { useChatStore } from '../stores/chatStore'
+import { useChatStore, isTaskConversation } from '../stores/chatStore'
 import { isValidConversationId } from '../api/conversations'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar } from '../composables/useSidebar'
+import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import { listWorkspaces } from '../api/workspaces'
+import type { WorkspaceVO } from '../api/workspaces'
+import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts, gitDiffSummary, saveDiffBaseSnapshot } from '../api/workspaceGit'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
-import { NIcon } from 'naive-ui'
-import { DocumentTextOutline, FolderOutline } from '@vicons/ionicons5'
+import { NIcon, NPopover, NButton, NSpin } from 'naive-ui'
+import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, HelpCircleOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
+import { liveTimelineExpanded } from '../composables/timelineCollapseBus'
+import TaskBoardPanel from '../components/operation/TaskBoardPanel.vue'
+import { hasRealTaskBoardItems, type TimelineMessageStatus } from '../api/processingSteps'
+import { isElVisibleInRoot } from '../utils/floatingTaskboard'
 import PlanNodeDrawer from '../components/plan/PlanNodeDrawer.vue'
 import SandboxWorkspaceDrawer from '../components/sandbox/SandboxWorkspaceDrawer.vue'
 import PlanDagExpandLayer from '../components/plan/PlanDagExpandLayer.vue'
+import GitBranchSelector from '../components/chat/GitBranchSelector.vue'
+import MessageDiffCard from '../components/chat/MessageDiffCard.vue'
+import DrawerCollapseIcon from '../components/icons/DrawerCollapseIcon.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
 import { getWriteHitlMode } from '../composables/useWriteHitlMode'
@@ -35,25 +49,34 @@ import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
 import { resumeButtonLabel, resolveResumeMode } from '../api/resumeMode'
 import { resolveAssistantDisplayContent, resolveStreamErrorText } from '../api/streamError'
+import { formatConversationTime } from '../utils/conversationTime'
+import { loadCachedMessages } from '../api/conversationCache'
 import {
   isContentFullyInterleaved,
+  resolveCollapsedAnswerText,
   resolveStreamingContentText,
   shouldShowAssistantBottomContent,
 } from '../api/contentInterleave'
 import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../api/hitlSteps'
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
-import KbSelector from '../components/knowledge/KbSelector.vue'
+import UsageStatusBar from '../components/chat/UsageStatusBar.vue'
+import ModelSelector from '../components/chat/ModelSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
+import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
-import { useExecutionPreference } from '../composables/useExecutionPreference'
+import { useExecutionMode } from '../composables/useExecutionMode'
 import { useKbPreference } from '../composables/useKbPreference'
-import { listKbs, type KnowledgeBase } from '../api/ragAdmin'
-import { useTenantPreference } from '../composables/useTenantPreference'
-import { allowsExpertMention, allowsSkillMention, allowsWorkflowMention } from '../api/executionModes'
+import { useModelPreference } from '../composables/useModelPreference'
+import {
+  catalogUserSelectableOptions,
+  fetchModelCatalog,
+  type ModelCatalogDefinition,
+} from '../api/models'
+import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention, findExecutionModeOption } from '../api/executionModes'
+import { executionModeIcon } from '../api/executionModeIcons'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
-import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
 import { useChatViewport } from '../composables/useChatViewport'
@@ -74,24 +97,55 @@ const router = useRouter()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
+const { isSupported: voiceSupported, isListening: voiceListening, displayText: voiceDisplayText, stop: voiceStop } = useSpeechRecognition()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
 const {
+  state: sandboxState,
   open: openSandboxDrawer,
   close: closeSandboxDrawer,
+  updateConversationId,
   registerChatBody: registerSandboxChatBody,
   compareMode: drawerBothOpen,
 } = useSandboxWorkspaceDrawer()
 const sandboxWorkspaceActive = ref(false)
-
-async function openWorkspaceDrawer() {
-  const id = currentConversationId.value
-  if (!id) return
-  openSandboxDrawer({ conversationId: id })
-  sandboxWorkspaceActive.value = true
-}
+const sandboxDrawerOpen = computed(() => sandboxState.open)
 const { state: planDagExpandState, isAnyExpanded: planDagExpanded, close: closePlanDagExpand, handleSelect: handlePlanDagExpandSelect } = usePlanDagExpand()
-const sessionTitle = computed(() => chatStore.current?.title || '新对话')
+const sessionTitle = computed(() => {
+  if (chatStore.newTaskMode) return '新任务'
+  if (isCurrentTask.value && chatStore.current?.kind === 'task') return chatStore.current?.title || '新任务'
+  return chatStore.current?.title || '新对话'
+})
 const currentConversationId = computed(() => chatStore.currentId)
+
+/** 当前会话形态（chat|task）：新任务视为 task；否则按会话 kind 判定，缺省 chat。
+ * chat 会话绑定工作区后仍是 chat（工作区能力挂在 workspaceId 上）。 */
+const sessionKind = computed<'chat' | 'task'>(() => {
+  if (chatStore.newTaskMode) return 'task'
+  const current = chatStore.current
+  return current && isTaskConversation(current) ? 'task' : 'chat'
+})
+
+/** 工作区项目列表（工作区抽屉展示项目名用；chat 会话据此判断 @ 工作区可用性） */
+const wsProjectList = ref<WorkspaceVO[]>([])
+const wsProjectLoading = ref(false)
+
+async function loadWsProjects() {
+  wsProjectLoading.value = true
+  try { wsProjectList.value = await listWorkspaces() }
+  catch { /* silently fail */ }
+  finally { wsProjectLoading.value = false }
+}
+
+/** @ 工作区可用条件与生效工作区：
+ * task 会话须已绑定工作区（或新任务待选工作区）→ 用 workspaceId；
+ * chat 会话 @ 引用对话级轻量沙箱（执行脚本的沙箱，懒创建），有会话即可 → 用会话 id 作标记 */
+const mentionWorkspaceId = computed(() => {
+  const current = chatStore.current
+  if (sessionKind.value === 'task') {
+    return current?.workspaceId ?? chatStore.pendingWorkspace?.wsId ?? null
+  }
+  return current?.id ?? null
+})
 
 const {
   clearAttention,
@@ -106,7 +160,10 @@ const {
 
 const {
   messages, streamRevision, loading, send, resume, reconnectStream, stop,
-  ensureActive, getMessages, setMessages, migrateSession, destroySession,
+  cancelSpawnSubagent,
+  cancelCancellableTool,
+  generationId,
+  ensureActive, getMessages, setMessages, migrateSession, destroySession, clearActive,
   applyHitlDecision,
   applyRecoveryDecision,
 } = useChatSessions(
@@ -117,18 +174,16 @@ const {
     if (isContentFullyInterleaved(last)) return
     const bridge = streamMdBridge.value
     if (!bridge) return
-    const apply = () => bridge.syncStreamFromContent(resolveStreamingContentText(last))
-    void bridge.ensureStreamRenderer().then(apply)
+    void bridge.ensureStreamRenderer()
+    bridge.scheduleStreamingContentSync(resolveStreamingContentText(last))
   },
   (id: string) => {
     hydrationBridge.flushPersist(id)
     chatStore.syncMessages(id, getMessages(id))
   },
   (sessionId: string) => {
-    chatStore.syncMessages(sessionId, getMessages(sessionId))
-    if (sessionId === chatStore.currentId) {
-      hydrationBridge.schedulePersist(sessionId)
-    }
+    // 流式中勿每条 SSE 同步 JSON.stringify→localStorage；合并到 schedulePersist
+    hydrationBridge.schedulePersist(sessionId)
   },
   (sid: string, convId: string) => {
     if (convId !== sid) migrateSession(sid, convId)
@@ -141,7 +196,11 @@ const {
   (_sid: string, convId: string) => {
     if (convId === chatStore.currentId || _sid === chatStore.currentId) {
       sandboxWorkspaceActive.value = true
+      updateConversationId(convId)
     }
+  },
+  (convId: string, title: string) => {
+    chatStore.updateTitleFromStream(convId, title)
   },
 )
 
@@ -150,11 +209,49 @@ const {
   chatScrollPinned,
   forceChatScroll,
   onChatScroll,
+  onChatWheelCapture,
   scrollToBottom,
+  settleScrollToBottom,
   pinScrollForSend,
   forwardWheelToChatScroll,
-  syncScrollPinned,
 } = useChatScroll(loading)
+
+const historyLoading = ref(false)
+
+/** 触顶加载更早消息（IM 游标分页）：保持滚动位置，完成后同步 session */
+async function maybeLoadHistory(): Promise<void> {
+  const cid = chatStore.currentId
+  if (!cid || loading.value || historyLoading.value) return
+  if (!chatStore.hasHistoryMore(cid)) return
+  const el = scrollRef.value
+  if (!el) return
+  // 距顶 < 可视高度约 40%（至少 240px）即提前拉取历史，避免滚到顶才加载的顿挫
+  const threshold = Math.max(240, el.clientHeight * 0.4)
+  if (el.scrollTop > threshold) return
+  const prevHeight = el.scrollHeight
+  historyLoading.value = true
+  try {
+    await chatStore.loadHistory(cid)
+    const updated = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
+    if (updated.length && cid === chatStore.currentId) {
+      setMessages(cid, [...updated])
+      await nextTick()
+      enhanceAllStaticMarkdown()
+      const el2 = scrollRef.value
+      if (el2) {
+        // 历史消息前插使内容变高：滚动偏移 = 高度差，用户视线不动
+        el2.scrollTop = Math.max(0, el2.scrollTop + (el2.scrollHeight - prevHeight))
+      }
+    }
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function handleChatScroll(): void {
+  onChatScroll()
+  void maybeLoadHistory()
+}
 
 watch(chatScrollPinned, pinned => {
   setScrollPinned(pinned)
@@ -162,24 +259,45 @@ watch(chatScrollPinned, pinned => {
   if (pinned && cid) clearAttention(cid)
 })
 
-const attentionBubble = computed(() => {
+/**
+ * 输入框上方右侧圆形快捷按钮：
+ * - 离开底部：回到底部气泡（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头），点击回到底部；
+ * - 最底部（回到底部图标消失）：运行中时间线展开 → 折叠气泡，点击收起运行过程。
+ */
+type ScrollFabKind = 'decision_pending' | 'hitl_pending' | 'collapse' | 'completed' | 'down'
+
+/** 折叠请求计数：点击底部折叠气泡时自增，经 collapseTick prop 触发运行中 OperationStack 折叠 */
+const collapseTick = ref(0)
+
+const scrollFab = computed<{ kind: ScrollFabKind } | null>(() => {
   const cid = chatStore.currentId
-  if (!cid || chatScrollPinned.value) return null
+  if (!cid) return null
+  // 空态（新对话/新任务尚无消息）：没有可滚动内容，不显示回到底部/折叠按钮，
+  // 避免从其它对话离开底部后遗留的贴底状态在新对话输入框上方残留该图标
+  if (messages.value.length === 0) return null
   void streamRevision.value
+  // 最底部：回到底部图标消失；运行中时间线展开 → 折叠气泡
+  if (chatScrollPinned.value) {
+    return liveTimelineExpanded.value ? { kind: 'collapse' } : null
+  }
+  // 离开底部：回到底部快捷按钮
   const ind = resolveIndicator(cid, chatStore.current?.messages)
-  if (ind !== 'hitl_pending' && ind !== 'completed') return null
-  return ind === 'hitl_pending'
-    ? { kind: ind, text: '待确认' }
-    : { kind: ind, text: '新回复' }
+  if (ind === 'decision_pending') return { kind: 'decision_pending' }
+  if (ind === 'hitl_pending') return { kind: 'hitl_pending' }
+  if (ind === 'completed') return { kind: 'completed' }
+  return { kind: 'down' }
 })
 
-function handleAttentionBubbleClick(): void {
+function handleScrollFabClick(): void {
+  if (scrollFab.value?.kind === 'collapse') {
+    collapseTick.value++
+    return
+  }
   const cid = chatStore.currentId
-  if (!cid) return
+  if (cid) clearAttention(cid)
   chatScrollPinned.value = true
   setScrollPinned(true)
   scrollToBottom(true)
-  clearAttention(cid)
 }
 
 function scrollToBottomIfRequested(convId: string): void {
@@ -197,6 +315,63 @@ const {
   isTimelineLive,
   showStreamWaiting,
 } = useChatTimelineView(messages, loading)
+
+/** 运行中消息的 taskboard 步（有真实任务项才参与悬浮） */
+const liveTaskboardStep = computed(() => {
+  if (!loading.value) return undefined
+  const last = messages.value[messages.value.length - 1]
+  if (last?.role !== 'assistant') return undefined
+  return resolveTimelineContext(last).steps.find(s => s.phase === 'tasks' && hasRealTaskBoardItems(s))
+})
+
+/**
+ * 运行期间 todolist 滚出视口时，在输入框上方悬浮一个可折叠的任务板。
+ * 用 IntersectionObserver（root = 滚动容器）跟踪 `[data-live-taskboard]` 元素：
+ * 完全不可见 → 悬浮显示；重新可见 → 隐藏。
+ */
+const floatingTaskboardVisible = ref(false)
+let taskboardObserver: IntersectionObserver | null = null
+
+function updateFloatingTaskboard(): void {
+  taskboardObserver?.disconnect()
+  taskboardObserver = null
+  if (!loading.value || !liveTaskboardStep.value) {
+    floatingTaskboardVisible.value = false
+    return
+  }
+  const el = document.querySelector<HTMLElement>('[data-live-taskboard="1"]')
+  const root = scrollRef.value
+  if (!el || !root) {
+    floatingTaskboardVisible.value = false
+    return
+  }
+  floatingTaskboardVisible.value = !isElVisibleInRoot(el, root)
+  if (typeof IntersectionObserver !== 'undefined') {
+    taskboardObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          floatingTaskboardVisible.value = !entry.isIntersecting
+        }
+      },
+      { root, threshold: 0 },
+    )
+    taskboardObserver.observe(el)
+  }
+}
+
+watch(
+  () => [loading.value, messages.value, liveTaskboardStep.value] as const,
+  async () => {
+    await nextTick()
+    updateFloatingTaskboard()
+  },
+  { flush: 'post' },
+)
+
+onUnmounted(() => {
+  taskboardObserver?.disconnect()
+  taskboardObserver = null
+})
 
 const markdown = useChatStreamMarkdown(
   md,
@@ -238,6 +413,7 @@ const {
   sessionSettledHtml,
   ensureStreamRenderer,
   scrollToBottom,
+  settleScrollToBottom,
   enhanceAllStaticMarkdown,
 })
 hydrationBridge.flushPersist = flushPersist
@@ -266,6 +442,17 @@ function isPendingAutoReconnect(msg: ChatMessage, idx: number): boolean {
   return true
 }
 
+/** 时间线状态映射：pending 续连（刷新后 active 锚点未落终态、SSE 尚未建立）期间，
+ * 保持「运行中」语义，避免 sanitize 归一化的 interrupted 在续连成功前闪出「已中断」。
+ * 仅当仍在 hydration 或续连流活跃（loading）时视为运行中；续连已结束且真实落 interrupted
+ * 时回退真实状态，让「继续生成」入口与「已中断」展示一致。 */
+function resolveTimelineMessageStatus(msg: ChatMessage, idx: number): TimelineMessageStatus {
+  if (isPendingAutoReconnect(msg, idx) && (sessionHydrating.value || loading.value)) {
+    return 'streaming'
+  }
+  return (msg.status as TimelineMessageStatus) ?? 'completed'
+}
+
 const latestAssistantMessage = computed(() => {
   const msgs = messages.value
   for (let i = msgs.length - 1; i >= 0; i--) {
@@ -278,6 +465,9 @@ function handleHitlDecision(token: string, approved: boolean) {
   applyHitlDecision(token, approved)
 }
 
+provide('stopGeneration', stop)
+provide('cancelSpawnSubagent', cancelSpawnSubagent)
+provide('cancelCancellableTool', cancelCancellableTool)
 provide('applyHitlDecision', handleHitlDecision)
 provide('applyRecoveryDecision', applyRecoveryDecision)
 provide('pendingHitlConfirmations', computed(() => getPendingHitlConfirmations(latestAssistantMessage.value)))
@@ -289,34 +479,65 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
     getPendingHitlConfirmations(latestAssistantMessage.value),
   ),
 )
-
 const inputText = ref('')
-const { preference, setPreference, applyConversationPreference } = useExecutionPreference()
-const { kbId, setKbId, applyConversationKb } = useKbPreference()
-const { tenantId } = useTenantPreference()
-const chatKbs = ref<KnowledgeBase[]>([])
-const loadingChatKbs = ref(false)
+const { preference, setPreference, applyConversationPreference } = useExecutionMode()
+const { kbId, applyConversationKb } = useKbPreference()
+const { modelName, setModelName, applyConversationModel } = useModelPreference()
+const chatModelDefs = ref<ModelCatalogDefinition[]>([])
 
-async function loadChatKbs() {
-  loadingChatKbs.value = true
+async function loadChatModels() {
   try {
-    chatKbs.value = await listKbs(tenantId.value)
-    if (!kbId.value) {
-      const def = chatKbs.value.find((k) => k.isDefault) ?? chatKbs.value[0]
-      if (def) setKbId(def.kbId)
-    }
+    const catalog = await fetchModelCatalog()
+    chatModelDefs.value = catalog.definitions
   } catch (e) {
-    console.warn('[ChatView] 加载知识库列表失败', e)
-  } finally {
-    loadingChatKbs.value = false
+    console.warn('[ChatView] 加载模型目录失败', e)
   }
 }
 
-function onKbChange(next: string) {
-  setKbId(next)
-  const convId = chatStore.currentId
-  if (convId) chatStore.updateKbIdLocal(convId, next)
+/** 输入或历史中含 markdown/data URL 图片时，非多模态模型不可选 */
+function textHasImages(text: string): boolean {
+  return /!\[[^\]]*]\([^)]+\)/.test(text) || /data:image\//i.test(text)
 }
+
+const composerRequiresMultimodal = computed(() => {
+  if (textHasImages(inputText.value)) return true
+  return messages.value.some((m) => m.role === 'user' && textHasImages(m.content || ''))
+})
+
+const chatModelOptions = computed(() =>
+  catalogUserSelectableOptions({
+    providers: [],
+    definitions: chatModelDefs.value,
+    scenes: [],
+  }).map((opt) => {
+    const blocked = composerRequiresMultimodal.value && !opt.capabilities.multimodal
+    return {
+      ...opt,
+      disabled: blocked,
+      disabledReason: blocked ? '当前消息含图片，该模型不支持多模态' : undefined,
+    }
+  }),
+)
+
+function onModelChange(next: string | null) {
+  setModelName(next)
+  const convId = chatStore.currentId
+  if (convId) chatStore.updateModelNameLocal(convId, next)
+}
+
+/** 新对话/新任务（尚无消息）：输入框垂直居中；发出第一条消息后自动贴地。
+ * 输入文字不打断居中，仅首个会话发送后进入贴地态 */
+const composerCentered = computed(
+  () =>
+    messages.value.length === 0 &&
+    !chatStore.initializing &&
+    !sessionHydrating.value,
+)
+
+/** 会话头右上角当前执行模式徽标（替换原「正在回复」状态文案） */
+const headerModeLabel = computed(() => findExecutionModeOption(preference.value).label)
+const headerModeIcon = computed(() => executionModeIcon(preference.value))
+
 const {
   inputRef,
   skillCatalog,
@@ -327,18 +548,18 @@ const {
   applySkillSuggest,
   loadSkillCatalog,
   handleSkillKeydown,
-} = useChatSkillMention(inputText, preference, loading)
+} = useChatSkillMention(inputText, preference, loading, sessionKind)
 
 const {
-  showExpertSuggest,
-  expertSuggestIndex,
-  filteredExperts,
-  expertCatalog,
-  expertMentionAllowed,
-  applyExpertSuggest,
-  loadExpertCatalog,
-  handleExpertKeydown,
-} = useChatExpertMention(inputText, preference, loading)
+  showAgentSuggest,
+  agentSuggestIndex,
+  filteredAgents,
+  agentCatalog,
+  agentMentionAllowed,
+  applyAgentSuggest,
+  loadAgentCatalog,
+  handleAgentKeydown,
+} = useChatAgentMention(inputText, preference, loading, sessionKind)
 
 const {
   showWorkflowSuggest,
@@ -349,7 +570,7 @@ const {
   applyWorkflowSuggest,
   loadWorkflowCatalog,
   handleWorkflowKeydown,
-} = useChatWorkflowMention(inputText, preference, loading)
+} = useChatWorkflowMention(inputText, preference, loading, sessionKind)
 
 const {
   showPathSuggest,
@@ -358,39 +579,499 @@ const {
   filteredPaths,
   applyPathSuggest,
   handlePathKeydown,
-} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef)
+} = useChatWorkspacePathMention(inputText, currentConversationId, loading, inputRef, mentionWorkspaceId, sessionKind)
+
+/** 下拉面板列表（四个互斥 ul 共用 ref）：键盘移动高亮时保持选中项在可视区 */
+const composerSuggestList = ref<HTMLUListElement | null>(null)
+function scrollHighlightedSuggestIntoView() {
+  const list = composerSuggestList.value
+  if (!list) return
+  const item = list.querySelector<HTMLElement>('.is-highlighted')
+  if (!item) return
+  const listRect = list.getBoundingClientRect()
+  const itemRect = item.getBoundingClientRect()
+  if (itemRect.top < listRect.top) {
+    list.scrollTop -= listRect.top - itemRect.top
+  } else if (itemRect.bottom > listRect.bottom) {
+    list.scrollTop += itemRect.bottom - listRect.bottom
+  }
+}
+watch(
+  [skillSuggestIndex, agentSuggestIndex, workflowSuggestIndex, pathSuggestIndex],
+  () => nextTick(scrollHighlightedSuggestIntoView),
+)
 
 const composerPlaceholder = computed(() => {
-  const hints = ['/ 工作区']
-  if (allowsSkillMention(preference.value)) hints.push('@ Skill')
+  const hints: string[] = []
+  if (mentionWorkspaceId.value) hints.push('@ 工作区')
+  if (allowsSkillMention(preference.value)) hints.push('/ Skill')
   if (allowsWorkflowMention(preference.value)) hints.push('# 工作流')
-  if (allowsExpertMention(preference.value)) hints.push('$ 专家')
+  if (allowsAgentMention(preference.value)) hints.push('$ 智能体')
   return `发消息，Enter 发送 · ${hints.join(' · ')}`
 })
 
-const EMPTY_HINTS = [
-  { label: '制度检索', prompt: '检索知识库：公司的差旅报销制度有哪些要点？' },
-  { label: '知识库问答', prompt: '#knowledge-qa 年假可以请几天' },
-  { label: '报销分析', prompt: '#finance-smart 待审批报销是否合规' },
-  { label: 'Skill 合规', prompt: '@compliance-check 对照制度审查一笔差旅报销是否合规' },
+/** 新对话空态快捷提示：业务场景自然语言，点击即发送（意图路由自动匹配知识库 / Skill） */
+const CHAT_EMPTY_HINTS = [
+  { label: '青松假政策', prompt: '青松假有多少天、怎么申请？' },
+  { label: '网约车上限', prompt: '市内网约车报销上限是多少？' },
+  { label: '假期助手', prompt: '我今年还有几天假期？帮我列出请假单' },
+  { label: 'OA 待办', prompt: '我的 OA 待办有哪些？' },
 ] as const
+
+/** 新任务空态快捷提示：工作区代码任务场景，点击填入输入框（需先选项目与分支再发送） */
+const TASK_EMPTY_HINTS = [
+  { label: '分析代码', prompt: '分析当前工作区的代码结构，梳理核心模块与调用链路' },
+  { label: '审查改动', prompt: '审查工作区中的代码改动，指出潜在问题并给出修改建议' },
+  { label: '实现功能', prompt: '实现一个新功能，具体需求是：' },
+  { label: '修复问题', prompt: '修复一个 Bug，具体现象是：' },
+] as const
+
+/** 空态场景：新任务（工作区代码任务）还是新对话（知识库/Skill）；新对话选工作区仍属对话空态 */
+const emptyTaskState = computed(() => chatStore.newTaskMode)
+const emptyHints = computed(() => (emptyTaskState.value ? TASK_EMPTY_HINTS : CHAT_EMPTY_HINTS))
+const emptyTitle = computed(() => (emptyTaskState.value ? '有什么代码任务可以帮你？' : '有什么可以帮你的？'))
+const emptyDesc = computed(() =>
+  emptyTaskState.value
+    ? '选择项目与分支 · 描述需求 · 自动拉取代码到工作区'
+    : '政策、假期、报销、待办，随时问我',
+)
 
 function applyEmptyHint(prompt: string) {
   inputText.value = prompt
-  void handleSend()
+  void nextTick(() => inputRef.value?.focus())
 }
 
 const copiedIndex = ref<number | null>(null)
 let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 
-function canCopyAssistant(msg: { role: string; content: string }, idx: number): boolean {
+/** workspace task：分支选择（分支名，与 checkout 目录解耦） */
+const taskBranch = ref('')
+
+/** 当前会话实际绑定的 checkoutId（由分支 ensure 得到，用于 checkoutPath / 文件树）；无绑定为空串 */
+const taskCheckoutId = ref('')
+/** 右侧工作区真实代码分支：新任务未发送时为缺省 checkout 分支，发送/会话恢复后为实际绑定分支 */
+const taskActiveBranch = ref('')
+/** 发送新任务时正在拉取分支代码到工作区（同步等待，成功后自动发消息） */
+const wsPreparing = ref(false)
+/** 拉取失败提示（不发消息，可重试） */
+const wsPrepareError = ref('')
+/** 发送失败提示（如「请求参数有误」4xx）：与对话前动作错误统一提升到输入框上方气泡展示 */
+const sendFailedError = ref('')
+
+/** 发送前分支切换：当前 checkout 有未提交改动时，输入框上方弹出提交确认框（样式对齐 todolist 卡片） */
+const branchSwitchOpen = ref(false)
+/** 提交框内的 commit 信息 */
+const branchSwitchMsg = ref('')
+/** 提交框输入框 ref（打开后聚焦便于输入 commit 信息） */
+const branchSwitchInputRef = ref<HTMLTextAreaElement | null>(null)
+/** 分支切换执行中（暂存/提交/切换）；期间禁止再次发送 */
+const branchSwitchBusy = ref(false)
+/** 切换步骤气泡：staging / committing / switching */
+const branchSwitchStatus = ref<'staging' | 'committing' | 'switching' | ''>('')
+/** 切换失败提示（气泡红色显示；输入框恢复原文，可重新发送重试） */
+const branchSwitchError = ref('')
+/** 挂起的发送上下文：弹框期间暂存，提交后恢复发送 */
+const pendingSendText = ref('')
+const pendingSendConvId = ref('')
+const pendingTargetBranch = ref('')
+/** 切换步骤气泡文案（模型/契约不涉及，纯前端提示；无省略号） */
+const branchSwitchStatusText = computed(() => {
+  switch (branchSwitchStatus.value) {
+    case 'staging': return '正在暂存改动'
+    case 'committing': return '正在提交改动'
+    case 'switching': return '正在切换分支'
+    default: return ''
+  }
+})
+
+/**
+ * 分支气泡：抽屉头部空间不足（气泡边框将碰到相邻元素/抽屉边缘）时收缩为「分支」两字。
+ * 遍历 .drawer-head-top 全部子元素，分支气泡以完整分支名计自然宽，其余按 scrollWidth 计，
+ * 与实际可用宽度比较；不依赖固定宽度阈值，也不受 flex 压缩吸收影响。
+ * slot 渲染时机不可靠，故用 watch 在 label 挂载后建立 observer。
+ */
+const branchLabelRef = ref<HTMLElement | null>(null)
+const branchFullNameRef = ref<HTMLElement | null>(null)
+const branchCollapsed = ref(false)
+
+let branchResizeObserver: ResizeObserver | null = null
+
+/** label 挂载后建立 ResizeObserver 观察抽屉头部，并初始化收缩状态 */
+function setupBranchObserver() {
+  const el = branchLabelRef.value
+  if (!el || branchResizeObserver) return
+  const headTop = el.closest('.drawer-head-top') as HTMLElement | null
+  if (!headTop || typeof ResizeObserver === 'undefined') return
+  branchResizeObserver = new ResizeObserver(updateBranchCollapse)
+  branchResizeObserver.observe(headTop)
+  updateBranchCollapse()
+}
+
+watch(branchLabelRef, (el) => {
+  if (el) setupBranchObserver()
+})
+
+function updateBranchCollapse() {
+  const headTop = branchLabelRef.value?.closest('.drawer-head-top') as HTMLElement | null
+  const full = branchFullNameRef.value
+  if (!headTop || !full) return
+  let natural = 0
+  for (const child of Array.from(headTop.children)) {
+    const el = child as HTMLElement
+    if (el.classList.contains('drawer-head-actions')) {
+      // head-actions 内各子元素逐项计宽；分支气泡恒按完整分支名克隆测量（与当前折叠状态无关，避免还原抖动）
+      for (const sub of Array.from(el.children)) {
+        const subEl = sub as HTMLElement
+        if (subEl.classList.contains('git-dropdown-wrap')) {
+          natural += full.getBoundingClientRect().width
+        } else {
+          natural += subEl.scrollWidth
+        }
+      }
+    } else {
+      natural += el.scrollWidth
+    }
+  }
+  const available = headTop.clientWidth
+  if (natural > available) {
+    branchCollapsed.value = true
+  } else if (branchCollapsed.value && natural < available - 16) {
+    // 滞回：留 16px 余量才还原，避免临界宽度反复切换
+    branchCollapsed.value = false
+  }
+}
+
+onUnmounted(() => {
+  branchResizeObserver?.disconnect()
+  branchResizeObserver = null
+})
+
+/** 从 checkoutPath（/workspace/{checkoutId}）解析 checkoutId；空/无则返回空串 */
+function checkoutIdFromPath(path?: string | null): string {
+  if (!path) return ''
+  const segs = path.split('/').filter(Boolean)
+  return segs.length > 0 ? segs[segs.length - 1] : ''
+}
+
+/** 反查 checkoutId 对应的实际分支名；未就绪返回空串 */
+async function branchNameOf(workspaceId: string, checkoutId: string): Promise<string> {
+  try {
+    const cs = await listCheckouts(workspaceId)
+    return cs.find(c => c.checkoutId === checkoutId)?.branch ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** 该工作区最后一个 task 会话的分支名；无历史会话则返回空串（新任务不预选） */
+async function lastTaskBranch(workspaceId: string): Promise<string> {
+  const tasks = [...chatStore.conversations]
+    .filter(c => c.kind === 'task' && c.workspaceId === workspaceId)
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+  if (tasks[0]?.checkoutPath) {
+    const cid = checkoutIdFromPath(tasks[0].checkoutPath)
+    const branch = await branchNameOf(workspaceId, cid)
+    if (branch) return branch
+  }
+  return ''
+}
+
+/** 会话切换时从 checkoutPath 恢复：解析 checkoutId + 反查分支名（仅 task 会话绑定 checkout） */
+async function applyConversationCheckout() {
+  // 切换会话：丢弃发送前分支切换的挂起状态（避免残留到新会话）
+  resetBranchSwitchState()
+  const cp = chatStore.current?.checkoutPath
+  const wsId = chatStore.current?.workspaceId
+  if (chatStore.current?.kind === 'task' && cp && wsId) {
+    const cid = checkoutIdFromPath(cp)
+    taskCheckoutId.value = cid
+    const branch = (await branchNameOf(wsId, cid)) || cid
+    taskBranch.value = branch
+    taskActiveBranch.value = branch
+  } else {
+    taskCheckoutId.value = ''
+    taskBranch.value = ''
+    taskActiveBranch.value = ''
+  }
+}
+
+watch(() => chatStore.pendingWorkspace, async (pw) => {
+  if (pw?.wsId) {
+    // 新任务默认继承该工作区最后一个已有会话的分支（无历史会话则留空，不预选）
+    taskBranch.value = await lastTaskBranch(pw.wsId)
+    await refreshCheckoutForBranch(pw.wsId, taskBranch.value)
+  }
+})
+
+/** 分支变化时同步对应 checkout：已有该分支 worktree 则复用（右侧直接显示代码），否则清空等发送时懒创建 */
+async function refreshCheckoutForBranch(wsId: string, branch: string) {
+  if (!wsId || !branch) {
+    taskCheckoutId.value = ''
+    taskActiveBranch.value = ''
+    return
+  }
+  try {
+    const cs = await listCheckouts(wsId)
+    const hit = cs.find(c => c.branch === branch)
+    taskCheckoutId.value = hit?.checkoutId ?? ''
+    taskActiveBranch.value = hit?.branch ?? ''
+  } catch {
+    taskCheckoutId.value = ''
+    taskActiveBranch.value = ''
+  }
+}
+
+watch(taskBranch, (branch) => {
+  const inNewTask = chatStore.newTaskMode || chatStore.pendingWorkspace
+  if (isCurrentTask.value && currentWorkspaceId.value && !inNewTask) {
+    // 已有任务会话：选择分支仅更新发送意图（taskBranch），会话绑定 checkout 保持不变，
+    // 发送时才统一「提交改动 → 切换 checkout」；避免提前改绑导致未提交改动检测丢失
+    return
+  }
+  const wsId = currentWorkspaceId.value ?? chatStore.pendingWorkspace?.wsId
+  if (wsId) void refreshCheckoutForBranch(wsId, branch)
+})
+
+/** is the current conversation a workspace task? */
+const isCurrentTask = computed(() =>
+  !!(chatStore.current?.kind === 'task' && chatStore.current?.workspaceId)
+)
+const currentWorkspaceId = computed(() =>
+  chatStore.current?.workspaceId ?? null
+)
+const currentWorkspaceName = computed(() => {
+  if (chatStore.pendingWorkspace) return chatStore.pendingWorkspace.wsName
+  const ws = wsProjectList.value.find(w => w.id === chatStore.current?.workspaceId)
+  return ws?.name ?? ''
+})
+/** 当前会话变化时确保工作区列表已加载：task 取项目名，chat 判断 @ 工作区可用性（首个 active 工作区）；
+ * 覆盖首次进入时 onMounted 请求未返回/失败的情况 */
+watch(
+  () => chatStore.current?.id,
+  () => {
+    if (wsProjectList.value.length === 0 && !wsProjectLoading.value) {
+      void loadWsProjects()
+    }
+  },
+)
+const currentWorkspaceRepo = computed(() => '')
+
+// 会话级文件路径索引：进入会话即加载（不依赖工作区抽屉打开），
+// 注入 window.__smd_sandboxIndex 供 markdown 路径精确匹配。
+// - 会话有效（有 conversationId 或 workspaceId，含新任务待选工作区）即加载；抽屉打开/关闭不影响
+// - 文件树刷新 / checkout 切换 / sync 完成 / SSE 工具写文件后自动重载
+useSandboxPathIndex({
+  getOpen: () => !!currentConversationId.value || !!currentWorkspaceId.value || !!chatStore.pendingWorkspace?.wsId,
+  getConversationId: () => currentConversationId.value ?? '',
+  getWorkspaceId: () => currentWorkspaceId.value ?? chatStore.pendingWorkspace?.wsId ?? null,
+  getCheckoutId: () => taskCheckoutId.value || null,
+  treeVersion: sandboxPathIndexRefresh,
+})
+
+/** 分支下拉 git 操作按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle） */
+type GitOpKind = 'stage' | 'push' | 'pull'
+const gitOpKind = ref<GitOpKind | ''>('')
+const gitOpState = ref<'idle' | 'loading' | 'done'>('idle')
+const commitMsg = ref('')
+/** 提交信息输入用侧边二级 Popover（替代原 NModal 弹窗） */
+const showCommitPopover = ref(false)
+/** 提交按钮状态机：idle -> loading（转圈）-> done（√，稍后回 idle 并关闭弹窗） */
+const commitState = ref<'idle' | 'loading' | 'done'>('idle')
+/** git 操作提示：写入工作区标题栏下方统一横幅（成功不再提示） */
+function flashGitToast(kind: 'info' | 'error', text: string) {
+  flashWorkspaceBanner('git', { kind, text })
+}
+/** git 操作前置：无 checkoutId（新任务未发送，懒创建尚未发生）时提示并中止 */
+function requireCheckout(): string | null {
+  const cid = taskCheckoutId.value
+  if (!cid) {
+    flashGitToast('info', '请先发送消息以拉取代码到工作区')
+    return null
+  }
+  return cid
+}
+
+/** 操作完成：按钮转 √，900ms 后恢复文本 */
+function finishGitOp(kind: GitOpKind) {
+  gitOpKind.value = kind
+  gitOpState.value = 'done'
+  window.setTimeout(() => {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+  }, 900)
+}
+
+async function handleGitStage() {
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid || gitOpState.value !== 'idle') return
+  gitOpKind.value = 'stage'
+  gitOpState.value = 'loading'
+  try {
+    await gitStage(wsId, cid, undefined, true)
+    finishGitOp('stage')
+    bumpDiffCardRefresh()
+  } catch (e) {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+    flashGitToast('error', (e as Error)?.message || '暂存失败')
+  }
+}
+
+function openCommitPopover() {
+  commitMsg.value = ''
+  commitState.value = 'idle'
+  showCommitPopover.value = true
+}
+
+async function handleGitCommit() {
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid) return
+  const msg = commitMsg.value.trim()
+  if (!msg || commitState.value !== 'idle') return
+  commitState.value = 'loading'
+  try {
+    await gitCommit(wsId, cid, msg)
+    commitMsg.value = ''
+    commitState.value = 'done'
+    bumpDiffCardRefresh()
+    window.setTimeout(() => {
+      commitState.value = 'idle'
+      showCommitPopover.value = false
+    }, 900)
+  } catch (e) {
+    commitState.value = 'idle'
+    flashGitToast('error', (e as Error)?.message || '提交失败')
+  }
+}
+
+async function handleGitPush() {
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid || gitOpState.value !== 'idle') return
+  gitOpKind.value = 'push'
+  gitOpState.value = 'loading'
+  try {
+    await gitPush(wsId, cid)
+    finishGitOp('push')
+    bumpDiffCardRefresh()
+  } catch (e) {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+    flashGitToast('error', (e as Error)?.message || '推送失败')
+  }
+}
+
+async function handleGitPull() {
+  const wsId = currentWorkspaceId.value
+  const cid = requireCheckout()
+  if (!wsId || !cid || gitOpState.value !== 'idle') return
+  gitOpKind.value = 'pull'
+  gitOpState.value = 'loading'
+  try {
+    await gitPull(wsId, cid)
+    finishGitOp('pull')
+    bumpDiffCardRefresh()
+  } catch (e) {
+    gitOpState.value = 'idle'
+    gitOpKind.value = ''
+    flashGitToast('error', (e as Error)?.message || '拉取失败')
+  }
+}
+
+/** 消息改动卡片刷新版本号：会话完成 / git 操作后 +1，触发卡片重新拉取 */
+const diffCardRefreshTick = ref(0)
+
+watch(loading, (now, prev) => {
+  if (prev === true && now === false) diffCardRefreshTick.value++
+})
+
+function bumpDiffCardRefresh() {
+  diffCardRefreshTick.value++
+}
+
+/** 复制按钮下方是否展示改动卡片：仅任务工作区、已完成的最后一条 assistant 消息 */
+function canShowDiffCard(msg: ChatMessage, idx: number): boolean {
   return msg.role === 'assistant'
-    && !!msg.content.trim()
+    && idx === messages.value.length - 1
+    && isCurrentTask.value
+    && !!currentWorkspaceId.value
+    && !!taskCheckoutId.value
     && !(loading.value && idx === messages.value.length - 1)
 }
 
-async function copyAssistantMessage(text: string, idx: number) {
-  if (!text.trim()) return
+/** 点击改动卡片行 -> 右侧工作区进入「改动」视图并展开该文件的 diff 详情 */
+function openDiffInDrawer(path: string) {
+  const cid = chatStore.currentId
+  if (!cid || !path) return
+  openSandboxDrawer({ conversationId: cid, diffPath: path })
+}
+
+function canCopyAssistant(msg: { role: string; content: string; status?: string }, idx: number): boolean {
+  if (msg.role !== 'assistant' || !msg.content.trim()) return false
+  const isLast = idx === messages.value.length - 1
+  if (isLast && loading.value) return false
+  if (msg.status === 'streaming') return false
+  // hydration 期间末条 assistant 还未确定终态（可能在重连），避免复制图标闪烁
+  if (isLast && sessionHydrating.value && msg.status !== 'completed') return false
+  return true
+}
+
+/** 消息结束时间（epoch ms）：timelineEndedAt 优先，updatedAt 兜底 */
+function resolveMessageEndedAt(msg: ChatMessage): number | null {
+  if (typeof msg.timelineEndedAt === 'number' && msg.timelineEndedAt > 0) {
+    return msg.timelineEndedAt
+  }
+  const u = msg.updatedAt
+  if (typeof u === 'number' && u > 0) return u
+  if (typeof u === 'string' && u) {
+    const t = Date.parse(u)
+    return Number.isNaN(t) ? null : t
+  }
+  return null
+}
+
+/** hover 复制栏时右侧显示的结束时间文案（复用侧栏相对时间格式） */
+function messageEndTimeLabel(msg: ChatMessage): string {
+  const ts = resolveMessageEndedAt(msg)
+  return ts ? formatConversationTime(ts) : ''
+}
+
+/** 消息尾 usage meta 的 token 缩写（与 UsageStatusBar fmtK 同逻辑） */
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+const currentTurn = computed(() => messages.value.filter(m => m.role === 'user').length)
+const lastUsage = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m.role === 'assistant' && m.usage) return m.usage
+  }
+  return null
+})
+// 会话级汇总：usage 为每条 assistant 消息内累计，跨消息求和即会话总量；步数取各消息 steps 数之和
+const sessionUsage = computed(() => {
+  let calls = 0
+  let inputTokens = 0
+  let outputTokens = 0
+  let steps = 0
+  for (const m of messages.value) {
+    if (m.role === 'assistant' && m.usage) {
+      calls += m.usage.llmCalls
+      inputTokens += m.usage.inputTokens
+      outputTokens += m.usage.outputTokens
+      steps += (m.steps ?? []).length
+    }
+  }
+  return { calls, inputTokens, outputTokens, steps }
+})
+
+/** 复制正文：仅最终回答，不含穿插在步骤之间的阶段正文（与折叠态正文展示同一取数口径） */
+async function copyAssistantMessage(msg: ChatMessage, idx: number) {
+  const text = resolveCollapsedAnswerText(msg)
+  if (!text) return
   try {
     await navigator.clipboard.writeText(text)
   } catch {
@@ -418,51 +1099,260 @@ function canResume(msg: { role: string; status?: string; intent?: string; id?: s
     && msg.intent !== 'knowledge'
 }
 
+/** 给 Promise 加超时；超时抛异常 */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e) },
+    )
+  })
+}
+
 async function handleSend() {
   const text = inputText.value.trim()
-  if (!text || loading.value) return
+  if (!text || wsPreparing.value || branchSwitchBusy.value || branchSwitchOpen.value) return
   try {
-    const convId = await chatStore.ensureCurrent()
-    ensureActive(convId)
-    if (messages.value.length === 0) chatStore.updateTitle(convId, text)
-    pinScrollForSend()
-    setScrollPinned(true)
-    clearAttention(convId)
-    inputText.value = ''
-    settledHtml.value = ''
-    sessionSettledHtml.delete(convId)
-    clearStreamRenderer()
-    await nextTick()
-    const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
-    const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
-    if (skillBinding.skillId) {
-      requestSandboxWorkspaceRefresh(convId, 'skills')
+    const creatingTask = chatStore.newTaskMode
+    let convId: string
+    if (creatingTask) {
+      // 新任务：选分支 → 拉 checkout → 创建 task 会话（工作区/分支由前端显式绑定）
+      const wsId = chatStore.pendingWorkspace?.wsId
+      if (!wsId) {
+        wsPrepareError.value = '请先选择工作区'
+        return
+      }
+      // 所选分支尚无 checkout → 显示「正在拉取分支代码到工作区...」同步等待，成功才发消息
+      if (!taskBranch.value) {
+        wsPrepareError.value = '请先选择分支'
+        return
+      }
+      let checkoutId = taskCheckoutId.value
+      if (!checkoutId) {
+        wsPreparing.value = true
+        wsPrepareError.value = ''
+        try {
+          checkoutId = await withTimeout(ensureCheckout(wsId, taskBranch.value), 60000, '拉取分支代码超时')
+        } catch (e) {
+          wsPreparing.value = false
+          wsPrepareError.value = (e instanceof Error ? e.message : String(e)) || '拉取分支代码失败'
+          return
+        } finally {
+          wsPreparing.value = false
+        }
+        taskCheckoutId.value = checkoutId
+      }
+      taskActiveBranch.value = taskBranch.value
+      convId = await chatStore.create({
+        kind: 'task',
+        workspaceId: wsId,
+        checkoutPath: '/workspace/' + checkoutId,
+        executionPreference: preference.value,
+      })
+      chatStore.pendingWorkspace = null
+      chatStore.newTaskMode = false
+    } else {
+      // 新对话/已有对话：chat 会话创建时不绑定工作区，由后端在首次调用沙箱工具（执行脚本）时懒绑定，前端不传 workspaceId
+      convId = await chatStore.ensureCurrent({ executionPreference: preference.value })
+      // 已有任务会话：发送前若切换了分支，先统一走「改动检测 → 提交 → 切换 checkout」流程；
+      // 当前 checkout 有未提交改动时挂起发送，等待用户在提交框内决定（取消则放弃本次发送）
+      if (isCurrentTask.value && currentWorkspaceId.value && taskBranch.value && taskBranch.value !== taskActiveBranch.value) {
+        const canSend = await maybeSwitchBranchBeforeSend(text, convId)
+        if (!canSend) return
+      }
     }
-    const sendPromise = send(text, convId, {
-      executionPreference: preference.value,
-      skillId: skillBinding.skillId,
-      workflowId: workflowBinding.workflowId,
-      kbId: kbId.value,
-      writeHitlMode: getWriteHitlMode(convId),
-    })
-    chatStore.updateExecutionPreferenceLocal(convId, preference.value)
-    if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
-    await nextTick()
-    scrollToBottom(true)
-    await ensureStreamRenderer()
-    await sendPromise
-    await nextTick()
-    scrollToBottom(true)
+    await performSend(text, convId)
   } catch (e) {
     console.error('[ChatView] 发送失败', e)
     inputText.value = text
   }
 }
 
+/** 发送主流程：清空输入、落基线、发起 SSE 并等待完成（新任务创建 / 分支切换成功后统一调用） */
+async function performSend(text: string, convId: string) {
+  ensureActive(convId)
+  // 发送即视为会话最新活动：本地同步 updatedAt（后端落库已更新），让侧栏时间/排序即时生效
+  chatStore.touchConversation(convId)
+  // 新一轮发送即「继续执行」：清空上一次发送失败的提示（气泡），避免残留
+  sendFailedError.value = ''
+  if (messages.value.length === 0) chatStore.updateTitle(convId, text)
+  // 本轮改动基线：记录发送瞬间工作区已有改动，供完成后 diff 卡片做差集（只显示本轮新增）
+  if (currentWorkspaceId.value && taskCheckoutId.value) {
+    const wsId = currentWorkspaceId.value
+    const cid = taskCheckoutId.value
+    void gitDiffSummary(wsId, cid)
+      .then(items => saveDiffBaseSnapshot(convId, items.map(i => i.path)))
+      .catch(() => { /* 基线快照失败不阻塞发送 */ })
+  }
+  pinScrollForSend()
+  setScrollPinned(true)
+  clearAttention(convId)
+  inputText.value = ''
+  settledHtml.value = ''
+  sessionSettledHtml.delete(convId)
+  clearStreamRenderer()
+  await nextTick()
+  const skillBinding = resolveSkillBindingForSend(text, skillCatalog.value, preference.value)
+  const workflowBinding = resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value)
+  if (skillBinding.skillId) {
+    requestSandboxWorkspaceRefresh(convId, 'skills', true)
+  }
+  // 发送时若上一轮仍在运行：先暂停（停止）上一轮，再开始新一轮
+  if (loading.value) await stop()
+  const sendPromise = send(text, convId, {
+    executionPreference: preference.value,
+    skillId: skillBinding.skillId,
+    workflowId: workflowBinding.workflowId,
+    kbId: kbId.value,
+    modelName: modelName.value ?? '',
+    writeHitlMode: getWriteHitlMode(convId),
+  })
+  chatStore.updateExecutionPreferenceLocal(convId, preference.value)
+  if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
+  chatStore.updateModelNameLocal(convId, modelName.value)
+  await nextTick()
+  scrollToBottom(true)
+  await ensureStreamRenderer()
+  await sendPromise
+  await nextTick()
+  scrollToBottom(true)
+  // 发送失败（如后端校验 4xx「请求参数有误」）：统一在输入框上方气泡展示（消息卡不再显示错误）
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg?.role === 'assistant') {
+    const errText = resolveStreamErrorText(lastMsg)
+    if (errText && lastMsg.status !== 'completed') {
+      sendFailedError.value = errText
+    }
+  }
+}
+
+/**
+ * 发送前分支切换检测：目标分支与当前 checkout 分支不一致时，
+ * 当前 checkout 有未提交改动 → 弹出提交框挂起发送；无改动 → 直接切换后继续发送。
+ * 返回 false 表示发送已挂起，由提交框交互接管。
+ */
+async function maybeSwitchBranchBeforeSend(text: string, convId: string): Promise<boolean> {
+  const wsId = currentWorkspaceId.value
+  const targetBranch = taskBranch.value
+  if (!wsId || !targetBranch) return true
+  const currentCheckoutId = taskCheckoutId.value
+  if (!currentCheckoutId) {
+    // 异常态（会话绑定丢失）：直接切换到目标分支即可发送
+    await switchBranch(wsId, targetBranch, convId)
+    return true
+  }
+  let hasChanges = false
+  try {
+    const items = await gitDiffSummary(wsId, currentCheckoutId)
+    hasChanges = items.length > 0
+  } catch {
+    // 改动检测失败不阻塞发送：按无改动处理，直接切换
+  }
+  if (!hasChanges) {
+    await switchBranch(wsId, targetBranch, convId)
+    return true
+  }
+  // 有未提交改动：挂起发送，弹出提交框等待用户提交或取消
+  pendingSendText.value = text
+  pendingSendConvId.value = convId
+  pendingTargetBranch.value = targetBranch
+  branchSwitchMsg.value = ''
+  branchSwitchError.value = ''
+  branchSwitchOpen.value = true
+  void nextTick(() => branchSwitchInputRef.value?.focus())
+  return false
+}
+
+/** 暂存全部 → 提交 → 切换目标分支 checkout，并重绑定会话 checkoutPath；commitMsg 为空时跳过提交 */
+async function switchBranch(wsId: string, targetBranch: string, convId: string, commitMsg?: string) {
+  branchSwitchBusy.value = true
+  branchSwitchError.value = ''
+  try {
+    if (commitMsg) {
+      branchSwitchStatus.value = 'staging'
+      await gitStage(wsId, taskCheckoutId.value, undefined, true)
+      branchSwitchStatus.value = 'committing'
+      await gitCommit(wsId, taskCheckoutId.value, commitMsg)
+    }
+    branchSwitchStatus.value = 'switching'
+    const newCheckoutId = await withTimeout(ensureCheckout(wsId, targetBranch), 60000, '切换分支超时')
+    if (chatStore.currentId !== convId) {
+      // 切换期间用户已离开该会话：git 提交已完成，但不把 checkout 绑定套用到当前会话
+      return
+    }
+    // 先持久化会话 checkoutPath（失败则中止，本地状态保持原分支，可重试），成功后才更新本地绑定
+    await chatStore.updateCheckout(convId, '/workspace/' + newCheckoutId)
+    taskCheckoutId.value = newCheckoutId
+    taskActiveBranch.value = targetBranch
+    taskBranch.value = targetBranch
+    bumpDiffCardRefresh()
+  } catch (e) {
+    branchSwitchError.value = (e instanceof Error ? e.message : String(e)) || '切换分支失败'
+    throw e
+  } finally {
+    branchSwitchStatus.value = ''
+    branchSwitchBusy.value = false
+  }
+}
+
+/** 提交框「提交改动」：提交当前改动并切换到目标分支，随后恢复发送挂起的消息 */
+async function handleBranchSwitchCommit() {
+  const msg = branchSwitchMsg.value.trim()
+  const convId = pendingSendConvId.value
+  const targetBranch = pendingTargetBranch.value
+  const wsId = currentWorkspaceId.value
+  if (!msg || !convId || !targetBranch || !wsId || branchSwitchBusy.value) return
+  if (chatStore.currentId !== convId) {
+    // 挂起期间用户已切换会话：丢弃本次发送
+    resetBranchSwitchState()
+    return
+  }
+  // 挂起期间用户可能编辑过输入框：以最新输入为准，空则用挂起时的文本
+  const text = inputText.value.trim() || pendingSendText.value
+  resetBranchSwitchState()
+  try {
+    await switchBranch(wsId, targetBranch, convId, msg)
+    await performSend(text, convId)
+  } catch (e) {
+    console.error('[ChatView] 提交改动并发送失败', e)
+    inputText.value = text
+  }
+}
+
+/** 清理发送前分支切换的挂起状态（提交 / 取消 / 会话切换时调用） */
+function resetBranchSwitchState() {
+  branchSwitchOpen.value = false
+  branchSwitchMsg.value = ''
+  branchSwitchStatus.value = ''
+  branchSwitchError.value = ''
+  branchSwitchBusy.value = false
+  pendingSendText.value = ''
+  pendingSendConvId.value = ''
+  pendingTargetBranch.value = ''
+}
+
+/** 对话前动作（拉取分支 / 切换分支 / 发送失败）出错详情：统一展示于输入框上方的详情卡片（非红色，可关闭） */
+const preActionError = computed(() => wsPrepareError.value || branchSwitchError.value || sendFailedError.value)
+
+function dismissPreActionError() {
+  wsPrepareError.value = ''
+  branchSwitchError.value = ''
+  sendFailedError.value = ''
+}
+
+/** 提交框「取消」：放弃本次发送，输入框保留原文（改动留在当前分支） */
+function handleBranchSwitchCancel() {
+  resetBranchSwitchState()
+  void nextTick(() => inputRef.value?.focus())
+}
+
 async function handleResume() {
   const last = messages.value[messages.value.length - 1]
   const convId = chatStore.currentId
   if (!last?.id || !convId || loading.value) return
+  // 继续执行：清空上一次发送失败的提示
+  sendFailedError.value = ''
   pinScrollForSend()
   setScrollPinned(true)
   if (convId) clearAttention(convId)
@@ -473,16 +1363,33 @@ async function handleResume() {
   const resumePromise = resume(convId, last.id)
   await nextTick()
   scrollToBottom(true)
-  if (resumeMode === 'regenerate') await ensureStreamRenderer()
+  if (resumeMode === 'regenerate' || resumeMode === 'checkpoint') await ensureStreamRenderer()
   await resumePromise
   await nextTick()
   scrollToBottom(true)
 }
 
+/** 输入框右下暂停按钮：运行中显示，点击暂停当前生成 */
+function handleComposerPause() {
+  if (!loading.value) return
+  void stop()
+}
+
+function handleVoiceCancel() {
+  voiceStop()
+}
+
+function handleVoiceConfirm() {
+  const text = voiceStop()
+  if (text) {
+    inputText.value = inputText.value ? inputText.value + ' ' + text : text
+  }
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (handlePathKeydown(e)) return
   if (handleWorkflowKeydown(e)) return
-  if (handleExpertKeydown(e)) return
+  if (handleAgentKeydown(e)) return
   handleSkillKeydown(e, () => { void handleSend() })
 }
 
@@ -506,11 +1413,46 @@ function applyChatDeepLink() {
 onMounted(async () => {
   setChatRouteActive(true)
   void loadSkillCatalog()
-  void loadExpertCatalog()
+  void loadAgentCatalog()
   void loadWorkflowCatalog()
+  void loadWsProjects()
   sessionHydrating.value = true
+  // 刷新无感：先用 localStorage 缓存渲染目标会话（URL cid / active generation / 本地当前 id 同优先序），
+  // 网络 init/loadDetail 返回后由 hydrateSessionFromStore 合并覆盖，避免刷新后出现空态期
+  const preloadCid = (typeof route.query.cid === 'string' && route.query.cid.trim())
+    || loadActiveGeneration()?.conversationId
+    || localStorage.getItem('sunshine-current-conversation-id') || ''
+  if (isValidConversationId(preloadCid)) {
+    const cached = loadCachedMessages(preloadCid)
+    if (cached?.length) {
+      ensureActive(preloadCid)
+      // 勿经 sanitizeRestoredMessages——缓存中最后一条 streaming 状态是精确的
+      //（schedulePersist 在流式中保存），不应被过早标为 interrupted，否则复制图标闪烁。
+      // API 回来后会由 hydrateSessionFromStore 正确归一。
+      setMessages(preloadCid, cached)
+      // 等待 Vue 渲染新消息到 DOM，再贴底，避免 scrollHeight 尚未更新就同步贴底到 0
+      await nextTick()
+      // 缓存消息立即可见，贴底避免用户看到顶部停留；网络 API 回包后消息替换时
+      // 滚动高度变化会重置稳定帧，settle 持续跟随到底部
+      settleScrollToBottom()
+    }
+  }
+  let reconnectAfterHydrate: {
+    cid: string
+    active: NonNullable<ReturnType<typeof loadActiveGeneration>>
+  } | null = null
   try {
     await chatStore.init()
+    // URL ?cid= 优先：刷新后定位回用户打开的那个会话（URL 是唯一能跨刷新保留的会话锚点）
+    const urlCid = typeof route.query.cid === 'string' ? route.query.cid.trim() : ''
+    if (urlCid) {
+      try {
+        await chatStore.ensureConversation(urlCid)
+        await chatStore.switchTo(urlCid)
+      } catch {
+        // URL cid 已失效（会话被删/库被清），忽略并走默认恢复
+      }
+    }
     const active = loadActiveGeneration()
     let cid: string
     if (active?.conversationId) {
@@ -521,28 +1463,81 @@ onMounted(async () => {
         cid = await chatStore.ensureCurrent()
       }
     } else {
-      cid = await chatStore.ensureCurrent()
+      // 新任务模式（点「新任务」未发消息）：不创建会话，保持空白新任务页，
+      // 等真正发送时才 create，避免侧栏冒出幽灵「新对话」
+      if (chatStore.newTaskMode || chatStore.pendingWorkspace) {
+        cid = ''
+      } else {
+        cid = await chatStore.ensureCurrent()
+      }
     }
     await chatStore.switchTo(cid)
     applyConversationPreference(chatStore.current?.executionPreference)
     applyConversationKb(chatStore.current?.kbId)
-    void loadChatKbs()
+    applyConversationModel(chatStore.current?.modelName)
+    void applyConversationCheckout()
+    void loadChatModels()
     ensureActive(cid)
     const pendingReconnect = !!(active?.conversationId === cid)
-    await hydrateSessionFromStore(cid, { skipApiLoad: pendingReconnect })
-    if (active && active.conversationId === cid) {
-      await tryAutoReconnect(cid, active)
-      syncSessionToStore(cid)
+    if (cid) {
+      await hydrateSessionFromStore(cid, { skipApiLoad: pendingReconnect })
     }
+    // 续连不放进 sessionHydrating 临界区：await 整段 SSE 会长时间挡住 currentId watch，
+    // 刷新后工作区流式中无法切到其它会话。hydrate 完成后即放开切换，续连后台跑。
+    reconnectAfterHydrate = (cid && active && active.conversationId === cid)
+      ? { cid, active }
+      : null
   } finally {
     sessionHydrating.value = false
   }
   setActiveConversation(chatStore.currentId)
   scrollToBottomIfRequested(chatStore.currentId ?? '')
+  // 刷新后定位到会话底部：消息/时间线分帧渲染增高，单次贴底会停在中间高度，settle 至高度稳定；
+  // 空会话与新任务模式（无消息）跳过
+  if (chatStore.currentId && messages.value.length) {
+    settleScrollToBottom()
+  }
+  if (reconnectAfterHydrate) {
+    const { cid, active } = reconnectAfterHydrate
+    void tryAutoReconnect(cid, active).then(() => {
+      if (chatStore.currentId === cid) syncSessionToStore(cid)
+    })
+  }
   applyChatDeepLink()
   inputRef.value?.focus()
   window.addEventListener('pagehide', flushAllOnPageHide)
+  ;(window as any).__smd_openSandboxPath = (path: string, lineStart = 0, lineEnd = 0) => {
+    const cid = chatStore.currentId
+    if (!cid || !path) return
+    // 相对路径结合当前工作区根解析为绝对路径
+    let resolved = path
+    const root = (window as any).__smd_sandboxRoot as string | undefined
+    if (root && !path.startsWith('/workspace/') && !path.startsWith('/skills/')) {
+      resolved = `${root.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+    }
+    openSandboxDrawer({
+      conversationId: cid,
+      focusPath: resolved,
+      ...(lineStart > 0 ? { focusLine: lineStart, focusLineEnd: lineEnd > 0 ? lineEnd : lineStart } : {}),
+    })
+  }
+  // 工作区选中行 -> 插入输入框引用 `path` L120-125
+  ;(window as any).__smd_addSandboxSelection = (path: string, start: number, end: number) => {
+    const cid = chatStore.currentId
+    if (!cid || !path || typeof start !== 'number') return
+    const resolved = (window as any).__smd_sandboxRoot
+      ? path.startsWith('/workspace/') || path.startsWith('/skills/')
+        ? path
+        : `${(window as any).__smd_sandboxRoot.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+      : path
+    inputRef.value?.insertPathRange(resolved, start, end)
+  }
 })
+
+// 注入工作区根路径供 markdown 路径增强使用（相对路径 -> 绝对路径解析）
+watch(taskCheckoutId, (cid) => {
+  ;(window as any).__smd_sandboxRoot = cid ? `/workspace/${cid}` : ''
+}, { immediate: true })
 
 onUnmounted(() => {
   setChatRouteActive(false)
@@ -550,6 +1545,10 @@ onUnmounted(() => {
   window.removeEventListener('pagehide', flushAllOnPageHide)
   registerChatBody(null)
   registerSandboxChatBody(null)
+  delete (window as any).__smd_openSandboxPath
+  delete (window as any).__smd_addSandboxSelection
+  delete (window as any).__smd_sandboxRoot
+  delete (window as any).__smd_sandboxIndex
 })
 
 watch(chatBodyRef, (el) => {
@@ -557,40 +1556,63 @@ watch(chatBodyRef, (el) => {
   registerSandboxChatBody(el)
 }, { immediate: true })
 onUpdated(() => { nextTick(() => enhanceAllStaticMarkdown()) })
-watch(theme, () => nextTick(() => reRenderStaticMermaids()))
-
+// 沙箱路径索引就绪后，重新增强已渲染消息中的相对路径链接（索引未就绪时漏增强的）
+watch(() => sandboxPathIndexReady.tick, () => {
+  nextTick(() => reEnhanceAllSandboxPathLinks())
+})
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
+  // 把当前会话锚定到 URL：刷新后可定位回同一会话
+  if (isValidConversationId(newId)) {
+    const nextQuery = { ...route.query, cid: newId }
+    if (route.query.cid !== newId) void router.replace({ query: nextQuery })
+  } else if (route.query.cid) {
+    const nextQuery = { ...route.query }
+    delete nextQuery.cid
+    void router.replace({ query: nextQuery })
+  }
   setActiveConversation(newId)
   closePlanDrawer()
   closeSandboxDrawer()
   closePlanDagExpand()
   sandboxWorkspaceActive.value = false
-  if (newId) {
-    try {
-      sandboxWorkspaceActive.value = await fetchSandboxWorkspaceStatus(newId)
-    } catch {
-      sandboxWorkspaceActive.value = false
-    }
-  }
+  // 切换会话前，把旧会话的状态落盘
   if (oldId) {
     chatStore.syncMessages(oldId, getMessages(oldId))
     cacheSettledHtmlForConversation(oldId)
-    if (!chatStore.conversations.some(c => c.id === oldId)) {
+    // 切换到 null（新任务模式）或旧会话被删除时，彻底清理
+    if (!isValidConversationId(newId) || !chatStore.conversations.some(c => c.id === oldId)) {
       destroySession(oldId)
       sessionSettledHtml.delete(oldId)
     }
   }
   clearStreamRenderer()
   settledHtml.value = ''
-  if (!isValidConversationId(newId)) return
+  // 切换为 null（如新任务模式）：额外调用 clearActive 确保 session 和 DOM 彻底清空
+  if (!isValidConversationId(newId)) {
+    clearActive()
+    return
+  }
+  // 切换 DOM 立即响应：缓存消息先渲染到滚动区，同步贴底避免闪现，DB 查询后台更新
   ensureActive(newId)
+  updateConversationId(newId)
   applyConversationPreference(chatStore.current?.executionPreference)
   applyConversationKb(chatStore.current?.kbId)
-  if (!loading.value) await hydrateSessionFromStore(newId)
-  await nextTick()
-  if (loading.value) void ensureStreamRenderer()
-  if (newId) scrollToBottomIfRequested(newId)
+  applyConversationModel(chatStore.current?.modelName)
+  void applyConversationCheckout()
+  // 沙箱状态异步查询（有超时兜底），不阻塞 DOM 切换
+  void (async () => {
+    try {
+      sandboxWorkspaceActive.value = await fetchSandboxWorkspaceStatus(newId)
+    } catch {
+      sandboxWorkspaceActive.value = false
+    }
+  })()
+  // 缓存消息立即贴底，避免用户看到旧滚动位置的残留
+  if (messages.value.length) settleScrollToBottom()
+  // DB 后台对齐：有更新则 setMessages 触发响应式重渲染，settle 持续跟随
+  // 显式传 skipApiLoad: false：当前 loading 属于旧会话，不能阻止新会话的 DB 查询
+  void hydrateSessionFromStore(newId, { skipApiLoad: false })
 }, { flush: 'post' })
 
 watch(
@@ -599,7 +1621,6 @@ watch(
     if (!loading.value) return
     await nextTick()
     scrollToBottom(false)
-    syncScrollPinned()
   },
 )
 
@@ -613,7 +1634,6 @@ watch(
     if (!loading.value) return
     await nextTick()
     scrollToBottom(false)
-    syncScrollPinned()
   },
 )
 </script>
@@ -624,9 +1644,9 @@ watch(
       <SidebarToggle />
       <div class="header-inner">
         <h1 class="header-title">{{ sessionTitle }}</h1>
-        <span v-if="loading" class="header-status">
-          <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
-          正在回复
+        <span class="header-status" :title="`当前模式：${headerModeLabel}`">
+          <NIcon :component="headerModeIcon" :size="14" />
+          <span>{{ headerModeLabel }}</span>
         </span>
       </div>
       <button
@@ -644,6 +1664,15 @@ watch(
         </svg>
       </button>
     </header>
+    <button
+      v-if="(chatStore.newTaskMode || isCurrentTask || chatStore.pendingWorkspace || chatStore.currentId) && !sandboxDrawerOpen"
+      type="button"
+      class="ws-drawer-toggle"
+      title="展开工作区"
+      @click="() => { openSandboxDrawer({ conversationId: currentConversationId ?? '' }) }"
+    >
+      <DrawerCollapseIcon :size="16" />
+    </button>
 
     <div
       ref="chatBodyRef"
@@ -655,7 +1684,12 @@ watch(
         :class="{ 'plan-dag-expanded': planDagExpanded }"
       >
     <!-- 消息区 -->
-    <div ref="scrollRef" class="chat-scroll" @scroll="onChatScroll">
+    <div
+      ref="scrollRef"
+      class="chat-scroll"
+      @scroll="handleChatScroll"
+      @wheel.capture="onChatWheelCapture"
+    >
       <div class="chat-inner">
         <div v-if="chatStore.initializing && messages.length === 0" class="empty-state">
           <div class="empty-icon">
@@ -666,29 +1700,14 @@ watch(
           </div>
           <h2 class="empty-title">正在加载对话…</h2>
         </div>
-        <div v-else-if="messages.length === 0" class="empty-state">
-          <div class="empty-icon">
-            <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
-              <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.5" />
-            </svg>
-          </div>
-          <h2 class="empty-title">有什么可以帮你的？</h2>
-          <p class="empty-desc">知识库检索 · ReAct 工具 · Plan 动态规划 · Skill @ 触发</p>
-          <div class="hint-chips">
-            <button
-              v-for="hint in EMPTY_HINTS"
-              :key="hint.label"
-              type="button"
-              class="hint-chip"
-              @click="applyEmptyHint(hint.prompt)"
-            >
-              {{ hint.label }}
-            </button>
-          </div>
-        </div>
 
         <div v-else class="msg-list">
+          <div
+            v-if="historyLoading"
+            class="history-load-bar"
+          >
+            <NSpin size="small" />
+          </div>
           <div
             v-for="(msg, idx) in messages"
             :key="msg.id ?? `local-${idx}`"
@@ -700,7 +1719,7 @@ watch(
               <UserMessageContent
                 :content="msg.content"
                 :catalog="skillCatalog"
-                :expert-catalog="expertCatalog"
+                :agent-catalog="agentCatalog"
                 :workflow-catalog="workflowCatalog"
                 :execution-preference="msg.executionPreference"
               />
@@ -716,10 +1735,16 @@ watch(
                 :stream-live="isInterleavedStreaming(msg, idx)"
                 :timeline-revision="loading && idx === messages.length - 1 ? streamRevision : 0"
                 :live="isTimelineLive(msg, idx)"
+                :collapse-tick="isTimelineLive(msg, idx) ? collapseTick : undefined"
                 :execution-plan-id="msg.executionPlanId"
                 :user-query="resolveUserQuery(idx)"
                 :message-id="msg.id"
+                :message-status="resolveTimelineMessageStatus(msg, idx)"
+                :message-content="msg.content"
+                :timeline-started-at="msg.timelineStartedAt"
+                :timeline-ended-at="msg.timelineEndedAt"
                 :pending-hitl-confirmations="resolveTimelineContext(msg).pending"
+                :generation-id="isTimelineLive(msg, idx) ? generationId : ''"
                 @hitl-decided="handleHitlDecision"
               />
               <template v-if="loading && idx === messages.length - 1 && msg.status !== 'completed'">
@@ -742,17 +1767,24 @@ watch(
                   type="button"
                   class="msg-copy-btn smd-toolbtn"
                   :title="copiedIndex === idx ? '已复制' : '复制'"
-                  @click="copyAssistantMessage(msg.content, idx)"
+                  @click="copyAssistantMessage(msg, idx)"
                 >
                   <CopyToggleIcon :copied="copiedIndex === idx" />
                 </button>
+                <span v-if="messageEndTimeLabel(msg)" class="msg-end-time">{{ messageEndTimeLabel(msg) }}</span>
+                <span v-if="msg.usage" class="msg-usage-meta">
+                  {{ (msg.steps ?? []).length }} 步 · 输入 {{ fmtTokens(msg.usage.inputTokens) }} · 输出 {{ fmtTokens(msg.usage.outputTokens) }}
+                </span>
               </div>
-              <p
-                v-if="resolveStreamErrorText(msg)"
-                class="msg-stream-error"
-              >
-                发生错误：{{ resolveStreamErrorText(msg) }}
-              </p>
+              <!-- 对话完成后：复制按钮下方的改动文件卡片（点击打开右侧工作区 diff 详情） -->
+              <MessageDiffCard
+                v-if="canShowDiffCard(msg, idx)"
+                :key="`${msg.id ?? idx}-${diffCardRefreshTick}`"
+                :workspace-id="currentWorkspaceId"
+                :checkout-id="taskCheckoutId"
+                :conversation-id="chatStore.currentId"
+                @open-diff="openDiffInDrawer"
+              />
               <div v-if="canResume(msg, idx)" class="msg-resume-bar">
                 <button type="button" class="resume-btn" @click="handleResume">{{ resumeButtonLabel(msg) }}</button>
               </div>
@@ -776,25 +1808,151 @@ watch(
     />
 
     <!-- 悬浮输入区 -->
-    <footer v-show="!planDagExpanded" class="chat-composer" @wheel="forwardWheelToChatScroll">
+    <footer
+      v-show="!planDagExpanded"
+      class="chat-composer"
+      :class="{ 'composer--centered': composerCentered }"
+      @wheel="forwardWheelToChatScroll"
+    >
       <div class="composer-inner">
-        <button
-          v-if="attentionBubble"
-          type="button"
-          class="chat-attention-bubble"
-          :class="`is-${attentionBubble.kind}`"
-          @click="handleAttentionBubbleClick"
+        <!-- 输入框上方右侧圆形快捷按钮；始终置于其它气泡（todolist/错误信息等）之上。
+             离开底部 → 回到底部（待决策 → 黄色问号；待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
+             最底部且运行中时间线展开 → 折叠图标（点击收起运行过程） -->
+        <transition name="fab-fade">
+          <button
+            v-if="scrollFab"
+            type="button"
+            class="scroll-fab"
+            :class="`is-${scrollFab.kind}`"
+            :title="scrollFab.kind === 'decision_pending' ? '待决策，点击回到底部' : scrollFab.kind === 'hitl_pending' ? '待确认，点击回到底部' : scrollFab.kind === 'collapse' ? '折叠运行过程' : '回到底部'"
+            @click="handleScrollFabClick"
+          >
+            <NIcon v-if="scrollFab.kind === 'decision_pending'" :size="16" :component="HelpCircleOutline" />
+            <NIcon v-else-if="scrollFab.kind === 'hitl_pending'" :size="16" :component="WarningOutline" />
+            <svg
+              v-else-if="scrollFab.kind === 'collapse'"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+            <template v-else-if="scrollFab.kind === 'completed'">
+              <NIcon :size="16" :component="ChatboxEllipsesOutline" />
+              <span class="scroll-fab-dot" aria-hidden="true" />
+            </template>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        </transition>
+        <!-- 新任务拉取分支代码中提示 -->
+        <div v-if="wsPreparing" class="pre-action-bubble pre-action-bubble--inline">
+          <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
+          <span class="pre-action-text">正在拉取代码</span>
+        </div>
+        <div
+          v-if="floatingTaskboardVisible && liveTaskboardStep"
+          class="floating-taskboard"
         >
-          <span>{{ attentionBubble.text }}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
+          <TaskBoardPanel
+            :step="liveTaskboardStep"
+            :live="true"
+            :default-collapsed="true"
+            floating
+          />
+        </div>
+        <UsageStatusBar mode="card" :usage="lastUsage" />
+        <!-- 发送前分支切换：当前分支有未提交改动 → 输入框上方提交确认框（样式对齐 todolist 卡片） -->
+        <div v-if="branchSwitchOpen" class="branch-switch-commit">
+          <div class="branch-switch-commit-head">
+            <NIcon :size="14" :component="CreateOutline" />
+            <span>当前分支有未提交改动</span>
+            <button type="button" class="branch-switch-close" title="取消" @click="handleBranchSwitchCancel">×</button>
+          </div>
+          <p class="branch-switch-desc">
+            切换分支前需先提交当前改动（暂存全部并提交到「{{ taskActiveBranch || '当前分支' }}」），
+            提交完成后自动切换到「{{ pendingTargetBranch }}」再发送消息。
+          </p>
+          <textarea
+            ref="branchSwitchInputRef"
+            v-model="branchSwitchMsg"
+            class="branch-switch-input"
+            placeholder="feat: 描述你的变更…"
+            maxlength="256"
+            rows="2"
+            spellcheck="false"
+            @keydown.enter.exact.prevent="handleBranchSwitchCommit"
+            @keydown.esc="handleBranchSwitchCancel"
+          />
+          <div class="branch-switch-actions">
+            <span class="branch-switch-kbd">Enter 提交 · Esc 取消</span>
+            <NButton size="small" quaternary :disabled="branchSwitchBusy" @click="handleBranchSwitchCancel">取消</NButton>
+            <NButton size="small" type="primary" :disabled="!branchSwitchMsg.trim() || branchSwitchBusy" :loading="branchSwitchBusy" @click="handleBranchSwitchCommit">提交改动</NButton>
+          </div>
+        </div>
+        <!-- 对话前动作出错详情卡片（拉取分支 / 切换分支）：todolist 同款样式，非红色，最小高度，右上角可关闭 -->
+        <div v-if="preActionError" class="pre-action-error">
+          <div class="pre-action-error-head">
+            <NIcon :size="14" :component="AlertCircleOutline" />
+            <span>操作失败</span>
+            <button type="button" class="pre-action-error-close" title="关闭" @click="dismissPreActionError">×</button>
+          </div>
+          <div class="pre-action-error-body">{{ preActionError }}</div>
+          <div v-if="wsPrepareError" class="pre-action-error-actions">
+            <NButton size="small" type="primary" @click="handleSend">重试</NButton>
+          </div>
+        </div>
+        <!-- 分支切换步骤气泡：输入框上方右侧（暂存 → 提交 → 切换） -->
+        <div v-else-if="branchSwitchStatus" class="pre-action-bubble pre-action-bubble--float">
+          <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
+          <span class="pre-action-text">{{ branchSwitchStatusText }}</span>
+        </div>
+        <!-- 新对话/新任务空态：示例与说明显示在居中输入框上方 -->
+        <div v-if="composerCentered" class="empty-hero">
+          <div class="empty-icon">
+            <!-- 新任务：代码任务图标；新对话：对话图标 -->
+            <svg v-if="emptyTaskState" width="40" height="40" viewBox="0 0 48 48" fill="none">
+              <rect x="9" y="9" width="30" height="30" rx="6" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+              <path d="M19 21l-5 4 5 4M29 21l5 4-5 4M24 18l-3 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+            </svg>
+            <svg v-else width="40" height="40" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="14" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+              <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.5" />
+            </svg>
+          </div>
+          <h2 class="empty-title">{{ emptyTitle }}</h2>
+          <p class="empty-desc">{{ emptyDesc }}</p>
+          <div class="hint-chips">
+            <button
+              v-for="hint in emptyHints"
+              :key="hint.label"
+              type="button"
+              class="hint-chip"
+              @click="applyEmptyHint(hint.prompt)"
+            >
+              {{ hint.label }}
+            </button>
+          </div>
+        </div>
+        <!-- 输入框上侧气泡行：模式选择仅在对话开始时展示（居中态可选，发送后隐藏，避免中途变动导致系统提示词不一致） -->
+        <div v-if="composerCentered" class="composer-bubbles">
+          <ExecutionModeSelector
+            :model-value="preference"
+            @update:model-value="setPreference"
+          />
+        </div>
         <div
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
         >
-          <ul v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
+          <ul ref="composerSuggestList" v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
             <li v-if="pathSuggestLoading" class="skill-suggest-loading">正在加载工作区…</li>
             <template v-else>
               <li
@@ -812,10 +1970,11 @@ watch(
                   />
                   <span class="path-suggest-name">{{ entry.name }}</span>
                 </div>
+                <span class="skill-suggest-meta path-suggest-path">{{ entry.path }}</span>
               </li>
             </template>
           </ul>
-          <ul v-else-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
+          <ul ref="composerSuggestList" v-else-if="showWorkflowSuggest && filteredWorkflows.length && !loading" class="skill-suggest">
             <li
               v-for="(wf, idx) in filteredWorkflows"
               :key="wf.id"
@@ -824,114 +1983,274 @@ watch(
             >
               <div class="skill-suggest-main">
                 <span class="skill-suggest-id is-workflow">#{{ wf.id }}</span>
-                <span class="skill-suggest-name">{{ wf.displayName }}</span>
+                <span class="skill-suggest-title">{{ wf.displayName }}</span>
               </div>
               <p v-if="wf.description" class="skill-suggest-desc">{{ wf.description }}</p>
             </li>
           </ul>
-          <ul v-else-if="showExpertSuggest && filteredExperts.length && !loading" class="skill-suggest">
+          <ul ref="composerSuggestList" v-else-if="showAgentSuggest && filteredAgents.length && !loading" class="skill-suggest">
             <li
-              v-for="(expert, idx) in filteredExperts"
-              :key="expert.id"
-              :class="{ 'is-highlighted': idx === expertSuggestIndex }"
-              @mousedown.prevent="applyExpertSuggest(expert)"
+              v-for="(agent, idx) in filteredAgents"
+              :key="agent.id"
+              :class="{ 'is-highlighted': idx === agentSuggestIndex }"
+              @mousedown.prevent="applyAgentSuggest(agent)"
             >
-              <span class="skill-suggest-id is-expert">${{ expert.id }}</span>
-              <span class="skill-suggest-name">{{ expert.displayName }}</span>
+              <div class="skill-suggest-main">
+                <span class="skill-suggest-id is-agent">${{ agent.id }}</span>
+                <span class="skill-suggest-title">{{ agent.displayName }}</span>
+              </div>
+              <p v-if="agent.description" class="skill-suggest-desc">{{ agent.description }}</p>
             </li>
           </ul>
-          <ul v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
+          <ul ref="composerSuggestList" v-else-if="showSkillSuggest && filteredSkills.length && !loading" class="skill-suggest">
             <li
               v-for="(skill, idx) in filteredSkills"
               :key="skill.id"
               :class="{ 'is-highlighted': idx === skillSuggestIndex }"
               @mousedown.prevent="applySkillSuggest(skill)"
             >
-              <span class="skill-suggest-id is-skill">@{{ skill.id }}</span>
-              <span class="skill-suggest-name">{{ skill.displayName }}</span>
+              <div class="skill-suggest-main">
+                <span class="skill-suggest-id is-skill">/{{ skill.id }}</span>
+                <span class="skill-suggest-title">{{ skill.displayName }}</span>
+              </div>
+              <p v-if="skill.description" class="skill-suggest-desc">{{ skill.description }}</p>
             </li>
           </ul>
           <div class="composer-input-area">
-            <div v-if="loading" class="composer-status">
-              <span class="streaming-pulse" />
-              <span>AI 正在回复…</span>
+            <div v-if="voiceListening" class="voice-recording-overlay">
+              <div class="voice-waveform">
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+                <span class="voice-waveform-bar" />
+              </div>
+              <div class="voice-recording-body">
+                <span class="voice-rec-indicator">
+                  <span class="voice-rec-dot" />
+                  <span class="voice-rec-label">录音中</span>
+                </span>
+                <span class="voice-recording-text">{{ voiceDisplayText || '正在聆听...' }}</span>
+              </div>
             </div>
             <ComposerSkillInput
-              v-else
+              v-show="!voiceListening"
               ref="inputRef"
               v-model="inputText"
+              :disabled="voiceListening"
               :allows-skill-mention="skillMentionAllowed"
-              :allows-expert-mention="expertMentionAllowed"
+              :allows-agent-mention="agentMentionAllowed"
               :allows-workflow-mention="workflowMentionAllowed"
               :catalog="skillCatalog"
-              :expert-catalog="expertCatalog"
+              :agent-catalog="agentCatalog"
               :workflow-catalog="workflowCatalog"
               :placeholder="composerPlaceholder"
               @keydown="handleKeydown"
             />
             <div class="composer-toolbar">
               <div class="composer-toolbar-left">
-                <ExecutionModeSelector
-                  :model-value="preference"
-                  :disabled="loading"
-                  @update:model-value="setPreference"
+                <ModelSelector
+                  v-if="!voiceListening"
+                  :model-value="modelName"
+                  :options="chatModelOptions"
+                  @update:model-value="onModelChange"
                 />
-                <KbSelector
-                  :kbs="chatKbs"
-                  :model-value="kbId"
-                  :loading="loadingChatKbs"
-                  :show-create="false"
-                  @update:model-value="onKbChange"
+                <GitBranchSelector
+                  v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
+                  :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
+                  :model-value="taskBranch"
+                  :active-branch="taskActiveBranch"
+                  :create-mode="!!(chatStore.newTaskMode || chatStore.pendingWorkspace)"
+                  @update:model-value="taskBranch = $event"
                 />
-                <button
-                  type="button"
-                  class="composer-workspace-btn"
-                  :disabled="!currentConversationId"
-                  title="沙箱工作区"
-                  @click="openWorkspaceDrawer"
-                >
-                  <span class="composer-workspace-leading">
-                    <svg class="composer-workspace-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                    </svg>
-                    <span class="composer-workspace-label">工作区</span>
-                  </span>
-                </button>
               </div>
-              <button
-                v-if="loading"
-                type="button"
-                class="composer-icon-btn stop"
-                title="停止生成"
-                @click="stop"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
-              </button>
-              <button
-                v-else
-                type="button"
-                class="composer-icon-btn send"
-                :disabled="!inputText.trim()"
-                title="发送"
-                @click="handleSend"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor"/></svg>
-              </button>
+              <div class="composer-toolbar-right">
+                <UsageStatusBar :usage="lastUsage" />
+                <button
+                  v-if="loading"
+                  type="button"
+                  class="composer-icon-btn pause"
+                  title="暂停当前生成"
+                  @click="handleComposerPause"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
+                </button>
+                <template v-else-if="voiceListening">
+                  <button
+                    type="button"
+                    class="composer-icon-btn voice-cancel"
+                    title="取消语音输入"
+                    @click="handleVoiceCancel"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="composer-icon-btn voice-confirm"
+                    title="确认语音输入"
+                    @click="handleVoiceConfirm"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 7,12 14,3"/></svg>
+                  </button>
+                </template>
+                <template v-else>
+                  <VoiceInputButton v-if="voiceSupported" />
+                  <button
+                    v-if="!voiceSupported || inputText.trim()"
+                    type="button"
+                    class="composer-icon-btn send"
+                    :disabled="!inputText.trim()"
+                    title="发送"
+                    @click="handleSend"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor"/></svg>
+                  </button>
+                </template>
+              </div>
             </div>
           </div>
         </div>
-        <p class="composer-hint">AI 生成内容仅供参考，请核实重要信息</p>
+        <div v-if="sessionUsage.calls > 0" class="composer-session-usage">
+          <span>{{ Math.max(currentTurn, 1) }} 轮 {{ sessionUsage.steps }} 步</span>
+          <span class="usage-sep">·</span>
+          <span>输入 {{ fmtTokens(sessionUsage.inputTokens) }}</span>
+          <span class="usage-sep">·</span>
+          <span>输出 {{ fmtTokens(sessionUsage.outputTokens) }}</span>
+          <template v-if="lastUsage?.cachedPercent != null">
+            <span class="usage-sep">·</span>
+            <span>缓存命中 {{ lastUsage.cachedPercent }}%</span>
+          </template>
+        </div>
       </div>
     </footer>
       </div>
       <PlanNodeDrawer />
-      <SandboxWorkspaceDrawer />
+      <SandboxWorkspaceDrawer
+        :workspace-id="currentWorkspaceId ?? chatStore.pendingWorkspace?.wsId ?? null"
+        :checkout-id="taskCheckoutId"
+        :workspace-name="currentWorkspaceName"
+        :session-kind="sessionKind"
+      >
+        <template v-if="isCurrentTask && currentWorkspaceId" #head-actions-pre>
+          <div class="git-dropdown-wrap">
+            <!-- 隐藏测量：完整分支名气泡的自然宽度（不参与布局），用于判断气泡是否会被挤压 -->
+            <span ref="branchFullNameRef" class="branch-fullname-measure" aria-hidden="true">
+              <NIcon :size="14" :component="GitBranchOutline" />
+              <span class="git-dropdown-label">{{ taskBranch || taskCheckoutId }}</span>
+              <NIcon :size="12" :component="ChevronDownOutline" class="git-dropdown-chevron" />
+            </span>
+            <NPopover trigger="click" placement="bottom-end" :width="150" raw :show-arrow="false">
+              <template #trigger>
+                <button type="button" class="git-dropdown-trigger" title="分支信息">
+                  <NIcon :size="14" :component="GitBranchOutline" />
+                  <!-- 气泡边框将碰到相邻元素时收缩为「分支」两字，空间宽裕后还原完整分支名 -->
+                  <span ref="branchLabelRef" class="git-dropdown-label">{{ branchCollapsed ? '分支' : (taskBranch || taskCheckoutId) }}</span>
+                  <NIcon :size="12" :component="ChevronDownOutline" class="git-dropdown-chevron" />
+                </button>
+              </template>
+              <div class="git-dropdown-menu">
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  title="暂存全部改动"
+                  @click="handleGitStage"
+                >
+                  <span v-if="gitOpKind === 'stage' && gitOpState === 'loading'" class="git-btn-spinner" />
+                  <NIcon v-else-if="gitOpKind === 'stage' && gitOpState === 'done'" :size="14" :component="CheckmarkOutline" />
+                  <NIcon v-else :size="14" :component="AddOutline" />
+                  <span>{{ gitOpKind === 'stage' && gitOpState !== 'idle' ? '' : '暂存' }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  @click="openCommitPopover"
+                >
+                  <NIcon :size="14" :component="CreateOutline" /><span>提交</span>
+                </button>
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  title="推送到远端"
+                  @click="handleGitPush"
+                >
+                  <span v-if="gitOpKind === 'push' && gitOpState === 'loading'" class="git-btn-spinner" />
+                  <NIcon v-else-if="gitOpKind === 'push' && gitOpState === 'done'" :size="14" :component="CheckmarkOutline" />
+                  <NIcon v-else :size="14" :component="CloudUploadOutline" />
+                  <span>{{ gitOpKind === 'push' && gitOpState !== 'idle' ? '' : '推送' }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="git-dd-item"
+                  :disabled="gitOpState !== 'idle' || !taskCheckoutId"
+                  title="从远端拉取"
+                  @click="handleGitPull"
+                >
+                  <span v-if="gitOpKind === 'pull' && gitOpState === 'loading'" class="git-btn-spinner" />
+                  <NIcon v-else-if="gitOpKind === 'pull' && gitOpState === 'done'" :size="14" :component="CheckmarkOutline" />
+                  <NIcon v-else :size="14" :component="CloudDownloadOutline" />
+                  <span>{{ gitOpKind === 'pull' && gitOpState !== 'idle' ? '' : '拉取' }}</span>
+                </button>
+              </div>
+            </NPopover>
+            <!-- 提交信息输入：侧边二级 Popover（替代弹窗） -->
+            <NPopover
+              trigger="manual"
+              placement="bottom-end"
+              :width="300"
+              :show="showCommitPopover"
+              :show-arrow="false"
+              raw
+            >
+              <template #trigger>
+                <span class="commit-popover-anchor" />
+              </template>
+              <div class="commit-popover">
+                <div class="commit-popover-head">
+                  <NIcon :size="14" :component="CreateOutline" />
+                  <span>提交变更</span>
+                  <button type="button" class="commit-popover-close" title="关闭" @click="showCommitPopover = false">×</button>
+                </div>
+                <textarea
+                  v-model="commitMsg"
+                  class="commit-popover-input"
+                  placeholder="feat: 描述你的变更…"
+                  maxlength="256"
+                  rows="3"
+                  spellcheck="false"
+                  @keydown.enter.exact.prevent="handleGitCommit"
+                  @keydown.esc="showCommitPopover = false"
+                />
+                <div class="commit-popover-actions">
+                  <span class="commit-popover-hint">Enter 提交 · Esc 取消</span>
+                  <NButton size="small" quaternary @click="showCommitPopover = false">取消</NButton>
+                  <NButton
+                    size="small"
+                    type="primary"
+                    :disabled="!commitMsg.trim() || commitState !== 'idle'"
+                    :loading="commitState === 'loading'"
+                    @click="handleGitCommit"
+                  >
+                    <template v-if="commitState === 'done'">
+                      <NIcon :component="CheckmarkOutline" :size="14" /> 已提交
+                    </template>
+                    <template v-else>提交</template>
+                  </NButton>
+                </div>
+              </div>
+            </NPopover>
+          </div>
+        </template>
+      </SandboxWorkspaceDrawer>
     </div>
   </div>
 </template>
 
 <style scoped>
 .chat-page {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -955,38 +2274,67 @@ watch(
   min-width: 1260px;
 }
 
-.chat-attention-bubble {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  margin-bottom: 8px;
-  max-width: 100%;
-  padding: 5px 12px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
-  background: var(--sun-black);
-  color: var(--sun-text-secondary);
-  font-size: var(--sun-font-sm);
-  line-height: 1.35;
-  cursor: pointer;
-  box-shadow: var(--composer-shadow);
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.chat-attention-bubble:hover {
-  border-color: var(--sun-border-light);
-  color: var(--sun-text);
-}
-
-.chat-attention-bubble.is-hitl_pending {
-  border-color: color-mix(in srgb, var(--sun-amber) 45%, var(--sun-border));
-  color: color-mix(in srgb, var(--sun-amber-light) 65%, var(--sun-text-secondary));
-}
-
 .chat-attention-bubble.is-completed {
   border-color: color-mix(in srgb, #ef4444 40%, var(--sun-border));
   color: color-mix(in srgb, #f87171 75%, var(--sun-text-secondary));
+}
+
+/* 回到底部/折叠运行过程圆形按钮：右对齐，置于输入框上方所有气泡之上。
+   离开底部 → 回到底部（待确认 → 黄色感叹号；对话完成 → 会话图标 + 红点；其余 → 向下箭头）；
+   最底部且运行中时间线展开 → 折叠图标 */
+.scroll-fab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 1px solid var(--sun-border);
+  border-radius: 50%;
+  background: var(--sun-black);
+  color: var(--sun-text-secondary);
+  box-shadow: var(--composer-shadow);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.scroll-fab:hover {
+  border-color: var(--sun-border-light);
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
+}
+
+.scroll-fab.is-hitl_pending,
+.scroll-fab.is-decision_pending {
+  border-color: color-mix(in srgb, var(--sun-amber) 45%, var(--sun-border));
+  color: color-mix(in srgb, var(--sun-amber-light) 75%, var(--sun-text-secondary));
+}
+
+/* 对话完成：会话图标右上角的未读红点 */
+.scroll-fab-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid var(--sun-black);
+}
+
+.fab-fade-enter-active,
+.fab-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.fab-fade-enter-from,
+.fab-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .chat-main {
@@ -1017,7 +2365,7 @@ watch(
 .chat-header {
   flex-shrink: 0;
   width: 100%;
-  height: 48px;
+  height: 36px;
   border-bottom: 1px solid var(--sun-border);
   background: var(--sun-black);
   z-index: 10;
@@ -1029,10 +2377,10 @@ watch(
 
 .header-theme-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--sun-text-muted);
   cursor: pointer;
@@ -1060,7 +2408,7 @@ watch(
 }
 
 .header-title {
-  font-size: var(--sun-font-lg);
+  font-size: var(--sun-font-md);
   font-weight: 600;
   color: var(--sun-text);
   margin: 0;
@@ -1077,7 +2425,259 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+}
+
+/* workspace task：分支选择器 */
+.ws-task-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ws-task-folder {
+  color: var(--sun-text-muted);
+}
+
+.ws-task-name {
   font-size: var(--sun-font-sm);
+  font-weight: 500;
+  color: var(--sun-text);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-task-sep {
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-sm);
+}
+
+/* ---- 工作区展开按钮：与抽屉 header 同带（会话头 36px 下、高 34px = padding6+tab22+padding6） ---- */
+.ws-drawer-toggle {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  z-index: 20;
+  width: 28px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ws-drawer-toggle:hover {
+  color: var(--sun-text);
+  background: var(--sun-row-hover);
+}
+
+/* 对话前动作进行中气泡（新任务拉取分支 / 分支切换暂存-提交-切换）：三点动画 + 纯文案（无省略号） */
+.pre-action-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-lg, 12px);
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* 输入框上方行内右对齐（新任务拉取分支提示） */
+.pre-action-bubble--inline {
+  margin-left: auto;
+}
+
+/* 分支切换气泡：独立一行，右对齐显示于输入框上方 */
+.pre-action-bubble--float {
+  align-self: flex-end;
+  margin-left: auto;
+  margin-bottom: 8px;
+}
+
+.pre-action-text {
+  white-space: nowrap;
+}
+
+/* ---- 抽屉头部 Git 操作下拉 ---- */
+.git-dropdown-wrap {
+  display: inline-flex;
+  margin-right: 4px;
+  position: relative;
+}
+
+/* 隐藏测量：完整分支名气泡的克隆（与 trigger 同尺寸），不参与布局；宽度不受 flex 压缩影响 */
+.branch-fullname-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  white-space: nowrap;
+  font-size: var(--sun-font-sm, 12px);
+}
+
+.git-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-lg, 12px);
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm, 12px);
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  transition: background 0.15s, color 0.15s;
+}
+
+.git-dropdown-trigger:hover {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
+}
+
+.git-dropdown-label {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-dropdown-menu {
+  padding: 3px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--n-color, var(--sun-black));
+  box-shadow: var(--shadow-elevated, 0 4px 12px rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--sun-border, #e8e8e8);
+  overflow: hidden;
+}
+
+.git-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: calc(var(--radius-md, 10px) - 2px);
+  background: transparent;
+  color: var(--sun-text-secondary);
+  font-size: var(--sun-font-sm, 12px);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.git-dd-item:hover:not(:disabled) {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
+}
+
+.git-dd-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 操作进行中：仅显示 spinner/√，保持居中 */
+.git-dd-item.is-busy {
+  justify-content: center;
+}
+
+/* 分支下拉按钮内 loading 转圈（与 diff 面板提交按钮一致） */
+.git-btn-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: git-btn-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes git-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Git 提交侧边 Popover（替代弹窗） ---- */
+.commit-popover-anchor { display: inline-block; width: 0; height: 0; }
+.commit-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--n-color, var(--sun-black, #212121));
+  border: 1px solid var(--sun-border, #5a5a5a);
+  box-shadow: var(--shadow-elevated, 0 6px 20px rgba(0, 0, 0, 0.35));
+}
+.commit-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sun-font-sm, 12px);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.commit-popover-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.commit-popover-close:hover { color: var(--sun-text); }
+.commit-popover-input {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: var(--sun-black);
+  color: var(--sun-text);
+  font-size: var(--sun-font-base, 14px);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.commit-popover-input:focus { border-color: var(--sun-accent); }
+.commit-popover-input::placeholder { color: var(--sun-text-muted); }
+.commit-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+.commit-popover-hint {
+  margin-right: auto;
+  font-size: 11px;
   color: var(--sun-text-muted);
 }
 
@@ -1142,7 +2742,7 @@ watch(
   padding: 8px 14px;
   background: transparent;
   border: 1px solid var(--sun-border);
-  border-radius: 999px;
+  border-radius: var(--radius-lg, 12px);
   color: var(--sun-text-secondary);
   font-size: var(--sun-font-base);
   font-weight: 500;
@@ -1165,13 +2765,28 @@ watch(
   padding-bottom: 32px;
 }
 
+/* 触顶加载更早消息时的 loading 指示（无文字，避免误以为卡顿） */
+.history-load-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 0;
+}
+
+/* 视口外消息跳过布局/绘制：多轮长对话滚动不卡；
+   contain-intrinsic-size 记忆实际高度，滚动条不跳动（auto 需 Chrome 107+） */
+.msg-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
 .msg-block.user {
   display: flex;
   justify-content: flex-end;
 }
 
 .user-bubble {
-  max-width: 75%;
+  max-width: 85%;
   padding: 10px 16px;
   background: var(--sun-surface);
   border: none;
@@ -1204,17 +2819,37 @@ watch(
   margin-bottom: 12px;
   display: flex;
   justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
 }
+
+/* 对话结束时间：hover 消息行时显示在复制按钮右侧 */
+.msg-end-time {
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+
+.msg-block:hover .msg-end-time {
+  opacity: 1;
+}
+
+/* 轮次级 usage：与结束时间同样 hover 消息行时显示 */
+.msg-usage-meta {
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+.msg-block:hover .msg-usage-meta { opacity: 1; }
 
 .msg-resume-bar {
   margin-top: 8px;
-}
-
-.msg-stream-error {
-  margin: 10px 0 0;
-  font-size: var(--sun-font-base);
-  line-height: 1.5;
-  color: var(--sun-text-muted);
 }
 
 .resume-btn {
@@ -1273,6 +2908,33 @@ watch(
   pointer-events: none;
 }
 
+/* 新对话/新任务空态：输入框严格垂直居中；说明/示例与模式气泡向上浮动在输入框上方；
+   发出第一条消息后自动贴地（去掉 bottom 靠 top 定位） */
+.chat-composer.composer--centered {
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  padding-bottom: 0;
+}
+
+/* 居中态下说明/示例脱离文档流上浮，不参与居中计算，保证输入框本身严格居中 */
+.chat-composer.composer--centered .empty-hero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 44px);
+  padding: 0;
+}
+
+/* 居中态下模式气泡上浮到输入框上方，同样不参与居中计算 */
+.chat-composer.composer--centered .composer-bubbles {
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 6px);
+  padding: 0;
+}
+
 .composer-inner {
   position: relative;
   display: flex;
@@ -1280,8 +2942,173 @@ watch(
   align-items: stretch;
   max-width: 720px;
   margin: 0 auto;
-  padding-bottom: 18px;
+  padding-bottom: 0;
   pointer-events: auto;
+}
+
+/* 运行期间 todolist 滚出视口时悬浮于输入框上方，样式与下方输入框一致（圆角/阴影对齐） */
+.floating-taskboard {
+  margin-bottom: 8px;
+  padding: 0;
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border);
+  border-radius: 20px;
+  box-shadow: var(--composer-shadow);
+}
+
+.floating-taskboard :deep(.taskboard-wrap) {
+  margin: 0;
+}
+
+/* ---- 发送前分支切换：提交确认框（样式对齐 todolist 卡片）/ 切换步骤气泡 ---- */
+.branch-switch-commit {
+  margin-bottom: 8px;
+  padding: 12px 14px 14px;
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border);
+  border-radius: 20px;
+  box-shadow: var(--composer-shadow);
+}
+.branch-switch-commit-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sun-font-sm, 12px);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.branch-switch-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.branch-switch-close:hover { color: var(--sun-text); }
+.branch-switch-desc {
+  margin: 8px 0 10px;
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.5;
+  color: var(--sun-text-secondary);
+}
+.branch-switch-input {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: var(--sun-black);
+  color: var(--sun-text);
+  font-size: var(--sun-font-base, 14px);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.branch-switch-input:focus { border-color: var(--sun-accent); }
+.branch-switch-input::placeholder { color: var(--sun-text-muted); }
+.branch-switch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+}
+.branch-switch-kbd {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--sun-text-muted);
+}
+
+/* ---- 对话前动作出错详情卡片（拉取分支 / 切换分支失败）：todolist 同款样式，非红色，最小高度，右上角可关闭 ---- */
+.pre-action-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 12px 14px 14px;
+  min-height: 92px;
+  background: var(--sun-black);
+  border: 1px solid var(--sun-border);
+  border-radius: 20px;
+  box-shadow: var(--composer-shadow);
+}
+.pre-action-error-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sun-font-sm, 12px);
+  font-weight: 600;
+  color: var(--sun-text);
+}
+.pre-action-error-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.pre-action-error-close:hover { color: var(--sun-text); }
+.pre-action-error-body {
+  flex: 1;
+  min-height: 0;
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.5;
+  color: var(--sun-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+}
+.pre-action-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 新对话/新任务空态：标题/说明/示例 chips 显示在居中输入框上方 */
+.empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 0 20px;
+}
+
+.empty-hero .empty-icon {
+  color: var(--sun-text-muted);
+  margin-bottom: 16px;
+  opacity: 0.7;
+}
+
+.empty-hero .empty-title {
+  font-size: var(--sun-font-2xl);
+  font-weight: 600;
+  color: var(--sun-text);
+  margin: 0 0 8px;
+  letter-spacing: -0.4px;
+}
+
+.empty-hero .empty-desc {
+  font-size: var(--sun-font-base);
+  color: var(--sun-text-muted);
+  margin: 0 0 24px;
+  line-height: var(--sun-line-relaxed);
+}
+
+/* ---- 输入框上侧气泡行：模式选择 + 项目/分支选择（左对齐，样式与项目选择一致） ---- */
+.composer-bubbles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 0 2px 6px;
 }
 
 .composer-box {
@@ -1311,17 +3138,6 @@ watch(
   box-shadow: var(--composer-shadow);
 }
 
-.composer-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 32px;
-  padding: 4px 2px;
-  font-size: var(--sun-font-base);
-  color: var(--sun-text-muted);
-  user-select: none;
-}
-
 .composer-box--input {
   position: relative;
   flex-direction: column;
@@ -1348,57 +3164,50 @@ watch(
   min-height: 34px;
 }
 
+/* 输入框下方会话级汇总行（轮次/calls/↑↓/ctx%） */
+.composer-session-usage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 4px;
+  padding-bottom: 0;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+.composer-session-usage .usage-sep { opacity: 0.5; }
+
 .composer-toolbar-left {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  flex-shrink: 1;
   gap: 8px;
   min-width: 0;
+  overflow: hidden;
 }
 
-.composer-workspace-btn {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 5px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--sun-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--sun-text-secondary);
-  font-size: var(--sun-font-sm, 12px);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
+.composer-toolbar-left :deep(.model-dropdown-root) {
+  flex: 0 0 auto;
+  max-width: 180px;
 }
 
-.composer-workspace-leading {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.composer-toolbar-left :deep(.branch-dropdown-root) {
+  flex: 0 0 auto;
+  max-width: 240px;
   min-width: 0;
+  flex: 0 1 auto;
 }
 
-.composer-workspace-icon {
+.composer-toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   flex-shrink: 0;
-  opacity: 0.9;
-}
-
-.composer-workspace-label {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.composer-workspace-btn:hover:not(:disabled) {
-  border-color: var(--sun-border-light, #ccc);
-  color: var(--sun-text, #212121);
-}
-
-.composer-workspace-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  gap: 4px;
 }
 
 .skill-suggest {
@@ -1432,7 +3241,7 @@ watch(
 
 .skill-suggest-main {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
@@ -1443,6 +3252,10 @@ watch(
   color: var(--sun-text-muted);
   line-height: 1.4;
   padding-left: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skill-suggest-meta {
@@ -1468,8 +3281,8 @@ watch(
   color: var(--mention-skill-prefix);
 }
 
-.skill-suggest-id.is-expert {
-  color: var(--mention-expert-prefix);
+.skill-suggest-id.is-agent {
+  color: var(--mention-agent-prefix);
 }
 
 .skill-suggest-id.is-workflow {
@@ -1480,9 +3293,19 @@ watch(
   color: var(--mention-path-prefix);
 }
 
+/* 第一行中文名（id 之后） */
+.skill-suggest-title {
+  color: var(--sun-text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .skill-suggest li.path-suggest-item {
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
 }
 
 .path-suggest-icon {
@@ -1508,13 +3331,6 @@ watch(
   background: transparent;
 }
 
-.skill-suggest-name {
-  color: var(--sun-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .streaming-status {
   flex: 1;
   display: flex;
@@ -1523,15 +3339,6 @@ watch(
   font-size: var(--sun-font-base);
   color: var(--sun-text-muted);
   user-select: none;
-}
-
-.streaming-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--sun-text-muted);
-  flex-shrink: 0;
-  animation: glow-pulse 1.5s ease-in-out infinite;
 }
 
 .composer-icon-btn {
@@ -1552,6 +3359,15 @@ watch(
   color: var(--btn-primary-text);
 }
 
+[data-theme="dark"] .composer-icon-btn.send {
+  background: #ececec;
+  color: #212121;
+}
+
+[data-theme="dark"] .composer-icon-btn.send:hover:not(:disabled) {
+  background: #ffffff;
+}
+
 .composer-icon-btn.send:hover:not(:disabled) {
   background: var(--sun-accent-hover);
 }
@@ -1563,29 +3379,160 @@ watch(
   opacity: 0.7;
 }
 
-.composer-icon-btn.stop {
+.composer-icon-btn.pause {
   background: transparent;
   border: 1px solid var(--sun-border);
   color: var(--sun-text-secondary);
 }
 
-.composer-icon-btn.stop:hover {
+[data-theme="dark"] .composer-icon-btn.pause {
+  border-color: #5a5a5a;
+  color: #b4b4b4;
+}
+
+.composer-icon-btn.pause:hover {
   border-color: var(--sun-red);
   color: var(--sun-red);
   background: rgba(248, 113, 113, 0.08);
 }
 
-.composer-hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  margin: 0;
-  text-align: center;
-  font-size: var(--sun-font-xs);
-  line-height: 1.3;
-  color: var(--sun-text-muted);
-  pointer-events: none;
-  user-select: none;
+/* 语音录音覆盖层 */
+.voice-recording-overlay {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 14px;
+  min-height: 52px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.06), rgba(248, 113, 113, 0.02));
+  border: 1px solid rgba(248, 113, 113, 0.18);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.06);
+}
+
+/* 音频波形条容器 */
+.voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 32px;
+}
+
+.voice-waveform-bar {
+  width: 3px;
+  height: 0;
+  border-radius: 2px;
+  background: var(--sun-red);
+  opacity: 0;
+  animation: voice-wave 1.6s ease-in-out infinite;
+}
+
+.voice-waveform-bar:nth-child(1) { animation-delay: 0.00s; }
+.voice-waveform-bar:nth-child(2) { animation-delay: 0.12s; }
+.voice-waveform-bar:nth-child(3) { animation-delay: 0.24s; }
+.voice-waveform-bar:nth-child(4) { animation-delay: 0.36s; }
+.voice-waveform-bar:nth-child(5) { animation-delay: 0.48s; }
+
+@keyframes voice-wave {
+  0%, 100% { height: 8px; opacity: 0.35; }
+  25% { height: 28px; opacity: 0.9; }
+  50% { height: 14px; opacity: 0.55; }
+  75% { height: 32px; opacity: 0.85; }
+}
+
+/* 录音主体：指示器 + 识别文本 */
+.voice-recording-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 录音指示灯 + 标签 */
+.voice-rec-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.voice-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sun-red);
+  animation: voice-rec-blink 1.8s ease-in-out infinite;
+}
+
+@keyframes voice-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.voice-rec-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sun-red);
+  text-transform: uppercase;
+}
+
+.voice-recording-text {
+  font-size: var(--sun-font-base);
+  color: var(--sun-text);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-icon-btn.voice-cancel {
+  background: transparent;
+  border: 1px solid var(--sun-border);
+  color: var(--sun-text-secondary);
+  transition: all 0.2s;
+}
+
+.composer-icon-btn.voice-cancel:hover {
+  border-color: var(--sun-red);
+  color: var(--sun-red);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.composer-icon-btn.voice-confirm {
+  background: var(--sun-accent);
+  color: var(--btn-primary-text);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+[data-theme="dark"] .composer-icon-btn.voice-confirm {
+  background: #ececec;
+  color: #212121;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
+}
+
+.composer-icon-btn.voice-confirm:hover {
+  background: var(--sun-accent-hover);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .composer-icon-btn.voice-confirm:hover {
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(255, 255, 255, 0.12);
+}
+
+</style>
+
+<style>
+/* 分支操作 Git 下拉 Popover 全局样式（修复直角阴影残余）：内层 .git-dropdown-menu
+   自带圆角 + 阴影，外层 Naive UI 容器直角 box-shadow 会从四角露出，去掉它 */
+.n-popover.n-popover--raw:has(.git-dropdown-menu),
+.n-popover-shared:has(.git-dropdown-menu) {
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
 }
 </style>

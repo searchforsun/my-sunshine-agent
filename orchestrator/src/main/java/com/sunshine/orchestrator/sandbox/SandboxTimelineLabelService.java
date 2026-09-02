@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.sandbox;
 
 import com.sunshine.orchestrator.config.AgentPromptProperties;
+import com.sunshine.orchestrator.prompt.TimelinePromptCatalog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
@@ -20,7 +21,7 @@ public class SandboxTimelineLabelService {
 
     private static final int VALUE_MAX = 96;
 
-    private final AgentPromptProperties agentPromptProperties;
+    private final TimelinePromptCatalog timelinePromptCatalog;
 
     public boolean isSandboxTool(String toolId) {
         return toolId != null && SandboxIds.ALL.contains(toolId);
@@ -32,6 +33,8 @@ public class SandboxTimelineLabelService {
         String path = vars.get("path");
         String pattern = vars.get("pattern");
         String command = vars.get("command");
+        String url = vars.get("url");
+        String query = vars.get("query");
         String chosen = switch (toolId != null ? toolId : "") {
             case SandboxIds.READ -> hasText(path) ? tpl.getReadAfter() : null;
             case SandboxIds.WRITE -> hasText(path) ? tpl.getWriteAfter() : null;
@@ -51,6 +54,8 @@ public class SandboxTimelineLabelService {
                 yield tpl.getGrepAfter();
             }
             case SandboxIds.EXEC -> hasText(command) ? tpl.getExecAfter() : null;
+            case SandboxIds.WEBFETCH -> hasText(url) ? tpl.getWebfetchAfter() : null;
+            case SandboxIds.WEBSEARCH -> hasText(query) ? tpl.getWebsearchAfter() : null;
             default -> null;
         };
         if (!hasText(chosen)) {
@@ -59,19 +64,82 @@ public class SandboxTimelineLabelService {
         return apply(chosen, vars);
     }
 
+    /**
+     * 读文件主行：{fileName} 或 {fileName} L{a}-{b}。
+     * 工具名（displayName）由前端 label 展示，此处仅补行范围便于前端定位与上下文感知。
+     */
+    public String readAfter(String displayName, Map<String, ?> input, String rawText) {
+        AgentPromptProperties.SandboxTimeline tpl = template();
+        Map<String, String> vars = vars(displayName, input);
+        String path = vars.get("path");
+        if (!hasText(path)) {
+            return tpl.getAfterFallback();
+        }
+        Integer offset = asInteger(input, "offset");
+        int lines = countLines(rawText);
+        String base = apply(tpl.getReadAfter(), vars);
+        String lineRange = lineRangeText(offset, lines);
+        return hasText(lineRange) ? base + " " + lineRange : base;
+    }
+
+    /** L{a}-{b}（部分读取）或 L1-{n}（读全部）；offset 缺省视为从第 1 行读起 */
+    static String lineRangeText(Integer offset, int lines) {
+        if (lines <= 0) {
+            return "";
+        }
+        int start = offset != null && offset > 0 ? offset : 1;
+        int end = start + lines - 1;
+        return "L" + start + "-" + end;
+    }
+
+    static int countLines(String text) {
+        if (!hasText(text)) {
+            return 0;
+        }
+        int n = 1;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
+                n++;
+            }
+        }
+        // 末尾换行不产生新行
+        return text.endsWith("\n") ? n - 1 : n;
+    }
+
     public String active(String toolId, String displayName, Map<String, ?> input) {
         AgentPromptProperties.SandboxTimeline tpl = template();
         Map<String, String> vars = vars(displayName, input);
         String path = vars.get("path");
         String pattern = vars.get("pattern");
         String command = vars.get("command");
+        String url = vars.get("url");
+        String query = vars.get("query");
+        // write/edit：无 path 时用「…」占位，参数流阶段也能显示「正在写入 …」
         String chosen = switch (toolId != null ? toolId : "") {
             case SandboxIds.READ -> hasText(path) ? tpl.getReadActive() : null;
-            case SandboxIds.WRITE -> hasText(path) ? tpl.getWriteActive() : null;
-            case SandboxIds.EDIT -> hasText(path) ? tpl.getEditActive() : null;
+            case SandboxIds.WRITE -> {
+                if (!hasText(path)) {
+                    vars.put("path", "…");
+                    vars.put("displayPath", "…");
+                    vars.put("headerPath", "…");
+                    vars.put("fileName", "…");
+                }
+                yield tpl.getWriteActive();
+            }
+            case SandboxIds.EDIT -> {
+                if (!hasText(path)) {
+                    vars.put("path", "…");
+                    vars.put("displayPath", "…");
+                    vars.put("headerPath", "…");
+                    vars.put("fileName", "…");
+                }
+                yield tpl.getEditActive();
+            }
             case SandboxIds.GLOB -> hasText(pattern) ? tpl.getGlobActive() : null;
             case SandboxIds.GREP -> hasText(pattern) ? tpl.getGrepActive() : null;
             case SandboxIds.EXEC -> hasText(command) ? tpl.getExecActive() : null;
+            case SandboxIds.WEBFETCH -> hasText(url) ? tpl.getWebfetchActive() : null;
+            case SandboxIds.WEBSEARCH -> hasText(query) ? tpl.getWebsearchActive() : null;
             default -> null;
         };
         if (!hasText(chosen)) {
@@ -81,8 +149,7 @@ public class SandboxTimelineLabelService {
     }
 
     private AgentPromptProperties.SandboxTimeline template() {
-        AgentPromptProperties.Timeline timeline = agentPromptProperties.timelineOrDefault();
-        return timeline.getSandbox() != null ? timeline.getSandbox() : new AgentPromptProperties.SandboxTimeline();
+        return timelinePromptCatalog.sandbox();
     }
 
     static Map<String, String> vars(String displayName, Map<String, ?> input) {
@@ -97,6 +164,8 @@ public class SandboxTimelineLabelService {
         // command 保留全文：主行由前端单行省略，展开区展示完整命令
         map.put("command", full(str(input, "command")));
         map.put("cwd", clip(str(input, "cwd")));
+        map.put("url", clip(str(input, "url")));
+        map.put("query", clip(str(input, "query")));
         return map;
     }
 
@@ -106,6 +175,24 @@ public class SandboxTimelineLabelService {
         }
         Object v = input.get(key);
         return v != null ? String.valueOf(v).strip() : "";
+    }
+
+    private static Integer asInteger(Map<String, ?> input, String key) {
+        if (input == null || key == null) {
+            return null;
+        }
+        Object v = input.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(v).strip());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     static String fileName(String path) {
@@ -181,7 +268,7 @@ public class SandboxTimelineLabelService {
         return m.find() ? m.group(1) : "";
     }
 
-    /** 去掉 /skills|/workspace 前缀的相对路径；裸 jail 根返回空 */
+    /** 去掉 /skills|/workspace 前缀的相对路径；任务工作区再剥 wt-xxx/ */
     static String displayPath(String path) {
         if (!hasText(path)) {
             return "";
@@ -194,7 +281,13 @@ public class SandboxTimelineLabelService {
             return normalized.substring("/skills/".length());
         }
         if (normalized.startsWith("/workspace/")) {
-            return normalized.substring("/workspace/".length());
+            String rest = normalized.substring("/workspace/".length());
+            // /workspace/wt-xxx/docs/a.md → docs/a.md
+            if (rest.matches("wt-[a-zA-Z0-9]+(/.*)?")) {
+                int slash = rest.indexOf('/');
+                return slash >= 0 ? rest.substring(slash + 1) : "";
+            }
+            return rest;
         }
         return normalized;
     }

@@ -2,9 +2,7 @@ package com.sunshine.orchestrator.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.common.core.result.R;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -19,23 +17,16 @@ import java.util.Optional;
 @Component
 public class WorkflowManagerClient {
 
-    @Value("${workflow-manager.base-url:http://localhost:8230}")
-    private String baseUrl;
-
-    private WebClient webClient;
+    private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
-    public WorkflowManagerClient(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
-
-    @PostConstruct
-    void init() {
-        webClient = WebClient.builder()
-                .baseUrl(baseUrl)
+    public WorkflowManagerClient(WebClient.Builder builder, ObjectMapper objectMapper) {
+        this.webClient = builder
+                .baseUrl("http://sunshine-workflow-manager")
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .build();
-        log.info("[WorkflowManagerClient] baseUrl={}", baseUrl);
+        this.objectMapper = objectMapper;
+        log.info("[WorkflowManagerClient] baseUrl=http://sunshine-workflow-manager");
     }
 
     public List<WorkflowCatalogEntryDto> fetchCatalog() {
@@ -111,6 +102,7 @@ public class WorkflowManagerClient {
             String mode,
             String displayName,
             String description,
+            String kind,
             List<String> examples,
             List<String> nodes,
             String intentAfter) {
@@ -125,7 +117,6 @@ public class WorkflowManagerClient {
     public record WorkflowNodeDefaultsDto(
             WorkflowNodeRetryDefaultsDto defaults,
             Map<String, WorkflowNodeRetryDefaultsDto> byType,
-            String criticalOnFailure,
             double backoffMultiplier,
             List<String> retryOnErrorClass) {
     }

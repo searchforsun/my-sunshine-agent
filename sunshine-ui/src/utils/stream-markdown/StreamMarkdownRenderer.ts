@@ -10,6 +10,11 @@ import { normalizeStreamingMarkdown } from './normalizeStreamingMarkdown'
 import { streamSafeMarkdownRender } from './streamSafeMarkdown'
 import { isPartialListMarker } from './listMarkers'
 import { hasUnclosedBlockMath, isBlockMathContinuation } from './mathBlock'
+import {
+  hasOpenMermaidFenceAtEnd,
+  stripTrailingOpenMermaidFence,
+} from './mermaidFence'
+import { getCachedMermaidSvg } from './mermaidSvgCache'
 import type { RendererConfig, ProcessResult, RenderBlock } from './types'
 import { DEFAULT_CONFIG, RenderState } from './types'
 
@@ -83,7 +88,6 @@ export class StreamMarkdownRenderer {
     this.isStreaming = true
     const lines = this.buffer.append(chunk)
     if (lines) this.processLines(lines)
-    this.scheduleMermaidPolling()
     // 处理缓冲区中未完成的行（段落平滑输出）
     this.flushPendingParagraph()
   }
@@ -386,30 +390,53 @@ export class StreamMarkdownRenderer {
   }
 
   private handleMermaidBlock(block: RenderBlock): void {
+    this.inMermaidBlock = false
     const wrappers = this.container.querySelectorAll(`.${CP('mermaid-wrapper')}`)
     for (const wrap of wrappers) {
-      const ph = wrap.querySelector(`.${CP('mermaid-loading')}`) as HTMLElement | null
-      if (ph) {
-        this.inMermaidBlock = false
-        ;(wrap as HTMLElement).dataset.mermaidSource = block.content
-        const phId = ph.id || `mmd-${Date.now()}`
-        if (!ph.id) ph.id = phId
-        this.pendingMermaids.set(phId, { content: block.content, placeholder: ph })
-        if (!this.isStreaming) {
-          void this.renderMermaidChart(phId)
-        }
-        return
-      }
+      const el = wrap as HTMLElement
+      const ph = el.querySelector(`.${CP('mermaid-loading')}`) as HTMLElement | null
+      if (!ph) continue
+      el.dataset.mermaidSource = block.content
+      this.mountMermaid(el, ph, block.content)
+      return
+    }
+    const wrap = document.createElement('div')
+    wrap.className = CP('mermaid-wrapper')
+    wrap.dataset.mermaidSource = block.content
+    const head = document.createElement('div')
+    head.className = CP('mermaid-header')
+    const label = document.createElement('span')
+    label.className = CP('mermaid-label')
+    label.textContent = 'mermaid'
+    head.appendChild(label)
+    wrap.appendChild(head)
+    const cached = getCachedMermaidSvg(block.content)
+    if (cached) {
+      wrap.appendChild(this.mermaidRenderer.createChartEl(cached))
+      head.appendChild(createMermaidToolButtons())
+      this.container.appendChild(wrap)
+      this.blocks.push(block)
+      return
     }
     const { id, el: ph } = this.mermaidRenderer.createPlaceholder()
+    wrap.appendChild(ph)
+    this.container.appendChild(wrap)
     this.pendingMermaids.set(id, { content: block.content, placeholder: ph })
-    this.container.appendChild(ph)
-    if (!this.isStreaming) void this.renderMermaidChart(id)
+    void this.renderMermaidChart(id)
     this.blocks.push(block)
+  }
+
+  private mountMermaid(wrap: HTMLElement, placeholder: HTMLElement, content: string): void {
+    const phId = placeholder.id || `mmd-${Date.now()}`
+    if (!placeholder.id) placeholder.id = phId
+    this.pendingMermaids.set(phId, { content, placeholder })
+    void this.renderMermaidChart(phId)
   }
 
   private buildMermaidUI(wrap: HTMLElement, source: string): void {
     wrap.dataset.mermaidSource = source
+    // 错误态已直接展示源码，不挂工具栏按钮
+    if (wrap.querySelector(`.${CP('mermaid-error')}`)) return
     const header = wrap.querySelector(`.${CP('mermaid-header')}`)
     if (header && !header.querySelector(`.${CP('toolbtn-toggle')}`)) {
       header.appendChild(createMermaidToolButtons())
@@ -428,7 +455,6 @@ export class StreamMarkdownRenderer {
   }
 
   private async renderMermaidChart(id: string): Promise<void> {
-    if (this.isStreaming) return
     const p = this.pendingMermaids.get(id)
     if (!p) return
     const ok = await this.mermaidRenderer.render(id, p.content, p.placeholder)
@@ -478,19 +504,25 @@ export class StreamMarkdownRenderer {
     if (!full) return
 
     const normalized = normalizeStreamingMarkdown(full)
-    this.ingestMarkdown(normalized)
+    // 流式未闭合 mermaid：不喂入状态机，末尾挂稳定占位，避免每次 rebuild 转圈抖动
+    const openMermaid = streaming && hasOpenMermaidFenceAtEnd(normalized)
+    const toIngest = openMermaid ? stripTrailingOpenMermaidFence(normalized) : normalized
+    this.ingestMarkdown(toIngest)
 
     const f = this.stateMachine.forceFlush()
     if (f.render && f.content) this.appendBlock(f)
 
     this.commitParagraph()
     this.finalizeOpenCodeBlock()
+    if (openMermaid) this.appendMermaidPlaceholder()
     if (streaming) this.flushPendingParagraph()
     if (streaming) this.finalizeStreamedBlocksExceptLast()
     if (!streaming && this.container instanceof HTMLElement) {
       this.stripFadeTails(this.container)
     }
-    this.scheduleMermaidPolling()
+    if (!streaming) {
+      this.scheduleMermaidPolling()
+    }
   }
 
   /** 解析完整 Markdown 文本（不触发 processChunk 的二次 flush） */
@@ -587,7 +619,9 @@ export class StreamMarkdownRenderer {
     this.currentCodeRaw = ''
     this.currentCodeLang = ''
   }
+
 }
+
 
 function isParagraphResult(r: ProcessResult): boolean {
   if (r.type !== 'markdown') return false

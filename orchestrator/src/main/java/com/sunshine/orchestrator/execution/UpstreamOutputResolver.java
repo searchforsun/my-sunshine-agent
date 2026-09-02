@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.execution;
 
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -14,10 +15,10 @@ public class UpstreamOutputResolver {
     private static final Pattern OUTPUT_PLACEHOLDER =
             Pattern.compile("\\{\\{([a-zA-Z0-9_.-]+)\\.output}}");
 
-    private final AgentExecutionProperties executionProperties;
+    private final PromptCatalogHolder promptCatalogHolder;
 
-    public UpstreamOutputResolver(AgentExecutionProperties executionProperties) {
-        this.executionProperties = executionProperties;
+    public UpstreamOutputResolver(PromptCatalogHolder promptCatalogHolder) {
+        this.promptCatalogHolder = promptCatalogHolder;
     }
 
     public String resolvePrompt(String template, WorkflowContext ctx, WorkflowDefinition def) {
@@ -36,11 +37,12 @@ public class UpstreamOutputResolver {
     }
 
     private String resolveOutput(String nodeId, WorkflowContext ctx, WorkflowDefinition def) {
-        String direct = ctx.resolvePath(nodeId + ".output");
+        String direct = ctx.resolvePathString(nodeId + ".output");
         if (StringUtils.hasText(direct)) {
             return direct;
         }
-        String answer = ctx.node(nodeId).get("answer");
+        TypedValue answerVal = ctx.node(nodeId).get("answer");
+        String answer = answerVal != null ? answerVal.render() : null;
         if (StringUtils.hasText(answer)) {
             return answer;
         }
@@ -49,7 +51,7 @@ public class UpstreamOutputResolver {
             return "";
         }
         String displayName = resolveDisplayName(nodeId, def);
-        String line = executionProperties.getPlanWorkflow().getAnswer().getUpstreamFailureLine();
+        String line = promptCatalogHolder.requireText("workflow.upstream-failure-line");
         if (!StringUtils.hasText(line)) {
             return "（" + displayName + " 执行失败：" + failure.error() + "）";
         }

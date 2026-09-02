@@ -4,6 +4,7 @@
 import { nextTick, ref, watch } from 'vue'
 import hljsDarkUrl from 'highlight.js/styles/github-dark.css?url'
 import hljsLightUrl from 'highlight.js/styles/github.css?url'
+import { reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
 
 type Theme = 'dark' | 'light'
 const STORAGE_KEY = 'sunshine-theme'
@@ -27,17 +28,19 @@ function applyHljsTheme(val: Theme) {
   link.href = val === 'light' ? hljsLightUrl : hljsDarkUrl
 }
 
-function applyTheme(val: Theme) {
+function applyTheme(val: Theme, options?: { syncMermaid?: boolean }) {
   const root = document.documentElement
   root.classList.add('theme-switching')
   root.setAttribute('data-theme', val)
   root.style.colorScheme = val
   localStorage.setItem(STORAGE_KEY, val)
   applyHljsTheme(val)
-  // 等 Vue + Naive UI 同帧落地后再恢复 transition
+  const mermaidTask = options?.syncMermaid ? reRenderStaticMermaids() : Promise.resolve()
+  // 等 Vue + Naive UI 同帧落地，且 Mermaid 按新主题重绘完成后再恢复 transition
   void nextTick(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+      requestAnimationFrame(async () => {
+        await mermaidTask
         root.classList.remove('theme-switching')
       })
     })
@@ -45,7 +48,7 @@ function applyTheme(val: Theme) {
 }
 
 applyTheme(theme.value)
-watch(theme, applyTheme)
+watch(theme, (val) => applyTheme(val, { syncMermaid: true }))
 
 export function useTheme() {
   function toggle() {

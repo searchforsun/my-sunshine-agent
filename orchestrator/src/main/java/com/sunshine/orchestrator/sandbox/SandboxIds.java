@@ -11,7 +11,9 @@ public final class SandboxIds {
     public static final String GLOB = "sandbox__glob";
     public static final String GREP = "sandbox__grep";
     public static final String EXEC = "sandbox__exec";
-    public static final List<String> ALL = List.of(READ, WRITE, EDIT, GLOB, GREP, EXEC);
+    public static final String WEBFETCH = "sandbox__webfetch";
+    public static final String WEBSEARCH = "sandbox__websearch";
+    public static final List<String> ALL = List.of(READ, WRITE, EDIT, GLOB, GREP, EXEC, WEBFETCH, WEBSEARCH);
 
     public static String rpcName(String toolId) {
         return toolId != null && toolId.startsWith("sandbox__")

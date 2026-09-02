@@ -32,6 +32,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -59,6 +60,7 @@ class ProcessingStepMergerTest {
                 null,
                 1L,
                 "思考过程",
+                null,
                 null,
                 null,
                 null
@@ -90,6 +92,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
 
@@ -116,6 +119,7 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 null,
                 null,
+                null,
                 null
         );
         ProcessingStep think = new ProcessingStep(
@@ -132,6 +136,7 @@ class ProcessingStepMergerTest {
                 null,
                 4L,
                 "思考过程",
+                null,
                 null,
                 null,
                 null
@@ -153,10 +158,10 @@ class ProcessingStepMergerTest {
         com.sunshine.orchestrator.processing.StepMetadata metadata =
                 com.sunshine.orchestrator.processing.StepMetadata.fromRouting(
                         new com.sunshine.orchestrator.routing.ExecutionPlan(
-                                com.sunshine.orchestrator.routing.ExecutionMode.REACT,
+                                com.sunshine.orchestrator.routing.ExecutionMode.FAST,
                                 null,
                                 java.util.Map.of(),
-                                "user:forced-react"));
+                                "user:forced-fast"));
         ProcessingStep intent = new ProcessingStep(
                 "intent",
                 "intent",
@@ -173,20 +178,21 @@ class ProcessingStepMergerTest {
                 "识别意图",
                 metadata,
                 null,
+                null,
                 null
         );
         String json = ProcessingStepSerde.toPersistJson(List.of(intent));
-        assertThat(json).contains("\"routingReason\":\"user:forced-react\"");
+        assertThat(json).contains("\"routingReason\":\"user:forced-fast\"");
     }
 
     @Test
     @DisplayName("applyDelta result 保留仅含换行/空格的 token")
     void applyDelta_resultPreservesWhitespaceOnlyChunks() {
         List<ProcessingStep> steps = new java.util.ArrayList<>();
-        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", "##");
-        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", " ");
-        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", "一、\n\n");
-        ProcessingStepMerger.applyDelta(steps, "expert-policy-s1", "result", "正文");
+        ProcessingStepMerger.applyDelta(steps, "react-policy-s1", "result", "##");
+        ProcessingStepMerger.applyDelta(steps, "react-policy-s1", "result", " ");
+        ProcessingStepMerger.applyDelta(steps, "react-policy-s1", "result", "一、\n\n");
+        ProcessingStepMerger.applyDelta(steps, "react-policy-s1", "result", "正文");
         assertThat(steps.get(0).result()).isEqualTo("## 一、\n\n正文");
     }
 
@@ -194,13 +200,13 @@ class ProcessingStepMergerTest {
     @DisplayName("mergeSteps done 态 result 覆盖 delta 累积")
     void mergeSteps_doneResultReplacesStreamedAccumulation() {
         ProcessingStep running = new ProcessingStep(
-                "expert-x-s1", "expert", "running", null,
+                "react-x-s1", "react", "running", null,
                 1L, null, null, null, null, null, "部分流式",
-                1L, "专家", null, null, null);
+                1L, "智能体", null, null, null, null);
         ProcessingStep done = new ProcessingStep(
-                "expert-x-s1", "expert", "done", null,
+                "react-x-s1", "react", "done", null,
                 1L, 2L, 1L, null, null, null, "完整终稿",
-                2L, "专家", null, null, null);
+                2L, "智能体", null, null, null, null);
         List<ProcessingStep> steps = new java.util.ArrayList<>();
         ProcessingStepMerger.upsert(steps, running);
         ProcessingStepMerger.upsert(steps, done);
@@ -227,6 +233,21 @@ class ProcessingStepMergerTest {
     }
 
     @Test
+    @DisplayName("applyDelta step_summary 通道写入 stepSummary，不动 output/result")
+    void applyDelta_stepSummaryChannelWritesStepSummary() {
+        List<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.applyDelta(steps, "think-3", "reasoning", "思考过程");
+        ProcessingStepMerger.applyDelta(steps, "think-3", "step_summary", "先规划要做的事");
+        assertThat(steps).hasSize(1);
+        ProcessingStep step = steps.get(0);
+        assertThat(step.stepSummary()).isEqualTo("先规划要做的事");
+        assertThat(step.reasoning()).isEqualTo("思考过程");
+        assertThat(step.output()).isNull();
+        String json = ProcessingStepSerde.toPersistJson(steps);
+        assertThat(json).contains("\"stepSummary\":\"先规划要做的事\"");
+    }
+
+    @Test
     @DisplayName("mergeSteps running 快照：reasoning 前缀合并，禁止全量二次 append")
     void mergeSteps_runningReasoningSnapshot_usesPrefixMerge() {
         List<ProcessingStep> steps = new java.util.ArrayList<>();
@@ -241,7 +262,7 @@ class ProcessingStepMergerTest {
         return new ProcessingStep(
                 id, "think", "running", null,
                 ts, null, null, null, reasoning, null, null,
-                ts, "思考", null, null, null);
+                ts, "思考", null, null, null, null);
     }
 
     @Test
@@ -256,6 +277,99 @@ class ProcessingStepMergerTest {
 
         assertThat(kept).hasSize(1);
         assertThat(kept.get(0).id()).isEqualTo("intent");
+    }
+
+    @Test
+    @DisplayName("upsert：paused+after 不被后续 running 覆盖（spawn 取消）")
+    void upsert_cancelPausedNotOverwrittenByRunning() {
+        ProcessingStep cancelled = new ProcessingStep(
+                "subagent-r1",
+                "subagent",
+                "paused",
+                new StepSummary("委派子任务", null, "已取消"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                "用户已取消子任务",
+                2L,
+                "子任务",
+                null,
+                null,
+                null,
+                null);
+        ProcessingStep lateRunning = new ProcessingStep(
+                "subagent-r1",
+                "subagent",
+                "running",
+                new StepSummary("委派子任务", "子任务执行中", null),
+                1L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                3L,
+                "子任务",
+                null,
+                null,
+                null,
+                null);
+        java.util.ArrayList<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.upsert(steps, cancelled);
+        ProcessingStepMerger.upsert(steps, lateRunning);
+        assertThat(steps).hasSize(1);
+        assertThat(steps.get(0).lifecycle()).isEqualTo("paused");
+        assertThat(steps.get(0).summary().after()).isEqualTo("已取消");
+    }
+
+    @Test
+    @DisplayName("upsert：paused+after 不被后续 done 覆盖")
+    void upsert_cancelPausedNotOverwrittenByDone() {
+        ProcessingStep cancelled = new ProcessingStep(
+                "subagent-r2",
+                "subagent",
+                "paused",
+                new StepSummary("委派子任务", null, "已取消"),
+                1L,
+                2L,
+                1L,
+                null,
+                null,
+                null,
+                "用户已取消子任务",
+                2L,
+                "子任务",
+                null,
+                null,
+                null,
+                null);
+        ProcessingStep lateDone = new ProcessingStep(
+                "subagent-r2",
+                "subagent",
+                "done",
+                new StepSummary("委派子任务", null, "子任务完成"),
+                1L,
+                3L,
+                2L,
+                null,
+                null,
+                null,
+                "答案",
+                3L,
+                "子任务",
+                null,
+                null,
+                null,
+                null);
+        java.util.ArrayList<ProcessingStep> steps = new java.util.ArrayList<>();
+        ProcessingStepMerger.upsert(steps, cancelled);
+        ProcessingStepMerger.upsert(steps, lateDone);
+        assertThat(steps.get(0).lifecycle()).isEqualTo("paused");
+        assertThat(steps.get(0).summary().after()).isEqualTo("已取消");
     }
 
     private static ProcessingStep intentLike(String id) {
@@ -273,6 +387,7 @@ class ProcessingStepMergerTest {
                 null,
                 2L,
                 id,
+                null,
                 null,
                 null,
                 null);

@@ -24,7 +24,9 @@ import java.nio.charset.StandardCharsets;
 public class AuditLogConsumer implements RocketMQListener {
 
     private final AuditPersistService auditPersistService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // 必须用 Spring 注入的 ObjectMapper（含 JavaTimeModule）：AuditEvent.createdAt 为 Instant，
+    // 手动 new ObjectMapper() 无法反序列化 producer 发出的 ISO-8601 时间，会导致消费失败丢审计
+    private final ObjectMapper objectMapper;
 
     @Override
     public ConsumeResult consume(MessageView messageView) {

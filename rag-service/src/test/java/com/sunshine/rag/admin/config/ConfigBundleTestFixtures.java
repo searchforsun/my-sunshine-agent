@@ -25,7 +25,6 @@ public final class ConfigBundleTestFixtures {
                 "enabled", true,
                 "minScore", 0.25,
                 "minRelevance", 0.25));
-        payload.put("chunk", Map.of("maxSize", 1200));
         payload.put("rewrite", Map.of(
                 "rag", Map.of(
                         "enabled", true,

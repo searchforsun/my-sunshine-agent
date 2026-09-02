@@ -42,8 +42,11 @@ export function pauseRunningWorkflowNodes(steps: ProcessingStep[] | undefined): 
     const phase = next.phase ?? ''
     if (shouldPauseStepOnStop(next)
         && !next.id.startsWith('node-')
-        && (phase === 'think' || phase === 'agent' || phase === 'generate'
-            || phase.startsWith('think') || phase.startsWith('tool'))) {
+        && (phase === 'think' || phase === 'agent' || phase === 'subagent' || phase === 'worker'
+            || phase === 'generate'
+            || phase === 'rag' || phase === 'intent' || phase === 'skill' || phase === 'tasks'
+            || phase.startsWith('think') || phase.startsWith('tool')
+            || next.id.startsWith('subagent-') || next.id.startsWith('worker-'))) {
       next = toPausedStep(next)
     }
     return next
@@ -64,13 +67,18 @@ function isAwaitingInteractionStep(step: ProcessingStep): boolean {
 
 function toPausedStep(step: ProcessingStep): ProcessingStep {
   const now = Date.now()
+  // subagent/worker 整轮停止时无单独 cancel SSE，乐观填「已取消」与后端取消终态一致
+  const defaultAfter = step.phase === 'subagent' || step.phase === 'worker'
+    || step.id.startsWith('subagent-') || step.id.startsWith('worker-')
+    ? (step.summary?.after?.trim() || '已取消')
+    : (step.summary?.after?.trim() || undefined)
   return {
     ...step,
     lifecycle: 'paused',
     summary: {
-      ...step.summary,
-      active: '已暂停',
-      after: '已暂停',
+      before: step.summary?.before,
+      active: undefined,
+      after: defaultAfter,
     },
     endedAt: now,
     durationMs: step.startedAt != null ? now - step.startedAt : step.durationMs,
@@ -152,16 +160,63 @@ export function reactivatePausedPlanHitlNodes(steps: ProcessingStep[] | undefine
   })
 }
 
-/** ReAct 续跑：仅保留意图识别步 */
-export function retainIntentStepsOnly(steps: ProcessingStep[] | undefined): ProcessingStep[] {
-  if (!steps?.length) return []
-  return steps.filter(s => s.id === 'intent' || s.phase === 'intent')
-}
-
 /** 续跑开始：普通 paused 节点重置 pending；HITL/Recovery awaiting 保留 metadata 并恢复 running */
 export function reactivatePausedStepsForResume(steps: ProcessingStep[] | undefined): ProcessingStep[] {
   if (!steps?.length) return steps ?? []
   return steps.map(reactivatePausedStepIfNeeded)
+}
+
+/**
+ * ReAct 续跑（reactRestart/checkpoint）重置：后端对复用 id 的步重放 running→done。
+ * 暂停期被乐观标「已取消/已暂停」（paused）的步在前端是 cancel-terminal 硬终态，
+ * resolveMergedLifecycle 会挡住后端重放的 running/done → 卡 running。恢复时把这些可续跑步
+ * 重置为 pending 并清掉 after / 旧半截 reasoning，解除终态保护，让重放从空白干净落地。
+ * 仅处理会被后端重放的步（subagent/think/tool/agent/generate/rag/tasks）；不动真 done 的历史步。
+ */
+export function resetStepsForReactResume(steps: ProcessingStep[] | undefined): ProcessingStep[] {
+  if (!steps?.length) return steps ?? []
+  return steps.map(step => {
+    let next = step
+    if (step.subSteps?.length) {
+      const subs = resetStepsForReactResume(step.subSteps)
+      if (subs !== step.subSteps) next = { ...next, subSteps: subs }
+    }
+    if (next.lifecycle !== 'paused') {
+      // 中断在 think 流式中途（running 残留，停止时未走 toPausedStep 的路径）：同 id 复用重推，
+      // 旧半截 reasoning 会与新重放 step_delta 经 concatText 叠加覆盖 → 清。
+      // done 终态的 think 后端不重放（或经 RESUME 保留旧 reasoning 续写），前端清空会闪烁 → 保留。
+      if (next.lifecycle === 'running' && isThinkStep(next) && next.reasoning) {
+        return { ...next, reasoning: '' }
+      }
+      return next
+    }
+    if (!isResumableReactStep(next)) return next
+    return {
+      ...next,
+      lifecycle: 'pending',
+      summary: next.summary?.before ? { before: next.summary.before } : undefined,
+      reasoning: '',
+      startedAt: undefined,
+      endedAt: undefined,
+      durationMs: undefined,
+    }
+  })
+}
+
+function isThinkStep(step: ProcessingStep): boolean {
+  const phase = step.phase ?? ''
+  return phase === 'think' || phase.startsWith('think')
+    || step.id === 'think' || step.id.startsWith('think-')
+}
+
+/** 会被后端续跑重放（复用同 id）的 ReAct 步；intent 由 SSE 覆盖、不在此重置。
+ *  subagent/worker 不在内：spawn/worker runId 每次新建，续跑不重放旧卡；
+ *  全局取消后已标「已取消」的卡保持终态，不重置为等待中。 */
+function isResumableReactStep(step: ProcessingStep): boolean {
+  const phase = step.phase ?? ''
+  return phase === 'think' || phase === 'agent' || phase === 'generate'
+    || phase === 'rag' || phase === 'tasks'
+    || phase.startsWith('think') || phase.startsWith('tool')
 }
 
 /** 续跑执行中：上游节点重新 pending/running 时，其余 paused 节点改为等待中 */

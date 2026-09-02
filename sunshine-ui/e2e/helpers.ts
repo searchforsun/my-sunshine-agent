@@ -22,7 +22,7 @@ export async function ensureE2eLogin(page: Page) {
   }, token)
 }
 
-/** 输入框：auto/react 为 contenteditable，simple/workflow 为 textarea */
+/** 输入框：auto/react 为 contenteditable，workflow 等为 textarea */
 export async function fillComposer(page: Page, text: string) {
   const area = page.locator('.composer-input-area')
   await expect(area).toBeVisible({ timeout: 30_000 })

@@ -1,467 +1,282 @@
 package com.sunshine.orchestrator.routing;
 
-
-
 import com.sunshine.common.core.exception.BizException;
 import com.sunshine.orchestrator.agent.IntentRouter;
-import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
-
-import com.sunshine.orchestrator.config.RoutingRuleProperties;
-
-import com.sunshine.orchestrator.catalog.ExpertCatalogIndexEntry;
-import com.sunshine.orchestrator.catalog.ExpertCatalogService;
-import com.sunshine.orchestrator.expert.ExpertBindingParser;
-import com.sunshine.orchestrator.expert.ExpertCollaborationParams;
-import com.sunshine.orchestrator.routing.policy.ExpertBindingRoutingPolicy;
-import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
-import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
-
-import com.sunshine.orchestrator.routing.policy.GoldenRuleRoutingPolicy;
-
-import com.sunshine.orchestrator.routing.policy.LlmClassifierRoutingPolicy;
-
-import com.sunshine.orchestrator.routing.policy.PeerStructuralRoutingPolicy;
-
-import com.sunshine.orchestrator.routing.policy.RoutingPolicyChain;
-
-import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
-
-import com.sunshine.orchestrator.routing.policy.StructuralRoutingPolicy;
-
-import com.sunshine.orchestrator.rewrite.QueryRewriteService;
-
+import com.sunshine.orchestrator.catalog.AgentBindingParser;
+import com.sunshine.orchestrator.catalog.AgentCatalogService;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
-
-import com.sunshine.orchestrator.catalog.SkillCatalogIndexEntry;
-
+import com.sunshine.orchestrator.exception.OrchestratorErrorCode;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.routing.policy.RoutingContext;
+import com.sunshine.orchestrator.routing.policy.AgentBindingRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.SkillBindingRoutingPolicy;
+import com.sunshine.orchestrator.routing.policy.WorkflowBindingRoutingPolicy;
 import com.sunshine.orchestrator.skill.SkillBindingOutcome;
-
-import com.sunshine.orchestrator.skill.SkillBindingSource;
-
 import com.sunshine.orchestrator.skill.SkillBindingParser;
-
+import com.sunshine.orchestrator.skill.SkillBindingSource;
 import com.sunshine.orchestrator.skill.SkillDiscoveryService;
-
+import com.sunshine.orchestrator.workflow.WorkflowBindingParser;
 import org.junit.jupiter.api.BeforeEach;
-
 import org.junit.jupiter.api.Test;
-
 import org.junit.jupiter.api.extension.ExtendWith;
-
 import org.junit.jupiter.params.ParameterizedTest;
-
 import org.junit.jupiter.params.provider.CsvSource;
-
 import org.junit.jupiter.params.provider.ValueSource;
-
 import org.mockito.Mock;
-
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-
 import reactor.core.publisher.Mono;
 
-
-
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
-
-
-import com.sunshine.orchestrator.routing.policy.RoutingContext;
-
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-
 import static org.mockito.Mockito.verify;
-
 import static org.mockito.Mockito.when;
 
-
-
 /**
-
- * 路由 golden-set — 与 docs/routing/routing-golden-set.md 对照。
-
+ * 路由 golden-set（v6）：用户 mode 钉死；同 mode 规则/L3 仅收集绑定。
+ * 对照 docs/routing/routing-golden-set.md（期望 mode 按请求 preference，非自判）。
  */
-
 @ExtendWith(MockitoExtension.class)
-
 @MockitoSettings(strictness = Strictness.LENIENT)
-
 class RoutingGoldenSetTest {
 
-
-
     @Mock
-
     private SkillBindingParser skillBindingParser;
-
     @Mock
-
+    private AgentBindingParser agentBindingParser;
+    @Mock
     private IntentRouter intentRouter;
-
     @Mock
-
-    private QueryRewriteService queryRewriteService;
-
-    @Mock
-
     private SkillCatalogService skillCatalogService;
-
     @Mock
-
+    private AgentCatalogService agentCatalogService;
+    @Mock
     private WorkflowCatalog workflowCatalog;
-
-    @Mock
-
-    private ExpertCatalogService expertCatalogService;
-
-
 
     private ExecutionPlanRouter router;
 
-
-
     @BeforeEach
-
     void setUp() {
-
-        RoutingRuleProperties routingProps = nacosRulesFixture();
-
-        RuleBasedRouter ruleRouter = new RuleBasedRouter(routingProps);
-
-        StructuralPlanMatcher structuralMatcher = new StructuralPlanMatcher(routingProps);
-
-        PeerPatternMatcher peerMatcher = new PeerPatternMatcher(routingProps);
-
-        WorkflowBindingParser workflowBindingParser = new WorkflowBindingParser(workflowCatalog);
-        ExpertBindingParser expertBindingParser = new ExpertBindingParser(expertCatalogService);
-
-        var chain = new RoutingPolicyChain(List.of(
-
-                new WorkflowBindingRoutingPolicy(workflowBindingParser),
-
-                new ExpertBindingRoutingPolicy(expertBindingParser),
-
-                new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-
-                new StructuralRoutingPolicy(structuralMatcher),
-
-                new PeerStructuralRoutingPolicy(peerMatcher, structuralMatcher),
-
-                new GoldenRuleRoutingPolicy(ruleRouter, structuralMatcher, peerMatcher),
-
-                new LlmClassifierRoutingPolicy(intentRouter, queryRewriteService)));
-
-        router = new ExecutionPlanRouter(chain, new SkillDiscoveryService(skillCatalogService),
+        PromptCatalogHolder catalogHolder = RoutingCatalogFixtures.seedHolder();
+        SkillBindingRoutingPolicy skillPolicy = new SkillBindingRoutingPolicy(skillBindingParser);
+        WorkflowBindingRoutingPolicy workflowPolicy =
+                new WorkflowBindingRoutingPolicy(new WorkflowBindingParser(workflowCatalog));
+        AgentBindingRoutingPolicy agentPolicy = new AgentBindingRoutingPolicy(agentBindingParser);
+        when(agentBindingParser.parse(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(inv ->
+                com.sunshine.orchestrator.catalog.AgentBindingOutcome.none(inv.getArgument(0)));
+        when(agentBindingParser.stripAgentMentions(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        router = new ExecutionPlanRouter(
+                new SkillDiscoveryService(skillCatalogService),
                 new ForcedExecutionRouter(
-                        new SkillBindingRoutingPolicy(skillBindingParser, structuralMatcher),
-                        ruleRouter, intentRouter),
-                skillBindingParser);
+                        skillPolicy, agentPolicy, catalogHolder, intentRouter, workflowPolicy,
+                        new WorkflowBindingParser(workflowCatalog), skillCatalogService,
+                        agentCatalogService, workflowCatalog),
+                skillBindingParser,
+                agentBindingParser,
+                new com.sunshine.orchestrator.routing.RoutingStickyService(),
+                new com.sunshine.orchestrator.routing.SkillAdoptionService(
+                        new com.sunshine.orchestrator.config.AgentExecutionProperties(),
+                        skillCatalogService, agentCatalogService));
 
-        when(skillBindingParser.parse(anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
-        when(skillBindingParser.stripAtMention(anyString())).thenAnswer(inv -> {
+        when(skillBindingParser.parse(anyString(), any(), anyString())).thenAnswer(inv -> SkillBindingOutcome.none(inv.getArgument(0)));
+        when(skillBindingParser.stripSlashMention(anyString())).thenAnswer(inv -> {
             String msg = inv.getArgument(0);
-            if (msg != null && msg.startsWith("@")) {
+            if (msg != null && msg.startsWith("/")) {
                 int space = msg.indexOf(' ');
-                return space > 0 ? msg.substring(space + 1).strip() : "请处理";
+                return space > 0 ? msg.substring(space + 1).strip() : msg.strip();
             }
             return msg;
         });
-
-        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any()))
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(inv -> inv.getArgument(0));
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
     }
 
-
-
-    @ParameterizedTest(name = "plan-workflow: {0}")
-
+    @ParameterizedTest(name = "pro shares track-A rule: {0}")
     @ValueSource(strings = {
-
-            "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论",
-
-            "先查一下年假制度，再帮我看看待审批的请假单有没有问题",
-
-            "先检索报销政策，再列出待审批付款，然后逐条审查是否合规",
-
-            "分步处理：先知识库找差旅标准，再查财务待审批报销",
-
-            "请完整处理待审批差旅报销：先对照制度，再查单据并给出评估结论",
-
-            "给我一套差旅报销的分析流程：制度检索、待办查询、合规结论"
-
+            "差旅办法怎么说",
+            "制度咨询：报销规定",
+            "差旅办法、考勤制度怎么规定的",
+            "人事制度有没有规定",
+            "报销规定和差旅办法是什么"
     })
-
-    void planWorkflowPrompts(String query) {
-
-        ExecutionPlan plan = router.route(query).block();
-
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-
-        assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
-
-        verify(intentRouter, never()).classifyPlan(anyString());
-
+    void proPrompts_hitSharedTrackARule(String query) {
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.REACT_POLICY_QA_ID);
+        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
-
-
 
     @ParameterizedTest(name = "finance-list: {0}")
-
     @ValueSource(strings = {
-
             "有哪些待审批报销",
-
             "查询待审批报销单",
-
             "列出待审批的差旅报销",
-
             "待审批付款有哪些"
-
     })
-
-    void financeListPrompts(String query) {
-
-        ExecutionPlan plan = router.route(query).block();
-
+    void financeListPrompts_withWorkflow(String query) {
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
-
         assertThat(plan.workflowId()).isEqualTo("finance-list");
-
-        assertThat(plan.ruleId()).isEqualTo("rule-finance-list-pending");
-
-        verify(intentRouter, never()).classifyPlan(anyString());
-
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_LIST_ID);
+        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
-
-
 
     @ParameterizedTest(name = "finance-smart: {0}")
-
     @ValueSource(strings = {
-
             "待审批报销是否合规",
-
             "这笔报销合规吗"
-
     })
-
-    void financeSmartPrompts(String query) {
-
-        ExecutionPlan plan = router.route(query).block();
-
+    void financeSmartPrompts_withWorkflow(String query) {
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.workflowId()).isEqualTo("finance-smart");
-
-        assertThat(plan.ruleId()).isEqualTo("rule-finance-smart-compliance");
-
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.FINANCE_SMART_ID);
     }
-
-
 
     @ParameterizedTest(name = "knowledge-qa: {0}")
-
     @ValueSource(strings = {
-
             "项目预算超支了还能安排出差吗",
-
             "出差预算不够怎么办",
-
             "预算和出差冲突怎么处理"
-
     })
-
-    void knowledgeQaPrompts(String query) {
-
-        ExecutionPlan plan = router.route(query).block();
-
+    void knowledgeQaPrompts_withWorkflow(String query) {
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
-
-        assertThat(plan.ruleId()).isEqualTo("rule-knowledge-budget-travel");
-
+        assertThat(plan.ruleId()).isEqualTo(RoutingCatalogFixtures.KNOWLEDGE_BUDGET_ID);
     }
 
-
-
     @Test
-
-    void structuralNegative_insufficientDomainGroups_fallsThroughToLlm() {
-
-        when(queryRewriteService.shouldRewriteIntent("先帮我写一封邮件再总结一下")).thenReturn(false);
-
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm");
-
+    void structuralNegative_withPro_fallsThroughToLlmKeepPro() {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
-                .thenReturn(Mono.just(llmPlan));
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
 
-        assertThat(router.route("先帮我写一封邮件再总结一下").block()).isEqualTo(llmPlan);
-
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, "先帮我写一封邮件再总结一下", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
-
-
 
     @Test
-
-    void mainAcceptance_mustNotRouteFinanceList() {
-
+    void mainAcceptance_withPro_mustNotRouteFinanceList() {
         String query = "先检索差旅报销相关制度，再查询待审批报销单，并对每条做合规分析后给出结论";
-
-        ExecutionPlan plan = router.route(query).block();
-
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
         assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);
-
         assertThat(plan.workflowId()).isNull();
-
     }
-
-
 
     @ParameterizedTest
-
     @CsvSource({
-
             "有哪些待审批报销, finance-list",
-
             "待审批报销是否合规, finance-smart"
-
     })
-
-    void singleStepMustNotBePlanWorkflow(String query, String workflowId) {
-
-        ExecutionPlan plan = router.route(query).block();
-
+    void singleStep_withWorkflow_notPro(String query, String workflowId) {
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
-
         assertThat(plan.workflowId()).isEqualTo(workflowId);
-
     }
 
-
-
     @Test
-
-    void unmatchedQuery_fallsThroughToLlm() {
-
-        when(queryRewriteService.shouldRewriteIntent("随便聊聊")).thenReturn(false);
-
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null, Map.of(), "llm:fallback");
-
+    void unmatchedQuery_defaultFast_pinsForcedReact() {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
-                .thenReturn(Mono.just(llmPlan));
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm:fallback")));
 
-        assertThat(router.route("随便聊聊").block()).isEqualTo(llmPlan);
-
+        ExecutionPlan plan = router.route("随便聊聊").block();
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
         verify(intentRouter).classifyPlan(org.mockito.ArgumentMatchers.<RoutingContext>argThat(
                 ctx -> "随便聊聊".equals(ctx.userMessage())));
-
     }
 
     @Test
-    void atSkillMultiStepRoutesToPlanWorkflow5B() {
-        String query = "@finance-analysis 先查制度再拉待办再分析再润色";
+    void slashSkill_withPro_bindsSkillKeepsMode() {
+        String query = "/finance-analysis 先查制度再拉待办再分析再润色";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
+                "finance-analysis", "先查制度再拉待办再分析再润色", SkillBindingSource.SLASH_MENTION);
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
 
-        ExecutionPlan plan = router.route(query).block();
-
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.params().get(SkillBindingOutcome.PARAM_PLANNER_MODE))
-                .isEqualTo(SkillBindingOutcome.PLANNER_MODE_SKILL_DRIVEN);
-        verify(intentRouter, never()).classifyPlan(anyString());
+        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_PLANNER_MODE);
     }
 
     @Test
-    void autoDiscoverSkillAfterReactClassify() {
+    void autoDiscoverSkillAfterReactClassify_pinsFast() {
         String query = "帮我做一笔报销的合规分析";
-        when(queryRewriteService.shouldRewriteIntent(query)).thenReturn(false);
-        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.REACT, null,
+        ExecutionPlan llmPlan = new ExecutionPlan(ExecutionMode.FAST, null,
                 Map.of(SkillBindingOutcome.PARAM_SKILL, "finance-analysis"), "llm matched skill");
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(llmPlan));
-        when(skillCatalogService.sanitizeSkillPlan(llmPlan)).thenReturn(llmPlan);
+        when(skillCatalogService.sanitizeSkillPlan(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         ExecutionPlan plan = router.route(query).block();
-
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
-        assertThat(plan.reason()).isEqualTo("llm matched skill");
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
 
     @Test
-    void atSkillSingleStepOverridesFinanceSmartRule() {
-        String query = "@finance-analysis 这笔报销是否合规";
+    void slashSkillSingleStep_withFast_overridesFinanceSmartRule() {
+        String query = "/finance-analysis 这笔报销是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "这笔报销是否合规", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
+                "finance-analysis", "这笔报销是否合规", SkillBindingSource.SLASH_MENTION);
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(new ExecutionPlan(
+                        ExecutionMode.FAST, null, Map.of("status", "pending"), "llm")));
 
-        ExecutionPlan plan = router.route(query).block();
-
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.FAST, query, null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
         assertThat(plan.params().get(SkillBindingOutcome.PARAM_SKILL)).isEqualTo("finance-analysis");
         assertThat(plan.workflowId()).isNull();
     }
 
-    // --- §J Chat executionPreference 强制路由（routing-golden-set.md） ---
-
-    @Test
-    void forcedJ1_simpleLlm() {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.SIMPLE_LLM, "写一段快速排序", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.SIMPLE_LLM);
-        assertThat(plan.reason()).isEqualTo("user:forced-simple-llm");
-    }
+    // --- §J Chat executionPreference / executionMode 钉死 ---
 
     @Test
     void forcedJ2_react() {
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.REACT, "待审批是否合规", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.REACT);
-        assertThat(plan.reason()).isEqualTo("user:forced-react");
+        when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
+                .thenReturn(Mono.just(ExecutionPlan.reactFallback("llm")));
+        ExecutionPlan plan = forcedRoute(ExecutionMode.FAST, "待审批是否合规", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.FAST);
+        assertThat(plan.reason()).isEqualTo("user:forced-fast");
     }
 
     @Test
     void forcedJ3_workflow_knowledgeQa() {
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
-                ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, "年假可以请几天", null);
+                        ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, "青松假有多少天、怎么申请", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("user:forced-workflow");
     }
 
     @Test
-    void forcedJ4_planWorkflow() {
-        ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.PLAN_WORKFLOW, "先查制度再查待审批", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+    void forcedJ4_pro() {
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, "先查制度再查待审批", null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
     }
 
     @Test
-    void forcedJ7_peerCollab() {
-        ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.PEER_COLLAB, "待审批是否合规", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.reason()).isEqualTo("user:forced-peer-collab");
-        assertThat(plan.params()).isEmpty();
-    }
-
-    @Test
-    void forcedJ5_workflow_ignoresAtSkill() {
-        String query = "@policy-review 年假可以请几天";
+    void forcedJ5_workflow_ignoresSlashSkill() {
+        String query = "/policy-review 青松假有多少天、怎么申请";
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
                 .thenReturn(Mono.just(new ExecutionPlan(
-                ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.WORKFLOW, query, null);
+                        ExecutionMode.WORKFLOW, "knowledge-qa", Map.of(), "llm")));
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, query, null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("user:forced-workflow");
@@ -469,56 +284,36 @@ class RoutingGoldenSetTest {
     }
 
     @Test
-    void forcedJ6_planWorkflow_mergesAtSkillParams() {
-        String query = "@finance-analysis 是否合规";
+    void forcedJ6_pro_mergesSlashSkillParams() {
+        String query = "/finance-analysis 是否合规";
         SkillBindingOutcome binding = SkillBindingOutcome.bound(
-                "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION);
-        when(skillBindingParser.parse(query)).thenReturn(binding);
-        ExecutionPlan plan = forcedRoute(ExecutionPreference.PLAN_WORKFLOW, query, null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        assertThat(plan.reason()).isEqualTo("user:forced-plan-workflow");
+                "finance-analysis", "是否合规", SkillBindingSource.SLASH_MENTION);
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(binding);
+        ExecutionPlan plan = forcedRoute(ExecutionMode.PRO, query, null);
+        assertThat(plan.mode()).isEqualTo(ExecutionMode.PRO);
+        assertThat(plan.reason()).isEqualTo("user:forced-pro");
         assertThat(plan.params()).containsEntry(SkillBindingOutcome.PARAM_SKILL, "finance-analysis");
     }
 
-    @ParameterizedTest(name = "peerCollab E1: {0}")
-    @ValueSource(strings = {
-            "请制度专家和财务专家分别审查这笔报销是否合规，并互相验证",
-            "从合规和财务两个角度交叉审查上述制度条款"
-    })
-    void peerCollabE1(String query) {
-        ExecutionPlan plan = router.route(query).block();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.params()).isEmpty();
-        assertThat(plan.reason()).isEqualTo("structural:peer-collab");
-        verify(intentRouter, never()).classifyPlan(anyString());
-    }
-
-    @Test
-    void peerCollabE2_pipelineStillPlanWorkflow() {
-        String query = "先检索报销制度，再查待审批列表，并对结果做合规分析";
-        ExecutionPlan plan = router.route(query).block();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PLAN_WORKFLOW);
-        assertThat(plan.reason()).isEqualTo("structural:multi-step-plan");
-        verify(intentRouter, never()).classifyPlan(anyString());
-    }
-
-    // --- §I Workflow `#` 绑定（routing-golden-set.md） ---
+    // --- §I Workflow `#` 绑定（仅 workflow mode） ---
 
     @Test
     void workflowI1_hashKnowledgeQa() {
         when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
-        ExecutionPlan plan = router.route("#knowledge-qa 年假可以请几天").block();
+        ExecutionPlan plan = forcedRoute(
+                ExecutionMode.WORKFLOW, "#knowledge-qa 青松假有多少天、怎么申请", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
-        assertThat(plan.params().get("effectiveQuery")).isEqualTo("年假可以请几天");
-        verify(intentRouter, never()).classifyPlan(anyString());
+        assertThat(plan.params().get("effectiveQuery")).isEqualTo("青松假有多少天、怎么申请");
+        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
 
     @Test
     void workflowI2_hashKnowledgeQaReimbursement() {
         when(workflowCatalog.isKnownWorkflow("knowledge-qa")).thenReturn(true);
-        ExecutionPlan plan = router.route("#knowledge-qa 报销流程是什么").block();
+        ExecutionPlan plan = forcedRoute(
+                ExecutionMode.WORKFLOW, "#knowledge-qa 市内网约车报销上限多少", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("knowledge-qa");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
@@ -527,17 +322,18 @@ class RoutingGoldenSetTest {
     @Test
     void workflowI3_hashFinanceSmartOverridesRules() {
         when(workflowCatalog.isKnownWorkflow("finance-smart")).thenReturn(true);
-        ExecutionPlan plan = router.route("#finance-smart 待审批报销是否合规").block();
+        ExecutionPlan plan = forcedRoute(
+                ExecutionMode.WORKFLOW, "#finance-smart 待审批报销是否合规", null);
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("finance-smart");
         assertThat(plan.reason()).isEqualTo("workflow:#mention");
-        verify(intentRouter, never()).classifyPlan(anyString());
+        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
 
     @Test
     void workflowI4_unknownWorkflowNotFound() {
         when(workflowCatalog.isKnownWorkflow("not-exists")).thenReturn(false);
-        assertThatThrownBy(() -> router.route("#not-exists 测试").block())
+        assertThatThrownBy(() -> forcedRoute(ExecutionMode.WORKFLOW, "#not-exists 测试", null))
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getErrorCode())
                 .isEqualTo(OrchestratorErrorCode.WORKFLOW_NOT_FOUND);
@@ -546,183 +342,26 @@ class RoutingGoldenSetTest {
     @Test
     void workflowI6_clientWorkflowIdBindsWithoutLlm() {
         when(workflowCatalog.isKnownWorkflow("security-analyze")).thenReturn(true);
-        ExecutionPlan plan = router.route(new RoutingContext(
-                "请继续分析", null, ExecutionPreference.AUTO, "security-analyze", null)).block();
+        ExecutionPlan plan = forcedRoute(ExecutionMode.WORKFLOW, "请继续分析", "security-analyze");
         assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
         assertThat(plan.workflowId()).isEqualTo("security-analyze");
         assertThat(plan.reason()).isEqualTo("workflow:client");
         assertThat(plan.params().get("effectiveQuery")).isEqualTo("请继续分析");
-        verify(intentRouter, never()).classifyPlan(anyString());
+        verify(intentRouter, never()).classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class));
     }
 
     @Test
-    void workflowI5_atKnowledgeQaNotWorkflow() {
+    void workflowI5_atKnowledgeQaNotWorkflow_underFast() {
         String query = "@knowledge-qa 测试";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.none(query));
+        when(skillBindingParser.parse(eq(query), any(), anyString())).thenReturn(SkillBindingOutcome.none(query));
         when(intentRouter.classifyPlan(org.mockito.ArgumentMatchers.any(RoutingContext.class)))
-                .thenReturn(Mono.just(new ExecutionPlan(
-                ExecutionMode.REACT, null, Map.of(), "llm")));
-        ExecutionPlan plan = router.route(query).block();
+                .thenReturn(Mono.just(new ExecutionPlan(ExecutionMode.FAST, null, Map.of(), "llm")));
+        ExecutionPlan plan = forcedRoute(ExecutionMode.FAST, query, null);
         assertThat(plan.workflowId()).isNull();
         assertThat(plan.mode()).isNotEqualTo(ExecutionMode.WORKFLOW);
     }
 
-    // --- §K Expert `$` 绑定（routing-golden-set.md） ---
-
-    @Test
-    void expertK1_dollarMentionPeerCollab() {
-        stubDefaultExperts();
-        String query = "$policy-expert $finance-expert 是否合规";
-        ExecutionPlan plan = router.route(query).block();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.reason()).isEqualTo("expert:$mention");
-        assertThat(plan.params().get(ExpertCollaborationParams.EXPERT_IDS))
-                .isEqualTo("policy-expert,finance-expert");
-        assertThat(plan.params().get(ExpertCollaborationParams.EFFECTIVE_QUERY)).isEqualTo("是否合规");
-        verify(intentRouter, never()).classifyPlan(anyString());
-    }
-
-    @Test
-    void expertK2_hashWorkflowOverridesDollar() {
-        stubDefaultExperts();
-        when(workflowCatalog.isKnownWorkflow("finance-smart")).thenReturn(true);
-        String query = "#finance-smart $policy-expert 是否合规";
-        ExecutionPlan plan = router.route(query).block();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.WORKFLOW);
-        assertThat(plan.workflowId()).isEqualTo("finance-smart");
-        assertThat(plan.params()).doesNotContainKey(ExpertCollaborationParams.EXPERT_IDS);
-        verify(intentRouter, never()).classifyPlan(anyString());
-    }
-
-    @Test
-    void expertK3_dollarOverridesAtSkill() {
-        stubDefaultExperts();
-        String query = "$policy-expert @finance-analysis 是否合规";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.bound(
-                "finance-analysis", "是否合规", SkillBindingSource.AT_MENTION));
-        ExecutionPlan plan = router.route(query).block();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.params().get(ExpertCollaborationParams.EXPERT_IDS)).isEqualTo("policy-expert");
-        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);
-    }
-
-    @Test
-    void expertK4_forcedPeerCollab() {
-        ExecutionPlan plan = forcedRoute(
-                ExecutionPreference.PEER_COLLAB, "待审批报销是否合规", null);
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.workflowId()).isNull();
-        assertThat(plan.params()).isEmpty();
-    }
-
-    @Test
-    void expertK5_unknownExpertNotFound() {
-        when(expertCatalogService.findIndex(anyString())).thenReturn(Optional.empty());
-        when(expertCatalogService.indexEntries()).thenReturn(List.of());
-        assertThatThrownBy(() -> router.route("$not-exists 是否合规").block())
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getErrorCode())
-                .isEqualTo(OrchestratorErrorCode.EXPERT_NOT_FOUND);
-    }
-
-    @Test
-    void expertK6_dollarWinsWhenAtComesFirst() {
-        stubDefaultExperts();
-        String query = "@finance-analysis $policy-expert";
-        when(skillBindingParser.parse(query)).thenReturn(SkillBindingOutcome.bound(
-                "finance-analysis", "", SkillBindingSource.AT_MENTION));
-        ExecutionPlan plan = router.route(query).block();
-        assertThat(plan.mode()).isEqualTo(ExecutionMode.PEER_COLLAB);
-        assertThat(plan.params().get(ExpertCollaborationParams.EXPERT_IDS)).isEqualTo("policy-expert");
-        assertThat(plan.params()).doesNotContainKey(SkillBindingOutcome.PARAM_SKILL);
-    }
-
-    private void stubDefaultExperts() {
-        ExpertCatalogIndexEntry policy = new ExpertCatalogIndexEntry(
-                "policy-expert", "制度专家", "制度解读", true);
-        ExpertCatalogIndexEntry finance = new ExpertCatalogIndexEntry(
-                "finance-expert", "财务专家", "财务合规", true);
-        when(expertCatalogService.findIndex("policy-expert")).thenReturn(Optional.of(policy));
-        when(expertCatalogService.findIndex("finance-expert")).thenReturn(Optional.of(finance));
-        when(expertCatalogService.indexEntries()).thenReturn(List.of(policy, finance));
-    }
-
-    private ExecutionPlan forcedRoute(ExecutionPreference preference, String query, String workflowId) {
+    private ExecutionPlan forcedRoute(ExecutionMode preference, String query, String workflowId) {
         return router.route(new RoutingContext(query, null, preference, workflowId, null)).block();
     }
-
-
-
-    private static RoutingRuleProperties nacosRulesFixture() {
-
-        RoutingRuleProperties props = new RoutingRuleProperties();
-
-        RoutingRuleProperties.Rule smart = new RoutingRuleProperties.Rule();
-
-        smart.setId("rule-finance-smart-compliance");
-
-        smart.setPriority(20);
-
-        smart.setMatch("any");
-
-        smart.setPatterns(List.of("是否合规", "合规吗", "合不合规", "对比制度"));
-
-        RoutingRuleProperties.PlanSpec smartPlan = new RoutingRuleProperties.PlanSpec();
-
-        smartPlan.setMode("workflow");
-
-        smartPlan.setWorkflowId("finance-smart");
-
-        smartPlan.setParams(Map.of("status", "pending"));
-
-        smart.setPlan(smartPlan);
-
-        RoutingRuleProperties.Rule knowledge = new RoutingRuleProperties.Rule();
-
-        knowledge.setId("rule-knowledge-budget-travel");
-
-        knowledge.setPriority(15);
-
-        knowledge.setMatch("any");
-
-        knowledge.setPatterns(List.of("预算.*出差", "出差.*预算", "预算超支", "预算不够.*出差"));
-
-        RoutingRuleProperties.PlanSpec knowledgePlan = new RoutingRuleProperties.PlanSpec();
-
-        knowledgePlan.setMode("workflow");
-
-        knowledgePlan.setWorkflowId("knowledge-qa");
-
-        knowledgePlan.setParams(Map.of());
-
-        knowledge.setPlan(knowledgePlan);
-
-        RoutingRuleProperties.Rule list = new RoutingRuleProperties.Rule();
-
-        list.setId("rule-finance-list-pending");
-
-        list.setPriority(10);
-
-        list.setMatch("any");
-
-        list.setPatterns(List.of("有哪些待审批", "查询待审批", "列出待审批", "待审批的.*报销", "待审批.*付款"));
-
-        RoutingRuleProperties.PlanSpec listPlan = new RoutingRuleProperties.PlanSpec();
-
-        listPlan.setMode("workflow");
-
-        listPlan.setWorkflowId("finance-list");
-
-        listPlan.setParams(Map.of("status", "pending"));
-
-        list.setPlan(listPlan);
-
-        props.setRules(List.of(smart, knowledge, list));
-
-        return props;
-
-    }
-
 }
-
-

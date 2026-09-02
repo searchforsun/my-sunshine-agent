@@ -1,28 +1,63 @@
 <script setup lang="ts">
 import { NDropdown, type DropdownOption } from 'naive-ui'
 import { EllipsisHorizontal } from '@vicons/ionicons5'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useChatStore } from '../stores/chatStore'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarGroups } from '../composables/useConversationSidebarGroups'
 import { useConversationSidebarIndicator, type SidebarConvIndicator } from '../composables/useConversationSidebarIndicator'
-import { formatConversationTime } from '../utils/conversationTime'
+import { formatSidebarItemTime } from '../utils/conversationTime'
 import type { Conversation } from '../stores/chatStore'
 import ConversationStatusIcon from './ConversationStatusIcon.vue'
+import ConversationHoverCard from './ConversationHoverCard.vue'
 
 const emit = defineEmits<{
   switch: [id: string]
   menu: [key: string]
+  'load-more': []
 }>()
 
-defineProps<{
+const props = defineProps<{
   menuOptions: (id: string) => DropdownOption[]
+  conversations?: import('../stores/chatStore').Conversation[]
+  hasMore?: boolean
+  loadingMore?: boolean
+  /** scroll：横向滚底加载；button：纵向点「更多」 */
+  loadMoreMode?: 'scroll' | 'button'
 }>()
 
+const loadMoreMode = computed(() => props.loadMoreMode ?? 'button')
+
+const route = useRoute()
 const chatStore = useChatStore()
 const { resolveIndicator } = useConversationSidebarIndicator()
 const { attentionByConv } = useConversationAttention()
-const { groups, now } = useConversationSidebarGroups(computed(() => chatStore.conversations))
+const sourceConversations = computed(() => props.conversations ?? chatStore.conversations)
+const { groups, now } = useConversationSidebarGroups(sourceConversations)
+
+/** hover 详情卡：当前 hovered 会话 + anchor + card 引用 */
+const hoverConv = ref<Conversation | null>(null)
+const hoverAnchor = ref<HTMLElement | null>(null)
+const hoverCardRef = ref<InstanceType<typeof ConversationHoverCard> | null>(null)
+
+function onItemEnter(conv: Conversation, e: MouseEvent) {
+  hoverConv.value = conv
+  hoverAnchor.value = e.currentTarget as HTMLElement
+  // 等 card 挂载后 show
+  requestAnimationFrame(() => hoverCardRef.value?.show())
+}
+
+function onItemLeave() {
+  hoverCardRef.value?.hide()
+  hoverConv.value = null
+  hoverAnchor.value = null
+}
+
+/** 仅在对话页高亮当前会话；进入平台页后取消选中态 */
+function isActiveConv(id: string): boolean {
+  return route.name === 'chat' && id === chatStore.currentId
+}
 
 function indicator(conv: Conversation): SidebarConvIndicator | null {
   void attentionByConv.size
@@ -31,7 +66,7 @@ function indicator(conv: Conversation): SidebarConvIndicator | null {
 
 function convTime(conv: Conversation): string {
   void now.value
-  return formatConversationTime(conv.createdAt, now.value)
+  return formatSidebarItemTime(conv.updatedAt, now.value)
 }
 
 function handleSwitch(id: string) {
@@ -41,11 +76,23 @@ function handleSwitch(id: string) {
 function handleMenu(key: string) {
   emit('menu', key)
 }
+
+function onHistoryScroll(e: Event) {
+  if (loadMoreMode.value !== 'scroll') return
+  if (!props.hasMore || props.loadingMore) return
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+    emit('load-more')
+  }
+}
 </script>
 
 <template>
-  <div class="conversation-sidebar-list">
-    <div v-if="groups.length > 0" class="history-list">
+  <div
+    class="conversation-sidebar-list"
+    :class="{ 'conversation-sidebar-list--fill': loadMoreMode === 'scroll' }"
+  >
+    <div v-if="groups.length > 0" class="history-list" @scroll.passive="onHistoryScroll">
     <section v-for="group in groups" :key="group.key" class="history-group">
       <div class="history-group-label">{{ group.label }}</div>
       <div
@@ -53,15 +100,17 @@ function handleMenu(key: string) {
         :key="conv.id"
         class="history-item"
         :class="{
-          active: conv.id === chatStore.currentId,
-          'is-hitl-pending': indicator(conv) === 'hitl_pending',
+          active: isActiveConv(conv.id),
+          'is-hitl-pending': indicator(conv) === 'hitl_pending' || indicator(conv) === 'decision_pending',
         }"
         @click="handleSwitch(conv.id)"
+        @mouseenter="onItemEnter(conv, $event)"
+        @mouseleave="onItemLeave"
       >
         <ConversationStatusIcon
           :state="indicator(conv)"
-          :active="conv.id === chatStore.currentId"
-          :title="indicator(conv) === 'streaming' ? '正在生成' : indicator(conv) === 'hitl_pending' ? '待确认' : indicator(conv) === 'completed' ? '新回复' : undefined"
+          :active="isActiveConv(conv.id)"
+          :title="indicator(conv) === 'streaming' ? '正在生成' : indicator(conv) === 'decision_pending' ? '待决策' : indicator(conv) === 'hitl_pending' ? '待确认' : indicator(conv) === 'completed' ? '新回复' : undefined"
         />
         <span class="history-item-title">{{ conv.title }}</span>
         <span class="history-item-time">{{ convTime(conv) }}</span>
@@ -84,31 +133,56 @@ function handleMenu(key: string) {
         </NDropdown>
       </div>
     </section>
+    <button
+      v-if="loadMoreMode === 'button' && hasMore"
+      type="button"
+      class="history-load-more-btn"
+      :disabled="!!loadingMore"
+      @click.stop="emit('load-more')"
+    >
+      {{ loadingMore ? '加载中...' : '更多' }}
+    </button>
+    <div v-else-if="loadMoreMode === 'scroll' && loadingMore" class="history-load-more">加载中...</div>
   </div>
     <div v-else class="history-empty">
       <span class="history-empty-text">暂无对话</span>
     </div>
+    <ConversationHoverCard
+      v-if="hoverConv"
+      ref="hoverCardRef"
+      :conversation="hoverConv"
+      :anchor="hoverAnchor"
+    />
   </div>
 </template>
 
 <style scoped>
 .conversation-sidebar-list {
-  flex: 1;
+  /* 纵向：随内容高度，避免 flex 撑开导致「更多」上下大块空白 */
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.history-list {
+.conversation-sidebar-list--fill {
   flex: 1;
+}
+
+.history-list {
+  flex: 0 1 auto;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--sun-border);
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.conversation-sidebar-list--fill .history-list {
+  flex: 1;
+  min-height: 0;
 }
 
 .history-group {
@@ -124,6 +198,40 @@ function handleMenu(key: string) {
   letter-spacing: 0.02em;
   color: var(--sun-text-muted);
   user-select: none;
+}
+
+.history-load-more {
+  padding: 8px;
+  text-align: center;
+  font-size: var(--sun-font-xs);
+  color: var(--sun-text-muted);
+}
+
+.history-load-more-btn {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-xs);
+  line-height: 1.3;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.history-load-more-btn:hover:not(:disabled) {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
+}
+
+.history-load-more-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .history-item {
@@ -202,7 +310,6 @@ function handleMenu(key: string) {
   padding: 20px 8px 4px;
   text-align: center;
   flex-shrink: 0;
-  border-top: 1px solid var(--sun-border);
 }
 
 .history-empty-text {

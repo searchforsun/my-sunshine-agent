@@ -235,7 +235,7 @@ onUnmounted(() => {
 <style scoped>
 .plan-exec-canvas {
   position: relative;
-  margin: 8px 0 4px calc(var(--op-gutter, 12px) + 4px);
+  margin: 8px 0 4px 0;
   min-height: 200px;
   height: 200px;
   border: 1px solid var(--sun-border);
@@ -296,15 +296,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--sun-border);
+  border: none;
   border-radius: 6px;
-  background: var(--sun-black);
+  background: transparent;
   color: var(--sun-text-secondary);
   cursor: pointer;
 }
 
 .plan-exec-expand-btn:hover {
-  border-color: var(--sun-border-light);
+  background: var(--sun-row-hover);
   color: var(--sun-text);
 }
 

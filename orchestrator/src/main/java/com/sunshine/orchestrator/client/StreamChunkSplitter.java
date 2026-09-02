@@ -26,7 +26,8 @@ public final class StreamChunkSplitter {
     }
 
     public static List<StreamToken> splitToken(StreamToken token, int maxChars) {
-        if (token.isStep() || token.isContentStart() || token.isContentEnd() || token.isSandboxSession()) {
+        if (token.isStep() || token.isContentStart() || token.isContentEnd()
+                || token.isSandboxSession() || token.isUsage()) {
             return List.of(token);
         }
         if (token.isStepDelta()) {

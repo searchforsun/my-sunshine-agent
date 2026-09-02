@@ -51,6 +51,29 @@ public final class ContentBlockAccumulator {
         openBySegmentId.remove(token.segmentId());
     }
 
+    /**
+     * 续跑：预填中断前已落库的消息级正文块，终态 commit 时与本轮新块合并，避免覆盖丢失。
+     */
+    public void seedMessageBlocks(List<ContentBlock> existing) {
+        if (existing == null || existing.isEmpty()) {
+            return;
+        }
+        for (ContentBlock block : existing) {
+            if (block == null || !StringUtils.hasText(block.segmentId())) {
+                continue;
+            }
+            if (openBySegmentId.containsKey(block.segmentId())
+                    || messageBlocks.stream().anyMatch(b -> block.segmentId().equals(b.segmentId))) {
+                continue;
+            }
+            MutableBlock mutable = new MutableBlock(block.segmentId(), block.afterStepId());
+            if (block.text() != null && !block.text().isEmpty()) {
+                mutable.text.append(block.text());
+            }
+            messageBlocks.add(mutable);
+        }
+    }
+
     public void mergeIntoSteps(List<ProcessingStep> steps) {
         for (Map.Entry<String, List<MutableBlock>> entry : nodeBlocks.entrySet()) {
             List<ContentBlock> blocks = toImmutable(entry.getValue());

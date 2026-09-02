@@ -13,9 +13,8 @@ import { friendlyErrorMessage } from '../api/apiError'
 import { buildFileTree, formatFileSize } from '../utils/buildFileTree'
 import { createMarkdownIt } from '../utils/markdown/createMarkdownIt'
 import { registerHljsLanguages } from '../utils/markdown/registerHljsLanguages'
-import { enhanceStaticMarkdown, reRenderStaticMermaids } from '../utils/stream-markdown/StaticEnhancer'
+import { enhanceStaticMarkdown } from '../utils/stream-markdown/StaticEnhancer'
 import { copyText } from '../utils/stream-markdown/clipboard'
-import { theme } from '../composables/useTheme'
 import type { SkillPhase } from '../utils/skills/skillsVersionUtils'
 import '../utils/stream-markdown/styles.css'
 
@@ -246,16 +245,11 @@ export function useSkillFilePreview(deps: SkillFilePreviewDeps) {
     if (!el?.isConnected) return
     mdPreviewRef.value = el
     enhanceStaticMarkdown(el)
-    reRenderStaticMermaids()
   }
 
   watch(previewHtml, async (html) => {
     if (!html) return
     await nextTick()
-    refreshPreviewEnhancements()
-  })
-
-  watch(() => theme.value, () => {
     refreshPreviewEnhancements()
   })
 

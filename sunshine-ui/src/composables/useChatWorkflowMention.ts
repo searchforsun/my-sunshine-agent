@@ -1,13 +1,15 @@
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { listWorkflowCatalog, type WorkflowCatalogEntry } from '../api/workflows'
-import { allowsWorkflowMention, type ExecutionPreference } from '../api/executionModes'
+import { allowsWorkflowMention, type ExecutionMode } from '../api/executionModes'
+import { matchesSessionKind } from '../utils/kindFilter'
 import type ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 
 /** Composer # Workflow 补全 */
 export function useChatWorkflowMention(
   inputText: Ref<string>,
-  preference: Ref<ExecutionPreference>,
+  preference: Ref<ExecutionMode>,
   loading: Ref<boolean>,
+  sessionKind: Ref<string>,
 ) {
   const inputRef = ref<InstanceType<typeof ComposerSkillInput>>()
   const workflowCatalog = ref<WorkflowCatalogEntry[]>([])
@@ -21,15 +23,13 @@ export function useChatWorkflowMention(
   const filteredWorkflows = computed(() => {
     const q = workflowQuery.value.trim().toLowerCase()
     return workflowCatalog.value
-      .filter(w => {
-        if (!q) return true
-        return (
-          w.id.toLowerCase().includes(q)
-          || w.displayName.toLowerCase().includes(q)
-          || w.description?.toLowerCase().includes(q)
-          || w.examples?.some(ex => ex.toLowerCase().includes(q))
-        )
-      })
+      .filter(w => matchesSessionKind(sessionKind.value, w.kind) && (
+        !q
+        || w.id.toLowerCase().includes(q)
+        || w.displayName.toLowerCase().includes(q)
+        || w.description?.toLowerCase().includes(q)
+        || w.examples?.some(ex => ex.toLowerCase().includes(q))
+      ))
       .slice(0, 8)
   })
 
@@ -45,7 +45,7 @@ export function useChatWorkflowMention(
     }
     workflowMentionStart.value = match.index
     workflowQuery.value = match[1]
-    showWorkflowSuggest.value = workflowCatalog.value.length > 0
+    showWorkflowSuggest.value = filteredWorkflows.value.length > 0
     workflowSuggestIndex.value = 0
   }
 

@@ -4,7 +4,7 @@ import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.execution.ExecutionStreamContext;
 import com.sunshine.orchestrator.execution.NodeSpec;
 import com.sunshine.orchestrator.execution.WorkflowContext;
-import com.sunshine.orchestrator.memory.MemoryContext;
+import com.sunshine.orchestrator.context.AssembledContext;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
@@ -18,14 +18,15 @@ final class AgentNodeRequestAssembler {
     }
 
     static AgentRunRequest build(NodeSpec spec, WorkflowContext ctx, ExecutionStreamContext streamCtx) {
-        Map<String, String> params = spec.params() != null ? spec.params() : Map.of();
-        String query = params.getOrDefault("query", ctx.resolvePath("start.userQuery"));
-        List<String> injected = parseInjectedBlocks(params.getOrDefault("context", ""));
-        String skillId = blankToNull(params.get("skill"));
-        List<String> tools = parseToolList(params.get("tools"));
-        int maxIters = parseMaxIters(params.get("maxIters"));
+        Map<String, Object> params = spec.params() != null ? spec.params() : Map.of();
+        String defaultQuery = ctx.resolvePathString("start.userQuery");
+        String query = readParamString(params, "query", defaultQuery != null ? defaultQuery : "");
+        List<String> injected = parseInjectedBlocks(readParamString(params, "context", ""));
+        String skillId = blankToNull(readParamString(params, "skill", null));
+        List<String> tools = parseToolList(readParamString(params, "tools", null));
+        int maxIters = parseMaxIters(readParamString(params, "maxIters", null));
         return AgentRunRequest.sub(
-                MemoryContext.forSubAgent(),
+                AssembledContext.forSubAgent(),
                 query,
                 injected,
                 streamCtx.userId(),
@@ -33,9 +34,15 @@ final class AgentNodeRequestAssembler {
                 streamCtx.assistantMsgId(),
                 skillId,
                 tools,
-                blankToNull(params.get("systemOverlay")),
+                blankToNull(readParamString(params, "systemOverlay", null)),
                 maxIters,
-                streamCtx.conversationId());
+                streamCtx.conversationId())
+                .withConversationKind(streamCtx.conversationKind());
+    }
+
+    private static String readParamString(Map<String, Object> params, String key, String defaultValue) {
+        Object v = params.get(key);
+        return v != null ? v.toString() : defaultValue;
     }
 
     static List<String> parseInjectedBlocks(String context) {

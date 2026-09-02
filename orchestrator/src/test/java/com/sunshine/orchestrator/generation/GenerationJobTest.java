@@ -7,7 +7,7 @@ import com.sunshine.orchestrator.config.AgentPauseProperties;
 import com.sunshine.orchestrator.conversation.GenerationFlushScheduler;
 import com.sunshine.orchestrator.conversation.MessageStatus;
 import com.sunshine.orchestrator.execution.WorkflowPauseService;
-import com.sunshine.orchestrator.memory.MemoryLifecycleService;
+import com.sunshine.orchestrator.context.ContextLifecycle;
 import com.sunshine.orchestrator.plan.ExecutionPlanStore;
 import com.sunshine.testsupport.EmbeddedRedisTestConfig;
 import com.sunshine.orchestrator.processing.TimelineLabelJUnitExtension;
@@ -29,7 +29,10 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -137,7 +140,7 @@ class GenerationJobTest {
                 content -> { },
                 done::countDown,
                 errorRef::set,
-                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM)
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.FAST)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -145,23 +148,68 @@ class GenerationJobTest {
         assertThat(buffer.toString()).isEqualTo("abc");
 
         List<StreamEvent> events = streamService.readFrom(generationId, 0, 10);
-        assertThat(events).hasSize(5);
-        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"step\"}");
-        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
-        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
-        assertThat(events.get(3).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
-        assertThat(events.get(4).text()).isEqualTo("{\"type\":\"step\"}");
+        assertThat(events).hasSize(3);
+        assertThat(events.get(0).text()).isEqualTo("{\"type\":\"content\",\"text\":\"a\"}");
+        assertThat(events.get(1).text()).isEqualTo("{\"type\":\"content\",\"text\":\"b\"}");
+        assertThat(events.get(2).text()).isEqualTo("{\"type\":\"content\",\"text\":\"c\"}");
 
         GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
         assertThat(meta.status()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(meta.lastSeq()).isEqualTo(5);
+        assertThat(meta.lastSeq()).isEqualTo(3);
 
         ArgumentCaptor<String> contentCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         assertThat(contentCaptor.getValue()).isEqualTo("abc");
-        assertThat(stepsCaptor.getValue()).contains("generate");
+        String stepsJson = stepsCaptor.getValue();
+        assertThat(stepsJson == null || !stepsJson.contains("generate")).isTrue();
+    }
+
+    @Test
+    @DisplayName("并行 emitOutbound / emitStreamToken：seq+XADD 串行，不抛 Redis Stream ID 逆序错")
+    void parallelEmit_doesNotThrowXaddIdConflict() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+        GenerationJob job = newJob(generationId);
+        int threads = 8;
+        int perThread = 40;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+        AtomicInteger writes = new AtomicInteger();
+        for (int t = 0; t < threads; t++) {
+            final int threadIdx = t;
+            pool.execute(() -> {
+                try {
+                    start.await(5, TimeUnit.SECONDS);
+                    for (int i = 0; i < perThread; i++) {
+                        if ((i + threadIdx) % 2 == 0) {
+                            job.emitOutbound("{\"type\":\"ping\",\"t\":" + threadIdx + ",\"i\":" + i + "}");
+                        } else {
+                            job.emitStreamToken(StreamToken.content("c-" + threadIdx + "-" + i));
+                        }
+                        writes.incrementAndGet();
+                    }
+                } catch (Throwable e) {
+                    errorRef.compareAndSet(null, e);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        pool.shutdownNow();
+        assertThat(errorRef.get()).as("不应出现 XADD ID 逆序").isNull();
+        List<StreamEvent> events = streamService.readFrom(generationId, 0, threads * perThread + 10);
+        assertThat(events).hasSize(writes.get());
+        for (int i = 0; i < events.size(); i++) {
+            assertThat(events.get(i).seq()).isEqualTo(i + 1L);
+        }
+        GenerationMeta meta = streamService.getMeta(generationId).orElseThrow();
+        assertThat(meta.lastSeq()).isEqualTo(writes.get());
     }
 
     @Test
@@ -211,7 +259,7 @@ class GenerationJobTest {
         ArgumentCaptor<String> blocksCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
                 eq(MESSAGE_ID), contentCaptor.capture(), eq(""), eq(MessageStatus.COMPLETED),
-                org.mockito.ArgumentMatchers.any(), blocksCaptor.capture());
+                org.mockito.ArgumentMatchers.any(), blocksCaptor.capture(), isNull());
         assertThat(contentCaptor.getValue()).isEqualTo("第一段第二段");
         assertThat(blocksCaptor.getValue()).contains("第一段").contains("第二段");
     }
@@ -220,11 +268,11 @@ class GenerationJobTest {
     void start_refreshesMemoryAfterComplete() throws Exception {
         String generationId = streamService.createGeneration(
                 CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
-        MemoryLifecycleService memoryLifecycleService = mock(MemoryLifecycleService.class);
+        ContextLifecycle contextLifecycle = mock(ContextLifecycle.class);
 
         GenerationJob job = new GenerationJob(
                 generationId, MESSAGE_ID, CONVERSATION_ID, USER_ID, TENANT_ID, INTENT, "hello",
-                streamService, properties, flushScheduler, memoryLifecycleService,
+                streamService, properties, flushScheduler, contextLifecycle,
                 workflowPauseService, executionPlanStore, new AgentPauseProperties(), null);
 
         CountDownLatch done = new CountDownLatch(1);
@@ -237,7 +285,7 @@ class GenerationJobTest {
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
-        verify(memoryLifecycleService).onAssistantCompleted(
+        verify(contextLifecycle).onTurnCompleted(
                 MESSAGE_ID, USER_ID, TENANT_ID, MessageStatus.COMPLETED);
     }
 
@@ -258,7 +306,7 @@ class GenerationJobTest {
                 content -> { },
                 done::countDown,
                 error -> { },
-                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.SIMPLE_LLM)
+                new java.util.concurrent.atomic.AtomicReference<>(com.sunshine.orchestrator.routing.ExecutionMode.FAST)
         );
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
@@ -267,9 +315,9 @@ class GenerationJobTest {
         ArgumentCaptor<String> reasoningCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), eq("ok"), reasoningCaptor.capture(), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         assertThat(reasoningCaptor.getValue()).isEqualTo("think");
-        assertThat(stepsCaptor.getValue()).contains("think").contains("generate");
+        assertThat(stepsCaptor.getValue()).contains("think").doesNotContain("\"id\":\"generate\"");
     }
 
     @Test
@@ -303,7 +351,7 @@ class GenerationJobTest {
 
         ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
         verify(flushScheduler).commitFinal(
-                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull());
+                eq(MESSAGE_ID), eq("ok"), eq(""), eq(MessageStatus.COMPLETED), stepsCaptor.capture(), isNull(), isNull());
         String stepsJson = stepsCaptor.getValue();
         assertThat(stepsJson).contains("识别意图").contains("简单对话");
         assertThat(stepsJson).contains("lifecycle").contains("summary");

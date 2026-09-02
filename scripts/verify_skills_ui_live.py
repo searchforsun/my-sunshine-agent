@@ -8,7 +8,7 @@
 环境变量:
   GATEWAY_URL          默认 http://127.0.0.1:8000
   SKILL_UI_SAMPLE      读链路样例 Skill（默认 finance-analysis）
-  SKILL_UI_DIFF_SAMPLE diff/下载样例（默认 demo-full-pack）
+  SKILL_UI_DIFF_SAMPLE diff/下载样例（默认 sandbox-coding-demo，含多文件）
 
 断言（skills-management-ui-design.md §7）:
   - GET /api/skills 管理列表
@@ -34,7 +34,7 @@ from sunshine_lib import unwrap_r
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:8000").rstrip("/")
 SAMPLE_SKILL = os.environ.get("SKILL_UI_SAMPLE", "finance-analysis")
-DIFF_SKILL = os.environ.get("SKILL_UI_DIFF_SAMPLE", "demo-full-pack")
+DIFF_SKILL = os.environ.get("SKILL_UI_DIFF_SAMPLE", "sandbox-coding-demo")
 
 def auth_headers() -> dict[str, str]:
     suffix = uuid.uuid4().hex[:8]

@@ -1,9 +1,15 @@
-import type { WorkflowPlan, WorkflowPlanNode, WorkflowNodeDefaultsResponse } from '../api/workflows'
+import type {
+  WorkflowPlan,
+  WorkflowPlanNode,
+  WorkflowPlanEdgeCondition,
+  WorkflowPlanEdgeConditionGroup,
+  WorkflowNodeDefaultsResponse,
+} from '../api/workflows'
 import { buildRetryParams, resolveNodeDefaults } from './workflowNodeParams'
 import { isGatewayType } from './workflowGateway'
 
 /** Studio 可添加的业务节点 type — 与 sunshine-common WorkflowNodeType.plannerTypeIds / loopBodyTypeIds 对齐 */
-export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent'] as const
+export const WORKFLOW_NODE_TYPES = ['rag', 'tool', 'agent', 'variable-assignment', 'parameter-extractor'] as const
 export type WorkflowBusinessNodeType = (typeof WORKFLOW_NODE_TYPES)[number]
 
 /** 节点链选中「流程配置」时的哨兵 ID */
@@ -26,15 +32,6 @@ export function defaultAnswerNode(nodeDefaults?: WorkflowNodeDefaultsResponse): 
 
 export function defaultStartNode(): WorkflowPlanNode {
   return { id: 'start', type: 'start', displayName: '开始', params: {} }
-}
-
-export function emptyWorkflowPlan(workflowId: string, nodeDefaults?: WorkflowNodeDefaultsResponse): WorkflowPlan {
-  return {
-    planId: null,
-    reason: `新建工作流 ${workflowId}`,
-    nodes: [defaultStartNode(), defaultAnswerNode(nodeDefaults)],
-    edges: [{ from: 'start', to: 'answer' }],
-  }
 }
 
 /** 线性 DAG：start → 业务节点… → answer */
@@ -140,15 +137,49 @@ export function upstreamOutputRef(node: WorkflowPlanNode): string {
 }
 
 /**
- * 条件分支出边 / loop 容器左值：沿入边回溯最近业务前驱的 output/answer；
+ * 条件分支出边左值：沿入边回溯最近业务前驱的 output/answer；
  * 无业务前驱（直连 start 或仅路由）时用 {{start.userQuery}}。
  */
 export function exclusiveGatewayConditionLeft(plan: WorkflowPlan, gatewayId: string): string {
   return resolveConditionLeftFromUpstream(plan, gatewayId)
 }
 
-export function loopConditionLeft(plan: WorkflowPlan, loopId: string): string {
-  return resolveConditionLeftFromUpstream(plan, loopId)
+/** 将 edge.condition 规范化为 {logic, items} */
+export function normalizeEdgeConditionGroup(
+  condition: WorkflowPlanEdgeConditionGroup | undefined,
+): WorkflowPlanEdgeConditionGroup {
+  if (!condition) return { logic: 'and', items: [] }
+  if ('items' in condition && Array.isArray(condition.items)) {
+    return {
+      logic: condition.logic === 'or' ? 'or' : 'and',
+      items: condition.items,
+    }
+  }
+  return { logic: 'and', items: [] }
+}
+
+/** 将 loop params 中的条件规范化为 {logic, items} 结构（用于 UI 编辑） */
+export function normalizeLoopConditionGroup(
+  params: Record<string, unknown> | undefined,
+): WorkflowPlanEdgeConditionGroup {
+  const conditions = params?.conditions
+  if (Array.isArray(conditions)) {
+    const logic = (params?.conditionLogic === 'or' ? 'or' : 'and') as 'and' | 'or'
+    const items = conditions.filter(c => c && typeof c === 'object') as WorkflowPlanEdgeCondition[]
+    return { logic, items: items.length > 0 ? items : [] }
+  }
+  return { logic: 'and', items: [] }
+}
+
+/** 将条件组写回 loop params（新格式 conditions + conditionLogic） */
+export function writeLoopConditionGroup(
+  params: Record<string, unknown>,
+  group: WorkflowPlanEdgeConditionGroup,
+): Record<string, unknown> {
+  const next = { ...params }
+  next.conditions = group.items
+  next.conditionLogic = group.logic
+  return next
 }
 
 function resolveConditionLeftFromUpstream(plan: WorkflowPlan, nodeId: string): string {
@@ -247,35 +278,18 @@ export function reconcilePlanDataFlow(
   })
   const edges = (plan.edges ?? []).map(e => {
     if (typeById.get(e.from) !== 'exclusive-gateway' || e.default) return e
-    const left = exclusiveGatewayConditionLeft(plan, e.from)
-    if (e.condition) {
-      if (e.condition.left === left) return e
-      return { ...e, condition: { ...e.condition, left } }
-    }
-    return { ...e, condition: { left, op: 'contains', right: '' } }
+    // 新格式 {logic, items} 保留不动
+    if (e.condition && 'items' in e.condition) return e
+    // 旧格式：保持原样（后端兼容）
+    return e
   })
   const nodesWithLoop = nodes.map(n => {
     if (n.type !== 'loop') return n
-    const left = loopConditionLeft({ ...plan, nodes, edges }, n.id)
     const params = { ...(n.params ?? {}) }
-    const curLeft = String(params['condition.left'] ?? '')
-    if (curLeft === left
-      && params['condition.op']
-      && params['maxIterations']
-      && params['onMaxIterations']) {
-      return n
-    }
-    return {
-      ...n,
-      params: {
-        ...params,
-        'condition.left': left,
-        'condition.op': params['condition.op'] || 'contains',
-        'condition.right': params['condition.right'] ?? '',
-        maxIterations: params['maxIterations'] ?? '3',
-        onMaxIterations: params['onMaxIterations'] ?? 'fail_fast',
-      },
-    }
+    // 仅补全 maxIterations / onMaxIterations 默认值，不强制覆盖条件
+    if (!params.maxIterations) params.maxIterations = '3'
+    if (!params.onMaxIterations) params.onMaxIterations = 'fail_fast'
+    return { ...n, params }
   })
   return { ...plan, nodes: nodesWithLoop, edges }
 }
@@ -299,6 +313,10 @@ export function defaultParamsForType(type: WorkflowBusinessNodeType): Record<str
         maxIters: '8',
         systemOverlay: '',
       }
+    case 'variable-assignment':
+      return { assignments: '[]' }
+    case 'parameter-extractor':
+      return { input: '', instruction: '', schema: '{}' }
     default:
       return {}
   }
@@ -312,6 +330,10 @@ export function defaultDisplayName(type: WorkflowBusinessNodeType): string {
       return '工具调用'
     case 'agent':
       return '智能体分析'
+    case 'variable-assignment':
+      return '变量赋值'
+    case 'parameter-extractor':
+      return '参数提取'
     default:
       return type
   }
@@ -384,15 +406,6 @@ export function insertBusinessNode(
   return reconcilePlanDataFlow({ ...normalized, nodes, edges }, { refreshAnswer: true })
 }
 
-export function removeBusinessNode(plan: WorkflowPlan, nodeId: string): WorkflowPlan {
-  const normalized = normalizeWorkflowPlan(plan, '')
-  const business = businessNodeOrder(normalized).filter(n => n.id !== nodeId)
-  const existingAnswer = normalized.nodes.find(n => n.type === 'answer') ?? defaultAnswerNode()
-  const nodes = [defaultStartNode(), ...business, existingAnswer]
-  const edges = rebuildLinearEdges(nodes)
-  return reconcilePlanDataFlow({ ...normalized, nodes, edges }, { refreshAnswer: true })
-}
-
 export function updateBusinessNode(
   plan: WorkflowPlan,
   nodeId: string,
@@ -449,7 +462,7 @@ export function buildLinearToolAgentPlan(
 ): WorkflowPlan {
   const resolved = resolveNodeDefaults(nodeDefaults)
   const toolParams = {
-    tool: 'sdk__sunshine-finance__list_finance_messages',
+    tool: 'sdk__sunshine-finance__list_my_expenses',
     status: '{{plan.params.status}}',
     ...buildRetryParams('tool', resolved),
   }
@@ -457,7 +470,7 @@ export function buildLinearToolAgentPlan(
     query: '{{start.userQuery}}',
     context: '{{tool-d4e8f901.output}}',
     skill: 'finance-analysis',
-    tools: 'sdk__sunshine-finance__list_finance_messages',
+    tools: 'sdk__sunshine-finance__list_my_expenses',
     maxIters: '4',
     systemOverlay: '本节点仅输出内部分析结论，不面向用户',
     ...buildRetryParams('agent', resolved),
@@ -505,7 +518,7 @@ export function buildFinanceListPlan(
 ): WorkflowPlan {
   const resolved = resolveNodeDefaults(nodeDefaults)
   const toolParams = {
-    tool: 'sdk__sunshine-finance__list_finance_messages',
+    tool: 'sdk__sunshine-finance__list_my_expenses',
     status: '{{plan.params.status}}',
     ...buildRetryParams('tool', resolved),
   }
@@ -515,7 +528,7 @@ export function buildFinanceListPlan(
     + '数据：\n{{tool-f7a3b2c1.output}}'
   return {
     planId: null,
-    reason: `财务待办查询工作流 ${workflowId}`,
+    reason: `我的报销查询工作流 ${workflowId}`,
     nodes: [
       defaultStartNode(),
       {
@@ -547,7 +560,7 @@ export function buildFinanceSummaryPlan(
 ): WorkflowPlan {
   const resolved = resolveNodeDefaults(nodeDefaults)
   const toolParams = {
-    tool: 'sdk__sunshine-finance__summarize_finance_by_status',
+    tool: 'sdk__sunshine-finance__summarize_my_expenses',
     status: '{{plan.params.status}}',
     ...buildRetryParams('tool', resolved),
   }
@@ -706,7 +719,7 @@ export function buildExclusiveBranchRagPlan(
       {
         from: 'xg-b1c2d3e4',
         to: 'rag-f1a2b3c4',
-        condition: { left: '{{start.userQuery}}', op: 'contains', right: '报销' },
+        condition: { logic: 'or', items: [{ left: '{{start.userQuery}}', op: 'contains', right: '报销' }, { left: '{{start.userQuery}}', op: 'contains', right: '发票' }] },
       },
       { from: 'xg-b1c2d3e4', to: 'rag-d5e6f7a8', default: true },
       { from: 'rag-f1a2b3c4', to: 'answer' },
