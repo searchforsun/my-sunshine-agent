@@ -43,7 +43,7 @@ import MessageDiffCard from '../components/chat/MessageDiffCard.vue'
 import DrawerCollapseIcon from '../components/icons/DrawerCollapseIcon.vue'
 import { usePlanNodeDrawer } from '../composables/usePlanNodeDrawer'
 import { useSandboxWorkspaceDrawer } from '../composables/useSandboxWorkspaceDrawer'
-import { getWriteHitlMode } from '../composables/useWriteHitlMode'
+import { getWriteHitlMode, useWriteHitlMode } from '../composables/useWriteHitlMode'
 import { usePlanDagExpand } from '../composables/usePlanDagExpand'
 import { fetchSandboxWorkspaceStatus } from '../api/sandboxWorkspace'
 import type { ChatMessage } from '../api/chat'
@@ -61,6 +61,7 @@ import { resolveAgentNodeStepForDrawer, getPendingHitlConfirmations } from '../a
 import ExecutionModeSelector from '../components/chat/ExecutionModeSelector.vue'
 import UsageStatusBar from '../components/chat/UsageStatusBar.vue'
 import ModelSelector from '../components/chat/ModelSelector.vue'
+import WriteHitlModeSelector from '../components/sandbox/WriteHitlModeSelector.vue'
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
@@ -483,6 +484,7 @@ const inputText = ref('')
 const { preference, setPreference, applyConversationPreference } = useExecutionMode()
 const { kbId, applyConversationKb } = useKbPreference()
 const { modelName, setModelName, applyConversationModel } = useModelPreference()
+const { mode: writeHitlMode } = useWriteHitlMode(() => chatStore.currentId)
 const chatModelDefs = ref<ModelCatalogDefinition[]>([])
 
 async function loadChatModels() {
@@ -2049,11 +2051,9 @@ watch(
             />
             <div class="composer-toolbar">
               <div class="composer-toolbar-left">
-                <ModelSelector
+                <WriteHitlModeSelector
                   v-if="!voiceListening"
-                  :model-value="modelName"
-                  :options="chatModelOptions"
-                  @update:model-value="onModelChange"
+                  v-model="writeHitlMode"
                 />
                 <GitBranchSelector
                   v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
@@ -2065,6 +2065,12 @@ watch(
                 />
               </div>
               <div class="composer-toolbar-right">
+                <ModelSelector
+                  v-if="!voiceListening"
+                  :model-value="modelName"
+                  :options="chatModelOptions"
+                  @update:model-value="onModelChange"
+                />
                 <UsageStatusBar :usage="lastUsage" />
                 <button
                   v-if="loading"

@@ -14,7 +14,7 @@
 
 ### 分组维度
 
-统一路由后（[unified-routing v3](./2026-07-29-unified-routing-design.md)）以 `RoutingResult.type`（`ResourceType`）为分组维度：`WORKFLOW` / `AGENT` / `SKILL` / `REACT`（harness 场景附加 `planMode=harness` 维度；`peer-collab`、`plan-workflow` 已随 v3 删除）。前端展示沿用消息 `execution_mode` 兼容字段映射到 ResourceType。
+统一路由后（[unified-routing v3](./archive/2026-07-29-unified-routing-design.md)）以 `RoutingResult.type`（`ResourceType`）为分组维度：`WORKFLOW` / `AGENT` / `SKILL` / `REACT`（harness 场景附加 `planMode=harness` 维度；`peer-collab`、`plan-workflow` 已随 v3 删除）。前端展示沿用消息 `execution_mode` 兼容字段映射到 ResourceType。
 
 ### 非目标
 

@@ -2,7 +2,7 @@
 
 > **⚠️ 已归档（2026-08-10）**：评审结论——阶段四/五相对现状为**过时或负优化**；有用残留已拆分：
 > - run 内 compaction → [五层 §4.5 方案 A](../2026-07-31-unified-context-compression-design.md)（SSOT）
-> - CompletionGuard / React 瞬态重试（可选）→ [goal-alignment §12](../2026-07-27-react-goal-alignment-design.md)
+> - CompletionGuard / React 瞬态重试（可选）→ [goal-alignment §12](./2026-07-27-react-goal-alignment-design.md)
 > - spawn 回传经济学 → [multi-agent §4.4.1](../2026-07-29-multi-agent-unified-design.md)
 > - `session_search` 撞名 → [task-scene §6.4](./2026-08-01-task-scene-context-design.md)
 >
@@ -11,7 +11,7 @@
 > **原状态**：📋 设计评审中（未实现）· **任务卡**：4.7.8（候选）
 > **日期**：2026-07-28
 > **前置**：4.7.7 · AS CompactionConfig · 4.7.6 spawn · 4.5 沙箱 · Grounding
-> **关联（路径已变）**：[goal-alignment](../2026-07-27-react-goal-alignment-design.md) · [五层压缩](../2026-07-31-unified-context-compression-design.md)
+> **关联（路径已变）**：[goal-alignment](./2026-07-27-react-goal-alignment-design.md) · [五层压缩](../2026-07-31-unified-context-compression-design.md)
 
 ---
 

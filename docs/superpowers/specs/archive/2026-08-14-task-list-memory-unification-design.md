@@ -8,7 +8,7 @@
 > 1. **砍 T0**（task-scene §6.1 全套双块 + processTrail + extract/condense）——会话级任务状态真相源已有（`AgentState.tasksContext` + `react_task_board` 终态快照），T0 是第三份拷贝且与 taskboard 双写漂移。失败路径保真由**任务 item 自带 `status/fail_reason`** 承接。
 > 2. **L2 + W0 统一为一张 `KV Memory`**（`scope=user|workspace` 列）——同一模型、同一抽取服务（prompt 按 scope 参数化）、同一注入渲染。本方案不再自创「L2 task 类 / W0 todo 类」两套，统一为 KV Memory 的 `kind=todo`。
 > 3. **session_search 收缩**：一期仅 `body 层 + scope=session`（工具结果在 `chat_message.steps` 直接可查，不进向量）；`scope=workspace` 延后。
-> **关联**：[unified-context-compression](../2026-07-31-unified-context-compression-design.md)（五层 SSOT · L-state）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（KV 闸门 · 场景隔离）· [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md)（H1 SSOT）· [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板，**边界隔离**）· [unified-routing v6](../2026-07-29-unified-routing-design.md)（`kind`/`executionMode`）
+> **关联**：[unified-context-compression](../2026-07-31-unified-context-compression-design.md)（五层 SSOT · L-state）· [task-scene-context](./2026-08-01-task-scene-context-design.md)（KV 闸门 · 场景隔离）· [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（H1 SSOT）· [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板，**边界隔离**）· [unified-routing v6](./2026-07-29-unified-routing-design.md)（`kind`/`executionMode`）
 
 ---
 
@@ -243,9 +243,9 @@ pro（Planner-Executor）会话收束（success / error / cancel 三态，`loop.
 |------|------|
 | [unified-context-compression](../2026-07-31-unified-context-compression-design.md) | 五层 SSOT（v25）；L-state 任务清单落地；T0 作废联动 |
 | [task-scene-context](./2026-08-01-task-scene-context-design.md) | KV 闸门与场景隔离（v14）；W0/L2 统一为 KV Memory |
-| [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md) | H1 SSOT；补「会话完成后未完成项出口」 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | H1 SSOT；补「会话完成后未完成项出口」 |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | `business_task` 边界隔离，不合并 |
-| [unified-routing v6](../2026-07-29-unified-routing-design.md) | `kind`/`executionMode` 正交 |
+| [unified-routing v6](./2026-07-29-unified-routing-design.md) | `kind`/`executionMode` 正交 |
 
 ---
 

@@ -1,7 +1,7 @@
 # ReAct 目标对齐与失败预算 Hook（4.7.7）Implementation Plan
 
 > **状态**：📋 待执行
-> **Spec**：[2026-07-27-react-goal-alignment-design.md](../specs/2026-07-27-react-goal-alignment-design.md)
+> **Spec**：[2026-07-27-react-goal-alignment-design.md](../../specs/archive/2026-07-27-react-goal-alignment-design.md)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

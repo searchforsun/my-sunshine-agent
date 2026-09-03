@@ -1,7 +1,7 @@
 # Planner-Executor H-6 Frontend + Composer UX Implementation Plan
 
 > **状态**：✅ 已完成（2026-08-13）  
-> **Spec**：[rebuild §4 / H-6](../specs/2026-08-05-planner-executor-rebuild-design.md) · [routing v6](../specs/2026-07-29-unified-routing-design.md)（`kind` ⊥ `executionMode`）  
+> **Spec**：[rebuild §4 / H-6](../../specs/archive/2026-08-05-planner-executor-rebuild-design.md) · [routing v6](../../specs/archive/2026-07-29-unified-routing-design.md)（`kind` ⊥ `executionMode`）  
 > **前置**：H-0～H-5 ✅（[kernel](./2026-08-13-planner-executor-kernel.md) · [routing v6+H-5](./2026-08-13-unified-routing-v6-h5.md)）  
 > **本 plan 不做（仍延期）**：H-7 全量 Live P1–P8；阶段 D / R-4 删 `PlanWorkflow*` 后端源码；Decision D12 Planner；压缩点 / task-scene 深改  
 >
@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- **SSOT**：时间线/看板以 [rebuild §4](../specs/2026-08-05-planner-executor-rebuild-design.md) 为准；模式以 routing v6 为准
+- **SSOT**：时间线/看板以 [rebuild §4](../../specs/archive/2026-08-05-planner-executor-rebuild-design.md) 为准；模式以 routing v6 为准
 - **`kind` ⊥ `executionMode`**：task 会话**必须**能选三模式；禁止「task 只能选分支、不能选模式」
 - **禁止**把 harness 时间线做成步骤卡片墙 / `WorkerCard`
 - **禁止** TaskBoard mini-DAG / 依赖边（D11）
@@ -295,7 +295,7 @@ EOF
 ### Task 7: 文档状态
 
 **Files:**
-- `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` §7.0 H-6 → 本 plan / 完成后 ✅  
+- `docs/superpowers/specs/archive/2026-08-05-planner-executor-rebuild-design.md` §7.0 H-6 → 本 plan / 完成后 ✅  
 - `docs/superpowers/plans/2026-08-13-planner-h6-frontend.md` 状态  
 - `CLAUDE.md` / `implementation-plan.md` / `specs/README.md` 进度行  
 - 注明：Composer task 三模式 + 分支下移 + 去 AI 提示随 H-6 交付；TaskBoard H1 待 `tasks` SSE

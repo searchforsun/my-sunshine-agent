@@ -1,9 +1,9 @@
 # 阶段五：运营化与开放化 — 技术设计（SSOT）
 
 > **周期**：按需启动（子项独立排期）
-> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接 · **v8（2026-08-02 · 历史）**：曾扩展 `plan-phase`——**已由 [rebuild S5 v4](./2026-08-05-planner-executor-rebuild-design.md) 作废**（统一 `call_scene=plan`）· **v9（2026-08-10）**：汇聚点改为 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)；原 [harness](./archive/2026-07-31-planner-harness-loop-design.md) 已归档 · **5.2 阶段一 ✅（2026-08-27）**：token 落库闭环（见 §3 5.2 注记）· **5.2 阶段二 ✅（2026-08-27）**：日聚合 + 配额 429 + 用量页（见 §3 5.2 注记）· **5.3 多模型场景路由 ✅（2026-08-27）**：`model=auto` 按 `call_site` 策略路由 + 用量/缓存按实际生效模型（见 §3 5.3 注记；5.3.5 Grafana 面板仍待接）· **5.5 工具语义检索 ✅（2026-08-27）**：工具目录 Milvus 索引 + retrieval 分层注入（Tier 0 名列表 + 每轮 Top-K schema），Nacos `tool-inject.mode` 二选一（见 §3 5.5 注记；5.5.5 golden-set 评测待接）
+> **状态**：⬜ 规划（2026-07-27 立项）· **v2（2026-08-01）**：以 harness 长任务为终点重定位；5.2/5.3/5.5 随 harness 上线**前置拆分触发**（不必等阶段四全收口），5.1/5.4/5.7 等 harness 稳定后接 · **v8（2026-08-02 · 历史）**：曾扩展 `plan-phase`——**已由 [rebuild S5 v4](./archive/2026-08-05-planner-executor-rebuild-design.md) 作废**（统一 `call_scene=plan`）· **v9（2026-08-10）**：汇聚点改为 [planner-executor-rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md)；原 [harness](./archive/2026-07-31-planner-harness-loop-design.md) 已归档 · **5.2 阶段一 ✅（2026-08-27）**：token 落库闭环（见 §3 5.2 注记）· **5.2 阶段二 ✅（2026-08-27）**：日聚合 + 配额 429 + 用量页（见 §3 5.2 注记）· **5.3 多模型场景路由 ✅（2026-08-27）**：`model=auto` 按 `call_site` 策略路由 + 用量/缓存按实际生效模型（见 §3 5.3 注记；5.3.5 Grafana 面板仍待接）· **5.5 工具语义检索 ✅（2026-08-27）**：工具目录 Milvus 索引 + retrieval 分层注入（Tier 0 名列表 + 每轮 Top-K schema），Nacos `tool-inject.mode` 二选一（见 §3 5.5 注记；5.5.5 golden-set 评测待接）
 > **触发**：① 阶段四收口 + 平台需对外交付/量化运营效果（全量）② **5.2/5.3/5.5 随 harness 上线前置**（见 §1 触发拆分）
-> **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）；5.1 系列在 **4.14 / 长任务可评估** 后启动（原「CompletionGuard 前提」随 [4.7.8 归档](./archive/2026-07-28-harness-loop-enhancement-design.md) 取消；可选门禁见 [goal-alignment §12](./2026-07-27-react-goal-alignment-design.md)）
+> **前置**：[阶段四](./phase4-platformization-design.md) 4.1/4.2/4.5/4.6/4.7/4.8/4.13 检查门通过；**4.11 Prompt 后台收口**（5.3/5.4 依赖其 Catalog 版本模型）；5.1 系列在 **4.14 / 长任务可评估** 后启动（原「CompletionGuard 前提」随 [4.7.8 归档](./archive/2026-07-28-harness-loop-enhancement-design.md) 取消；可选门禁见 [goal-alignment §12](./archive/2026-07-27-react-goal-alignment-design.md)）
 > **对标缺口**：智能体中台蓝图 §5 运营管控与观测层、§6 应用输出层、§1 多模型混部路由、§4 工具 RAG 检索
 
 ---
@@ -15,7 +15,7 @@
 - **运营闭环**：Badcase → 评测 → 调优 → 灰度 → 再评测，让平台效果可量化、可迭代；
 - **开放输出**：开放 API / SDK / 渠道嵌入，让平台能力被业务系统真正集成。
 
-**v2 / v9 重定位（以 4.14 Planner-Executor 长任务为终点）**：[rebuild](./2026-08-05-planner-executor-rebuild-design.md)（`executionMode=pro`）是横跨沙箱/ReAct/路由/上下文的汇聚点，运行期依赖 **5.2 用量计量**、**5.3 场景路由**（Planner 强 / Worker 快，**不**绑 `plan-phase`）、**5.5 工具检索**（Planner 检索 → 下发 toolWhitelist）。三块随 4.14 上线前置启动；5.1/5.4/5.7 等稳定后接。
+**v2 / v9 重定位（以 4.14 Planner-Executor 长任务为终点）**：[rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md)（`executionMode=pro`）是横跨沙箱/ReAct/路由/上下文的汇聚点，运行期依赖 **5.2 用量计量**、**5.3 场景路由**（Planner 强 / Worker 快，**不**绑 `plan-phase`）、**5.5 工具检索**（Planner 检索 → 下发 toolWhitelist）。三块随 4.14 上线前置启动；5.1/5.4/5.7 等稳定后接。
 
 **触发拆分**：
 
@@ -75,7 +75,7 @@
 > **v2 注记（harness 计量粒度）**：harness 一条 assistant message 内部是多轮 Planner-Worker（含 Worker handoff），`plan_id` 语义是 Plan-Workflow 的 plan，**不是** Planner-Harness 的 run。一个点踩无法定位「哪一轮的哪个 Worker 出问题」。为此：
 >
 > 1. `chat_message_feedback` 增加 `run_id`（harness run 标识，普通 ReAct 为空）+ `round_id`（run 内轮次，Planner-Worker round 序号；普通对话为空）。
-> 2. **自判结果落库**：harness 采用 Planner 自判（[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator）——Planner `selfAssess` 的 task 结果（PASS/FAIL + reason）写入 `harness_eval_result`（`run_id` + task + PASS/FAIL + reason，随 feedback 表同库），供 5.1.6 按 run 聚合 task 级成功率——这是 harness 效果可视化的唯一来源。字段语义保留，数据来源由 Evaluator 变为 Planner 自判。
+> 2. **自判结果落库**：harness 采用 Planner 自判（[简化决议 S1](./archive/2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator）——Planner `selfAssess` 的 task 结果（PASS/FAIL + reason）写入 `harness_eval_result`（`run_id` + task + PASS/FAIL + reason，随 feedback 表同库），供 5.1.6 按 run 聚合 task 级成功率——这是 harness 效果可视化的唯一来源。字段语义保留，数据来源由 Evaluator 变为 Planner 自判。
 >
 > 字段在 phase5 阶段即定死，harness 落地时直接写入，避免事后 ALTER。
 
@@ -106,7 +106,7 @@
 
 | 子任务 | 内容 |
 |--------|------|
-| **5.3.1** | `model_route_policy` 表（`20-sunshine-model-registry.sql`）：主键列 **`call_site`**（旧稿 `call_scene`；取值 chat\|plan\|worker\|tool-call\|rewrite\|summarize\|subagent；**无** plan-phase/evaluator）→ 模型池 + 约束。与会话形态 **`kind`**、业务域 `biz_scene` 隔离（见 [routing 命名四轴](./2026-07-29-unified-routing-design.md)）· **✅**（resource-manager JPA CRUD + catalog routes；`CallSiteKey` 枚举 SSOT） |
+| **5.3.1** | `model_route_policy` 表（`20-sunshine-model-registry.sql`）：主键列 **`call_site`**（旧稿 `call_scene`；取值 chat\|plan\|worker\|tool-call\|rewrite\|summarize\|subagent；**无** plan-phase/evaluator）→ 模型池 + 约束。与会话形态 **`kind`**、业务域 `biz_scene` 隔离（见 [routing 命名四轴](./archive/2026-07-29-unified-routing-design.md)）· **✅**（resource-manager JPA CRUD + catalog routes；`CallSiteKey` 枚举 SSOT） |
 | **5.3.2** | orchestrator 在 `ChatCompletionRequest` 注入 **`callSite`**（JSON 亦可 `call_site`；来源：调用点，如 rewrite / plan / worker / self-assess）；BFF/Gateway 透传，客户端不得自填。过渡期可读旧键 `call_scene` · **✅**（AgentScope transport 按角色注入 + `LlmGatewayClient` 默认 summarize + IntentRouter rewrite；消费端 `TokenUsageCollector` 从 request 读取） |
 | **5.3.3** | `ModelRouter` 扩展：`model=auto` 或缺省时查策略表选模型，选中结果写 trace 头便于观测；保留显式指定 model 直路由 + 现有降级链 · **✅**（`resolveEffectiveModel` 回写生效模型；auto 无策略 400 明确报错） |
 | **5.3.4** | `/tools` 或 `/ops` 增加路由策略编辑页（复用 `execution_mode_policy` 编辑模式）· **✅**（`/models` 增「路由策略」Tab：列表/新建/编辑/启停/删除，BFF 透传） |
@@ -116,7 +116,7 @@
 >
 > **v2 注记（harness 模型分层）**：harness 有 4 类 LLM 调用——Planner（=plan，强模型）、Worker（**forWorker 内部多次 LLM 调用**，中等快模型）、Evaluator（Chat 模式独立 LLM，快模型）、普通 tool-call。5.3.1 枚举扩展 `worker`/`evaluator` 后，策略表可配置「Planner → 强模型、Worker → 快模型」，实现 harness 的模型成本分层；否则 Worker 只能沿用 `plan` 场景，无法按成本分流。
 >
-> **v9 注记（S1/S5 修正 harness 模型分层）**：[简化决议 S1](./2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator——调用点收敛为 **Planner（=plan，强模型）、Worker（=worker，快模型）、阶段细拆（=plan-phase，快模型）、Planner 自判（=plan，与规划同调用点）**。策略表配置「Planner → 强模型、Worker/plan-phase → 快模型」即可覆盖 harness 全部调用；`evaluator` 枚举不建。
+> **v9 注记（S1/S5 修正 harness 模型分层）**：[简化决议 S1](./archive/2026-08-05-planner-executor-rebuild-design.md#01-简化决议v2--2026-08-05) 砍独立 Evaluator——调用点收敛为 **Planner（=plan，强模型）、Worker（=worker，快模型）、阶段细拆（=plan-phase，快模型）、Planner 自判（=plan，与规划同调用点）**。策略表配置「Planner → 强模型、Worker/plan-phase → 快模型」即可覆盖 harness 全部调用；`evaluator` 枚举不建。
 >
 > **v9 注记（取代 v8 `plan-phase`）**：rebuild S5 v4 **不建** `callSite=plan-phase`；Planner 统一 `callSite=plan`。若需强弱模型分层，走本文件 5.3 策略表（按角色/负载），**不**绑分解模式。
 
@@ -161,7 +161,7 @@
 >
 > 工具规模 ≤ 阈值（如 20）时 `full` 模式（全量 schema 进 Tier 0）仍可用——由 Nacos `agent.tool.inject` 模式开关切换，二选一不并存。
 >
-> **v2/v9 注记（Worker 检索基准）**：`pro` 下 Worker 的 `toolWhitelist` 由 **Planner 下发**（[rebuild §3.1.1](./2026-08-05-planner-executor-rebuild-design.md)），**不是** Worker 自检索。路径：**Planner 用 5.5 检索 → 下发 toolWhitelist**；Worker 不再二次检索。
+> **v2/v9 注记（Worker 检索基准）**：`pro` 下 Worker 的 `toolWhitelist` 由 **Planner 下发**（[rebuild §3.1.1](./archive/2026-08-05-planner-executor-rebuild-design.md)），**不是** Worker 自检索。路径：**Planner 用 5.5 检索 → 下发 toolWhitelist**；Worker 不再二次检索。
 
 **检查门**：工具集 50+ 时 ReAct 首轮注入工具数 ≤10 · ✅（retrieval 模式每轮按 `top-k` 默认 8 激活，Tier 0 仅名列表）；golden-set 工具命中率 ≥0.9 · ⏳（T1 报销 query 命中报销工具 + T2 对话注入 Top-K 含报销族；golden-set 规模评测 5.5.5 后续）；`verify_tool_integration_live.py --suite all` + spawn/沙箱/HITL Live 不回退 · ✅（full 模式默认；retrieval 失败回退全量）。
 
@@ -275,7 +275,7 @@
 - **D3（不做通用多 Agent 通信总线）**：委派（spawn_subagent）/ 会诊（peer-collab）/ 编排（workflow）三范式已覆盖当前场景；通用消息总线在出现真实"数十 Agent 自由组网"需求前不预建。
 - **D4（Optimizer 半自动）**：MVP 每次发布必须人工确认，与平台 HITL 哲学一致；全自动调优待 5.4 闭环稳定后再评估。
 - **D5（AS2 遗留先行）**：启动 5.x 前需先人工验收 AS2 迁移遗留项（e2e 3 例选择器漂移修复、ReAct 停→续跑 / kill-15 重启恢复交互式验收）。
-- **D6（kind / callSite 命名隔离，v2→2026-08-13）**：会话形态用 `kind`（废 `scene=chat|task`）；llm-gateway 模型路由用 **`callSite`/`call_site`**（废 `call_scene`）。避免同名字段两义；与 `biz_scene`、`executionMode` 四轴正交（见 [routing v6](./2026-07-29-unified-routing-design.md) 命名四轴）。
+- **D6（kind / callSite 命名隔离，v2→2026-08-13）**：会话形态用 `kind`（废 `scene=chat|task`）；llm-gateway 模型路由用 **`callSite`/`call_site`**（废 `call_scene`）。避免同名字段两义；与 `biz_scene`、`executionMode` 四轴正交（见 [routing v6](./archive/2026-07-29-unified-routing-design.md) 命名四轴）。
 - **D7（5.5 工具分层注入，v2）**：工具名列表进 Tier 0 静态 + Top-K schema 进 Tier 2 尾部；`full`/`retrieval` 二选一不并存。对齐五层 spec §5.5.3 前缀稳定性。
 - **D8（harness 计量维度，v2）**：feedback/usage 预置 `run_id`+`round_id`，task 评估结果落 `harness_eval_result`（**v9 S1：数据源为 Planner 自判，字段语义不变**）；phase5 阶段定死字段，harness 直接写入。
 - **D9（phase5 触发拆分，v2）**：5.2/5.3/5.5 随 harness 前置启动，5.1/5.4/5.7 等 harness 稳定后接，5.6 按需。

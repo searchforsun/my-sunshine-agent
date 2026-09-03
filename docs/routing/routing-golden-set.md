@@ -233,7 +233,7 @@ python3 scripts/verify_skills_ui_live.py
 
 ## J. Chat 执行模式强制路由（v6 语义；P0 ✅）
 
-> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/archive/2026-06-25-chat-execution-mode-selector-design.md) · [unified-routing](../superpowers/specs/2026-07-29-unified-routing-design.md)  
+> **详设**：[chat-execution-mode-selector-design.md](../superpowers/specs/archive/2026-06-25-chat-execution-mode-selector-design.md) · [unified-routing](../superpowers/specs/archive/2026-07-29-unified-routing-design.md)  
 > **请求**：SSE 发送体 `executionMode`（`fast` \| `pro` \| `workflow`；旧 `auto`/`react`/`plan-workflow` 读映射）  
 > **边界**：本节约 **执行路径**；**指定 workflow 模板**用正文 `#id`（4.13 §I），**不在底栏做 catalog 下拉**。
 

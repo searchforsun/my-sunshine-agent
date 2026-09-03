@@ -2,7 +2,7 @@
 
 > **阶段**：四（增量）· **状态**：**→ 已归档（2026-08-29）** · **✅ 已实现**（2026-08-26 全部落地：executionMode 读写闸门 · 压缩点 2+2+Far ≤10k · 同步推进 P / P/S 分离 · Mid schema 骨架 · Near 完整过程装载 · v14 收敛（T0 作废；W0/L2→KV Memory；session_search 收缩）· v28 chat 摘要化）· **v28（2026-08-27 · 仅影响 chat 的 L3 摘要化，task 不变）**：联合 [unified-context-compression §13.4.1 v28](../2026-07-31-unified-context-compression-design.md)——**chat 场景 L3 只保留 semantic 摘要层**（body 原文层退役，`L3IngestService` 对 chat 恒不写 body）；task 场景**完全不受影响**，仍写 `scene=task` 的 body+process 两层（供 `session_search` 深挖原文依赖，§6.4）。`agent.context.l3.body-gate-enabled` 仅对 task 生效。task L3 可观测（v19 T0/H1/L3 Tab 中的 L3 检索 `layer=body|process`）保持不变。· **v19（2026-08-27 · 可观测性）**：`kind=task` 工作区面板新增 T0/H1/L3 三 Tab 展示——**T0 任务进度**读取 `task_board` 表最近一次快照（`GET /api/admin/context/task/{convId}/taskboard`，即 `react_task_board` 终态快照的读侧可观测，非 v14 作废的设计态 T0）；**H1 计划笔记本**读 Redis `sunshine:plan:notebook:{convId}`（`GET /api/admin/context/task/{convId}/notebook`，Pro 执行态 PlanNotebook）；**L3 任务检索**按会话直连 rag `POST /api/rag/chat-history/search`（`scene=task`、`layer=body|process`）。· **v18（2026-08-26 · §5.5 延后项收口）**：§4.2.1 **同步推进 P ✅**（assemble 超预算 → `L1Compressor.advanceCompressionPoint` 零 LLM 纯写库前移 `far_folded_msg_ids`；**P/S 分离**——`far_summarized_msg_ids` 新列记录已折叠子集，间隙轮写路径异步补折叠）+ **Budget 退役并入 ✅**（压缩点模式丢 L3→退役 Mid 进 P→丢 Far 块）+ **≤10k 硬预算 ✅**（`task-post-compact-budget`）+ **Tier 定序 ✅**（scope-prompt 前置）+ **Mid schema 骨架 ✅（2026-08-26：`ToolSchemaRenderer` 确定性渲染 + task 短结论机械截取，见 §6.5 落地注记）** + **Near 完整过程装载 ✅（2026-08-26：`TaskProcessRenderer` think 全文 + tool 序列原文，见 §6.6 落地注记）** + **chat 压缩点二期 ✅（2026-08-26：`compressionPointActive` 扩至 chat×fast|pro，Near/Mid 参数按 kind 分化 4+4，无 ≤10k 硬预算；Live 验收近 9 轮折叠 2/4+4/rebuild-check PASS，见 §2.2 落地注记）**；**仍 ⬜**：无（本轮已收口）。**v17（2026-08-25 · 压缩点读/写路径落地）**：§4 压缩点模式一期核心已实现——`L1Compressor.partitionByPoint`/`compressByCompressionPoint`（Near 起点 = `far_folded_msg_ids` 之后，只增不减；重组 2+2+Far，`agent.context.l1.compression-point.near-keep/mid-keep-rounds`）+ `ContextAssembler` 压缩点分区（Near 不从头部丢轮次）；启用面 `task×fast|pro`（workflow/chat 走滑动窗基线）。
 > **v16（2026-08-25 · executionMode 读写闸门收口）**：`AssembleRequest` 补 `executionMode`（首轮 `preference.wireValue()` / 续跑 `conv.executionPreference` 透传），`ContextAssembler` 按 **task×workflow** 退出裁剪（不注入 KV workspace/P0 guide）；`ContextWritePath` 同步裁剪（task×workflow 跳过 KV 抽取与 L3 ingest，L1 折叠照常）。单测 `ContextAssemblerTest`/`ContextWritePathTest` 覆盖；其余闸门（kind 分流/KV scope/L3 scene）v8 后已落地。
-> **v8（2026-08-10）**：对齐 [unified-routing v6](../2026-07-29-unified-routing-design.md) 三模式与 [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md)——见 **§2.2 三模式裁剪**；压缩点/T0/W0/`session_search` **收窄到 `kind=task` × (`fast`|`pro`)**；专业模式计划态以 **H1 为 SSOT**（砍重型 T0）；工作流模式退出本套工程。
+> **v8（2026-08-10）**：对齐 [unified-routing v6](./2026-07-29-unified-routing-design.md) 三模式与 [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)——见 **§2.2 三模式裁剪**；压缩点/T0/W0/`session_search` **收窄到 `kind=task` × (`fast`|`pro`)**；专业模式计划态以 **H1 为 SSOT**（砍重型 T0）；工作流模式退出本套工程。
 > **v9（2026-08-10）**：Mid「过程骨架」**schema 组装优先**（工具调用结构化压缩存储），LLM 仅补决策句；禁止默认对 tool_result 再做语义摘要（§6.5 / §6.6）。
 > **v10（2026-08-10）**：**状态保真**（§2.0）——对齐五层 §2.1；失败路径硬进 processTrail；工具关键字段 schema 白名单；`goalEpoch` 建议字段；续跑补充验收。
 > **v11（2026-08-10）**：chat 侧 Near/Mid schema **SSOT 在五层 §5.5.8**（正文为主 + 工具轮一行；非本节完整过程窗）；本节 §6.5/§6.6 仅约束 task。
@@ -19,7 +19,7 @@
 > **日期**：2026-08-01 · **v2（2026-08-05）**：确立 chat/task **跨会话记忆隔离边界**（写/读双侧路由，前置必做）；chat **保留** L3 并经 kind 隔离向量通道；task 用户偏好**严格隔离**、由 P0 项目规范显式补位
 > **v3–v7**：T0 双块 / 压缩点 / 引用化 / Near 场景差异 / `sunshine_session_search` 撞名区分等（正文除 **T0 作废（v14）** 外仍有效，启用面以 v8 §2.2 为准）
 > **定位**：为 `kind=task` 编码会话建立区别于 chat 的上下文治理体系——对齐 Cursor Dynamic Context Discovery 与 KV Cache 经济学；压缩主目标为**续跑状态保真**（§2.0）；「项目规范」已先行落地 ✅；**执行模式轴**见 routing v6（与 `kind` 正交）
-> **关联**：[unified-context-compression-design](../2026-07-31-unified-context-compression-design.md)（五层基线 ✅ / §4.5 方案 A = run 内 SSOT；§2.1 状态保真；§5.5 压缩点仍为设计稿）· [unified-routing v6](../2026-07-29-unified-routing-design.md) · [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板/Policy；一期主挂 chat，与本文 task 编码闸门正交）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（管理页 chat/task 分栏 §6；默认工具集按 kind）· [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) · [archive/4.7.8](./2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内正交能力见五层 §4.5）
+> **关联**：[unified-context-compression-design](../2026-07-31-unified-context-compression-design.md)（五层基线 ✅ / §4.5 方案 A = run 内 SSOT；§2.1 状态保真；§5.5 压缩点仍为设计稿）· [unified-routing v6](./2026-07-29-unified-routing-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md)（企业任务板/Policy；一期主挂 chat，与本文 task 编码闸门正交）· [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)（管理页 chat/task 分栏 §6；默认工具集按 kind）· [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) · [archive/4.7.8](./2026-07-28-harness-loop-enhancement-design.md)（已归档；run 内正交能力见五层 §4.5）
 
 ---
 
@@ -151,7 +151,7 @@ chat:         KV Memory scope=user；不注入 workspace/P0；L3 召回 scene=ch
 
 | 轴 | 取值 | 管什么 |
 |----|------|--------|
-| **kind / scene（过渡）** | chat / task | 记忆读写闸门（§2.1）。**SSOT 字段名 = `kind`**；`AssembleRequest.scene` / 向量元数据旧列 `scene` 迁为 `kind`（见 [routing 命名四轴](../2026-07-29-unified-routing-design.md)） |
+| **kind / scene（过渡）** | chat / task | 记忆读写闸门（§2.1）。**SSOT 字段名 = `kind`**；`AssembleRequest.scene` / 向量元数据旧列 `scene` 迁为 `kind`（见 [routing 命名四轴](./2026-07-29-unified-routing-design.md)） |
 | **executionMode** | fast / pro / workflow | 执行器 + Tier0 overlay + 是否注入 H1；**不**改记忆库选型 |
 
 **启用面（本方案工程范围）**：
@@ -719,8 +719,8 @@ assistant: 短结论
 | 文件 | 关系 |
 |------|------|
 | [unified-context-compression](../2026-07-31-unified-context-compression-design.md) | 五层**基线**已落地；§2.1 状态保真 SSOT；§5.5 压缩点仍为设计稿；本方案 = task 适配，**启用面以 §2.2 v8 为准** |
-| [unified-routing v6](../2026-07-29-unified-routing-design.md) | 三模式显式选择；本 spec §2.2 裁剪依据 |
-| [planner-executor-rebuild](../2026-08-05-planner-executor-rebuild-design.md) | `pro`→H1 SSOT；与 T0 互斥（§6.1 v8） |
+| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 三模式显式选择；本 spec §2.2 裁剪依据 |
+| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | `pro`→H1 SSOT；与 T0 互斥（§6.1 v8） |
 | [task-workspace-codex](./2026-07-28-task-workspace-codex-design.md) | 工作区/`kind=task` 载体 |
 | [archive/4.7.8 harness-loop](./2026-07-28-harness-loop-enhancement-design.md) | **已归档**；run 内见五层 §4.5 |
 | [phase5](../phase5-operation-openness-design.md) | tools 分层注入（增强）；`callSite`≠`kind`（旧 call_scene≠scene） |

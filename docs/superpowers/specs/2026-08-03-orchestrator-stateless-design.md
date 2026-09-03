@@ -2,7 +2,7 @@
 
 > **日期**：2026-08-03 · **修订**：2026-08-12（v2：从「generation 粘连可续跑」升级为「Activity 任意实例调度」）  
 > **状态**：📋 设计评审中 · **类型**：架构重构 · **编排层唯一 SSOT（无状态 / 扩缩）**  
-> **对齐**：[planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./2026-07-29-unified-routing-design.md) · [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md)
+> **对齐**：[planner-executor-rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./archive/2026-07-29-unified-routing-design.md) · [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md)
 
 ---
 
@@ -33,7 +33,7 @@
 | Activity 之间传未序列化 Java 对象 / 跨机 ThreadLocal bridge | 破坏无状态 |
 | 将子 Agent 内部每个 think/tool 拆成 Activity | 过碎；整次 spawn = 一个 `AGENT_SUB` |
 | 第一波就上 Temporal | 先 Redis 自研调度；`ActivityScheduler` 接口可替换 |
-| 恢复 PlanApproval | 已由 [rebuild D5](./2026-08-05-planner-executor-rebuild-design.md) 废弃 |
+| 恢复 PlanApproval | 已由 [rebuild D5](./archive/2026-08-05-planner-executor-rebuild-design.md) 废弃 |
 
 ### 0.4 与 v1（2026-08-03）的差异
 
@@ -193,7 +193,7 @@ claim WF_NODE → 读 ckpt → 执行单节点 → 写结果/推进 schedule
 
 ### 4.3 pro（Planner-Executor）：跨实例（P1+P2）
 
-对齐 [rebuild](./2026-08-05-planner-executor-rebuild-design.md) 单一循环，物理映射为：
+对齐 [rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md) 单一循环，物理映射为：
 
 ```
 PLAN_ROUND (任意机)
@@ -433,8 +433,8 @@ Notebook 键：`sunshine:plan:notebook:{sessionId}`（与 rebuild §5.1 v7 一�
 
 | 文档 | 关系 |
 |------|------|
-| [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 逻辑 Planner/Worker/H1；本文提供物理 Activity 映射 |
-| [unified-routing v6](./2026-07-29-unified-routing-design.md) | router 侧 fast/pro/workflow；本文负责投递哪种首 Activity |
+| [planner-executor-rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md) | 逻辑 Planner/Worker/H1；本文提供物理 Activity 映射 |
+| [unified-routing v6](./archive/2026-07-29-unified-routing-design.md) | router 侧 fast/pro/workflow；本文负责投递哪种首 Activity |
 | [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md) | Planner HITL；阻塞走 §6.2 |
 | 本文 v1 段落 | 控制面细节（cancel/HITL/sandbox）并入 §6；generation 粘连模型废弃 |
 

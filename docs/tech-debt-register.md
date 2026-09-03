@@ -260,7 +260,10 @@
 | TD-217 | 2026-09-01 | 清理 `ContextWritePolicy`/`ContextWritePath`/`L2ExtractService` 及其测试类中「收敛前分散/O3 已收敛至」被否方案对比注释，重写正向 |
 | TD-218 | 2026-09-01 | 删 `ContextProperties.L3.maintenanceTtlDays` 死配置 + Nacos `l3.maintenance-ttl-days` 行（全仓无消费） |
 | TD-219 | 2026-09-01 | 删 `L2ConflictMerger.isElevatedKind` 无生产调用死方法 |
+| TD-220 | 2026-09-03 | L2 kind 收敛为 `enum ContextKind`（`context/l2/ContextKind`：wire 字面量/注入排序/审计具体性/高门槛子集单点）；替换 `VALID_KINDS`/`KIND_ORDER`/`ELEVATED_KINDS`/`normalizeKind`/两处 TTL·置信 switch/`kindSpecificity`/`H1TodoExportService` 字面量共 7 文件；TTL/置信数值保留 `ContextProperties.L2` 外置；新增 `ContextKindTest` 5 例 |
+| TD-221 | 2026-09-03 | `verifyRebuild`（~200 行）抽为专类 `ContextRebuildVerifier`；`ContextAdminService` 回归 CRUD 职责并移除 4 个失效依赖；Controller 直连新类；8 用例改测新类全绿，行为零变化 |
 | TD-222 | 2026-09-02 | 修复 `ContextAdminService.reingest` task 重建恒 0 bug：删 `L3IngestService.ingest` 6 参死重载（写死 chat 被短路），reingest 改传 `conv.getKind()`；27 单测绿 |
+| TD-223 | 2026-09-03 | `AssembleRequest` 收敛为单一 canonical 10 参构造：删 4 个兼容缺省重载（P9），生产 3 处 + 测试 31 处调用点显式补全；删 legacy 构造专项测试；37 用例全绿 |
 
 ### 文档债（DOC）
 

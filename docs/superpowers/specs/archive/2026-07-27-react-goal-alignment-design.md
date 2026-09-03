@@ -4,7 +4,7 @@
 > **状态**：✅ 已实现（2026-08-26：4.7.7a–e 全落地，orchestrator 全量 1331/1331 全绿 + Live 验收通过）
 > **日期**：2026-07-27 · **v2（2026-08-10）**：吸收原 4.7.8 中仍有观察价值的可选项（§12）；4.7.8 全文已归档
 > **前置**：4.7.5 ReAct TaskBoard（原生 `todo_write` + `tasksContext`）、AS 2.0 `TaskReminderMiddleware`、4.5.7 可取消工具（`ToolResultEndEvent.state`）
-> **关联**：[2026-06-24-react-taskboard-design.md](archive/2026-06-24-react-taskboard-design.md)（D11）· `ProcessingStepMiddleware` · `AgentExecutionProperties` · [archive/4.7.8](./archive/2026-07-28-harness-loop-enhancement-design.md)
+> **关联**：[2026-06-24-react-taskboard-design.md](./2026-06-24-react-taskboard-design.md)（D11）· `ProcessingStepMiddleware` · `AgentExecutionProperties` · [archive/4.7.8](./2026-07-28-harness-loop-enhancement-design.md)
 
 > **落地注记（2026-08-26）**：
 > - 原设计的 `ToolFailureBudgetRegistry` 收敛为 per-run 状态对象 **`AgentRunState`**（挂 `StepEventBridge` bridgeId 生命周期，两中间件无状态共享），`recordFailure/resetFailure/drainPendingBudgetInjections` 语义不变。
@@ -296,11 +296,11 @@ mvn test -pl orchestrator -Dtest=AgentRunStateTest,FailureBudgetMiddlewareTest,G
 
 ## 12. 可选后续（自归档 4.7.8 吸收 · 非本卡主路径）
 
-> 原 [harness-loop-enhancement](./archive/2026-07-28-harness-loop-enhancement-design.md) 评审结论：阶段四/五相对现状为过时或负优化（run 内 compaction 以五层 §4.5 方案 A 为准；`max-iters` 已高于原提案）。下列两项**仅在 Live 有实锤痛点时**再开子卡，**默认不做**。
+> 原 [harness-loop-enhancement](./2026-07-28-harness-loop-enhancement-design.md) 评审结论：阶段四/五相对现状为过时或负优化（run 内 compaction 以五层 §4.5 方案 A 为准；`max-iters` 已高于原提案）。下列两项**仅在 Live 有实锤痛点时**再开子卡，**默认不做**。
 
 | 可选 | 动机 | 约束 | 依赖 |
 |------|------|------|------|
 | **CompletionGuard（写后必验证）** | task 编码：有写工具未见验证工具即收束时，瞬态注入续跑提示（与 Grounding「内容校验」互补） | MAIN-only；`max-guard-per-run` 防死循环；纯调研不触发；**软提示非硬拒**；优先先靠 Catalog，再考虑 Middleware | 本卡 `AgentRunState`（a）落地后 |
 | **React 瞬态工具重试** | TIMEOUT / 限流等不占 LLM 轮次自动重试 1 次（复用 `ExecutionErrorClassifier`） | 与本卡 `FailureBudget` 叠层时：重试成功不计预算；**禁止**默认重试 >1；观察痛点再开 | 本卡 FailureBudget（b）后评估 |
 
-**不迁入本卡**：子 Agent 回传经济学 → [multi-agent §4.4.1](./2026-07-29-multi-agent-unified-design.md)；run 内 / 跨轮压缩 → [五层压缩](./2026-07-31-unified-context-compression-design.md)。
+**不迁入本卡**：子 Agent 回传经济学 → [multi-agent §4.4.1](../2026-07-29-multi-agent-unified-design.md)；run 内 / 跨轮压缩 → [五层压缩](../2026-07-31-unified-context-compression-design.md)。

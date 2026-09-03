@@ -9,11 +9,9 @@ import {
   setWorkspaceBanner,
   clearWorkspaceBanner,
 } from '../../composables/sandboxWorkspaceBanner'
-import { useWriteHitlMode } from '../../composables/useWriteHitlMode'
 import { useSandboxFileTree } from '../../composables/useSandboxFileTree'
 import { useSandboxPreviewTabs, stripWorkspaceRootPath } from '../../composables/useSandboxPreviewTabs'
 import { syncWorkspace } from '../../api/workspaces'
-import WriteHitlModeSelector from './WriteHitlModeSelector.vue'
 import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
 import SandboxFileTreePane from './SandboxFileTreePane.vue'
 import SandboxPreviewPane from './SandboxPreviewPane.vue'
@@ -43,8 +41,6 @@ const {
 } = useSandboxWorkspaceDrawer()
 
 const diffPanelRef = ref<{ refresh: () => void } | null>(null)
-
-const { mode: writeHitlMode } = useWriteHitlMode(() => state.conversationId)
 
 /** 是否任务工作区：仅 task 会话带 workspaceId 才显示 git/改动等复杂能力；chat 会话绑定工作区后仍为简化工作区 */
 const isTaskWorkspace = computed(() => props.sessionKind !== 'chat' && !!props.workspaceId)
@@ -352,7 +348,6 @@ watch(
         </template>
         <div class="drawer-head-actions">
           <slot name="head-actions-pre" />
-          <WriteHitlModeSelector v-model="writeHitlMode" />
           <button type="button" class="icon-btn" title="刷新" aria-label="刷新" @click="refresh">
             <NIcon :component="RefreshOutline" :size="15" />
           </button>

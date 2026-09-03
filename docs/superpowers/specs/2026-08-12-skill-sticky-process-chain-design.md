@@ -25,7 +25,7 @@
 > **v3.22（2026-08-29 · 子 agent（spawn/workflow/worker）统一 skill 加载 + 抽屉「加载技能」步骤）**：**痛点**——v3.21 只统一了 MAIN 的 L0 首现渲染 + 完整正文；**子 agent 绑定技能**（workflow agent 节点 `params.skill`、spawn 预定义 agent `primarySkillId`）虽然经 `PromptComposer.composeReactInputs`→`resolveSkillOverlays`→`wrapSkillEnvelope` 注入完整正文（SUB/Workflow 与 MAIN 共用该入口），但**前端抽屉**展示不一致：spawn 预定义 agent 用 `SpawnSubagentTool.skillLoadToken` 渲染「加载技能」步骤（仅技能名，无完整正文下拉）；workflow agent 节点**完全不渲染**「加载技能」步骤；worker（Planner-Executor 子任务）**无 skillId 建模**。**修正（统一加载语义）**：① **正文统一**——复用 `SkillBodyRenderer`（与 MAIN/动态加载同款完整正文），spawn 的 `skillLoadToken` 摘要取技能名（`summary.after`）、**完整正文落 `detail`**（展开下拉，与 `TimelineSessionCompletions.completeSkillLoad(skillId, expandDetail)` 语义一致）。② **workflow agent 节点**——`AgentNodeHandler.streamTokens` 构建请求后若 `skillId` 非空，构造「加载技能」步骤并 `agentCollector.ingest(...)` fold 进 `node-{id}.subSteps`（抽屉），作为流首下发。③ **worker 支持技能**——`AgentRunRequest.worker` 增加 `skillId` 参数 + `withSkillId`；`WorkerDispatchTool.DispatchSession` 增加 `skillId` 字段（保留 9 参兼容构造）；`HarnessPlanner.bindDispatchSession` 从 Planner 请求 `skillId` 透传；`WorkerDispatchTool.dispatchWorker` 渲染「加载技能」步骤 fold 进 `worker-{taskId}.subSteps`（抽屉）。④ **C1 稳定**——技能正文仍走 `PromptComposer` 尾部 USER 信封（`appendReactTail`，v3.17），子 agent skill 步骤仅进**抽屉 subSteps**，不进主时间线，不击穿压缩点。**落点**：`AgentRunRequest`（worker 加 skillId）· `SpawnSubagentTool.skillLoadToken`（补完整正文）· `AgentNodeHandler`（新增 skill 步骤 fold）· `WorkerDispatchTool`/`HarnessPlanner`（worker skill 透传 + 渲染）。单测 `SpawnSubagentToolTest`/`AgentNodeHandlerTest`/`WorkerDispatchToolTest`/`HarnessPlannerTest` 适配 + 全量 orchestrator 1442/1442 全绿。
 
 > **编号**：阶段四增量（路由 / Skill 会话态）  
-> **前置**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) · [task-scene §7 插件/Skill 分层](./archive/2026-08-01-task-scene-context-design.md)（名+描述静态 / 正文按需）  
+> **前置**：[unified-routing v6](./archive/2026-07-29-unified-routing-design.md) · [unified-context-compression](./2026-07-31-unified-context-compression-design.md) · [task-scene §7 插件/Skill 分层](./archive/2026-08-01-task-scene-context-design.md)（名+描述静态 / 正文按需）  
 > **一句话**：**可发现**（Catalog 名+description）与 **触发**（本轮注入 overlay 的 `skillIds`）分离；**物料加载**（sandbox）与触发正交。消息存完整 `RoutingResult` + 上轮**已触发** id 轻 sticky。对齐 Cursor：context discovered, not dumped。
 
 ### 相对 v2 / v3
@@ -380,7 +380,7 @@ discoverable ← 本轮按 §3.1 重算（与 sticky 无关）
 
 | 文档 | 关系 |
 |------|------|
-| [unified-routing v6](./2026-07-29-unified-routing-design.md) | 轨 A；`skillIds`=triggered；装配改 discover/trigger |
+| [unified-routing v6](./archive/2026-07-29-unified-routing-design.md) | 轨 A；`skillIds`=triggered；装配改 discover/trigger |
 | [task-scene](./archive/2026-08-01-task-scene-context-design.md) §7 | 名+描述 / 正文按需的直接依据 |
 | [unified-context-compression](./2026-07-31-unified-context-compression-design.md) | 触发态不进 L1；Tier 0 `tools` 稳定（v24/v25） |
 | [task-list-memory](./archive/2026-08-14-task-list-memory-unification-design.md) | 换题清空 seed 时沉淀未完成任务到 KV Memory（v3.3 协同） |

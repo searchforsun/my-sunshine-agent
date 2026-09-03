@@ -1,7 +1,7 @@
 # Unified Routing v6 + Planner H-5 Implementation Plan
 
 > **状态**：✅ 已完成（2026-08-13）  
-> **Spec**：[unified-routing v6](../specs/2026-07-29-unified-routing-design.md) · [rebuild §7 H-5](../specs/2026-08-05-planner-executor-rebuild-design.md)  
+> **Spec**：[unified-routing v6](../../specs/archive/2026-07-29-unified-routing-design.md) · [rebuild §7 H-5](../../specs/archive/2026-08-05-planner-executor-rebuild-design.md)  
 > **前置**：4.14 kernel ✅（[planner-executor-kernel](./2026-08-13-planner-executor-kernel.md)）— `PlannerHarnessExecutor` 可跑  
 > **本 plan 不做（仍延期）**：R-4 / 阶段 D 删 `PlanWorkflow*`；H-6 分层时间线+TaskBoard；H-7 §9.2 全量 Live；`intent.classifier` Catalog **live** 版本 bump；skill-sticky 深改；phase5 `callSite` 全量落库  
 >
@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- **SSOT**：路由逻辑以 [routing v6](../specs/2026-07-29-unified-routing-design.md) 为准；专业执行体以 [rebuild](../specs/2026-08-05-planner-executor-rebuild-design.md) 为准
+- **SSOT**：路由逻辑以 [routing v6](../../specs/archive/2026-07-29-unified-routing-design.md) 为准；专业执行体以 [rebuild](../../specs/archive/2026-08-05-planner-executor-rebuild-design.md) 为准
 - **四轴**：`kind` / `executionMode` / `biz_scene` / `callSite` — **禁止**互写（本 plan 至少打通 `executionMode` + 透传 `kind`）
 - **禁止** L3 / IntentRouter 输出或改写执行模式（无 `planMode`、无 `auto` 判路径）
 - **禁止** workflow 未命中时静默降级 `fast`
@@ -362,8 +362,8 @@ EOF
 ### Task 8: 文档状态同步
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-07-29-unified-routing-design.md` — 状态 → R-0～R-3 ✅ / R-4 ⬜；§13 勾选说明
-- Modify: `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` §7.0 — H-5 ✅（本 plan）
+- Modify: `docs/superpowers/specs/archive/2026-07-29-unified-routing-design.md` — 状态 → R-0～R-3 ✅ / R-4 ⬜；§13 勾选说明
+- Modify: `docs/superpowers/specs/archive/2026-08-05-planner-executor-rebuild-design.md` §7.0 — H-5 ✅（本 plan）
 - Modify: `docs/superpowers/specs/README.md` 落地顺序
 - Modify: `CLAUDE.md` / `docs/implementation-plan.md` 进度行
 

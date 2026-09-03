@@ -3,7 +3,7 @@
 > **日期**：2026-08-13  
 > **状态**：✅ 已实现（K0～K4 全绿；Live `scripts/verify_kind_biz_scene_live.py`；[plan](../../plans/2026-08-13-kind-biz-scene-catalog.md)）  
 > **定位**：把「会话形态 `kind`」贯穿 Catalog 可发现面与默认工具集；建立独立 **业务场景 Lab**（`biz_scene` 闭集码表）；退役 React Prompt 场景与按执行模式划分的工具集 Tab。  
-> **关联**：[unified-routing v6](../2026-07-29-unified-routing-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md) · [task-scene-context](./2026-08-01-task-scene-context-design.md) · [toolset-membership](2026-07-11-toolset-membership-design.md)（历史）· [prompt-ops](./2026-07-20-prompt-ops-routing-catalog-design.md)
+> **关联**：[unified-routing v6](./2026-07-29-unified-routing-design.md) · [business-context-authority](./2026-08-13-business-context-authority-design.md) · [task-scene-context](./2026-08-01-task-scene-context-design.md) · [toolset-membership](2026-07-11-toolset-membership-design.md)（历史）· [prompt-ops](./2026-07-20-prompt-ops-routing-catalog-design.md)
 
 ---
 
@@ -220,7 +220,7 @@ Live：扩展或新建 `verify_kind_biz_scene_live.py`（K0/K1 起可测工具�
 
 | 文档 | 本设计对其的补丁要求 |
 |------|----------------------|
-| [unified-routing](../2026-07-29-unified-routing-design.md) | 意图候选前按资源 `kind` 过滤；工具集不绑 executionMode |
+| [unified-routing](./2026-07-29-unified-routing-design.md) | 意图候选前按资源 `kind` 过滤；工具集不绑 executionMode |
 | [business-context-authority](./2026-08-13-business-context-authority-design.md) | Lab 为码表 SSOT；扩场景入口 = Lab + Skill/Agent 打标 |
 | [task-scene](./2026-08-01-task-scene-context-design.md) | 管理 UI 分栏引用本节 §6 |
 | prompt-ops | 标记 `react-prompt` 退役 |

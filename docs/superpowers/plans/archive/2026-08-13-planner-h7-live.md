@@ -1,7 +1,7 @@
 # Planner-Executor H-7 Live + 验收前置 Implementation Plan
 
 > **状态**：✅ 代码已落地（2026-08-13；分支 `feature/planner-h7-live`）· Live 需部署后跑 `verify_planner_executor_live.py`  
-> **Spec**：[rebuild §7 / §9.2](../specs/2026-08-05-planner-executor-rebuild-design.md) · [routing v6 R-4 仍延期](../specs/2026-07-29-unified-routing-design.md)  
+> **Spec**：[rebuild §7 / §9.2](../../specs/archive/2026-08-05-planner-executor-rebuild-design.md) · [routing v6 R-4 仍延期](../../specs/archive/2026-07-29-unified-routing-design.md)  
 > **前置**：H-0～H-6 ✅（[kernel](./2026-08-13-planner-executor-kernel.md) · [routing v6+H-5](./2026-08-13-unified-routing-v6-h5.md) · [H-6 frontend](./2026-08-13-planner-h6-frontend.md)）  
 > **本 plan 不做**：阶段 D / R-4 删 `PlanWorkflow*` 源码；完整 4.7.7 Middleware；Decision D12 Planner；压缩点 / task-scene 深改；H1 **LLM** 折叠（现网确定性截断可过 P6 soft）  
 >
@@ -16,7 +16,7 @@
 
 ## Global Constraints
 
-- **SSOT**：[rebuild](../specs/2026-08-05-planner-executor-rebuild-design.md) §4 / §5.4 / §9.2；检查门以本 plan 为准，**勿**引用已归档 harness v8 §12.2 编号
+- **SSOT**：[rebuild](../../specs/archive/2026-08-05-planner-executor-rebuild-design.md) §4 / §5.4 / §9.2；检查门以本 plan 为准，**勿**引用已归档 harness v8 §12.2 编号
 - **禁止阶段 D**：不得删除 `PlanWorkflowExecutor` / `WorkflowPlanner` / `PlanApproval*` / Catalog `plan-workflow.*` 源文件
 - **`harness.enabled=true`** 现网已开；`pro`→harness；关则 pro 显式失败
 - **模型输出不二次加工**：不对 Planner/Worker 正文截断/摘要兜底；H1 投影只映射 status 枚举，不改 label 语义
@@ -60,7 +60,7 @@
 | `orchestrator/.../plan/harness/HarnessPlanner.java` | synthesize 前后发 `planner-answer` 步 |
 | `scripts/verify_planner_executor_live.py` | P1–P8 |
 | Tests under `orchestrator/src/test/.../plan/harness/` | 投影 / obsolete / loop SSE |
-| `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md` | §7.0 H-7 完成后 ✅ |
+| `docs/superpowers/specs/archive/2026-08-05-planner-executor-rebuild-design.md` | §7.0 H-7 完成后 ✅ |
 | `CLAUDE.md` / `docs/implementation-plan.md` / `specs/README.md` | 进度行同步（Task 8） |
 
 ---
@@ -452,7 +452,7 @@ EOF
 ### Task 8: 文档进度同步（H-7 完成后）
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-08-05-planner-executor-rebuild-design.md`（§7.0 H-7 ✅；状态行 v12）
+- Modify: `docs/superpowers/specs/archive/2026-08-05-planner-executor-rebuild-design.md`（§7.0 H-7 ✅；状态行 v12）
 - Modify: `docs/superpowers/specs/README.md` 活跃表
 - Modify: `docs/implementation-plan.md` 4.14 行
 - Modify: `CLAUDE.md` 进度行 + 脚本表

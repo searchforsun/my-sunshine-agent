@@ -307,7 +307,7 @@ expert_definition (DB)
 
 | 场景 | 机制 | 说明 |
 |------|------|------|
-| `$A $B` 显式绑定 | L0 `$` 路由 -> agentIds=[A,B] **全为子 Agent**，通用 ReAct 唯一主 Agent -> 按需 spawn | 用户指定协作对象，主 Agent 决定如何使用（对齐 [unified-routing §3.1](./2026-07-29-unified-routing-design.md)「全部 Agent 均为子 Agent」） |
+| `$A $B` 显式绑定 | L0 `$` 路由 -> agentIds=[A,B] **全为子 Agent**，通用 ReAct 唯一主 Agent -> 按需 spawn | 用户指定协作对象，主 Agent 决定如何使用（对齐 [unified-routing §3.1](./archive/2026-07-29-unified-routing-design.md)「全部 Agent 均为子 Agent」） |
 | 智能体自主拉人 | 主 Agent think 发现需要其他领域视角 -> spawn_subagent(expertId) | 路由层无需判断"是否需要协作"，智能体执行中自主决定 |
 | 外部智能体 | 同上，spawn_subagent(expertId) -> source=EXTERNAL -> A2A | 外部/内部在 spawn 层面完全平等 |
 
@@ -661,7 +661,7 @@ tool_call: spawn_subagent(expertId="finance-agent", prompt="查询财务标准..
 
 ### 8.3 `$A $B` 显式多智能体绑定
 
-用户 `$A $B` 时，路由层 L0 `$` 绑定解析（对齐 [unified-routing §3.2](./2026-07-29-unified-routing-design.md)「多 `$` 绑定语义」）：
+用户 `$A $B` 时，路由层 L0 `$` 绑定解析（对齐 [unified-routing §3.2](./archive/2026-07-29-unified-routing-design.md)「多 `$` 绑定语义」）：
 1. agentIds = [A, B]（全平权子 Agent），**不设主 Agent**；主 Agent = 通用 ReAct
 2. 通用 ReAct system prompt 注入 Agent Catalog 摘要："可 spawn 的智能体：A、B"
 3. 通用 ReAct 在 ReAct 中自主决定何时/是否 spawn A、B

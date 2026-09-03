@@ -1,10 +1,10 @@
 # 统一资源路由设计（用户显式三模式 + 双轨意图收集）
 
-> **状态**：✅ **R-0～R-4 全部完成**（R-0～R-3：[unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md) + rebuild **H-5**；**R-4 = rebuild 阶段 D**：源码零残留）· **v6（2026-08-10）重写** · **v7（2026-08-14）R-4 核对完成**  
+> **状态**：✅ **R-0～R-4 全部完成**（R-0～R-3：[unified-routing-v6-h5](../../plans/archive/2026-08-13-unified-routing-v6-h5.md) + rebuild **H-5**；**R-4 = rebuild 阶段 D**：源码零残留）· **v6（2026-08-10）重写** · **v7（2026-08-14）R-4 核对完成**  
 > **日期**：2026-07-29（初稿）· 2026-07-30（v2/v3）· 2026-08-05（v5 harness 对齐）· **2026-08-10（v6：三模式显式选择，取消自动模式识别）** · **2026-08-13（R-0～R-3 + H-5 落地；R-4 另开）** · **2026-08-14（R-4 核对完成；`ForcedExecutionRouter` 重写语义保留）**  
 
 > **编号**：阶段四增量（路由层重构）  
-> **前置**：[multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（**内核 H-0～H-4 ✅**；D1 删除动态 Plan-Workflow = 阶段 D **✅**；S5 v4 单一循环）· [workflow-structured-io](./archive/2026-07-24-workflow-structured-io-design.md)  
+> **前置**：[multi-agent-unified](../2026-07-29-multi-agent-unified-design.md) · [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md)（**内核 H-0～H-4 ✅**；D1 删除动态 Plan-Workflow = 阶段 D **✅**；S5 v4 单一循环）· [workflow-structured-io](./2026-07-24-workflow-structured-io-design.md)  
 > **一句话**：用户在前端显式选择 **快速 / 专业 / 工作流** 三种执行模式（**取消** L3 自动模式识别与 `auto`）。快速→ReAct（可 spawn 子 Agent）；专业→Planner-Executor；工作流→静态 Workflow。意图链按模式分轨：快/专收集 skill+子 Agent；工作流只收集 workflow。`#` 补全**仅工作流模式**显示。
 
 ### v6 相对旧稿的废止项
@@ -45,7 +45,7 @@
 
 **禁止**四轴同名字段互写。L3 向量元数据里旧列 `scene=chat|task` → 迁为 `kind`（或过渡双读）。
 
-**资源 `kind` 过滤与默认工具集**（2026-08-13）：意图候选构建前，Skill/Agent/Workflow 仅保留 `kind ∈ {会话.kind, all}`；默认 Toolkit 按会话 `kind` 解析 `chat`/`task` 工具集，**不**按 `executionMode` 选集。细则与 React Prompt 退役见 [kind-biz-scene-catalog](archive/2026-08-13-kind-biz-scene-catalog-design.md)。
+**资源 `kind` 过滤与默认工具集**（2026-08-13）：意图候选构建前，Skill/Agent/Workflow 仅保留 `kind ∈ {会话.kind, all}`；默认 Toolkit 按会话 `kind` 解析 `chat`/`task` 工具集，**不**按 `executionMode` 选集。细则与 React Prompt 退役见 [kind-biz-scene-catalog](./2026-08-13-kind-biz-scene-catalog-design.md)。
 
 ---
 
@@ -285,7 +285,7 @@ public class ResourceDispatcher {
 
 安全模型不变：HITL / SandboxExecGuard / PathJail / 租户 / Catalog 启用池。
 
-> **Skill 可发现≠触发**（[skill-sticky v3.1](./2026-08-12-skill-sticky-process-chain-design.md)）：`skillIds` 只表示 triggered；消息完整 `RoutingResult` + 触发集轻 sticky。租户「固定」= 固定可发现，不是固定 overlay。不做 Redis ledger / 软链 / `processGraph`。
+> **Skill 可发现≠触发**（[skill-sticky v3.1](../2026-08-12-skill-sticky-process-chain-design.md)）：`skillIds` 只表示 triggered；消息完整 `RoutingResult` + 触发集轻 sticky。租户「固定」= 固定可发现，不是固定 overlay。不做 Redis ledger / 软链 / `processGraph`。
 
 ---
 
@@ -349,7 +349,7 @@ public class ResourceDispatcher {
 | **R-3** | ✅ | 专业模式接到 `PlannerHarnessExecutor`（= rebuild H-5）；三模式冒烟 | Live：`verify_routing_v6_smoke.py` V1/V3/V4/V5 | T3+T7 |
 | **R-4** | ✅ | 删除动态 plan-workflow 残留（`WorkflowPlanner`/`PlanWorkflowExecutor`/`PlanApproval*`）、`PLAN_WORKFLOW` 旧枚举；`ForcedExecutionRouter` 重写保留（见 §12.2） | grep 零残留 ✅ | rebuild **阶段 D** |
 
-> 与 4.14：R-3 = H-5 接线 **✅**（[unified-routing-v6-h5](../plans/2026-08-13-unified-routing-v6-h5.md)）。`intent.classifier` Catalog 已拆双 key **✅**：轨 A `intent.classifier.skill-agent`（skill/agent 目录）、轨 B `intent.classifier.workflow`（workflow 目录），live catalog v91；H-7 Live（代码 ✅，待部署跑）；R-4 = rebuild 阶段 D **✅**（源码删除完成，Live 回归随 H-7 部署后跑）。`pro` **禁止**静默改回 `fast`。
+> 与 4.14：R-3 = H-5 接线 **✅**（[unified-routing-v6-h5](../../plans/archive/2026-08-13-unified-routing-v6-h5.md)）。`intent.classifier` Catalog 已拆双 key **✅**：轨 A `intent.classifier.skill-agent`（skill/agent 目录）、轨 B `intent.classifier.workflow`（workflow 目录），live catalog v91；H-7 Live ✅（P1–P9 全绿）；R-4 = rebuild 阶段 D **✅**（源码删除完成，Live 回归已随 H-7 收口）。`pro` **禁止**静默改回 `fast`。
 
 ---
 
@@ -375,10 +375,10 @@ public class ResourceDispatcher {
 | 文档 | 关系 |
 |------|------|
 | [planner-executor-rebuild](./2026-08-05-planner-executor-rebuild-design.md) | 专业模式执行体；D1/D5/S5 v4；本文 §7/§11 对齐 |
-| [multi-agent-unified](./2026-07-29-multi-agent-unified-design.md) | 子 Agent / spawn |
-| [phase5](./phase5-operation-openness-design.md) | `callSite`（原 call_scene）模型路由；与 `kind` 隔离 |
-| [prompt-ops-routing-catalog](./archive/2026-07-20-prompt-ops-routing-catalog-design.md) | 规则 `resourceType`；轨 A/B 过滤 |
-| [skill-sticky-process-chain](./2026-08-12-skill-sticky-process-chain-design.md) | 轨 A：可发现≠触发；`skillIds`=triggered；S-0 保真 + 轻 sticky（v3.1） |
+| [multi-agent-unified](../2026-07-29-multi-agent-unified-design.md) | 子 Agent / spawn |
+| [phase5](../phase5-operation-openness-design.md) | `callSite`（原 call_scene）模型路由；与 `kind` 隔离 |
+| [prompt-ops-routing-catalog](./2026-07-20-prompt-ops-routing-catalog-design.md) | 规则 `resourceType`；轨 A/B 过滤 |
+| [skill-sticky-process-chain](../2026-08-12-skill-sticky-process-chain-design.md) | 轨 A：可发现≠触发；`skillIds`=triggered；S-0 保真 + 轻 sticky（v3.1） |
 
 ---
 
