@@ -2,15 +2,21 @@
 # sunshine-resource-manager — Nacos 配置
 # Data ID: sunshine-resource-manager.yaml
 # Group:   DEFAULT_GROUP
-# 聚合管理服务（Skill / Agent / Prompt / Desensitize / Model Registry）
+# 聚合管理服务（Skill / Agent / Prompt / Desensitize / Model Registry / ChatImage）
 # 表结构 SSOT：docker/mysql/init/19-sunshine-resource.sql + 20-sunshine-model-registry.sql（禁止 Flyway）
 # Skill 包文件存储：MinIO ecs4c16g:9000 / bucket sunshine-skills
+# 聊天图片存储：MinIO ecs4c16g:9000 / bucket sunshine-chat-images（public-read）
 # ============================================================
 
 server:
   port: 8240
 
 spring:
+  servlet:
+    multipart:
+      # 与 chat-image.maxBytes 对齐；request 上限留 1MB 余量给 multipart 边界开销
+      max-file-size: 10MB
+      max-request-size: 11MB
   datasource:
     url: jdbc:mysql://ecs4c16g:3306/sunshine_resource?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: root
@@ -47,6 +53,15 @@ skill:
       access-key: minioadmin
       secret-key: minioadmin123
       bucket: sunshine-skills
+
+# 聊天图片上传：MinIO public-read，模型按 URL 直拉
+chat-image:
+  minio:
+    endpoint: http://ecs4c16g:9000
+    access-key: minioadmin
+    secret-key: minioadmin123
+    bucket: sunshine-chat-images
+    public-endpoint: http://ecs4c16g:9000
 
 # 原 desensitize 专属：脱敏规则（无 DB）
 desensitize:
