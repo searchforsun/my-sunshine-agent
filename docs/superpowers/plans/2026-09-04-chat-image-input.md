@@ -539,21 +539,216 @@ git commit -m "feat(chat-image): orchestrator 契约字段与消息图片落库/
 
 ---
 
-### Task 4: orchestrator 组装多模态当前用户消息
+### Task 4: orchestrator 交付转换 + 组装多模态当前用户消息
 
 **Files:**
+- Create: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/ChatImageDeliveryResolver.java`
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/agent/runtime/AgentRunRequest.java`（record 加组件 + wither）
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/execution/ExecutionStreamContext.java`（携带 imageUrls）
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/execution/ReactExecutor.java:205-212`（传 imageUrls）
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/prompt/PromptComposeRequest.java`（forReact 增加 imageUrls 参数）
 - Modify: `orchestrator/src/main/java/com/sunshine/orchestrator/prompt/PromptComposer.java:180-184`（组装 TextBlock + ImageBlock）
-- Test: `orchestrator/src/test/java/com/sunshine/orchestrator/prompt/ReactImageMessageTest.java`
+- Modify: `docs/nacos/sunshine-orchestrator.yaml`（chat-image 配置）
+- Test: `orchestrator/src/test/java/com/sunshine/orchestrator/prompt/ReactImageMessageTest.java`、`agent/runtime/ChatImageDeliveryResolverTest.java`
 
 **Interfaces:**
 - Consumes: Task 3 的 `ExecutionStreamContext` 携带 `imageUrls()`
-- Produces: 当前用户 `Msg` 含 `ImageBlock(new URLSource(url))`；`AgentRunRequest.imageUrls: List<String>`（默认 `List.of()`）
+- Produces: `ChatImageDeliveryResolver.resolveImageBlocks(List<String>): Flux<ContentBlock>`（url 模式 → `ImageBlock(URLSource)`；base64 模式 → `ImageBlock(Base64Source(mediaType, base64))`，拉取失败降级占位 TextBlock）；当前用户 `Msg` 含 TextBlock + N 个 ImageBlock；`AgentRunRequest.imageUrls: List<String>`（默认 `List.of()`）
+- AgentScope 事实（已验证）：`Base64Source(mediaType, data)` 构造签名；`OpenAIConverterUtils.convertImageSourceToUrl` 将 Base64Source 转 `data:{mediaType};base64,{data}`、URLSource 转原 url
 
-- [ ] **Step 1: 写失败测试（验证 Msg blocks 组成）**
+- [ ] **Step 1: Nacos 配置**
+
+`docs/nacos/sunshine-orchestrator.yaml` 追加：
+
+```yaml
+chat-image:
+  delivery-mode: base64   # base64 | url；url 模式要求模型侧可回拉 MinIO 地址
+  allowed-url-prefix: http://ecs4c16g:9000   # SSRF 防护：仅允许 MinIO 基址下的图片 URL
+```
+
+Run: `python3 scripts/sync_nacos.py`
+
+- [ ] **Step 2: 写 ChatImageDeliveryResolverTest（先失败）**
+
+```java
+package com.sunshine.orchestrator.agent.runtime;
+
+import io.agentscope.core.message.Base64Source;
+import io.agentscope.core.message.ContentBlock;
+import io.agentscope.core.message.ImageBlock;
+import io.agentscope.core.message.URLSource;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ChatImageDeliveryResolverTest {
+
+    static MockWebServer server;
+    static ChatImageDeliveryResolver resolver;
+
+    @BeforeAll
+    static void setup() throws Exception {
+        server = new MockWebServer();
+        server.start();
+        resolver = new ChatImageDeliveryResolver(
+                "url", server.url("/").url().toString(), null);
+    }
+
+    @AfterAll
+    static void tearDown() throws Exception { server.shutdown(); }
+
+    @Test
+    void urlModeProducesUrlSource() {
+        List<ContentBlock> blocks = resolver
+                .resolveImageBlocks(List.of("http://ecs4c16g:9000/sunshine-chat-images/a.png"))
+                .collectList().block();
+        assertThat(blocks).hasSize(1);
+        assertThat(((ImageBlock) blocks.get(0)).getSource()).isInstanceOf(URLSource.class);
+    }
+
+    @Test
+    void base64ModeFetchesAndEncodes() {
+        ChatImageDeliveryResolver r = new ChatImageDeliveryResolver(
+                "base64", server.url("/").url().toString(), null);
+        server.enqueue(new MockResponse()
+                .setHeader("Content-Type", "image/png")
+                .setBody("\u0089PNG\r\n"));
+        List<ContentBlock> blocks = r.resolveImageBlocks(
+                List.of(server.url("/sunshine-chat-images/a.png").toString()))
+                .collectList().block();
+        ImageBlock img = (ImageBlock) blocks.get(0);
+        Base64Source src = (Base64Source) img.getSource();
+        assertThat(src.getMediaType()).isEqualTo("image/png");
+        assertThat(src.getData()).isBase64();
+    }
+
+    @Test
+    void rejectUrlOutsideAllowedPrefix() {
+        List<ContentBlock> blocks = resolver
+                .resolveImageBlocks(List.of("http://evil.internal/secret.png"))
+                .collectList().block();
+        // 非白名单 URL 全部模式拒绝 → 占位文本块
+        assertThat(blocks.get(0)).isNotInstanceOf(ImageBlock.class);
+    }
+
+    @Test
+    void fetchFailureDegradesToPlaceholder() {
+        ChatImageDeliveryResolver r = new ChatImageDeliveryResolver(
+                "base64", server.url("/").url().toString(), null);
+        server.enqueue(new MockResponse().setResponseCode(500));
+        List<ContentBlock> blocks = r.resolveImageBlocks(
+                List.of(server.url("/x.png").toString()))
+                .collectList().block();
+        assertThat(blocks.get(0)).isNotInstanceOf(ImageBlock.class);
+    }
+}
+```
+
+Run: `cd orchestrator && mvn -q test -Dtest=ChatImageDeliveryResolverTest` → FAIL（类不存在）
+
+- [ ] **Step 3: 实现 ChatImageDeliveryResolver**
+
+```java
+package com.sunshine.orchestrator.agent.runtime;
+
+import com.sunshine.orchestrator.util.Txt; // 若无此工具类则内联
+import io.agentscope.core.message.Base64Source;
+import io.agentscope.core.message.ContentBlock;
+import io.agentscope.core.message.ImageBlock;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.URLSource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.netty.http.client.HttpClient;
+
+import java.time.Duration;
+import java.util.Base64;
+import java.util.List;
+
+/**
+ * 聊天图片交付转换：delivery-mode=url → URLSource；
+ * base64（默认，模型侧无公网）→ 内网拉取字节后 Base64Source 注入。
+ * 仅接受 allowed-url-prefix 前缀的 URL（SSRF 防护）；单图拉取失败降级占位文本，不中断消息。
+ */
+@Slf4j
+@Component
+public class ChatImageDeliveryResolver {
+
+    private final String deliveryMode;
+    private final String allowedPrefix;
+    private final WebClient fetchClient;
+
+    public ChatImageDeliveryResolver(
+            @Value("${chat-image.delivery-mode:base64}") String deliveryMode,
+            @Value("${chat-image.allowed-url-prefix:}") String allowedPrefix,
+            WebClient.Builder builder) {
+        this.deliveryMode = deliveryMode == null || deliveryMode.isBlank()
+                ? "base64" : deliveryMode.strip().toLowerCase();
+        this.allowedPrefix = allowedPrefix == null ? "" : allowedPrefix.strip();
+        this.fetchClient = builder
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create().responseTimeout(Duration.ofSeconds(10))))
+                .build();
+    }
+
+    /** 组装前转换；与 wire 的 imageUrls 一一对应产出（失败图占位，保证块序稳定） */
+    public Flux<ContentBlock> resolveImageBlocks(List<String> imageUrls) {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return Flux.empty();
+        }
+        if ("url".equals(deliveryMode)) {
+            return Flux.fromIterable(imageUrls)
+                    .filter(this::isAllowed)
+                    .map(u -> ImageBlock.builder().source(new URLSource(u)).build());
+        }
+        return Flux.fromIterable(imageUrls)
+                .flatMap(u -> {
+                    if (!isAllowed(u)) {
+                        log.warn("[ChatImage] 拒绝非白名单图片 URL: {}", u);
+                        return Flux.just(placeholder());
+                    }
+                    return fetchClient.get().uri(u).retrieve()
+                            .toEntity(byte[].class)
+                            .map(resp -> {
+                                String mediaType = resp.getHeaders().getContentType() != null
+                                        ? resp.getHeaders().getContentType().toString()
+                                        : "image/png";
+                                String base64 = Base64.getEncoder().encodeToString(resp.getBody());
+                                return (ContentBlock) ImageBlock.builder()
+                                        .source(new Base64Source(mediaType, base64)).build();
+                            })
+                            .onErrorResume(e -> {
+                                log.warn("[ChatImage] 图片拉取失败 url={}: {}", u, e.getMessage());
+                                return Flux.just(placeholder());
+                            });
+                }, 2);
+    }
+
+    private boolean isAllowed(String url) {
+        return allowedPrefix.isEmpty() || (url != null && url.startsWith(allowedPrefix));
+    }
+
+    private ContentBlock placeholder() {
+        return TextBlock.builder().text("[图片加载失败]").build();
+    }
+}
+```
+
+（测试构造器第三参传 `null` 时建议重载 `ChatImageDeliveryResolver(String, String)` 委托 `builder = WebClient.builder()`，测试即可不依赖 Spring context。）
+
+- [ ] **Step 4: ReactImageMessageTest（同步更新双模式）**
 
 ```java
 package com.sunshine.orchestrator.prompt;
@@ -572,73 +767,73 @@ class ReactImageMessageTest {
 
     @Test
     void currentUserMsgContainsTextAndImageBlocks() {
-        Msg msg = PromptComposer.buildCurrentUserMsg("这张图是什么",
-                List.of("http://ecs4c16g:9000/sunshine-chat-images/default/1.png"));
+        List<ContentBlock> imageBlocks = List.of(
+                ImageBlock.builder().source(new URLSource("http://ecs4c16g:9000/sunshine-chat-images/default/1.png")).build());
+        Msg msg = PromptComposer.buildCurrentUserMsg("这张图是什么", imageBlocks);
         assertThat(msg.getRole()).isEqualTo(MsgRole.USER);
         List<ContentBlock> blocks = msg.getContent();
         assertThat(blocks.get(0)).isInstanceOf(TextBlock.class);
-        assertThat(blocks.subList(1, blocks.size())).allSatisfy(b -> assertThat(b).isInstanceOf(ImageBlock.class));
-        assertThat(((URLSource) ((ImageBlock) blocks.get(1)).getSource()).getUrl())
-                .contains("sunshine-chat-images");
+        assertThat(blocks.get(1)).isInstanceOf(ImageBlock.class);
     }
 
     @Test
-    void emptyImageUrlsYieldsTextOnly() {
+    void emptyImageBlocksYieldsTextOnly() {
         Msg msg = PromptComposer.buildCurrentUserMsg("纯文本", List.of());
         assertThat(msg.getContent()).hasSize(1);
+        assertThat(msg.getContent().get(0)).isInstanceOf(TextBlock.class);
     }
 }
 ```
 
 Run: `mvn -q test -Dtest=ReactImageMessageTest` → FAIL（方法不存在）
 
-- [ ] **Step 2: PromptComposer 抽出当前用户 Msg 构造**
+- [ ] **Step 5: PromptComposer 抽出当前用户 Msg 构造**
 
-`PromptComposer` 新增静态方法（`appendReactTail` 改为调用它，保持 `formatCurrentUser` 文案不变）：
+`PromptComposer` 新增静态方法（`appendReactTail` 改为调用它，`formatCurrentUser` 文案与 marker 参数保持不变）：
 
 ```java
-    /** ReAct 当前用户消息：TextBlock + N 个 ImageBlock（图片仅本条下发，历史回放不带） */
-    public static Msg buildCurrentUserMsg(String userMessage, java.util.List<String> imageUrls) {
+    /** ReAct 当前用户消息：TextBlock + N 个 ImageBlock（图片经交付转换，仅本条下发，历史回放不带） */
+    public static Msg buildCurrentUserMsg(String userMessage, List<ContentBlock> imageBlocks) {
         TextBlock text = TextBlock.builder()
                 .text(ContextMessageBuilder.formatCurrentUser(userMessage, null))
                 .build();
-        ContentBlock[] imageBlocks = imageUrls == null ? new ContentBlock[0] : imageUrls.stream()
-                .filter(u -> u != null && !u.isBlank())
-                .map(u -> ImageBlock.builder().source(new URLSource(u.strip())).build())
-                .toArray(ContentBlock[]::new);
+        ContentBlock[] rest = imageBlocks == null ? new ContentBlock[0]
+                : imageBlocks.toArray(ContentBlock[]::new);
         return Msg.builder().role(MsgRole.USER)
                 .content(java.util.stream.Stream.concat(java.util.stream.Stream.of(text),
-                        java.util.Arrays.stream(imageBlocks)).toArray(ContentBlock[]::new))
+                        java.util.Arrays.stream(rest)).toArray(ContentBlock[]::new))
                 .build();
     }
 ```
 
-`appendReactTail` L180-184 改为：
+`appendReactTail` L180-184 改为（阻塞拉取经 `.blockLast(timeout)` 收敛——组装发生在订阅前的准备段，非流式回调内；如所在调用链不允许阻塞则改为把 resolve 前移到 `ChatStreamContextFactory.prepareNewMessage` 的 Mono 组装中，取已解析 blocks 列表传入）：
 
 ```java
+        List<ContentBlock> imageBlocks = request.imageUrls() == null || request.imageUrls().isEmpty()
+                ? List.of()
+                : imageDeliveryResolver.resolveImageBlocks(request.imageUrls()).collectList().block(Duration.ofSeconds(15));
         inputs.add(buildCurrentUserMsg(
-                request.userMessage(), request.imageUrls() == null ? List.of() : request.imageUrls()));
+                request.userMessage(), imageBlocks == null ? List.of() : imageBlocks));
 ```
 
-（`catalogText("context.current-user-marker")` 参数若 formatCurrentUser 需要则保持原传参，静态方法签名同步带上 marker。）
+（`imageDeliveryResolver` 由构造注入 `PromptComposer`。）
 
-- [ ] **Step 3: 贯通参数链**
+- [ ] **Step 6: 贯通参数链**
 
 1. `PromptComposeRequest.forReact(...)` 增加末位参数 `List<String> imageUrls`，record 加组件；更新所有现有调用点（仅 AgentRuntime 内一处 + 测试）
-2. `AgentRunRequest` record 在 `candidateSkillIds` 后加 `List<String> imageUrls` 组件，提供 `withImageUrls(List<String>)`（wither），`main(...)` 工厂补默认 `List.of()`
-3. `ExecutionStreamContext` 增加字段/访问器 `imageUrls`（在 `userContent` 旁）；`ChatStreamContextFactory.prepareNewMessage` 从 `msg.getImageUrls()` 填入
-4. `ReactExecutor` L205-212 `AgentRunRequest.main(...)` 链式补 `.withImageUrls(ctx.imageUrls() == null ? List.of() : ctx.imageUrls())`
+2. `AgentRunRequest` record 在 `candidateSkillIds` 后加 `List<String> imageUrls` 组件，提供 `withImageUrls(List<String>)`，`main(...)` 工厂补默认 `List.of()`
+3. `ExecutionStreamContext` 增加访问器 `imageUrls`；`ChatStreamContextFactory.prepareNewMessage` 从 `msg.getImageUrls()` 填入
+4. `ReactExecutor` L205-212 链式补 `.withImageUrls(ctx.imageUrls() == null ? List.of() : ctx.imageUrls())`
 
-- [ ] **Step 4: 全量编译 + 相关单测**
+- [ ] **Step 7: 全量编译 + 相关单测 + 重启**
 
-Run: `cd orchestrator && mvn -q test -Dtest='ReactImageMessageTest,PromptComposer*'` → PASS
-Run: `mvn -q compile && python3 scripts/start.py --restart orchestrator`
+Run: `cd orchestrator && mvn -q test -Dtest='ReactImageMessageTest,ChatImageDeliveryResolverTest,PromptComposer*' && python3 scripts/start.py --restart orchestrator`
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 8: 提交**
 
 ```bash
-git add orchestrator/src
-git commit -m "feat(chat-image): ReAct 当前用户消息组装 TextBlock+ImageBlock(URLSource)"
+git add orchestrator/src docs/nacos/sunshine-orchestrator.yaml
+git commit -m "feat(chat-image): 图片交付双模式（base64 默认/url）+ ReAct 当前用户消息组装 ImageBlock"
 ```
 
 ---
@@ -653,18 +848,54 @@ git commit -m "feat(chat-image): ReAct 当前用户消息组装 TextBlock+ImageB
 
 **Interfaces:**
 - Consumes: `POST /api/chat/images`（multipart，经 Gateway，头走 `apiHeaders()`；基址用 `uploadUrl` 同款 `resolveBffStreamBase()` 直连避免 Vite proxy 破坏 FormData——与 `skills.ts:9-12` 同构）
-- Produces: `uploadChatImage(file: File): Promise<string>`；`SendOptions.imageUrls`
+- Produces: `uploadChatImage(file: File): Promise<string>`；`SendOptions.imageUrls`；`compressImage(file: File): Promise<File>`
 
-- [ ] **Step 1: chatImages.ts**
+- [ ] **Step 1: chatImages.ts（含压缩）**
 
 ```typescript
 import { apiHeaders } from '../stores/authStore'
 import { resolveBffStreamBase } from './config'
 
-/** 聊天图片上传：multipart 直连 Gateway（同技能包上传路径），返回公网 URL */
+const MAX_EDGE = 2048
+const JPEG_QUALITY = 0.85
+const MAX_BYTES = 5 * 1024 * 1024
+
+/** 上传前压缩：最长边 >2048 等比缩小 + JPEG 0.85；PNG 透明图与已达标图片原样保留 */
+async function compressImage(file: File): Promise<File> {
+  const keepPng = file.type === 'image/png' && await hasAlpha(file)
+  if (file.size <= MAX_BYTES && keepPng) return file
+  if (file.type === 'image/gif') return file // 动图不做 canvas 压缩
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  const blob = await new Promise<Blob | null>(r =>
+    canvas.toBlob(r, keepPng ? 'image/png' : 'image/jpeg', JPEG_QUALITY))
+  bitmap.close()
+  if (!blob || blob.size >= file.size) return file
+  return new File([blob], file.name.replace(/\.\w+$/, keepPng ? '.png' : '.jpg'), {
+    type: keepPng ? 'image/png' : 'image/jpeg',
+  })
+}
+
+async function hasAlpha(file: File): Promise<boolean> {
+  const bitmap = await createImageBitmap(file)
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 1
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(bitmap, 0, 0, 1, 1)
+  bitmap.close()
+  return ctx.getImageData(0, 0, 1, 1).data[3] < 255
+}
+
+/** 聊天图片上传：压缩后 multipart 直连 Gateway（同技能包上传路径），返回公网 URL */
 export async function uploadChatImage(file: File): Promise<string> {
+  const compressed = await compressImage(file)
   const form = new FormData()
-  form.append('file', file)
+  form.append('file', compressed)
   const res = await fetch(`${resolveBffStreamBase()}/api/chat/images`, {
     method: 'POST',
     headers: { ...apiHeaders() },
@@ -836,6 +1067,8 @@ def main():
                        headers={"x-user-id": "verify", "x-tenant-id": "default"},
                        stream=True, timeout=60) as resp:
         check("chat/stream SSE 可建立", resp.status_code == 200, str(resp.status_code))
+    # llm-gateway 收到的图片交付形式由 delivery-mode 决定：base64 → data:image/...;base64,
+    print("提示：检查 logs/sunshine-llm-gateway.log 中 messages 图片 URI 前缀（data: 或 http）")
     print(f"\n通过 {len(OK)} 项，失败 {len(FAIL)} 项")
     sys.exit(1 if FAIL else 0)
 
@@ -863,6 +1096,7 @@ git commit -m "feat(chat-image): 验收脚本与文档收尾；multimodal 错误
 
 ## Self-Review
 
-- **Spec coverage**：§4.1→Task1、§4.2→Task2/3、§4.3→Task4、§4.4→Task2、§4.5→Task6、§4.6→Task5、§6→Task6。无缺口。
-- **Placeholder scan**：无 TBD/TODO；Task2 Client 标注「以 SkillManagerClient 实际写法为准做同构简化」属于既有代码对齐指引而非占位。
-- **Type consistency**：`imageUrls`（wire/DTO）、`imageUrlsJson`（实体列）、`readImageUrls/writeImageUrls`（ConversationService 静态）、`buildCurrentUserMsg`（PromptComposer 静态）、`uploadChatImage`（前端 api）各处命名一致。
+- **Spec coverage**：§4.1→Task1、§4.2→Task2/3、§4.3（双模式交付）→Task4、§4.4→Task2、§4.5→Task6、§4.6（含压缩）→Task5、§6→Task6。无缺口。
+- **Placeholder scan**：无 TBD/TODO；Task2 Client「以 SkillManagerClient 实际写法为准做同构简化」、Task4 「阻塞拉取或前移 resolve」为既有代码对齐指引而非占位。
+- **Type consistency**：`imageUrls`（wire/DTO）、`imageUrlsJson`（实体列）、`readImageUrls/writeImageUrls`（ConversationService 静态）、`buildCurrentUserMsg(String, List<ContentBlock>)`（PromptComposer 静态）、`resolveImageBlocks(List<String>): Flux<ContentBlock>`（ChatImageDeliveryResolver）、`uploadChatImage/compressImage`（前端 api）各处命名一致。
+- **交付模式一致性**：`delivery-mode` 默认 `base64` 与 spec §2 一致；`allowed-url-prefix` SSRF 白名单覆盖 url/base64 两模式；占位块语义两模式一致。
