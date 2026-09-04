@@ -32,4 +32,7 @@ public class ChatRequest {
 
     /** 会话级模型覆盖（可选）；透传 orchestrator，BFF 不加工 */
     private String modelName;
+
+    /** 图片 URL 列表（聊天多模态，≤4 张）；透传 orchestrator，BFF 不加工 */
+    private java.util.List<String> imageUrls;
 }
