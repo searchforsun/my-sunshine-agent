@@ -32,12 +32,15 @@ public record PromptComposeRequest(
         /** 本轮候选 skill 集（S-C：目录提权 + dynamicLoadable 标记，可动态加载升级） */
         List<String> candidateSkillIds,
         /** 会话租户（A-2：可发现目录按租户过滤；null 视为 default） */
-        String tenantId) {
+        String tenantId,
+        /** 本轮聊天图片 URL（仅 ReAct 当前用户消息多模态下发；null 安全） */
+        List<String> imageUrls) {
 
     public PromptComposeRequest {
         injectedUserContexts = injectedUserContexts != null ? List.copyOf(injectedUserContexts) : List.of();
         triggeredSkillIds = triggeredSkillIds != null ? List.copyOf(triggeredSkillIds) : List.of();
         candidateSkillIds = candidateSkillIds != null ? List.copyOf(candidateSkillIds) : List.of();
+        imageUrls = imageUrls != null ? List.copyOf(imageUrls) : List.of();
         tenantId = tenantId != null ? tenantId : "default";
     }
 
@@ -91,7 +94,7 @@ public record PromptComposeRequest(
             String workspaceCheckout, List<String> triggeredSkillIds, String tenantId) {
         return new PromptComposeRequest(
                 PromptMode.REACT, context, userMessage, null, skillId, null, injectedUserContexts, null,
-                reactRestart, null, personalRules, kind, workspaceCheckout, triggeredSkillIds, null, tenantId);
+                reactRestart, null, personalRules, kind, workspaceCheckout, triggeredSkillIds, null, tenantId, null);
     }
 
     /** S-C：含候选 skill 集（目录提权 + dynamicLoadable） */
@@ -99,9 +102,20 @@ public record PromptComposeRequest(
             AssembledContext context, String userMessage, String skillId,
             List<String> injectedUserContexts, boolean reactRestart, String personalRules, String kind,
             String workspaceCheckout, List<String> triggeredSkillIds, List<String> candidateSkillIds, String tenantId) {
+        return forReact(context, userMessage, skillId, injectedUserContexts, reactRestart, personalRules, kind,
+                workspaceCheckout, triggeredSkillIds, candidateSkillIds, tenantId, null);
+    }
+
+    /** S-C + 聊天图片：imageUrls 走交付转换后组进当前用户消息（仅 ReAct MAIN 链路） */
+    public static PromptComposeRequest forReact(
+            AssembledContext context, String userMessage, String skillId,
+            List<String> injectedUserContexts, boolean reactRestart, String personalRules, String kind,
+            String workspaceCheckout, List<String> triggeredSkillIds, List<String> candidateSkillIds,
+            String tenantId, List<String> imageUrls) {
         return new PromptComposeRequest(
                 PromptMode.REACT, context, userMessage, null, skillId, null, injectedUserContexts, null,
-                reactRestart, null, personalRules, kind, workspaceCheckout, triggeredSkillIds, candidateSkillIds, tenantId);
+                reactRestart, null, personalRules, kind, workspaceCheckout, triggeredSkillIds, candidateSkillIds,
+                tenantId, imageUrls);
     }
 
     /** Planner-Executor — Planner 独立角色（不叠 react/workflow 叠加层），仅由 harnessPromptId 提供角色定位。 */
@@ -110,7 +124,7 @@ public record PromptComposeRequest(
             boolean reactRestart, String harnessPromptId, String kind, String workspaceCheckout) {
         return new PromptComposeRequest(
                 PromptMode.PLANNER, context, userMessage, null, null, null, injectedUserContexts, null,
-                reactRestart, harnessPromptId, null, kind, workspaceCheckout, null, null, null);
+                reactRestart, harnessPromptId, null, kind, workspaceCheckout, null, null, null, null);
     }
 
     /** workflow llm 节点 — nodePrompt 为 TemplateResolver 渲染后的第 6 层 */
@@ -129,7 +143,7 @@ public record PromptComposeRequest(
             String personalRules, String kind) {
         return new PromptComposeRequest(
                 PromptMode.WORKFLOW, context, userMessage, workflowId, null, nodePrompt, List.of(), null, false, null,
-                personalRules, kind, null, null, null, null);
+                personalRules, kind, null, null, null, null, null);
     }
 
 }

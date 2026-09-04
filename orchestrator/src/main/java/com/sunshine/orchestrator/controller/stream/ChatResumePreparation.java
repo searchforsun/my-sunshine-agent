@@ -4,6 +4,8 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.routing.ExecutionMode;
 import com.sunshine.orchestrator.routing.RoutingSeed;
 
+import java.util.List;
+
 /** 续跑前从 DB 组装的上下文 */
 public record ChatResumePreparation(
         String assistantId,
@@ -47,6 +49,8 @@ public record ChatResumePreparation(
                 null,
                 conversationKind,
                 modelOverride,
+                // 续跑仅继续既有 assistant 生成：本轮图片已随原 user 消息消费，不重注入
+                List.of(),
                 routingSeed);
     }
 }

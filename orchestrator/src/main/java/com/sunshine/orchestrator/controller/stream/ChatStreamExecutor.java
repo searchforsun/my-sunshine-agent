@@ -307,7 +307,8 @@ public class ChatStreamExecutor {
                 ctx.existingStepsJson(),
                 ctx.personalRules(),
                 ctx.conversationKind(),
-                ctx.modelOverride());
+                ctx.modelOverride(),
+                ctx.imageUrls());
     }
 
     private static List<StreamToken> drainStepTokens(List<ProcessingStep> stepEmissions) {

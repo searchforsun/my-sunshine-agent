@@ -495,6 +495,10 @@ prompt-catalog:
 desensitize:
   enabled: true
 
+chat-image:
+  delivery-mode: base64   # base64 | url；url 模式要求模型侧可回拉 MinIO 地址
+  allowed-url-prefix: http://ecs4c16g:9000   # SSRF 防护：仅允许 MinIO 基址下的图片 URL
+
 sunshine:
   audit:
     enabled: true

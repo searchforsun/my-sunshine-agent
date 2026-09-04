@@ -210,7 +210,8 @@ public class ReActAgentRuntime implements AgentRuntime {
                             : PromptComposeRequest.forReact(
                                     memory, query, request.skillId(), injectedBlocks,
                                     request.reactRestart(), null, convKind, workspaceCheckout,
-                                    request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId()),
+                                    request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId(),
+                                    request.imageUrls()),
                     systemPromptResolver.resolve(request));
             List<Msg> inputs = composed.inputs();
             Map<String, Integer> contextGroups = new ConcurrentHashMap<>(composed.staticGroups());

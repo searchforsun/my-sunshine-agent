@@ -38,9 +38,33 @@ class PlannerAgentRuntimeTest {
     @Test
     void ensureHarnessPrompt_fillsBlankPromptId() {
         AgentRunRequest blank = new AgentRunRequest(
-                AgentRole.PLANNER, "run-p", null, com.sunshine.orchestrator.context.AssembledContext.empty(),
-                "q", java.util.List.of(), "u1", "default", "msg", null, null, null, 0,
-                TimelineBinding.PLANNER_ONLY, false, null, null, 0, null, null, null, null, null, null, null, null);
+                AgentRole.PLANNER,
+                "run-p",
+                null,
+                com.sunshine.orchestrator.context.AssembledContext.empty(),
+                "q",
+                java.util.List.of(),
+                "u1",
+                "default",
+                "msg",
+                null,
+                null,
+                null,
+                0,
+                TimelineBinding.PLANNER_ONLY,
+                false,
+                null,
+                null,
+                0,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
         AgentRunRequest filled = PlannerAgentRuntime.ensureHarnessPrompt(blank);
         assertThat(filled.harnessPromptId()).isEqualTo("planner.harness");
     }

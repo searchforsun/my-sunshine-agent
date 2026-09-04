@@ -2,12 +2,15 @@ package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
 import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
+import com.sunshine.orchestrator.agent.runtime.ChatImageDeliveryResolver;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.context.ContextGroupEstimator;
 import com.sunshine.orchestrator.context.ContextMessageBuilder;
+import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.TextBlock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 
 /**
  * 统一 system / context 消息拼装 — 6 层叠加顺序见 phase3 SSOT §3.8。
@@ -38,6 +42,7 @@ public class PromptComposer {
     private final SkillBodyRenderer skillBodyRenderer;
     private final AgentHitlProperties hitlProperties;
     private final ContextGroupEstimator estimator;
+    private final ChatImageDeliveryResolver imageDeliveryResolver;
 
     /** 直连 Gateway / DIRECT 与 workflow llm 的消息列表（含 base-system） */
     public List<Map<String, Object>> composeGatewayMessages(PromptComposeRequest request) {
@@ -177,11 +182,33 @@ public class PromptComposer {
         addReactUser(inputs, wrapSkillEnvelope(
                 resolveSkillOverlays(request.skillId(), request.triggeredSkillIds(), request.tenantId(), request.kind()),
                 request.skillId(), request.triggeredSkillIds()));
-        inputs.add(Msg.builder()
-                .role(MsgRole.USER)
-                .textContent(ContextMessageBuilder.formatCurrentUser(
-                        request.userMessage(), catalogText("context.current-user-marker")))
-                .build());
+        // base64 模式需同步拉取图片字节；组装点由 AgentRuntime 的 Flux.defer 保证在虚拟线程上，
+        // 有界阻塞收敛安全（纯异步 NIO 链不做此操作，见 VirtualThreadExecutors 语义）
+        List<ContentBlock> imageBlocks = request.imageUrls() == null || request.imageUrls().isEmpty()
+                ? List.of()
+                : imageDeliveryResolver.resolveImageBlocks(request.imageUrls())
+                        .collectList().block(Duration.ofSeconds(15));
+        inputs.add(buildCurrentUserMsg(
+                request.userMessage(),
+                imageBlocks == null ? List.of() : imageBlocks,
+                catalogText("context.current-user-marker")));
+    }
+
+    /** ReAct 当前用户消息：TextBlock + N 个 ImageBlock（图片经交付转换，仅本条下发，历史回放不带） */
+    public static Msg buildCurrentUserMsg(String userMessage, List<ContentBlock> imageBlocks) {
+        return buildCurrentUserMsg(userMessage, imageBlocks, null);
+    }
+
+    public static Msg buildCurrentUserMsg(String userMessage, List<ContentBlock> imageBlocks, String currentUserMarker) {
+        TextBlock text = TextBlock.builder()
+                .text(ContextMessageBuilder.formatCurrentUser(userMessage, currentUserMarker))
+                .build();
+        ContentBlock[] rest = imageBlocks == null ? new ContentBlock[0]
+                : imageBlocks.toArray(ContentBlock[]::new);
+        return Msg.builder().role(MsgRole.USER)
+                .content(java.util.stream.Stream.concat(java.util.stream.Stream.of(text),
+                        java.util.Arrays.stream(rest)).toArray(ContentBlock[]::new))
+                .build();
     }
 
     private static void appendGatewayInjectedContexts(List<Map<String, Object>> messages, List<String> contexts) {
@@ -343,8 +370,8 @@ public class PromptComposer {
     /**
      * 可发现目录层（名+描述，不灌正文）：enabled + 会话 kind 匹配的 skill 目录，
      * 剔除已触发项；候选集（S-C）提权置顶并标「可动态加载」；模板在 Catalog
-     * （context.skill-directory），{skills} 运行时替换。目录过长按 Top-N 截断并提示
-     * 「更多经 / 或检索」（skill-sticky S-D/S-C）。
+     * 候选集（S-C）提权置顶并标「可动态加载」；模板在 Catalog（context.skill-directory），
+     * {skills} 运行时替换。目录过长按 Top-N 截断并提示「更多经 / 或检索」（skill-sticky S-D/S-C）。
      */
     private String resolveSkillDirectory(
             String kind, List<String> triggeredSkillIds, List<String> candidateSkillIds, String tenantId) {

@@ -209,7 +209,8 @@ public class ReactExecutor {
                         resolveMaxItersByKind(ctx), triggeredSkillIds)
                 .withConversationKind(ctx.conversationKind())
                 .withCandidateSkillIds(candidateSkillIds)
-                .withModelOverride(ctx.modelOverride()));
+                .withModelOverride(ctx.modelOverride())
+                .withImageUrls(ctx.imageUrls()));
     }
 
     /** task 会话（沙箱长任务）用更高的轮数上限；chat 会话传 0 取 Nacos 默认 max-iters */

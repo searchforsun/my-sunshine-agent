@@ -5,6 +5,8 @@ import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.plan.ResumeInteractionHint;
 import com.sunshine.orchestrator.routing.ExecutionPlan;
 
+import java.util.List;
+
 /**
  * 执行层流式上下文 — 从 ChatController 传入 Dispatcher / Executor
  */
@@ -31,7 +33,9 @@ public record ExecutionStreamContext(
         /** 会话类型：chat / task（task 会话使用更高的 ReAct 轮数上限） */
         String conversationKind,
         /** 会话绑定模型 override（MAIN chat） */
-        String modelOverride) {
+        String modelOverride,
+        /** 本轮聊天图片 URL（仅 MAIN ReAct 当前用户消息多模态下发；null 安全） */
+        List<String> imageUrls) {
     public ExecutionStreamContext(
             String conversationId,
             String assistantMsgId,
@@ -42,9 +46,27 @@ public record ExecutionStreamContext(
             String userId,
             String tenantId,
             ExecutionPlan plan) {
-        this(conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, null, plan, null, null, null, false, false, null, null, null, null);
+        this(
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                null,
+                plan,
+                null,
+                null,
+                null,
+                false,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     public ExecutionStreamContext(
@@ -65,10 +87,27 @@ public record ExecutionStreamContext(
             String existingStepsJson,
             String personalRules,
             String conversationKind) {
-        this(conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, null, plan, persistedPlanId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, reactRestart, existingStepsJson, personalRules, conversationKind, null);
+        this(
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                null,
+                plan,
+                persistedPlanId,
+                workflowHitl,
+                resumeInteraction,
+                workflowHitlPreApproved,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                null,
+                null);
     }
 
     /** 含 kbId、无 modelOverride（测试与旧调用兼容） */
@@ -91,10 +130,27 @@ public record ExecutionStreamContext(
             String existingStepsJson,
             String personalRules,
             String conversationKind) {
-        this(conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, reactRestart, existingStepsJson, personalRules, conversationKind, null);
+        this(
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                kbId,
+                plan,
+                persistedPlanId,
+                workflowHitl,
+                resumeInteraction,
+                workflowHitlPreApproved,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                null,
+                null);
     }
 
     public ExecutionStreamContext(
@@ -111,55 +167,148 @@ public record ExecutionStreamContext(
             WorkflowHitlScope.Binding workflowHitl,
             ResumeInteractionHint resumeInteraction,
             boolean workflowHitlPreApproved) {
-        this(conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, null, plan, persistedPlanId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, false, null, null, null, null);
+        this(
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                null,
+                plan,
+                persistedPlanId,
+                workflowHitl,
+                resumeInteraction,
+                workflowHitlPreApproved,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     public ExecutionStreamContext withPlan(ExecutionPlan newPlan) {
         return new ExecutionStreamContext(
-                conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, kbId, newPlan, persistedPlanId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, reactRestart, existingStepsJson, personalRules, conversationKind,
-                modelOverride);
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                kbId,
+                newPlan,
+                persistedPlanId,
+                workflowHitl,
+                resumeInteraction,
+                workflowHitlPreApproved,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                modelOverride,
+                imageUrls);
     }
 
     public ExecutionStreamContext withPersistedPlanId(String planId) {
         return new ExecutionStreamContext(
-                conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, kbId, plan, planId, workflowHitl, resumeInteraction,
-                workflowHitlPreApproved, reactRestart, existingStepsJson, personalRules, conversationKind,
-                modelOverride);
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                kbId,
+                plan,
+                planId,
+                workflowHitl,
+                resumeInteraction,
+                workflowHitlPreApproved,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                modelOverride,
+                imageUrls);
     }
 
     /** Workflow tool 节点 HITL — 跨线程随 streamCtx 传递，勿用 ThreadLocal */
     public ExecutionStreamContext withWorkflowHitl(WorkflowHitlScope.Binding binding) {
         return new ExecutionStreamContext(
-                conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, kbId, plan, persistedPlanId, binding, resumeInteraction,
-                workflowHitlPreApproved, reactRestart, existingStepsJson, personalRules, conversationKind,
-                modelOverride);
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                kbId,
+                plan,
+                persistedPlanId,
+                binding,
+                resumeInteraction,
+                workflowHitlPreApproved,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                modelOverride,
+                imageUrls);
     }
 
     public ExecutionStreamContext withResumeInteraction(ResumeInteractionHint hint) {
         return new ExecutionStreamContext(
-                conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, hint,
-                workflowHitlPreApproved, reactRestart, existingStepsJson, personalRules, conversationKind,
-                modelOverride);
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                kbId,
+                plan,
+                persistedPlanId,
+                workflowHitl,
+                hint,
+                workflowHitlPreApproved,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                modelOverride,
+                imageUrls);
     }
 
     /** HITL 续跑 re-await 已确认，跳过 ToolNodeHandler 二次确认 */
     public ExecutionStreamContext withHitlPreApproved() {
         return new ExecutionStreamContext(
-                conversationId, assistantMsgId, userContent, memory,
-                existingContent, existingReasoning,
-                userId, tenantId, kbId, plan, persistedPlanId, workflowHitl, null, true, reactRestart,
-                existingStepsJson, personalRules, conversationKind, modelOverride);
+                conversationId,
+                assistantMsgId,
+                userContent,
+                memory,
+                existingContent,
+                existingReasoning,
+                userId,
+                tenantId,
+                kbId,
+                plan,
+                persistedPlanId,
+                workflowHitl,
+                null,
+                true,
+                reactRestart,
+                existingStepsJson,
+                personalRules,
+                conversationKind,
+                modelOverride,
+                imageUrls);
     }
 }

@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /** 新消息 / 续跑前的会话落库与 Context 组装 */
@@ -51,6 +52,9 @@ public class ChatStreamContextFactory {
 
     /** INTERRUPTED assistant 折叠注记的 Catalog id（方案 A · 中断感知，见五层 spec §5.5.7 v16） */
     private static final String INTERRUPTED_MARKER = "context.l1.interrupted-marker";
+
+    /** 思考深度值域（OpenAI reasoning_effort；与 ConversationService 校验一致） */
+    private static final Set<String> REASONING_EFFORT_VALUES = Set.of("minimal", "low", "medium", "high");
 
     @Autowired(required = false)
     private GenerationRegistry registry;
@@ -131,6 +135,7 @@ public class ChatStreamContextFactory {
                 msg.getPersonalRules(),
                 conv.getKind(),
                 modelOverride,
+                msg.getImageUrls(),
                 // S-1：上轮轻 sticky seed（无新触发时继承已触发 skill / 可调度 agent）
                 conversationService.loadRoutingSeed(conv.getId()));
     }
@@ -147,8 +152,8 @@ public class ChatStreamContextFactory {
                 .map(String::strip)
                 .toList();
         if (cleaned.size() > 4) {
-            log.warn("[ChatStreamContextFactory] imageUrls 数量 {} 超过上限 4，截断至 {} 张",
-                    imageUrls.size(), cleaned.size());
+            log.warn("[ChatStreamContextFactory] imageUrls 数量 {} 超过上限 4，截断至 4 张",
+                    imageUrls.size());
             cleaned = cleaned.subList(0, 4);
         }
         return cleaned;
@@ -197,6 +202,15 @@ public class ChatStreamContextFactory {
             return StringUtils.hasText(requestModelName) ? requestModelName.strip() : null;
         }
         return StringUtils.hasText(storedModelName) ? storedModelName.strip() : null;
+    }
+
+    private static String resolveSessionReasoningEffort(String requestEffort, String storedEffort) {
+        String fromRequest = requestEffort != null && StringUtils.hasText(requestEffort)
+                ? requestEffort.strip() : null;
+        String effort = fromRequest != null ? fromRequest
+                : (StringUtils.hasText(storedEffort) ? storedEffort.strip() : null);
+        boolean valid = effort == null || REASONING_EFFORT_VALUES.contains(effort);
+        return valid ? effort : null;
     }
 
     public ChatResumePreparation buildResumePreparation(ChatMessage msg, String userId, String tenantId) {

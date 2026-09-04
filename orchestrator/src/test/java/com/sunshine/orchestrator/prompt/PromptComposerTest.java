@@ -2,6 +2,7 @@ package com.sunshine.orchestrator.prompt;
 
 import com.sunshine.orchestrator.catalog.SkillBodyRenderer;
 import com.sunshine.orchestrator.catalog.SkillCatalogService;
+import com.sunshine.orchestrator.agent.runtime.ChatImageDeliveryResolver;
 import com.sunshine.orchestrator.config.AgentHitlProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
 import com.sunshine.orchestrator.context.ContextGroupEstimator;
@@ -49,7 +50,8 @@ class PromptComposerTest {
         catalogHolder = new PromptCatalogHolder();
         catalogHolder.replace(PromptCatalogSnapshot.of(1L, defaultEntries()));
         composer = new PromptComposer(catalogHolder, skillCatalogService, skillBodyRenderer, hitlProperties,
-                new ContextGroupEstimator(new TokenEstimator()));
+                new ContextGroupEstimator(new TokenEstimator()),
+                new ChatImageDeliveryResolver("base64", ""));
     }
 
     @Test
@@ -157,7 +159,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, null, null, null, null, null, null, null), "").inputs();
+                List.of("injected-ctx"), null, true, null, null, null, null, null, null, null, null), "").inputs();
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
