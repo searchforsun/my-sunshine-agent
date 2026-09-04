@@ -100,6 +100,9 @@ public class ChatController {
         if (hasContent == hasResume) {
             throw new BizException(OrchestratorErrorCode.INVALID_CHAT_REQUEST);
         }
+        if (msg.getImageUrls() != null && msg.getImageUrls().size() > 4) {
+            throw new BizException(OrchestratorErrorCode.CHAT_IMAGE_LIMIT_EXCEEDED);
+        }
     }
 
     private Flux<ServerSentEvent<String>> handleNewMessage(

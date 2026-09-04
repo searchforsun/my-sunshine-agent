@@ -339,6 +339,35 @@ public class ConversationService {
         return appendMessage(convId, role, content, status, null);
     }
 
+    /** 图片 URL JSON 编解码器（静态无状态，复用实例） */
+    private static final com.fasterxml.jackson.databind.ObjectMapper IMAGE_URL_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** 图片 URL 列表 → JSON 数组；null/空列表返回 null（列保持 NULL） */
+    public static String writeImageUrls(java.util.List<String> urls) {
+        if (urls == null || urls.isEmpty()) return null;
+        try { return IMAGE_URL_MAPPER.writeValueAsString(urls); }
+        catch (Exception e) { throw new IllegalStateException("imageUrls 序列化失败", e); }
+    }
+
+    /** JSON 数组 → 图片 URL 列表；null/空串/脏数据返回空列表 */
+    public static java.util.List<String> readImageUrls(String json) {
+        if (json == null || json.isBlank()) return java.util.List.of();
+        try { return IMAGE_URL_MAPPER.readValue(json,
+                IMAGE_URL_MAPPER.getTypeFactory().constructCollectionType(java.util.List.class, String.class)); }
+        catch (Exception e) { return java.util.List.of(); }
+    }
+
+    /** user 消息图片落库入口：复用 5 参链路后补写图片 JSON 列 */
+    @Transactional
+    public ChatMessageEntity appendMessage(
+            String convId, String role, String content, String status, String executionPreference,
+            java.util.List<String> imageUrls) {
+        ChatMessageEntity saved = appendMessage(convId, role, content, status, executionPreference);
+        saved.setImageUrlsJson(writeImageUrls(imageUrls));
+        return messageRepo.save(saved);
+    }
+
     @Transactional
     public ChatMessageEntity appendMessage(
             String convId, String role, String content, String status, String executionPreference) {

@@ -72,7 +72,8 @@ public class ChatStreamContextFactory {
         String userContent = desensitizeClient.scrub(msg.getContent());
         boolean firstMessage = ConversationService.DEFAULT_TITLE.equals(conv.getTitle());
         conversationService.appendMessage(conv.getId(), "user",
-                userContent, MessageStatus.COMPLETED, preference.wireValue());
+                userContent, MessageStatus.COMPLETED, preference.wireValue(),
+                normalizeImageUrls(msg.getImageUrls()));
         ChatMessageEntity assistant = conversationService.appendMessage(
                 conv.getId(), "assistant", "", MessageStatus.STREAMING);
         conv = conversationService.autoTitleIfDefault(conv.getId(), userId, tenantId, userContent);
@@ -133,6 +134,26 @@ public class ChatStreamContextFactory {
                 // S-1：上轮轻 sticky seed（无新触发时继承已触发 skill / 可调度 agent）
                 conversationService.loadRoutingSeed(conv.getId()));
     }
+    /**
+     * 图片 URL 清洗：strip 空白、丢弃空项、最多保留 4 张（超过截断并告警）；
+     * null 安全，调用方无需判空。
+     */
+    private static List<String> normalizeImageUrls(List<String> imageUrls) {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return List.of();
+        }
+        List<String> cleaned = imageUrls.stream()
+                .filter(url -> url != null && !url.strip().isEmpty())
+                .map(String::strip)
+                .toList();
+        if (cleaned.size() > 4) {
+            log.warn("[ChatStreamContextFactory] imageUrls 数量 {} 超过上限 4，截断至 {} 张",
+                    imageUrls.size(), cleaned.size());
+            cleaned = cleaned.subList(0, 4);
+        }
+        return cleaned;
+    }
+
     /**
      * 中断感知（方案 A · 五层 spec §5.5.7 v16）：INTERRUPTED 的 assistant 消息折叠为显式中断注记，
      * 使后续轮次从 Near 中感知「上一轮被中断」；正文非空时连同已生成部分一起注入（信息不丢），

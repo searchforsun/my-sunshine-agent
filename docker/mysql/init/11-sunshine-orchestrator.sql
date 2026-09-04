@@ -25,6 +25,7 @@ CREATE TABLE chat_message (
     seq              INT          NOT NULL,
     role             VARCHAR(16)  NOT NULL,
     content          MEDIUMTEXT   NOT NULL,
+    image_urls_json  TEXT         NULL COMMENT '图片 URL JSON 数组（≤4 张，仅回显）',
     reasoning        MEDIUMTEXT   NULL,
     steps            MEDIUMTEXT   NULL,
     content_blocks   MEDIUMTEXT   NULL COMMENT 'ReAct 正文分段 JSON',

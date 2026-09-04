@@ -32,7 +32,8 @@ public enum OrchestratorErrorCode implements ErrorCode {
     DECISION_INVALID_ANSWERS(400, "decision_invalid_answers", "答案不完整或题目不匹配"),
     DECISION_INPUT_REQUIRED(400, "decision_input_required", "请填写自定义输入"),
     DECISION_EXPIRED(400, "decision_expired", "决策已过期"),
-    DECISION_NOT_FOUND(404, "decision_not_found", "决策不存在或无权操作");
+    DECISION_NOT_FOUND(404, "decision_not_found", "决策不存在或无权操作"),
+    CHAT_IMAGE_LIMIT_EXCEEDED(400, "orch_chat_image_limit_exceeded", "每条消息最多携带 4 张图片");
 
     private final int code;
     private final String key;

@@ -1,5 +1,6 @@
 package com.sunshine.orchestrator.conversation.dto;
 
+import com.sunshine.orchestrator.conversation.ConversationService;
 import com.sunshine.orchestrator.conversation.entity.ChatConversationEntity;
 import com.sunshine.orchestrator.conversation.entity.ChatMessageEntity;
 import com.sunshine.orchestrator.routing.ExecutionMode;
@@ -63,6 +64,8 @@ public class ConversationDetailDto {
         private String executionPlanId;
         /** user 消息发送时的执行模式（值域 fast|pro|workflow；DTO 字段名沿用读侧旧名 executionPreference） */
         private String executionPreference;
+        /** 图片 URL 列表（image_urls_json 反序列化；无图返回空列表） */
+        private java.util.List<String> imageUrls;
         private int seq;
         private Instant createdAt;
         private Instant updatedAt;
@@ -80,6 +83,7 @@ public class ConversationDetailDto {
             dto.setIntent(m.getIntent());
             dto.setExecutionPlanId(m.getExecutionPlanId());
             dto.setExecutionPreference(ExecutionMode.toStoredWire(m.getExecutionPreference()));
+            dto.setImageUrls(ConversationService.readImageUrls(m.getImageUrlsJson()));
             dto.setSeq(m.getSeq());
             dto.setCreatedAt(m.getCreatedAt());
             dto.setUpdatedAt(m.getUpdatedAt());

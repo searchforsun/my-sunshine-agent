@@ -40,4 +40,7 @@ public class ChatMessage {
 
     /** 会话绑定模型（注册表 model_name）；空则走 chat/default scene */
     private String modelName;
+
+    /** 聊天图片 URL（多模态，≤4 张；仅当前消息下发模型，历史回放忽略） */
+    private java.util.List<String> imageUrls;
 }

@@ -68,6 +68,10 @@ public class ChatMessageEntity {
     @Column(name = "routing_agent_ids", columnDefinition = "MEDIUMTEXT")
     private String routingAgentIds;
 
+    /** 图片 URL JSON 数组；历史回放不参与模型上下文，仅回显 */
+    @Column(name = "image_urls_json", columnDefinition = "TEXT")
+    private String imageUrlsJson;
+
     /** user 消息发送时的执行模式（列名保留；取值 fast|pro|workflow） */
     @Column(name = "execution_preference", length = 32)
     private String executionPreference;
