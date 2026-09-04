@@ -86,10 +86,11 @@ class ChatImageControllerTest {
 
     @Test
     void multipartOverflowMapsToTooLarge() {
-        // multipart 解析先于 handler mapping，经独立 advice 映射为业务超限语义
+        // multipart 解析先于 handler mapping，经独立 advice 映射为服务级超限语义
         com.sunshine.common.core.result.R<Void> body =
                 new ChatImageUploadAdvice().onMultipartOverflow(new MaxUploadSizeExceededException(10)).getBody();
         assertThat(body.getCode()).isEqualTo(400);
-        assertThat(body.getErrorKey()).isEqualTo("chat_image_too_large");
+        assertThat(body.getErrorKey()).isEqualTo("upload_too_large");
+        assertThat(body.getMsg()).isEqualTo("上传文件超过大小限制（上限 10MB）");
     }
 }
