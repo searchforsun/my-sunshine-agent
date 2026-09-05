@@ -181,7 +181,6 @@ onBeforeUnmount(() => {
 }
 
 .msg-image-thumb {
-  border: 1px solid var(--sun-border, #333);
   border-radius: 6px;
   overflow: hidden;
 }

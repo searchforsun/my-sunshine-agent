@@ -513,11 +513,16 @@ const {
   restoreFront: restoreQueuedFront,
   dropQueue: dropQueuedQueue,
 } = useMessageQueue()
+
 /** 队列横条展开态（折叠时仅显示「N 条排队中」摘要行） */
 const queueExpanded = ref(true)
 /** 行内编辑中的队列项 id 与草稿（空串表示无编辑中的项） */
 const queueEditingId = ref('')
 const queueEditingText = ref('')
+/** 编辑中队列项的图片草稿（null 表示非编辑态）；编辑保存后随队列项持久化 */
+const queueEditingImages = ref<string[] | null>(null)
+/** 队列项编辑态的图片上传复用 composer 串行链，共享 4 张上限口径 */
+const queueImageInputRef = ref<HTMLInputElement | null>(null)
 const { mode: writeHitlMode } = useWriteHitlMode(() => chatStore.currentId)
 const chatModelDefs = ref<ModelCatalogDefinition[]>([])
 
@@ -1424,10 +1429,47 @@ async function sendQueuedItemNow(id: string) {
   if (dispatched && !loading.value) void autoDispatchNextQueued()
 }
 
-/** 开始行内编辑队列项：草稿初始化为当前文本 */
+/** 开始行内编辑队列项：草稿初始化为当前文本与图片快照 */
 function startQueueItemEdit(item: QueuedMessage) {
   queueEditingId.value = item.id
   queueEditingText.value = item.text
+  queueEditingImages.value = item.sendOptions.imageUrls
+    ? [...item.sendOptions.imageUrls] : []
+}
+
+/** 队列项编辑态加图：与 composer 共用上传链与上限口径 */
+async function addQueueEditImages(files: FileList | File[]) {
+  if (queueEditingImages.value === null) return
+  const list = Array.from(files).filter(f => f.type.startsWith('image/'))
+  if (!list.length) return
+  const images = queueEditingImages.value
+  const remain = MAX_PENDING_IMAGES - images.length
+  if (remain <= 0) { message.warning(`每条消息最多 ${MAX_PENDING_IMAGES} 张图片`); return }
+  uploadingImages.value = true
+  try {
+    for (const f of list.slice(0, remain)) images.push(await uploadChatImage(f))
+    if (list.length > remain) message.warning(`每条消息最多 ${MAX_PENDING_IMAGES} 张图片`)
+  } catch (e: unknown) {
+    message.error(e instanceof Error ? e.message : '图片上传失败')
+  } finally {
+    uploadingImages.value = false
+  }
+}
+
+function onQueueEditImageInputChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files?.length) void addQueueEditImages(input.files)
+  input.value = ''
+}
+
+function onQueueEditPaste(e: ClipboardEvent) {
+  if (queueEditingId.value === '') return
+  const files = Array.from(e.clipboardData?.files ?? [])
+  if (files.length) { e.preventDefault(); void addQueueEditImages(files) }
+}
+
+function removeQueueEditImage(idx: number) {
+  queueEditingImages.value?.splice(idx, 1)
 }
 
 /** 拖拽排序状态：被拖项 id 与当前悬停落点项 id */
@@ -1463,15 +1505,17 @@ function handleQueueDrop() {
   moveQueuedItemTo(convId, fromId, toId)
 }
 
-/** 确认编辑：文本非空才落库，空文本视为放弃编辑 */
+/** 确认编辑：文本非空才落库（图片草稿随 sendOptions 一起保存），空文本视为放弃编辑 */
 function commitQueueItemEdit() {
   const convId = chatStore.currentId
   const id = queueEditingId.value
   const text = queueEditingText.value.trim()
+  const images = queueEditingImages.value
   if (!convId || !id) return
-  if (text) updateQueuedItemText(convId, id, text)
+  if (text) updateQueuedItemText(convId, id, text, images ?? [])
   queueEditingId.value = ''
   queueEditingText.value = ''
+  queueEditingImages.value = null
 }
 
 /** 删除队列项（行内编辑中退出编辑态） */
@@ -1485,6 +1529,7 @@ function deleteQueuedItem(id: string) {
 function cancelQueueItemEdit() {
   queueEditingId.value = ''
   queueEditingText.value = ''
+  queueEditingImages.value = null
 }
 
 function toggleQueueExpanded() {
@@ -2218,16 +2263,47 @@ watch(
               @drop.prevent="handleQueueDrop"
             >
               <span class="message-queue-order">{{ idx + 1 }}</span>
-              <textarea
-                v-if="queueEditingId === item.id"
-                v-model="queueEditingText"
-                class="message-queue-edit"
-                rows="2"
-                autofocus
-                @keydown.enter.exact.prevent="commitQueueItemEdit"
-                @keydown.esc="cancelQueueItemEdit"
-                @blur="commitQueueItemEdit"
-              />
+              <div v-if="queueEditingId === item.id" class="message-queue-edit-wrap">
+                <textarea
+                  v-model="queueEditingText"
+                  class="message-queue-edit"
+                  rows="2"
+                  autofocus
+                  @keydown.enter.exact.prevent="commitQueueItemEdit"
+                  @keydown.esc="cancelQueueItemEdit"
+                  @blur="commitQueueItemEdit"
+                  @paste="onQueueEditPaste"
+                />
+                <div v-if="queueEditingImages?.length" class="pending-images message-queue-images">
+                  <div v-for="(url, imgIdx) in queueEditingImages" :key="`${url}-${imgIdx}`" class="pending-image-chip">
+                    <n-image
+                      :src="url"
+                      :width="40" :height="40"
+                      object-fit="cover"
+                      class="pending-image-thumb"
+                    />
+                    <button
+                      type="button"
+                      class="pending-image-remove"
+                      title="移除图片"
+                      @mousedown.prevent
+                      @click="removeQueueEditImage(imgIdx)"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="message-queue-btn message-queue-add-image"
+                    :disabled="uploadingImages || (queueEditingImages?.length ?? 0) >= MAX_PENDING_IMAGES"
+                    title="添加图片"
+                    @mousedown.prevent
+                    @click="queueImageInputRef?.click()"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+              </div>
               <span v-else class="message-queue-text">{{ item.text }}</span>
               <span v-if="queueEditingId !== item.id" class="message-queue-actions">
                 <svg class="message-queue-drag-handle" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -2296,6 +2372,14 @@ watch(
             multiple
             hidden
             @change="onImageInputChange"
+          >
+          <input
+            ref="queueImageInputRef"
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            @change="onQueueEditImageInputChange"
           >
           <div v-if="pendingImages.length" class="pending-images">
             <div v-for="(url, idx) in pendingImages" :key="`${url}-${idx}`" class="pending-image-chip">
@@ -2412,10 +2496,6 @@ watch(
             />
             <div class="composer-toolbar">
               <div class="composer-toolbar-left">
-                <WriteHitlModeSelector
-                  v-if="!voiceListening"
-                  v-model="writeHitlMode"
-                />
                 <n-tooltip
                   v-if="!voiceListening"
                   trigger="hover"
@@ -2424,16 +2504,20 @@ watch(
                   <template #trigger>
                     <button
                       type="button"
-                      class="composer-icon-btn image"
+                      class="composer-icon-btn image-add"
                       :disabled="!currentModelMultimodal || uploadingImages"
                       title="添加图片"
                       @click="pickImages"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </button>
                   </template>
                   当前模型不支持图片
                 </n-tooltip>
+                <WriteHitlModeSelector
+                  v-if="!voiceListening"
+                  v-model="writeHitlMode"
+                />
                 <GitBranchSelector
                   v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
                   :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
@@ -2999,6 +3083,55 @@ watch(
 .message-queue-edit:focus {
   outline: none;
   border-color: var(--sun-border-light);
+}
+
+/* 队列项编辑区：纵向排布文本框与图片行 */
+.message-queue-edit-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.message-queue-images {
+  padding: 0;
+}
+
+.message-queue-images .pending-image-chip {
+  width: 40px;
+  height: 40px;
+}
+
+.message-queue-images .pending-image-thumb {
+  width: 40px;
+  height: 40px;
+}
+
+/* 编辑行内加图按钮：与缩略图同高的虚线框 + 号 */
+.message-queue-add-image {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--sun-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.message-queue-add-image:hover {
+  color: var(--sun-text);
+  border-color: var(--sun-border-light);
+}
+
+.message-queue-add-image:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .message-queue-actions {
@@ -3745,7 +3878,6 @@ watch(
 .pending-image-thumb {
   width: 56px;
   height: 56px;
-  border: 1px solid var(--sun-border);
   border-radius: 6px;
   overflow: hidden;
   display: block;
@@ -3774,7 +3906,7 @@ watch(
 }
 
 /* 图片按钮：禁用态保持置灰（配合 tooltip 提示模型能力） */
-.composer-icon-btn.image:disabled {
+.composer-icon-btn.image-add:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
