@@ -509,7 +509,7 @@ const {
   dequeue: dequeueQueuedMessage,
   removeItem: removeQueuedItem,
   updateItemText: updateQueuedItemText,
-  moveItem: moveQueuedItem,
+  moveItemTo: moveQueuedItemTo,
   restoreFront: restoreQueuedFront,
   dropQueue: dropQueuedQueue,
 } = useMessageQueue()
@@ -551,8 +551,17 @@ const MAX_PENDING_IMAGES = 4
 const pendingImages = ref<string[]>([])
 const uploadingImages = ref(false)
 const imageInputRef = ref<HTMLInputElement | null>(null)
+/** 批次串行化：remain 须基于上一批完成后的最新数量计算，paste/drop 连击并行才不会突破上限 */
+let uploadChain: Promise<void> = Promise.resolve()
 
-async function addImageFiles(files: FileList | File[]) {
+function addImageFiles(files: FileList | File[]): Promise<void> {
+  const run = uploadChain.then(() => uploadImageBatch(files))
+  // 链上吞掉拒绝（批内已 toast），避免后续批次被前批失败卡死
+  uploadChain = run.catch(() => { /* 已提示 */ })
+  return run
+}
+
+async function uploadImageBatch(files: FileList | File[]) {
   const list = Array.from(files).filter(f => f.type.startsWith('image/'))
   if (!list.length) return
   const remain = MAX_PENDING_IMAGES - pendingImages.value.length
@@ -1208,7 +1217,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 async function handleSend() {
   const text = inputText.value.trim()
-  if (!text || wsPreparing.value || branchSwitchBusy.value || branchSwitchOpen.value) return
+  // 图片-only 发送：无文本但有待发图片时放行
+  if ((!text && !pendingImages.value.length) || wsPreparing.value || branchSwitchBusy.value || branchSwitchOpen.value) return
   try {
     const creatingTask = chatStore.newTaskMode
     let convId: string
@@ -1291,7 +1301,9 @@ async function performSend(text: string, convId: string) {
   chatStore.touchConversation(convId)
   // 新一轮发送即「继续执行」：清空上一次发送失败的提示（气泡），避免残留
   sendFailedError.value = ''
-  if (messages.value.length === 0) chatStore.updateTitle(convId, text)
+  // 图片快照但延迟清空：直发成功（SSE 已建立、乐观气泡已带图）才消费，失败路径回滚，避免丢图
+  const sendImageUrls = pendingImages.value.length ? [...pendingImages.value] : undefined
+  if (messages.value.length === 0) chatStore.updateTitle(convId, text || (sendImageUrls?.length ? '[图片]' : ''))
   // 本轮改动基线：记录发送瞬间工作区已有改动，供完成后 diff 卡片做差集（只显示本轮新增）
   if (currentWorkspaceId.value && taskCheckoutId.value) {
     const wsId = currentWorkspaceId.value
@@ -1304,9 +1316,6 @@ async function performSend(text: string, convId: string) {
   setScrollPinned(true)
   clearAttention(convId)
   inputText.value = ''
-  // 发送即消费：快照后立即清空，流式期间再发消息不会重复携带本轮图片
-  const sendImageUrls = pendingImages.value.length ? [...pendingImages.value] : undefined
-  pendingImages.value = []
   settledHtml.value = ''
   sessionSettledHtml.delete(convId)
   clearStreamRenderer()
@@ -1316,16 +1325,25 @@ async function performSend(text: string, convId: string) {
   if (skillBinding.skillId) {
     requestSandboxWorkspaceRefresh(convId, 'skills', true)
   }
-  await dispatchSend(convId, text, {
-    executionPreference: preference.value,
-    skillId: skillBinding.skillId,
-    workflowId: workflowBinding.workflowId,
-    kbId: kbId.value,
-    modelName: modelName.value ?? '',
-    reasoningEffort: reasoningEffort.value ?? '',
-    imageUrls: sendImageUrls,
-    writeHitlMode: getWriteHitlMode(convId),
-  })
+  try {
+    await dispatchSend(convId, text, {
+      executionPreference: preference.value,
+      skillId: skillBinding.skillId,
+      workflowId: workflowBinding.workflowId,
+      kbId: kbId.value,
+      modelName: modelName.value ?? '',
+      reasoningEffort: reasoningEffort.value ?? '',
+      imageUrls: sendImageUrls,
+      writeHitlMode: getWriteHitlMode(convId),
+    })
+    // send() 内部吞掉流错误不重抛：POST 被拒/流硬失败以尾消息 failed 呈现，
+    // 此时图片未被消费（或本轮可整轮重试），回滚 chips；completed/interrupted 视为已消费
+    const tail = messages.value[messages.value.length - 1]
+    if (!(tail?.role === 'assistant' && tail.status === 'failed')) pendingImages.value = []
+  } catch (e) {
+    if (sendImageUrls?.length) pendingImages.value = sendImageUrls
+    throw e
+  }
 }
 
 /** 实际发起一轮发送：落本地会话元数据、发起 SSE、发送后失败气泡检测 */
@@ -1412,6 +1430,39 @@ function startQueueItemEdit(item: QueuedMessage) {
   queueEditingText.value = item.text
 }
 
+/** 拖拽排序状态：被拖项 id 与当前悬停落点项 id */
+const queueDragId = ref('')
+const queueDragOverId = ref('')
+
+function handleQueueDragStart(id: string, e: DragEvent) {
+  queueDragId.value = id
+  queueDragOverId.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+
+/** 悬停落点跟随：拖拽预览高亮目标项（自身除外） */
+function handleQueueDragOver(id: string) {
+  if (queueDragId.value && queueDragId.value !== id) queueDragOverId.value = id
+}
+
+function handleQueueDragEnd() {
+  queueDragId.value = ''
+  queueDragOverId.value = ''
+}
+
+/** 落点收口：被拖项移动到悬停项位置，撤销中高亮 */
+function handleQueueDrop() {
+  const convId = chatStore.currentId
+  const fromId = queueDragId.value
+  const toId = queueDragOverId.value
+  handleQueueDragEnd()
+  if (!convId || !fromId || !toId || fromId === toId) return
+  moveQueuedItemTo(convId, fromId, toId)
+}
+
 /** 确认编辑：文本非空才落库，空文本视为放弃编辑 */
 function commitQueueItemEdit() {
   const convId = chatStore.currentId
@@ -1429,13 +1480,6 @@ function deleteQueuedItem(id: string) {
   if (!convId) return
   removeQueuedItem(convId, id)
   if (queueEditingId.value === id) cancelQueueItemEdit()
-}
-
-/** 上移/下移队列项（行内编辑中项不参与移动） */
-function moveQueuedItemBy(id: string, offset: -1 | 1) {
-  const convId = chatStore.currentId
-  if (!convId) return
-  moveQueuedItem(convId, id, offset)
 }
 
 function cancelQueueItemEdit() {
@@ -1790,6 +1834,8 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   // 行内编辑态不跨会话残留
   queueEditingId.value = ''
   queueEditingText.value = ''
+  // 待发图片不跨会话残留：pendingImages 参与模型可选集联动，残留会劫持新会话的模型选择
+  clearPendingImages()
   // 把当前会话锚定到 URL：刷新后可定位回同一会话
   if (isValidConversationId(newId)) {
     const nextQuery = { ...route.query, cid: newId }
@@ -2164,6 +2210,12 @@ watch(
               v-for="(item, idx) in activeQueue"
               :key="item.id"
               class="message-queue-item"
+              :class="{ 'is-dragging': queueDragId === item.id, 'is-drag-over': queueDragOverId === item.id && queueDragId !== item.id }"
+              draggable="true"
+              @dragstart="handleQueueDragStart(item.id, $event)"
+              @dragend="handleQueueDragEnd"
+              @dragover.prevent="handleQueueDragOver(item.id)"
+              @drop.prevent="handleQueueDrop"
             >
               <span class="message-queue-order">{{ idx + 1 }}</span>
               <textarea
@@ -2178,6 +2230,11 @@ watch(
               />
               <span v-else class="message-queue-text">{{ item.text }}</span>
               <span v-if="queueEditingId !== item.id" class="message-queue-actions">
+                <svg class="message-queue-drag-handle" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                  <circle cx="5" cy="3" r="1.3" /><circle cx="11" cy="3" r="1.3" />
+                  <circle cx="5" cy="8" r="1.3" /><circle cx="11" cy="8" r="1.3" />
+                  <circle cx="5" cy="13" r="1.3" /><circle cx="11" cy="13" r="1.3" />
+                </svg>
                 <button type="button" class="message-queue-btn" title="编辑" @click="startQueueItemEdit(item)">
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L6 12l-2.8.8L4 10z" /></svg>
                 </button>
@@ -2241,7 +2298,7 @@ watch(
             @change="onImageInputChange"
           >
           <div v-if="pendingImages.length" class="pending-images">
-            <div v-for="(url, idx) in pendingImages" :key="url" class="pending-image-chip">
+            <div v-for="(url, idx) in pendingImages" :key="`${url}-${idx}`" class="pending-image-chip">
               <n-image
                 :src="url"
                 :width="56" :height="56"
@@ -2426,10 +2483,10 @@ watch(
                 <template v-else>
                   <VoiceInputButton v-if="voiceSupported" />
                   <button
-                    v-if="!voiceSupported || inputText.trim()"
+                    v-if="!voiceSupported || inputText.trim() || pendingImages.length"
                     type="button"
                     class="composer-icon-btn send"
-                    :disabled="!inputText.trim() || uploadingImages"
+                    :disabled="(!inputText.trim() && !pendingImages.length) || uploadingImages"
                     title="发送"
                     @click="handleSend"
                   >
@@ -2840,18 +2897,12 @@ watch(
   white-space: nowrap;
 }
 
-/* ---- 输入框任务队列：流式期间发送的消息排队横条 ---- */
+/* ---- 输入框任务队列：流式期间发送的消息排队横条（边框样式对齐 TaskBoard 卡片） ---- */
 .message-queue {
   align-self: stretch;
   border: 1px solid var(--sun-border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-sm, 6px);
   background: var(--sun-black);
-  padding: 4px 0;
-  margin-bottom: 8px;
-}
-
-.message-queue.is-collapsed {
-  padding: 0;
 }
 
 .message-queue-head {
@@ -2863,9 +2914,15 @@ watch(
   background: transparent;
   color: var(--sun-text-muted);
   font-size: var(--sun-font-sm, 12px);
-  padding: 6px 12px;
+  line-height: 1.35;
+  padding: 8px 10px;
   cursor: pointer;
   text-align: left;
+}
+
+.message-queue.is-collapsed .message-queue-head {
+  padding: 6px 10px;
+  min-height: 28px;
 }
 
 .message-queue-head:hover {
@@ -2883,7 +2940,7 @@ watch(
 .message-queue-list {
   list-style: none;
   margin: 0;
-  padding: 0 4px 4px;
+  padding: 0 10px 8px;
 }
 
 .message-queue-item {
@@ -2896,6 +2953,15 @@ watch(
 
 .message-queue-item:hover {
   background: var(--sun-row-hover);
+}
+
+/* 拖拽中：源项半透明；悬停落点项顶部指示线 */
+.message-queue-item.is-dragging {
+  opacity: 0.4;
+}
+
+.message-queue-item.is-drag-over {
+  box-shadow: inset 0 2px 0 0 var(--sun-accent);
 }
 
 .message-queue-order {
@@ -2947,6 +3013,17 @@ watch(
 .message-queue-item:hover .message-queue-actions,
 .message-queue-item:has(.message-queue-edit) .message-queue-actions {
   opacity: 1;
+}
+
+/* 拖拽把手：hover 时浮现，抓取光标 */
+.message-queue-drag-handle {
+  flex-shrink: 0;
+  color: var(--sun-text-muted);
+  cursor: grab;
+}
+
+.message-queue-drag-handle:active {
+  cursor: grabbing;
 }
 
 .message-queue-btn {
@@ -3701,7 +3778,6 @@ watch(
   opacity: 0.45;
   cursor: not-allowed;
 }
-
 
 .composer-toolbar-left {
   display: flex;

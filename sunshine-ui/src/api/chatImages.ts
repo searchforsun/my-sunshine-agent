@@ -1,4 +1,4 @@
-import { apiHeaders } from '../stores/authStore'
+import { authHeaders } from '../stores/authStore'
 import { resolveBffStreamBase } from './config'
 
 const MAX_EDGE = 2048
@@ -41,12 +41,19 @@ export async function uploadChatImage(file: File): Promise<string> {
   const compressed = await compressImage(file)
   const form = new FormData()
   form.append('file', compressed)
+  // headers 须用 authHeaders：手动 Content-Type 会阻止浏览器生成 multipart boundary
   const res = await fetch(`${resolveBffStreamBase()}/api/chat/images`, {
     method: 'POST',
-    headers: { ...apiHeaders() },
+    headers: { ...authHeaders() },
     body: form,
   })
-  const body = await res.json()
+  let body: { code?: number; msg?: string; data?: { url?: unknown } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new Error('图片上传失败')
+  }
   if (!res.ok || body?.code !== 200) throw new Error(body?.msg || '图片上传失败')
-  return body.data.url as string
+  if (typeof body.data?.url !== 'string') throw new Error('图片上传失败')
+  return body.data.url
 }

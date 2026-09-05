@@ -56,6 +56,9 @@ import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 const API_BASE = () => resolveBffStreamBase()
 const sessions = getSessionRegistry()
 
+/** 图片-only 消息的占位正文：后端 ChatController.validateRequest 要求 content 与 resumeMessageId 二者必有其一 */
+const IMAGE_ONLY_PLACEHOLDER = '请查看图片'
+
 export function useChatSessions(
   onChunk?: (sessionId: string, data: string) => void,
   onSessionEnd?: (id: string) => void,
@@ -129,16 +132,19 @@ export function useChatSessions(
     if (activeId.value !== id) switchTo(id)
   }
 
-  async function send(content: string, conversationId?: string | null, options?: SendOptions): Promise<void> {
+  async function send(rawContent: string, conversationId?: string | null, options?: SendOptions): Promise<void> {
     const convId = conversationId ?? activeId.value
-    if (!convId || !content.trim()) return
+    // 空文本 + 有图 = 图片-only 消息，放行；无图空文本仍拦截
+    if (!convId || (!rawContent.trim() && !options?.imageUrls?.length)) return
+    const content = rawContent.trim() ? rawContent : IMAGE_ONLY_PLACEHOLDER
 
     ensureActive(convId)
     const s = activeSession.value
     if (!s || s.loading) return
 
     const pref = options?.executionPreference ?? 'fast'
-    const userMsg: ChatMessage = { role: 'user', content, executionPreference: pref }
+    // 乐观气泡显示原文（图片-only 为空，缩略图即内容）；占位正文仅用于过网关校验
+    const userMsg: ChatMessage = { role: 'user', content: rawContent, executionPreference: pref }
     if (options?.imageUrls?.length) userMsg.imageUrls = [...options.imageUrls]
     stampTimelineStarted(userMsg)
     s.messages.push(userMsg)

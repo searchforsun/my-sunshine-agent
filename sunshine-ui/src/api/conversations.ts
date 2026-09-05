@@ -155,6 +155,7 @@ function parseMessage(m: Record<string, unknown>): ConversationMessage {
     executionPlanId: typeof m.executionPlanId === 'string' ? m.executionPlanId : undefined,
     executionPreference: mapStoredExecutionPreference(m.executionPreference),
     usage: typeof m.usage === 'string' ? m.usage : undefined,
+    imageUrls: parseImageUrls(m.imageUrls),
   }
   if (msg.role === 'assistant') {
     sanitizePlanAssistantMessage(msg)
@@ -162,6 +163,13 @@ function parseMessage(m: Record<string, unknown>): ConversationMessage {
     normalizeRestoredInterleavedContent(msg as ChatMessage)
   }
   return msg
+}
+
+/** imageUrls 仅收非空字符串数组，坏数据静默丢弃（与 chatStore.parseMessageImageUrls 同口径） */
+function parseImageUrls(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const urls = raw.filter((u): u is string => typeof u === 'string' && u.length > 0)
+  return urls.length ? urls : undefined
 }
 
 function mapDetail(raw: Record<string, unknown>): ConversationDetail {
