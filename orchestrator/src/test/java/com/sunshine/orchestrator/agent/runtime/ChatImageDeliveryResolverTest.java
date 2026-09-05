@@ -86,6 +86,25 @@ class ChatImageDeliveryResolverTest {
     }
 
     @Test
+    void userinfoPrefixTrickRejected() {
+        // 字符串前缀伪装：userinfo 段带白名单基址、真实 host 是内网地址 → 结构化校验必须拒绝
+        List<ContentBlock> blocks = resolver
+                .resolveImageBlocks(List.of(serverBase + "@internal.host/x.png"))
+                .collectList().block();
+        assertThat(blocks.get(0)).isInstanceOf(TextBlock.class);
+        assertThat(((TextBlock) blocks.get(0)).getText())
+                .isEqualTo(ChatImageDeliveryResolver.PLACEHOLDER_TEXT);
+    }
+
+    @Test
+    void whitelistedHostNormalUrlAllowed() {
+        List<ContentBlock> blocks = resolver
+                .resolveImageBlocks(List.of(serverBase + "/sunshine-chat-images/ok.png"))
+                .collectList().block();
+        assertThat(blocks.get(0)).isInstanceOf(ImageBlock.class);
+    }
+
+    @Test
     void fetchFailureDegradesToPlaceholder() {
         ChatImageDeliveryResolver r = new ChatImageDeliveryResolver("base64", serverBase);
         List<ContentBlock> blocks = r.resolveImageBlocks(
