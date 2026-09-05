@@ -1,7 +1,12 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
+import com.sunshine.orchestrator.catalog.ToolCatalogService;
+import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.context.AssembledContext;
+import com.sunshine.orchestrator.memory.MemoryProperties;
+import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
 import org.junit.jupiter.api.Test;
 
@@ -61,5 +66,34 @@ class HarnessAgentHolderTest {
         holder.get(mainReq(null));
 
         assertThat(holder.getAll()).hasSize(1);
+    }
+
+    @Test
+    void differentModelOverrideProducesDifferentFingerprint() {
+        // 真实 fingerprint：modelOverride 变化必须改变指纹——模型是实例不可变构建项，
+        // 指纹缺模型维度会把 A 模型实例复用给 B 模型请求，静默丢弃 override。
+        ReActAgentFactory reactFactory = mock(ReActAgentFactory.class);
+        ToolCatalogService catalog = mock(ToolCatalogService.class);
+        PromptCatalogHolder catalogHolder = mock(PromptCatalogHolder.class);
+        when(catalogHolder.requireText(any())).thenReturn("summary-prompt");
+        HarnessAgentFactory factory = new HarnessAgentFactory(
+                reactFactory, new MemoryProperties(), new AgentExecutionProperties(),
+                catalog, catalogHolder);
+        when(reactFactory.resolveModel(any())).thenReturn(
+                new com.sunshine.orchestrator.registry.ResolvedModelScene(
+                        "model-x", null, java.util.Map.of(), 8192, 4096, null, false),
+                new com.sunshine.orchestrator.registry.ResolvedModelScene(
+                        "model-y", null, java.util.Map.of(), 8192, 4096, null, false));
+        when(reactFactory.resolveToolkit(any())).thenReturn(mock(Toolkit.class));
+        when(reactFactory.composeSystemPrompt(any())).thenReturn("sp");
+        when(reactFactory.resolveMaxIters(any())).thenReturn(8);
+        when(catalog.catalogVersion()).thenReturn(1L);
+
+        AgentRunRequest reqX = mainReq(null).withModelOverride("model-x");
+        AgentRunRequest reqY = mainReq(null).withModelOverride("model-y");
+
+        assertThat(factory.fingerprint(reqX)).isNotEqualTo(factory.fingerprint(reqY));
+        // 同一模型重复计算指纹稳定
+        assertThat(factory.fingerprint(reqX)).isEqualTo(factory.fingerprint(reqX));
     }
 }

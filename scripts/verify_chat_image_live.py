@@ -99,10 +99,10 @@ def verify_upload(headers: dict) -> str:
     return url
 
 
-def send_message(url: str, model: str) -> list:
+def send_message(url: str, model: str, content: str = "图里是什么颜色") -> list:
     payload = {
         "conversationId": "",
-        "content": "图里是什么颜色",
+        "content": content,
         "imageUrls": [url],
         "executionMode": "fast",
         "modelName": model,
@@ -152,8 +152,15 @@ def verify_multimodal_reject_at_gateway(url: str):
 
 
 def verify_orch_error_frame(url: str):
-    """非多模态模型经 orchestrator 带图发消息：SSE 应有 error 帧（失败透传，不悬挂）"""
-    data_lines = send_message(url, "qwen-plus")
+    """非多模态模型经 orchestrator 带图发消息：SSE 应有 error 帧（失败透传，不悬挂）。
+    文案与 happy path 不同且换新图，避免命中 llm-gateway 语义缓存（缓存回放正文会绕过能力校验）。"""
+    alt_url = ""
+    r = upload(auth_headers(), "err.png", png_bytes(), "image/png")
+    try:
+        alt_url = (r.json().get("data") or {}).get("url") or ""
+    except ValueError:
+        pass
+    data_lines = send_message(alt_url or url, "qwen-plus", "这张图片的背景是什么颜色")
     check("非多模态模型带图 → SSE error 帧",
           any('"type":"error"' in t for t in data_lines), f"{len(data_lines)} 帧")
 

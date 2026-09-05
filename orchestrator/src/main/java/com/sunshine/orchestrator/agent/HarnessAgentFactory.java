@@ -1,11 +1,13 @@
 package com.sunshine.orchestrator.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.orchestrator.agent.runtime.AgentRole;
 import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.ToolCatalogService;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
 import com.sunshine.orchestrator.memory.MemoryProperties;
 import com.sunshine.orchestrator.prompt.PromptCatalogHolder;
+import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
@@ -19,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 将 {@link ReActAgentFactory} 创建的 ReActAgent 包装为 {@link HarnessAgent}，
@@ -41,6 +44,8 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class HarnessAgentFactory {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ReActAgentFactory reactAgentFactory;
     private final MemoryProperties memoryProperties;
@@ -73,10 +78,26 @@ public class HarnessAgentFactory {
     /**
      * 配置指纹（E5）：不可变构建项全量哈希。
      * role + skillId + tenantId + sysPrompt(含 overlay) + 工具名集合 + maxIters
-     * + taskboard 开关 + subagent 开关 + catalogVersion + 压缩配置。
+     * + taskboard 开关 + subagent 开关 + catalogVersion + 压缩配置 + 模型（含 baseUrl）。
+     * 模型是实例的不可变构建项（OpenAIChatModel 构建时固定 modelName），
+     * 缺模型维度会把 A 模型实例复用给 B 模型请求，静默丢弃 modelOverride。
      * 任一项变化 → 指纹变化 → Holder 新建实例；相同 → 等价复用。
      */
     public String fingerprint(AgentRunRequest request) {
+        ResolvedModelScene resolved = reactAgentFactory.resolveModel(request);
+        String modelConfigJson = request.modelConfigJson();
+        String modelBaseUrlOverride = "";
+        if (modelConfigJson != null && !modelConfigJson.isBlank() && !"{}".equals(modelConfigJson)) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> config = MAPPER.readValue(modelConfigJson, Map.class);
+                if (config.get("baseUrl") instanceof String b && !b.isBlank()) {
+                    modelBaseUrlOverride = b.strip();
+                }
+            } catch (Exception ignored) {
+                // 与 buildModel 同语义：解析失败时按无 override 处理
+            }
+        }
         Toolkit toolkit = reactAgentFactory.resolveToolkit(request);
         List<String> toolNames = toolkit.getToolNames().stream().sorted().toList();
         AgentExecutionProperties.React react = executionProperties.getReact();
@@ -88,6 +109,8 @@ public class HarnessAgentFactory {
                 String.valueOf(request.role()),
                 nullToEmpty(request.skillId()),
                 nullToEmpty(request.tenantId()),
+                resolved.effectiveModel(),
+                modelBaseUrlOverride,
                 reactAgentFactory.composeSystemPrompt(request),
                 String.join(",", toolNames),
                 String.valueOf(reactAgentFactory.resolveMaxIters(request)),
