@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.sunshine.llm.model.ChatCompletionRequest;
+import com.sunshine.llm.exception.ModelCapabilityException;
 import com.sunshine.llm.registry.ModelCapabilities;
 import com.sunshine.llm.registry.ModelDefinitionView;
 import lombok.RequiredArgsConstructor;
@@ -41,10 +42,10 @@ public class NormalizeFilter {
                 ? definition.getCapabilities()
                 : ModelCapabilities.defaults();
         if (!caps.isMultimodal() && messagesContainImageUrl(request.getMessages())) {
-            throw new IllegalArgumentException(MODEL_NOT_MULTIMODAL);
+            throw new ModelCapabilityException(MODEL_NOT_MULTIMODAL, request.getModel());
         }
         if (!caps.isToolCall() && request.getTools() != null && !request.getTools().isEmpty()) {
-            throw new IllegalArgumentException(MODEL_NOT_TOOL_CALL);
+            throw new ModelCapabilityException(MODEL_NOT_TOOL_CALL, request.getModel());
         }
     }
 

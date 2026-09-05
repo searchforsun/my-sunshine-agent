@@ -1,6 +1,7 @@
 package com.sunshine.llm.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunshine.llm.exception.ModelCapabilityException;
 import com.sunshine.llm.model.ChatCompletionRequest;
 import com.sunshine.llm.registry.ModelCapabilities;
 import com.sunshine.llm.registry.ModelDefinitionView;
@@ -19,6 +20,7 @@ class NormalizeFilterTest {
     @Test
     void validate_multimodalFalse_withImage_throws() {
         ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("qwen-plus");
         ChatCompletionRequest.Message msg = new ChatCompletionRequest.Message();
         msg.setRole("user");
         msg.setContent(List.of(Map.of("type", "image_url", "image_url", Map.of("url", "http://x"))));
@@ -28,21 +30,26 @@ class NormalizeFilterTest {
                 .capabilities(ModelCapabilities.builder().multimodal(false).toolCall(true).build())
                 .build();
         assertThatThrownBy(() -> filter.validateRequest(request, def))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage(NormalizeFilter.MODEL_NOT_MULTIMODAL);
+                .isInstanceOfSatisfying(ModelCapabilityException.class, e -> {
+                    assertThat(e.getMessage()).isEqualTo(NormalizeFilter.MODEL_NOT_MULTIMODAL);
+                    assertThat(e.getModelName()).isEqualTo("qwen-plus");
+                });
     }
 
     @Test
     void validate_toolCallFalse_withTools_throws() {
         ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("qwen-plus");
         request.setTools(List.of(Map.of("type", "function")));
         ModelDefinitionView def = ModelDefinitionView.builder()
                 .modelName("x")
                 .capabilities(ModelCapabilities.builder().toolCall(false).build())
                 .build();
         assertThatThrownBy(() -> filter.validateRequest(request, def))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage(NormalizeFilter.MODEL_NOT_TOOL_CALL);
+                .isInstanceOfSatisfying(ModelCapabilityException.class, e -> {
+                    assertThat(e.getMessage()).isEqualTo(NormalizeFilter.MODEL_NOT_TOOL_CALL);
+                    assertThat(e.getModelName()).isEqualTo("qwen-plus");
+                });
     }
 
     @Test

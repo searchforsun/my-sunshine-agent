@@ -3,6 +3,7 @@ package com.sunshine.llm.adapter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunshine.llm.filter.NormalizeFilter;
+import com.sunshine.llm.exception.ModelCapabilityException;
 import com.sunshine.llm.model.ChatCompletionRequest;
 import com.sunshine.llm.registry.ModelCapabilities;
 import com.sunshine.llm.registry.ModelDefinitionView;
@@ -55,7 +56,8 @@ public class OpenAiRequestBodyFactory {
                 body.remove("thinking");
             }
             if (!capabilities.isToolCall() && request.getTools() != null && !request.getTools().isEmpty()) {
-                throw new IllegalArgumentException(NormalizeFilter.MODEL_NOT_TOOL_CALL);
+                throw new ModelCapabilityException(
+                        NormalizeFilter.MODEL_NOT_TOOL_CALL, model);
             }
         }
         return body;

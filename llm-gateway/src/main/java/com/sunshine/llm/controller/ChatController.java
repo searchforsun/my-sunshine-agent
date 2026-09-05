@@ -1,6 +1,7 @@
 package com.sunshine.llm.controller;
 
 import com.sunshine.llm.cache.SemanticCacheService;
+import com.sunshine.llm.exception.ModelCapabilityException;
 import com.sunshine.llm.filter.NormalizeFilter;
 import com.sunshine.llm.model.ChatCompletionRequest;
 import com.sunshine.llm.model.ChatCompletionResponse;
@@ -60,6 +61,23 @@ public class ChatController {
             return toSseEmitter(streamCompletion(request));
         }
         return chatCompletion(request);
+    }
+
+    /** 能力校验失败（多模态/工具调用）：message 输出友好文案，code 保留稳定错误码 */
+    @ExceptionHandler(ModelCapabilityException.class)
+    public ResponseEntity<Map<String, Object>> handleModelCapability(ModelCapabilityException e) {
+        String modelName = e.getModelName();
+        String message = modelName == null || modelName.isBlank()
+                ? "当前模型不支持该能力（code=" + e.getCode() + "），请更换模型后重试"
+                : NormalizeFilter.MODEL_NOT_MULTIMODAL.equals(e.getCode())
+                        ? "当前模型不支持图片输入（model=%s），请切换支持多模态的模型".formatted(modelName)
+                        : "当前模型不支持工具调用（model=%s），请切换支持工具调用的模型".formatted(modelName);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", Map.of(
+                "message", message,
+                "type", "invalid_request_error",
+                "code", e.getCode()));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
