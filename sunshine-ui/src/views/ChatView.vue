@@ -80,7 +80,7 @@ import type { SendOptions } from '../api/chatSessionRegistry'
 import { executionModeIcon } from '../api/executionModeIcons'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
-import { uploadChatImage } from '../api/chatImages'
+import { toMinioDisplayUrl, uploadChatImage } from '../api/chatImages'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
 import { useChatViewport } from '../composables/useChatViewport'
@@ -2277,7 +2277,7 @@ watch(
                 <div v-if="queueEditingImages?.length" class="pending-images message-queue-images">
                   <div v-for="(url, imgIdx) in queueEditingImages" :key="`${url}-${imgIdx}`" class="pending-image-chip">
                     <n-image
-                      :src="url"
+                      :src="toMinioDisplayUrl(url)"
                       :width="40" :height="40"
                       object-fit="cover"
                       class="pending-image-thumb"
@@ -2384,7 +2384,7 @@ watch(
           <div v-if="pendingImages.length" class="pending-images">
             <div v-for="(url, idx) in pendingImages" :key="`${url}-${idx}`" class="pending-image-chip">
               <n-image
-                :src="url"
+                :src="toMinioDisplayUrl(url)"
                 :width="56" :height="56"
                 object-fit="cover"
                 class="pending-image-thumb"

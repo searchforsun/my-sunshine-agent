@@ -27,6 +27,13 @@ export default defineConfig(({ mode }) => {
 
   const gatewayProxy = {
     ...mockBizProxy,
+    // MinIO 图片同源代理：https 页面（basicSsl）加载 http 图片会被 mixed-content 拦截，
+    // 回显统一转成 /minio-images/<bucket>/<key> 相对路径经此代理取图
+    '/minio-images': {
+      target: 'http://ecs4c16g:9000',
+      changeOrigin: true,
+      rewrite: (path: string) => path.replace(/^\/minio-images/, ''),
+    },
     '/api': {
       target: apiProxyTarget,
       changeOrigin: true,

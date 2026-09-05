@@ -6,6 +6,7 @@ import type { AgentCatalogIndexEntry } from '../../api/agents'
 import type { WorkflowCatalogEntry } from '../../api/workflows'
 import type { ExecutionMode } from '../../api/executionModes'
 import { allowsForPreference, segmentChatMentions } from '../../utils/chatMention'
+import { toMinioDisplayUrl } from '../../api/chatImages'
 
 const props = defineProps<{
   content: string
@@ -121,7 +122,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="imageUrls?.length" class="msg-images">
       <n-image
-        v-for="(u, i) in imageUrls" :key="i" :src="u"
+        v-for="(u, i) in imageUrls" :key="i" :src="toMinioDisplayUrl(u)"
         :width="96" :height="96" object-fit="cover" lazy
         class="msg-image-thumb"
       />

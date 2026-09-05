@@ -57,3 +57,15 @@ export async function uploadChatImage(file: File): Promise<string> {
   if (typeof body.data?.url !== 'string') throw new Error('图片上传失败')
   return body.data.url
 }
+
+/**
+ * MinIO 图片展示 URL：http 对象地址转同源代理相对路径。
+ * 页面经 https（dev basicSsl / 生产网关）加载时，http 图片会被 mixed-content 拦截导致破图；
+ * 对象存储无 TLS，故展示一律走 /minio-images 代理，落库与交付仍用原始 URL。
+ */
+export function toMinioDisplayUrl(url: string): string {
+  const marker = '/sunshine-chat-images/'
+  const idx = url.indexOf(marker)
+  if (idx === -1) return url
+  return `/minio-images${url.slice(idx)}`
+}
