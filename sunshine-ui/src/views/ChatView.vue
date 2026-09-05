@@ -3905,7 +3905,18 @@ watch(
   border-color: var(--sun-red);
 }
 
-/* 图片按钮：禁用态保持置灰（配合 tooltip 提示模型能力） */
+/* 图片 + 按钮：裸图标风格，无边框无底色，hover 与相邻权限按钮同口径 */
+.composer-icon-btn.image-add {
+  background: transparent;
+  color: var(--sun-text-secondary);
+}
+
+.composer-icon-btn.image-add:hover:not(:disabled) {
+  background: var(--sun-row-hover, rgba(255, 255, 255, 0.08));
+  color: var(--sun-text);
+}
+
+/* 禁用态保持置灰（配合 tooltip 提示模型能力） */
 .composer-icon-btn.image-add:disabled {
   opacity: 0.45;
   cursor: not-allowed;
