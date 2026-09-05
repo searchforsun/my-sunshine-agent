@@ -47,4 +47,6 @@ export interface ChatMessage {
   timelineEndedAt?: number
   /** 消息级 LLM usage（SSE type=usage 末帧 / 历史 usage_json） */
   usage?: MessageUsage
+  /** 用户消息附带的图片 URL（多模态，历史回显与发送乐观气泡共用） */
+  imageUrls?: string[]
 }

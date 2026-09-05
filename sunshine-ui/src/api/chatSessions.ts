@@ -138,11 +138,15 @@ export function useChatSessions(
     if (!s || s.loading) return
 
     const pref = options?.executionPreference ?? 'fast'
-    s.messages.push({ role: 'user', content, executionPreference: pref })
+    const userMsg: ChatMessage = { role: 'user', content, executionPreference: pref }
+    if (options?.imageUrls?.length) userMsg.imageUrls = [...options.imageUrls]
+    stampTimelineStarted(userMsg)
+    s.messages.push(userMsg)
     s.loading = true
     s.generationId = undefined
-    s.messages.push({ role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming' })
-    stampTimelineStarted(s.messages[s.messages.length - 1])
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '', reasoning: '', steps: [], status: 'streaming' }
+    stampTimelineStarted(assistantMsg)
+    s.messages.push(assistantMsg)
 
     s.abort = new AbortController()
     const thisRequestId = ++s.requestId
@@ -150,7 +154,7 @@ export function useChatSessions(
     onProgress?.(sessionId)
 
     try {
-      const body: Record<string, string> = { content, conversationId: convId, executionMode: pref }
+      const body: Record<string, unknown> = { content, conversationId: convId, executionMode: pref }
       if (options?.workflowId) {
         body.workflowId = options.workflowId
       }
@@ -167,6 +171,11 @@ export function useChatSessions(
       if (options?.modelName !== undefined && options.modelName !== null) {
         body.modelName = options.modelName
       }
+      // reasoningEffort：显式传（含空串清除）写入会话；未传则后端沿用已存值
+      if (options?.reasoningEffort !== undefined && options.reasoningEffort !== null) {
+        body.reasoningEffort = options.reasoningEffort
+      }
+      if (options?.imageUrls?.length) body.imageUrls = options.imageUrls
       // 个人规则（soul）：用户级常量随请求透传，非单次发送选项，不入 SendOptions
       const personalRules = useAuthStore().user?.personalRules?.trim()
       if (personalRules) {

@@ -32,7 +32,7 @@ import {
 import { purgeConversationsForWorkspace } from '../api/conversationWorkspacePurge'
 import { hydratePlanAnswerFromContent, normalizeRestoredInterleavedContent, sanitizePlanAssistantMessage } from '../api/contentInterleave'
 import { ensurePlanTimelineSteps } from '../api/planHydrate'
-import { hydrateTimelineBoundsFromMessageTimes } from '../api/timelineMessageClock'
+import { hydrateTimelineBoundsFromMessageTimes, messageTimestamp } from '../api/timelineMessageClock'
 
 export interface Conversation {
   id: string
@@ -43,6 +43,7 @@ export interface Conversation {
   executionPreference?: ExecutionMode
   kbId?: string | null
   modelName?: string | null
+  reasoningEffort?: string | null
   kind?: string
   workspaceId?: string | null
   checkoutPath?: string | null
@@ -102,6 +103,7 @@ function summaryToConversation(
     executionPreference: c.executionPreference ?? prev?.executionPreference,
     kbId: c.kbId ?? prev?.kbId ?? null,
     modelName: c.modelName ?? prev?.modelName ?? null,
+    reasoningEffort: c.reasoningEffort ?? prev?.reasoningEffort ?? null,
     kind: c.kind ?? prev?.kind,
     workspaceId: c.workspaceId ?? prev?.workspaceId ?? null,
     checkoutPath: c.checkoutPath ?? prev?.checkoutPath ?? null,
@@ -124,22 +126,33 @@ function mapApiMessages(messages: ConversationMessage[]): ChatMessage[] {
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
       seq: m.seq,
+      imageUrls: parseMessageImageUrls(m.imageUrls),
     }
     if (msg.role === 'assistant') {
       msg.usage = parseMessageUsage(m.usage)
       sanitizePlanAssistantMessage(msg)
       hydratePlanAnswerFromContent(msg)
       normalizeRestoredInterleavedContent(msg)
-      hydrateTimelineBoundsFromMessageTimes(msg)
       if (!msg.steps?.length && msg.executionPlanId) {
         msg.steps = ensurePlanTimelineSteps(msg)
       }
     }
+            // 每条消息（user / assistant）都补齐创建时间：API 仅回 createdAt/updatedAt，
+            // hydrateTimelineBoundsFromMessageTimes 据其写入 timelineStartedAt（渲染墙钟用）；
+            // 排序唯一权威是 createdAt（见 messageTimestamp / loadHistory / mergeRestoredMessages）。
+            hydrateTimelineBoundsFromMessageTimes(msg)
     if (msg.role === 'assistant' && (msg.status === 'failed' || isLikelyStreamFailureContent(msg.content))) {
       hydrateStreamError(msg)
     }
     return msg
   })
+}
+
+/** 历史 imageUrls → string[]；仅收字符串数组，坏数据静默丢弃 */
+function parseMessageImageUrls(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const urls = raw.filter((u): u is string => typeof u === 'string' && u.length > 0)
+  return urls.length ? urls : undefined
 }
 
 /** 历史 usage_json → MessageUsage；无 messageUsage 的旧数据回退顶层字段（obj.messageUsage ?? obj） */
@@ -271,10 +284,13 @@ export const useChatStore = defineStore('chat', () => {
           executionPreference: detail.executionPreference,
           kbId: detail.kbId ?? null,
           modelName: detail.modelName ?? null,
+          reasoningEffort: detail.reasoningEffort ?? null,
           kind: detail.kind,
           workspaceId: detail.workspaceId ?? null,
           checkoutPath: detail.checkoutPath ?? null,
         })
+        // 详情只含最近消息窗口：hasMore 落到 historyHasMore，向上滚动才能按游标拉更早历史
+        historyHasMore.set(savedId, detail.hasMore)
         upsertCachedIndex({
           id: detail.id,
           title: pickConversationTitle(detail.title, cachedMeta?.title),
@@ -518,12 +534,9 @@ export const useChatStore = defineStore('chat', () => {
       for (const m of page.messages) {
         if (m.id && !byId.has(m.id)) byId.set(m.id, mapApiMessages([m])[0])
       }
-      // seq 缺失（后端未落库的流式最新消息）视为最新排尾部，避免触顶加载历史时最新消息被排到最前
-      const merged = [...byId.values()].sort((a, b) => {
-        const seqA = a.seq ?? Number.POSITIVE_INFINITY
-        const seqB = b.seq ?? Number.POSITIVE_INFINITY
-        return seqA - seqB
-      })
+      // 跨轮次顺序以「创建时间」（createdAt）为唯一权威（含中断/流式残留在内），
+      // 避免 seq 缺失的最新消息被误排到最前或中断轮次被挤到后面。
+      const merged = [...byId.values()].sort((a, b) => messageTimestamp(a) - messageTimestamp(b))
       if (!conv) return page.hasMore
       conv.messages = sanitizeRestoredMessages(merged)
       if (conv.messages.length) {
@@ -608,6 +621,7 @@ export const useChatStore = defineStore('chat', () => {
         executionPreference: created.executionPreference ?? params?.executionPreference,
         kbId: created.kbId ?? null,
         modelName: created.modelName ?? null,
+        reasoningEffort: created.reasoningEffort ?? null,
         kind: created.kind ?? params?.kind,
         workspaceId: created.workspaceId ?? params?.workspaceId ?? null,
         checkoutPath: created.checkoutPath ?? params?.checkoutPath ?? null,
@@ -773,6 +787,11 @@ export const useChatStore = defineStore('chat', () => {
     if (conv) conv.modelName = name
   }
 
+  function updateReasoningEffortLocal(id: string, effort: string | null) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv) conv.reasoningEffort = effort
+  }
+
   /** 分支切换后重绑定会话 checkout 目录：后端持久化 + 本地会话同步；失败抛错由调用方中止流程 */
   async function updateCheckout(id: string, checkoutPath: string): Promise<void> {
     await updateConversationCheckout(id, checkoutPath)
@@ -811,10 +830,13 @@ export const useChatStore = defineStore('chat', () => {
           executionPreference: detail.executionPreference,
           kbId: detail.kbId ?? null,
           modelName: detail.modelName ?? null,
+          reasoningEffort: detail.reasoningEffort ?? null,
           kind: detail.kind,
           workspaceId: detail.workspaceId ?? null,
           checkoutPath: detail.checkoutPath ?? null,
         })
+        // 详情只含最近消息窗口：hasMore 落到 historyHasMore，向上滚动才能按游标拉更早历史
+        historyHasMore.set(id, detail.hasMore)
         upsertCachedIndex({
           id: detail.id,
           title: pickConversationTitle(detail.title, cachedMeta?.title),
@@ -881,6 +903,7 @@ export const useChatStore = defineStore('chat', () => {
         executionPreference: oldConv?.executionPreference,
         kbId: oldConv?.kbId ?? null,
         modelName: oldConv?.modelName ?? null,
+        reasoningEffort: oldConv?.reasoningEffort ?? null,
       })
       if (oldConv?.messages.length) {
         cacheMessages(newId, oldConv.messages, oldConv)
@@ -918,6 +941,7 @@ export const useChatStore = defineStore('chat', () => {
     updateExecutionPreferenceLocal,
     updateKbIdLocal,
     updateModelNameLocal,
+    updateReasoningEffortLocal,
     updateCheckout,
     loadHistory,
     hasHistoryMore,

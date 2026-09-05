@@ -28,7 +28,7 @@ import type { WorkspaceVO } from '../api/workspaces'
 import { gitStage, gitCommit, gitPush, gitPull, ensureCheckout, listCheckouts, gitDiffSummary, saveDiffBaseSnapshot } from '../api/workspaceGit'
 import { loadActiveGeneration } from '../composables/useActiveGeneration'
 import CopyToggleIcon from '../components/icons/CopyToggleIcon.vue'
-import { NIcon, NPopover, NButton, NSpin } from 'naive-ui'
+import { NIcon, NPopover, NButton, useMessage } from 'naive-ui'
 import { DocumentTextOutline, FolderOutline, ChevronDownOutline, GitBranchOutline, AddOutline, CloudUploadOutline, CloudDownloadOutline, CheckmarkOutline, CreateOutline, AlertCircleOutline, WarningOutline, HelpCircleOutline, ChatboxEllipsesOutline } from '@vicons/ionicons5'
 import OperationStack from '../components/operation/OperationStack.vue'
 import { liveTimelineExpanded } from '../composables/timelineCollapseBus'
@@ -75,12 +75,16 @@ import {
   type ModelCatalogDefinition,
 } from '../api/models'
 import { allowsAgentMention, allowsSkillMention, allowsWorkflowMention, findExecutionModeOption } from '../api/executionModes'
+import type { QueuedMessage } from '../api/messageQueue'
+import type { SendOptions } from '../api/chatSessionRegistry'
 import { executionModeIcon } from '../api/executionModeIcons'
 import { resolveSkillBindingForSend } from '../utils/skillMention'
 import { resolveWorkflowBindingForSend } from '../utils/workflowMention'
+import { uploadChatImage } from '../api/chatImages'
 import { useConversationAttention } from '../composables/useConversationAttention'
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
 import { useChatViewport } from '../composables/useChatViewport'
+import { useMessageQueue } from '../api/messageQueue'
 
 const sessionHydrating = ref(true)
 const hljs = registerHljsLanguages()
@@ -219,10 +223,12 @@ const {
 
 const historyLoading = ref(false)
 
-/** 触顶加载更早消息（IM 游标分页）：保持滚动位置，完成后同步 session */
+/** 触顶加载更早消息（IM 游标分页）：保持滚动位置，完成后同步 session。
+ * 流式运行中同样允许：以会话现数组为基底仅前插缺失的更早消息（按 seq 过滤），
+ * 保留流式消息对象引用，避免整组替换滞后快照导致 SSE 增量写入丢失。 */
 async function maybeLoadHistory(): Promise<void> {
   const cid = chatStore.currentId
-  if (!cid || loading.value || historyLoading.value) return
+  if (!cid || historyLoading.value) return
   if (!chatStore.hasHistoryMore(cid)) return
   const el = scrollRef.value
   if (!el) return
@@ -233,16 +239,27 @@ async function maybeLoadHistory(): Promise<void> {
   historyLoading.value = true
   try {
     await chatStore.loadHistory(cid)
-    const updated = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
-    if (updated.length && cid === chatStore.currentId) {
-      setMessages(cid, [...updated])
-      await nextTick()
-      enhanceAllStaticMarkdown()
-      const el2 = scrollRef.value
-      if (el2) {
-        // 历史消息前插使内容变高：滚动偏移 = 高度差，用户视线不动
-        el2.scrollTop = Math.max(0, el2.scrollTop + (el2.scrollHeight - prevHeight))
-      }
+    const storeMsgs = chatStore.conversations.find(c => c.id === cid)?.messages ?? []
+    if (!storeMsgs.length || cid !== chatStore.currentId) return
+    if (loading.value) {
+      // 运行中：前插 store 中缺失的更早消息（有 seq 且小于现窗口最小 seq，id 去重兜底），
+      // 现数组对象引用原样保留，SSE 增量继续写入原流式消息
+      const live = messages.value
+      const liveIds = new Set(live.filter(m => m.id).map(m => m.id!))
+      const liveSeqs = live.filter(m => typeof m.seq === 'number').map(m => m.seq as number)
+      const minLiveSeq = liveSeqs.length ? Math.min(...liveSeqs) : Number.POSITIVE_INFINITY
+      const older = storeMsgs.filter(m =>
+        typeof m.seq === 'number' && m.seq < minLiveSeq && !(m.id && liveIds.has(m.id)))
+      if (older.length) setMessages(cid, [...older, ...live])
+    } else {
+      setMessages(cid, [...storeMsgs])
+    }
+    await nextTick()
+    enhanceAllStaticMarkdown()
+    const el2 = scrollRef.value
+    if (el2) {
+      // 历史消息前插使内容变高：滚动偏移 = 高度差，用户视线不动
+      el2.scrollTop = Math.max(0, el2.scrollTop + (el2.scrollHeight - prevHeight))
     }
   } finally {
     historyLoading.value = false
@@ -481,9 +498,26 @@ provide('planDrawerLiveNodeStep', (nodeId: string) =>
   ),
 )
 const inputText = ref('')
+const message = useMessage()
 const { preference, setPreference, applyConversationPreference } = useExecutionMode()
 const { kbId, applyConversationKb } = useKbPreference()
-const { modelName, setModelName, applyConversationModel } = useModelPreference()
+const { modelName, reasoningEffort, setModelName, setReasoningEffort, applyConversationModel, applyConversationEffort } = useModelPreference()
+const {
+  activeQueue,
+  setActiveConversation: setActiveQueueConversation,
+  enqueue: enqueueQueuedMessage,
+  dequeue: dequeueQueuedMessage,
+  removeItem: removeQueuedItem,
+  updateItemText: updateQueuedItemText,
+  moveItem: moveQueuedItem,
+  restoreFront: restoreQueuedFront,
+  dropQueue: dropQueuedQueue,
+} = useMessageQueue()
+/** 队列横条展开态（折叠时仅显示「N 条排队中」摘要行） */
+const queueExpanded = ref(true)
+/** 行内编辑中的队列项 id 与草稿（空串表示无编辑中的项） */
+const queueEditingId = ref('')
+const queueEditingText = ref('')
 const { mode: writeHitlMode } = useWriteHitlMode(() => chatStore.currentId)
 const chatModelDefs = ref<ModelCatalogDefinition[]>([])
 
@@ -503,8 +537,58 @@ function textHasImages(text: string): boolean {
 
 const composerRequiresMultimodal = computed(() => {
   if (textHasImages(inputText.value)) return true
+  if (pendingImages.value.length) return true
   return messages.value.some((m) => m.role === 'user' && textHasImages(m.content || ''))
 })
+
+const currentModelMultimodal = computed(() => {
+  const m = chatModelDefs.value.find(d => d.modelName === modelName.value)
+  return m?.capabilities?.multimodal === true
+})
+
+// ---- 图片上传（选文件 / 粘贴 / 拖拽共用，最多 4 张） ----
+const MAX_PENDING_IMAGES = 4
+const pendingImages = ref<string[]>([])
+const uploadingImages = ref(false)
+const imageInputRef = ref<HTMLInputElement | null>(null)
+
+async function addImageFiles(files: FileList | File[]) {
+  const list = Array.from(files).filter(f => f.type.startsWith('image/'))
+  if (!list.length) return
+  const remain = MAX_PENDING_IMAGES - pendingImages.value.length
+  if (remain <= 0) { message.warning(`每条消息最多 ${MAX_PENDING_IMAGES} 张图片`); return }
+  uploadingImages.value = true
+  try {
+    for (const f of list.slice(0, remain)) pendingImages.value.push(await uploadChatImage(f))
+    if (list.length > remain) message.warning(`每条消息最多 ${MAX_PENDING_IMAGES} 张图片`)
+  } catch (e: unknown) {
+    message.error(e instanceof Error ? e.message : '图片上传失败')
+  } finally {
+    uploadingImages.value = false
+  }
+}
+
+function pickImages() { imageInputRef.value?.click() }
+
+function onImageInputChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files?.length) void addImageFiles(input.files)
+  input.value = ''
+}
+
+function onComposerPaste(e: ClipboardEvent) {
+  const files = Array.from(e.clipboardData?.files ?? [])
+  if (files.length) { e.preventDefault(); void addImageFiles(files) }
+}
+
+function onComposerDrop(e: DragEvent) {
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  if (files.length) { e.preventDefault(); void addImageFiles(files) }
+}
+
+function removePendingImage(idx: number) { pendingImages.value.splice(idx, 1) }
+
+function clearPendingImages() { pendingImages.value = [] }
 
 const chatModelOptions = computed(() =>
   catalogUserSelectableOptions({
@@ -525,6 +609,12 @@ function onModelChange(next: string | null) {
   setModelName(next)
   const convId = chatStore.currentId
   if (convId) chatStore.updateModelNameLocal(convId, next)
+}
+
+function onReasoningEffortChange(next: 'minimal' | 'low' | 'medium' | 'high' | null) {
+  setReasoningEffort(next)
+  const convId = chatStore.currentId
+  if (convId) chatStore.updateReasoningEffortLocal(convId, next)
 }
 
 /** 新对话/新任务（尚无消息）：输入框垂直居中；发出第一条消息后自动贴地。
@@ -986,7 +1076,11 @@ async function handleGitPull() {
 const diffCardRefreshTick = ref(0)
 
 watch(loading, (now, prev) => {
-  if (prev === true && now === false) diffCardRefreshTick.value++
+  if (prev === true && now === false) {
+    diffCardRefreshTick.value++
+    // 当前轮结束（完成/失败/手动停止）：自动出队队首队列消息
+    void autoDispatchNextQueued()
+  }
 })
 
 function bumpDiffCardRefresh() {
@@ -1174,6 +1268,25 @@ async function handleSend() {
 /** 发送主流程：清空输入、落基线、发起 SSE 并等待完成（新任务创建 / 分支切换成功后统一调用） */
 async function performSend(text: string, convId: string) {
   ensureActive(convId)
+  // 流式期间发送：入队等待当前轮结束后自动发出（快照锁定当前偏好/模型/技能绑定），
+  // 不执行任何清理动作，避免打断当前流的渲染
+  if (loading.value) {
+    const queued = enqueueQueuedMessage(convId, text, {
+      executionPreference: preference.value,
+      skillId: resolveSkillBindingForSend(text, skillCatalog.value, preference.value).skillId,
+      workflowId: resolveWorkflowBindingForSend(text, workflowCatalog.value, preference.value).workflowId,
+      kbId: kbId.value,
+      modelName: modelName.value ?? '',
+      reasoningEffort: reasoningEffort.value ?? '',
+      imageUrls: pendingImages.value.length ? [...pendingImages.value] : undefined,
+      writeHitlMode: getWriteHitlMode(convId),
+    })
+    if (queued) {
+      inputText.value = ''
+      pendingImages.value = []
+    }
+    return
+  }
   // 发送即视为会话最新活动：本地同步 updatedAt（后端落库已更新），让侧栏时间/排序即时生效
   chatStore.touchConversation(convId)
   // 新一轮发送即「继续执行」：清空上一次发送失败的提示（气泡），避免残留
@@ -1191,6 +1304,9 @@ async function performSend(text: string, convId: string) {
   setScrollPinned(true)
   clearAttention(convId)
   inputText.value = ''
+  // 发送即消费：快照后立即清空，流式期间再发消息不会重复携带本轮图片
+  const sendImageUrls = pendingImages.value.length ? [...pendingImages.value] : undefined
+  pendingImages.value = []
   settledHtml.value = ''
   sessionSettledHtml.delete(convId)
   clearStreamRenderer()
@@ -1200,19 +1316,24 @@ async function performSend(text: string, convId: string) {
   if (skillBinding.skillId) {
     requestSandboxWorkspaceRefresh(convId, 'skills', true)
   }
-  // 发送时若上一轮仍在运行：先暂停（停止）上一轮，再开始新一轮
-  if (loading.value) await stop()
-  const sendPromise = send(text, convId, {
+  await dispatchSend(convId, text, {
     executionPreference: preference.value,
     skillId: skillBinding.skillId,
     workflowId: workflowBinding.workflowId,
     kbId: kbId.value,
     modelName: modelName.value ?? '',
+    reasoningEffort: reasoningEffort.value ?? '',
+    imageUrls: sendImageUrls,
     writeHitlMode: getWriteHitlMode(convId),
   })
-  chatStore.updateExecutionPreferenceLocal(convId, preference.value)
-  if (kbId.value) chatStore.updateKbIdLocal(convId, kbId.value)
-  chatStore.updateModelNameLocal(convId, modelName.value)
+}
+
+/** 实际发起一轮发送：落本地会话元数据、发起 SSE、发送后失败气泡检测 */
+async function dispatchSend(convId: string, text: string, options: SendOptions) {
+  const sendPromise = send(text, convId, options)
+  chatStore.updateExecutionPreferenceLocal(convId, options.executionPreference ?? 'fast')
+  if (options.kbId) chatStore.updateKbIdLocal(convId, options.kbId)
+  chatStore.updateModelNameLocal(convId, options.modelName ?? null)
   await nextTick()
   scrollToBottom(true)
   await ensureStreamRenderer()
@@ -1228,6 +1349,104 @@ async function performSend(text: string, convId: string) {
     }
   }
 }
+
+/** 队列发送进行中守卫：同一时刻仅允许一条队列发送在途，防止 loading 翻转竞态重复触发 */
+let dispatchingQueued = false
+/**
+ * 当前轮结束后自动出队队首消息：按入队快照原样发出。
+ * loading true→false（完成/失败/手动停止）统一触发；出队失败回插队首。
+ */
+async function autoDispatchNextQueued() {
+  const convId = chatStore.currentId
+  if (!convId || dispatchingQueued || loading.value) return
+  const head: QueuedMessage | undefined = activeQueue.value[0]
+  if (!head || dequeueQueuedMessage(convId)?.id !== head.id) return
+  dispatchingQueued = true
+  let dispatched = false
+  try {
+    ensureActive(convId)
+    pinScrollForSend()
+    setScrollPinned(true)
+    await dispatchSend(convId, head.text, head.sendOptions)
+    dispatched = true
+  } catch (e) {
+    console.error('[ChatView] 队列消息发送失败', e)
+    restoreQueuedFront(convId, head)
+  } finally {
+    dispatchingQueued = false
+  }
+  // 链式出队：本条发送的一轮已结束，继续下一条（发送期间 watch 触发被守卫跳过，此处补上）
+  if (dispatched && !loading.value) void autoDispatchNextQueued()
+}
+
+/** 「直接发出」：停止当前轮后立即发送该队列项，剩余队列由链式出队接管 */
+async function sendQueuedItemNow(id: string) {
+  const convId = chatStore.currentId
+  if (!convId || dispatchingQueued) return
+  const item = activeQueue.value.find(q => q.id === id)
+  if (!item) return
+  dispatchingQueued = true
+  let dispatched = false
+  try {
+    if (loading.value) await stop()
+    await nextTick()
+    if (loading.value) return
+    removeQueuedItem(convId, id)
+    ensureActive(convId)
+    pinScrollForSend()
+    setScrollPinned(true)
+    await dispatchSend(convId, item.text, item.sendOptions)
+    dispatched = true
+  } catch (e) {
+    console.error('[ChatView] 队列项直接发送失败', e)
+    inputText.value = item.text
+  } finally {
+    dispatchingQueued = false
+  }
+  if (dispatched && !loading.value) void autoDispatchNextQueued()
+}
+
+/** 开始行内编辑队列项：草稿初始化为当前文本 */
+function startQueueItemEdit(item: QueuedMessage) {
+  queueEditingId.value = item.id
+  queueEditingText.value = item.text
+}
+
+/** 确认编辑：文本非空才落库，空文本视为放弃编辑 */
+function commitQueueItemEdit() {
+  const convId = chatStore.currentId
+  const id = queueEditingId.value
+  const text = queueEditingText.value.trim()
+  if (!convId || !id) return
+  if (text) updateQueuedItemText(convId, id, text)
+  queueEditingId.value = ''
+  queueEditingText.value = ''
+}
+
+/** 删除队列项（行内编辑中退出编辑态） */
+function deleteQueuedItem(id: string) {
+  const convId = chatStore.currentId
+  if (!convId) return
+  removeQueuedItem(convId, id)
+  if (queueEditingId.value === id) cancelQueueItemEdit()
+}
+
+/** 上移/下移队列项（行内编辑中项不参与移动） */
+function moveQueuedItemBy(id: string, offset: -1 | 1) {
+  const convId = chatStore.currentId
+  if (!convId) return
+  moveQueuedItem(convId, id, offset)
+}
+
+function cancelQueueItemEdit() {
+  queueEditingId.value = ''
+  queueEditingText.value = ''
+}
+
+function toggleQueueExpanded() {
+  queueExpanded.value = !queueExpanded.value
+}
+
 
 /**
  * 发送前分支切换检测：目标分支与当前 checkout 分支不一致时，
@@ -1477,6 +1696,7 @@ onMounted(async () => {
     applyConversationPreference(chatStore.current?.executionPreference)
     applyConversationKb(chatStore.current?.kbId)
     applyConversationModel(chatStore.current?.modelName)
+    applyConversationEffort(chatStore.current?.reasoningEffort)
     void applyConversationCheckout()
     void loadChatModels()
     ensureActive(cid)
@@ -1493,6 +1713,7 @@ onMounted(async () => {
     sessionHydrating.value = false
   }
   setActiveConversation(chatStore.currentId)
+  setActiveQueueConversation(chatStore.currentId ?? '')
   scrollToBottomIfRequested(chatStore.currentId ?? '')
   // 刷新后定位到会话底部：消息/时间线分帧渲染增高，单次贴底会停在中间高度，settle 至高度稳定；
   // 空会话与新任务模式（无消息）跳过
@@ -1564,6 +1785,11 @@ watch(() => sandboxPathIndexReady.tick, () => {
 })
 watch(() => chatStore.currentId, async (newId, oldId) => {
   if (sessionHydrating.value || newId === oldId) return
+  // 队列视图跟随当前会话（惰性加载持久化队列）
+  setActiveQueueConversation(newId ?? '')
+  // 行内编辑态不跨会话残留
+  queueEditingId.value = ''
+  queueEditingText.value = ''
   // 把当前会话锚定到 URL：刷新后可定位回同一会话
   if (isValidConversationId(newId)) {
     const nextQuery = { ...route.query, cid: newId }
@@ -1586,6 +1812,8 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
     if (!isValidConversationId(newId) || !chatStore.conversations.some(c => c.id === oldId)) {
       destroySession(oldId)
       sessionSettledHtml.delete(oldId)
+      // 会话已删除：同步清理其持久化队列
+      dropQueuedQueue(oldId)
     }
   }
   clearStreamRenderer()
@@ -1601,6 +1829,7 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   applyConversationPreference(chatStore.current?.executionPreference)
   applyConversationKb(chatStore.current?.kbId)
   applyConversationModel(chatStore.current?.modelName)
+  applyConversationEffort(chatStore.current?.reasoningEffort)
   void applyConversationCheckout()
   // 沙箱状态异步查询（有超时兜底），不阻塞 DOM 切换
   void (async () => {
@@ -1615,6 +1844,8 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   // DB 后台对齐：有更新则 setMessages 触发响应式重渲染，settle 持续跟随
   // 显式传 skipApiLoad: false：当前 loading 属于旧会话，不能阻止新会话的 DB 查询
   void hydrateSessionFromStore(newId, { skipApiLoad: false })
+  // 切入空闲会话且队列有待发消息（如后台会话完成于本会话不可见期间）：补一次自动出队
+  if (!loading.value) void autoDispatchNextQueued()
 }, { flush: 'post' })
 
 watch(
@@ -1708,7 +1939,7 @@ watch(
             v-if="historyLoading"
             class="history-load-bar"
           >
-            <NSpin size="small" />
+            加载更多…
           </div>
           <div
             v-for="(msg, idx) in messages"
@@ -1724,6 +1955,7 @@ watch(
                 :agent-catalog="agentCatalog"
                 :workflow-catalog="workflowCatalog"
                 :execution-preference="msg.executionPreference"
+                :image-urls="msg.imageUrls"
               />
             </div>
 
@@ -1916,6 +2148,49 @@ watch(
           <span class="typing-dots"><span class="dot"/><span class="dot"/><span class="dot"/></span>
           <span class="pre-action-text">{{ branchSwitchStatusText }}</span>
         </div>
+        <!-- 任务队列：流式期间发送的消息排队等待，当前轮结束后自动发出 -->
+        <div v-if="activeQueue.length" class="message-queue" :class="{ 'is-collapsed': !queueExpanded }">
+          <button type="button" class="message-queue-head" @click="toggleQueueExpanded">
+            <svg
+              width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="message-queue-caret"
+            >
+              <polyline points="4 6 8 10 12 6" />
+            </svg>
+            <span>{{ activeQueue.length }} 条排队中</span>
+          </button>
+          <ul v-show="queueExpanded" class="message-queue-list">
+            <li
+              v-for="(item, idx) in activeQueue"
+              :key="item.id"
+              class="message-queue-item"
+            >
+              <span class="message-queue-order">{{ idx + 1 }}</span>
+              <textarea
+                v-if="queueEditingId === item.id"
+                v-model="queueEditingText"
+                class="message-queue-edit"
+                rows="2"
+                autofocus
+                @keydown.enter.exact.prevent="commitQueueItemEdit"
+                @keydown.esc="cancelQueueItemEdit"
+                @blur="commitQueueItemEdit"
+              />
+              <span v-else class="message-queue-text">{{ item.text }}</span>
+              <span v-if="queueEditingId !== item.id" class="message-queue-actions">
+                <button type="button" class="message-queue-btn" title="编辑" @click="startQueueItemEdit(item)">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L6 12l-2.8.8L4 10z" /></svg>
+                </button>
+                <button type="button" class="message-queue-btn is-danger" title="删除" @click="deleteQueuedItem(item.id)">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13" /><line x1="13" y1="3" x2="3" y2="13" /></svg>
+                </button>
+                <button type="button" class="message-queue-btn is-send" title="停止当前并立即发送" @click="sendQueuedItemNow(item.id)">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 8l12-6-6 12-2-6-4-0z" fill="currentColor" /></svg>
+                </button>
+              </span>
+            </li>
+          </ul>
+        </div>
         <!-- 新对话/新任务空态：示例与说明显示在居中输入框上方 -->
         <div v-if="composerCentered" class="empty-hero">
           <div class="empty-icon">
@@ -1953,7 +2228,36 @@ watch(
         <div
           class="composer-box composer-box--input"
           :class="{ 'composer-box--busy': loading }"
+          @paste="onComposerPaste"
+          @drop="onComposerDrop"
+          @dragover.prevent
         >
+          <input
+            ref="imageInputRef"
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            @change="onImageInputChange"
+          >
+          <div v-if="pendingImages.length" class="pending-images">
+            <div v-for="(url, idx) in pendingImages" :key="url" class="pending-image-chip">
+              <n-image
+                :src="url"
+                :width="56" :height="56"
+                object-fit="cover"
+                class="pending-image-thumb"
+              />
+              <button
+                type="button"
+                class="pending-image-remove"
+                title="移除图片"
+                @click="removePendingImage(idx)"
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+              </button>
+            </div>
+          </div>
           <ul ref="composerSuggestList" v-if="showPathSuggest && !loading && (pathSuggestLoading || filteredPaths.length)" class="skill-suggest">
             <li v-if="pathSuggestLoading" class="skill-suggest-loading">正在加载工作区…</li>
             <template v-else>
@@ -2055,6 +2359,24 @@ watch(
                   v-if="!voiceListening"
                   v-model="writeHitlMode"
                 />
+                <n-tooltip
+                  v-if="!voiceListening"
+                  trigger="hover"
+                  :disabled="currentModelMultimodal"
+                >
+                  <template #trigger>
+                    <button
+                      type="button"
+                      class="composer-icon-btn image"
+                      :disabled="!currentModelMultimodal || uploadingImages"
+                      title="添加图片"
+                      @click="pickImages"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    </button>
+                  </template>
+                  当前模型不支持图片
+                </n-tooltip>
                 <GitBranchSelector
                   v-if="chatStore.newTaskMode || chatStore.pendingWorkspace || (isCurrentTask && currentWorkspaceId)"
                   :workspace-id="currentWorkspaceId ?? (chatStore.pendingWorkspace?.wsId ?? '')"
@@ -2068,12 +2390,14 @@ watch(
                 <ModelSelector
                   v-if="!voiceListening"
                   :model-value="modelName"
+                  :reasoning-effort="reasoningEffort"
                   :options="chatModelOptions"
                   @update:model-value="onModelChange"
+                  @update:reasoning-effort="onReasoningEffortChange"
                 />
                 <UsageStatusBar :usage="lastUsage" />
                 <button
-                  v-if="loading"
+                  v-if="loading && !inputText.trim()"
                   type="button"
                   class="composer-icon-btn pause"
                   title="暂停当前生成"
@@ -2105,7 +2429,7 @@ watch(
                     v-if="!voiceSupported || inputText.trim()"
                     type="button"
                     class="composer-icon-btn send"
-                    :disabled="!inputText.trim()"
+                    :disabled="!inputText.trim() || uploadingImages"
                     title="发送"
                     @click="handleSend"
                   >
@@ -2516,6 +2840,146 @@ watch(
   white-space: nowrap;
 }
 
+/* ---- 输入框任务队列：流式期间发送的消息排队横条 ---- */
+.message-queue {
+  align-self: stretch;
+  border: 1px solid var(--sun-border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--sun-black);
+  padding: 4px 0;
+  margin-bottom: 8px;
+}
+
+.message-queue.is-collapsed {
+  padding: 0;
+}
+
+.message-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--sun-text-muted);
+  font-size: var(--sun-font-sm, 12px);
+  padding: 6px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.message-queue-head:hover {
+  color: var(--sun-text-secondary);
+}
+
+.message-queue-caret {
+  transition: transform 0.15s;
+}
+
+.message-queue.is-collapsed .message-queue-caret {
+  transform: rotate(-90deg);
+}
+
+.message-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 4px;
+}
+
+.message-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
+.message-queue-item:hover {
+  background: var(--sun-row-hover);
+}
+
+.message-queue-order {
+  flex-shrink: 0;
+  min-width: 16px;
+  text-align: center;
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-muted);
+}
+
+.message-queue-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--sun-font-sm, 12px);
+  color: var(--sun-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-queue-edit {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--sun-border);
+  border-radius: 6px;
+  background: var(--sun-black);
+  color: var(--sun-text);
+  font-size: var(--sun-font-sm, 12px);
+  font-family: inherit;
+  line-height: 1.5;
+  padding: 4px 8px;
+  resize: none;
+}
+
+.message-queue-edit:focus {
+  outline: none;
+  border-color: var(--sun-border-light);
+}
+
+.message-queue-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.message-queue-item:hover .message-queue-actions,
+.message-queue-item:has(.message-queue-edit) .message-queue-actions {
+  opacity: 1;
+}
+
+.message-queue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--sun-text-muted);
+  cursor: pointer;
+}
+
+.message-queue-btn:hover:not(:disabled) {
+  background: var(--sun-row-hover);
+  color: var(--sun-text);
+}
+
+.message-queue-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.message-queue-btn.is-danger:hover:not(:disabled) {
+  color: var(--sun-red);
+}
+
+.message-queue-btn.is-send:hover:not(:disabled) {
+  color: var(--sun-accent);
+}
+
 /* ---- 抽屉头部 Git 操作下拉 ---- */
 .git-dropdown-wrap {
   display: inline-flex;
@@ -2771,12 +3235,14 @@ watch(
   padding-bottom: 32px;
 }
 
-/* 触顶加载更早消息时的 loading 指示（无文字，避免误以为卡顿） */
+/* 触顶加载更早消息时用文字提示，避免仅靠图标无法表达语义 */
 .history-load-bar {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 8px 0;
+  font-size: var(--sun-font-sm);
+  color: var(--sun-text-secondary);
 }
 
 /* 视口外消息跳过布局/绘制：多轮长对话滚动不卡；
@@ -3184,6 +3650,58 @@ watch(
   white-space: nowrap;
 }
 .composer-session-usage .usage-sep { opacity: 0.5; }
+
+/* composer 待发图片 chips 行（上传完成后的缩略图 + 删除按钮） */
+.pending-images {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 2px 0;
+}
+
+.pending-image-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.pending-image-thumb {
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--sun-border);
+  border-radius: 6px;
+  overflow: hidden;
+  display: block;
+}
+
+.pending-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--sun-border);
+  background: var(--sun-black);
+  color: var(--sun-text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.pending-image-remove:hover {
+  color: var(--sun-red);
+  border-color: var(--sun-red);
+}
+
+/* 图片按钮：禁用态保持置灰（配合 tooltip 提示模型能力） */
+.composer-icon-btn.image:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 
 .composer-toolbar-left {
   display: flex;

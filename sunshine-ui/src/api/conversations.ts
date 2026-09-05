@@ -19,6 +19,8 @@ export interface ConversationSummary {
   kbId?: string | null
   /** 会话绑定模型（注册表 model_name） */
   modelName?: string | null
+  /** 会话思考深度（minimal|low|medium|high）；null=跟随注册表 request_extras 缺省 */
+  reasoningEffort?: string | null
   /** chat / task */
   kind?: string
   workspaceId?: string | null
@@ -54,10 +56,14 @@ export interface ConversationMessage {
   executionPreference?: ExecutionMode
   /** usage_json 原始字符串（chatStore.parseMessageUsage 解析） */
   usage?: string
+  /** 用户消息附带的图片 URL（Task 3 落库，会话详情回传） */
+  imageUrls?: string[]
 }
 
 export interface ConversationDetail extends ConversationSummary {
   messages: ConversationMessage[]
+  /** 是否仍有更早历史：详情只含最近消息窗口，更早历史经 getConversationMessages 游标分页拉取 */
+  hasMore: boolean
 }
 
 function toTimestamp(iso: string | undefined): number {
@@ -92,6 +98,7 @@ function mapSummary(raw: Record<string, unknown>): ConversationSummary {
     executionPreference: mapStoredExecutionPreference(pref),
     kbId: typeof raw.kbId === 'string' ? raw.kbId : null,
     modelName: typeof raw.modelName === 'string' ? raw.modelName : null,
+    reasoningEffort: typeof raw.reasoningEffort === 'string' ? raw.reasoningEffort : null,
     kind: typeof raw.kind === 'string' ? raw.kind : undefined,
     workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : null,
     checkoutPath: typeof raw.checkoutPath === 'string' ? raw.checkoutPath : null,
@@ -159,7 +166,7 @@ function parseMessage(m: Record<string, unknown>): ConversationMessage {
 
 function mapDetail(raw: Record<string, unknown>): ConversationDetail {
   const messages = (raw.messages as Record<string, unknown>[] | undefined ?? []).map(parseMessage)
-  return { ...mapSummary(raw), messages }
+  return { ...mapSummary(raw), messages, hasMore: raw.hasMore === true }
 }
 
 /** 游标分页结果：messages 升序，hasMore 指示更早历史仍存在 */

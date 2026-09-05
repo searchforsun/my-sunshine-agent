@@ -13,6 +13,7 @@ const props = defineProps<{
   agentCatalog?: AgentCatalogIndexEntry[]
   workflowCatalog?: WorkflowCatalogEntry[]
   executionPreference?: ExecutionMode
+  imageUrls?: string[]
 }>()
 
 const segments = computed(() =>
@@ -118,6 +119,13 @@ onBeforeUnmount(() => {
       </span>
       <span v-else>{{ content }}</span>
     </div>
+    <div v-if="imageUrls?.length" class="msg-images">
+      <n-image
+        v-for="(u, i) in imageUrls" :key="i" :src="u"
+        :width="96" :height="96" object-fit="cover" lazy
+        class="msg-image-thumb"
+      />
+    </div>
   </div>
 </template>
 
@@ -163,5 +171,18 @@ onBeforeUnmount(() => {
 
 .user-message-content {
   display: inline;
+}
+
+.msg-images {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.msg-image-thumb {
+  border: 1px solid var(--sun-border, #333);
+  border-radius: 6px;
+  overflow: hidden;
 }
 </style>

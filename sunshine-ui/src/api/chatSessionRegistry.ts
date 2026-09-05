@@ -12,6 +12,10 @@ export interface SendOptions {
   kbId?: string | null
   /** 会话绑定模型（注册表 model_name）；空串清绑定 */
   modelName?: string | null
+  /** 会话思考深度（minimal|low|medium|high）；空串清除 */
+  reasoningEffort?: string | null
+  /** 图片 URL（多模态，≤4 张；模型需 multimodal 能力） */
+  imageUrls?: string[]
   /** never | always | smart — 沙箱写 HITL 跳过 */
   writeHitlMode?: 'never' | 'always' | 'smart'
 }
