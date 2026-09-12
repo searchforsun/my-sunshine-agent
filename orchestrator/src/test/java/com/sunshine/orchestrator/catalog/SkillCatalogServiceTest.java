@@ -98,11 +98,11 @@ class SkillCatalogServiceTest {
         service.refresh();
 
         // C1 前缀稳定：目录不剔除已触发项，触发集变化不再位移前缀字节（已加载态由尾部 <skills_referenced> 承载）
-        List<SkillCatalogIndexEntry> chat = service.discoverableForPrompt("chat", List.of("finance-analysis"), "default");
+        List<SkillCatalogIndexEntry> chat = service.discoverableForPrompt("chat", "default");
         assertThat(chat.stream().map(SkillCatalogIndexEntry::id))
                 .containsExactly("finance-analysis", "policy-qa");
 
-        List<SkillCatalogIndexEntry> task = service.discoverableForPrompt("task", List.of(), "default");
+        List<SkillCatalogIndexEntry> task = service.discoverableForPrompt("task", "default");
         assertThat(task.stream().map(SkillCatalogIndexEntry::id))
                 .containsExactlyInAnyOrder("finance-analysis", "coding-skill");
     }
@@ -115,7 +115,7 @@ class SkillCatalogServiceTest {
                 new SkillCatalogIndexEntry("skill-c", "技能C", "用途C", 1, true, "none", "all", null, "default")));
         service.refresh();
 
-        String rendered = service.renderDiscoverableForPrompt("chat", List.of(), 2, "default");
+        String rendered = service.renderDiscoverableForPrompt("chat", 2, "default");
         assertThat(rendered)
                 .contains("skill-a")
                 .contains("技能A")
@@ -128,7 +128,7 @@ class SkillCatalogServiceTest {
     void renderDiscoverableForPrompt_emptyReturnsBlank() {
         when(catalogClient.fetchCatalogIndex(null)).thenReturn(List.of());
         service.refresh();
-        assertThat(service.renderDiscoverableForPrompt("chat", List.of(), 20, "default")).isEmpty();
+        assertThat(service.renderDiscoverableForPrompt("chat", 20, "default")).isEmpty();
     }
 
     @Test
@@ -139,7 +139,7 @@ class SkillCatalogServiceTest {
                 new SkillCatalogIndexEntry("tenant-b-skill", "租户B技能", "仅租户B", 1, true, "none", "all", null, "tenant-b")));
         service.refresh();
 
-        List<SkillCatalogIndexEntry> tenantA = service.discoverableForPrompt("chat", List.of(), "tenant-a");
+        List<SkillCatalogIndexEntry> tenantA = service.discoverableForPrompt("chat", "tenant-a");
         assertThat(tenantA.stream().map(SkillCatalogIndexEntry::id))
                 .containsExactlyInAnyOrder("global-skill", "tenant-a-skill");
         assertThat(tenantA.stream().map(SkillCatalogIndexEntry::id))

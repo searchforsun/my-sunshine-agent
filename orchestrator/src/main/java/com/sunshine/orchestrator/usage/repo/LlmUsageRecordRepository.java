@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 public interface LlmUsageRecordRepository extends JpaRepository<LlmUsageRecordEntity, Long> {
@@ -55,7 +56,7 @@ public interface LlmUsageRecordRepository extends JpaRepository<LlmUsageRecordEn
         Long getCompletionTokens();
     }
 
-    /** 按自然日/租户/模型/调用点聚合明细（5.2.3 日聚合任务数据源，原生 SQL 取 DATE(request_at)）。 */
+    /** 按自然日/租户/模型/调用点聚合明细（5.2.3 日聚合任务数据源）。过滤与分组统一用 DATE(request_at)，保证 [since, until) 窗口内先删后插严格幂等。 */
     @Query(value = """
             SELECT DATE(u.request_at) AS statDate,
                    u.tenant_id          AS tenantId,
@@ -66,10 +67,10 @@ public interface LlmUsageRecordRepository extends JpaRepository<LlmUsageRecordEn
                    SUM(u.completion_tokens) AS completionTokens,
                    SUM(u.total_tokens)  AS totalTokens
             FROM llm_usage_record u
-            WHERE u.request_at >= :from AND u.request_at < :to
+            WHERE DATE(u.request_at) >= :since AND DATE(u.request_at) < :until
             GROUP BY DATE(u.request_at), u.tenant_id, u.model, u.call_site
             """, nativeQuery = true)
-    List<DailyAggView> aggregateDaily(@Param("from") Instant from, @Param("to") Instant to);
+    List<DailyAggView> aggregateDaily(@Param("since") LocalDate since, @Param("until") LocalDate until);
 
     /** 租户在 [from, to) 区间的 token 总量（5.2.4 配额校验月度用量）。 */
     @Query("""

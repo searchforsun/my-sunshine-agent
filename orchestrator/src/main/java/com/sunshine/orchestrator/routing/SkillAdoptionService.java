@@ -22,11 +22,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * S-C 双阈值采纳（skill-sticky v3.8）：L3 逐项置信分 → 触发/候选/可调度池。
+ * S-C 双阈值采纳（skill-sticky v3.8）：L3 逐项置信分 → 触发/可调度池。
  *
- * <p>skill：conf &gt; trigger 且相对差距 δ 达标 → 直接触发 ≤1（进 triggered/overlay）；
- * candidate &lt; conf ≤ trigger → 候选（目录提权 + dynamicLoadable，模型经 sunshine_search_skills 显式加载）。
+ * <p>skill：conf &gt; trigger 且相对差距 δ 达标 → 直接触发 ≤1（进 triggered/overlay）。
  * agent：conf ≥ candidate → 可调度池 Top-K（只可调度不自动委派）。
+ * 候选中间档不落 Prompt（目录是前缀稳定区，逐消息变化的内容进目录会击穿前缀缓存）；
+ * 未触发技能由模型经目录 + sunshine_search_skills 按需加载。
  *
  * <p>置信度仅取 L3 classifier 逐项分（禁 L2 原始相似度——未校准、跨资源不可比）；
  * 采纳后剥离内部分数参数（skillScores/agentScores 不外泄到执行/持久化层）。
@@ -62,16 +63,15 @@ public class SkillAdoptionService {
         if (!adoptedSkills && !adoptedAgents) {
             return stripScores(plan);
         }
-        log.info("[SkillAdoption] adopted: triggered={} candidates={} agents={}",
+        log.info("[SkillAdoption] adopted: triggered={} agents={}",
                 params.get(ExecutionPlan.PARAM_SKILL_IDS),
-                params.get(ExecutionPlan.PARAM_CANDIDATE_SKILL_IDS),
                 params.get(ExecutionPlan.PARAM_AGENT_IDS));
         return new ExecutionPlan(plan.mode(), plan.workflowId(),
                 params.isEmpty() ? Map.of() : Map.copyOf(params),
                 plan.reason(), plan.ruleId(), List.copyOf(traces));
     }
 
-    /** skill 双阈值：最高分过 trigger 且 δ 达标 → 触发 ≤1；其余 (candidate, trigger] 进候选 Top-K */
+    /** skill 双阈值：最高分过 trigger 且 δ 达标 → 触发 ≤1；其余分数项不采纳（仅剥离） */
     private boolean adoptSkills(ExecutionPlan plan, AgentExecutionProperties.React.SkillAdoption cfg,
             Map<String, Double> scores, Map<String, String> params, List<RoutingTrace> traces) {
         if (scores.isEmpty()) {
@@ -90,27 +90,11 @@ public class SkillAdoptionService {
                 params.put(SkillBindingOutcome.PARAM_SKILL, promoted);
             }
         }
-        List<String> candidates = new ArrayList<>();
-        for (Map.Entry<String, Double> e : sorted) {
-            if (candidates.size() >= cfg.getCandidateTopK()) {
-                break;
-            }
-            double conf = e.getValue();
-            if (conf <= cfg.getCandidate() || conf > cfg.getTrigger() || triggered.contains(e.getKey())) {
-                continue;
-            }
-            candidates.add(e.getKey());
-        }
-        if (!candidates.isEmpty()) {
-            params.put(ExecutionPlan.PARAM_CANDIDATE_SKILL_IDS, String.join(",", candidates));
-        }
-        if (promoted == null && candidates.isEmpty()) {
+        if (promoted == null) {
             return false;
         }
         traces.add(RoutingTrace.of("L3", "意图识别",
-                promoted != null
-                        ? "高置信触发技能「" + promoted + "」"
-                        : "识别出候选技能，按需动态加载"));
+                "高置信触发技能「" + promoted + "」"));
         return true;
     }
 

@@ -211,7 +211,7 @@ public class ReActAgentRuntime implements AgentRuntime {
                             : PromptComposeRequest.forReact(
                                     memory, query, request.skillId(), injectedBlocks,
                                     request.reactRestart(), null, convKind, workspaceCheckout,
-                                    request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId(),
+                                    request.triggeredSkillIds(), request.tenantId(),
                                     request.imageUrls()),
                     systemPromptResolver.resolve(request));
             List<Msg> inputs = composed.inputs();
@@ -319,9 +319,6 @@ public class ReActAgentRuntime implements AgentRuntime {
                                 && request.assistantMessageId() != null
                                 && !request.assistantMessageId().isBlank()) {
                             StepEventBridge.unregisterMainRun(request.assistantMessageId(), bridgeId);
-                            // S-C：消息级候选注册表清理，防跨消息残留
-                            com.sunshine.orchestrator.routing.SkillCandidateRegistry.remove(
-                                    request.assistantMessageId());
                         }
                         StepEventBridge.clear(bridgeId);
                     })

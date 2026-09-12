@@ -7,6 +7,7 @@ import org.apache.rocketmq.client.apis.consumer.ConsumeResult;
 import org.apache.rocketmq.client.apis.message.MessageView;
 import org.apache.rocketmq.client.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.client.core.RocketMQListener;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnExpression("${rocketmq.enabled:true}")
 @ConditionalOnProperty(prefix = "sunshine.audit", name = "enabled", havingValue = "true", matchIfMissing = true)
 @RocketMQMessageListener(
         endpoints = "${rocketmq.push-consumer.endpoints}",

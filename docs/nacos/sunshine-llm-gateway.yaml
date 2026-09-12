@@ -22,8 +22,10 @@ spring:
 resource-manager:
   base-url: http://sunshine-resource-manager
 
-# phase5 5.2 用量计量：MQ 生产（消费端 orchestrator 落库 llm_usage_record）
+# phase5 5.2 用量计量：MQ 生产（消费端 orchestrator 落库 llm_usage_record）。
+# MQ 可降级：enabled=false 时不装配 producer，UsagePublisher 走日志降级（用量统计允许丢点）
 rocketmq:
+  enabled: false
   producer:
     endpoints: ecs4c16g:8081
     topic: llm-usage

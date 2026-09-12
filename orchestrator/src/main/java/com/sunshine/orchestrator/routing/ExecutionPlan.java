@@ -24,8 +24,6 @@ public record ExecutionPlan(
     public static final String PARAM_SKILL_IDS = "skillIds";
     /** 本轮可调度 agent 集（逗号分隔；skill-sticky S-0/S-1） */
     public static final String PARAM_AGENT_IDS = "agentIds";
-    /** 本轮候选 skill 集（逗号分隔；candidate < 置信 ≤ trigger，可动态加载；skill-sticky S-C） */
-    public static final String PARAM_CANDIDATE_SKILL_IDS = "candidateSkillIds";
     /** L3 每个 skill 的置信分（"id=conf,id=conf"；S-C 双阈值采纳的原始输入，采纳后剥离） */
     public static final String PARAM_SKILL_SCORES = "skillScores";
     /** L3 每个 agent 的置信分（"id=conf,id=conf"；S-C 可调度池采纳的原始输入，采纳后剥离） */
@@ -76,15 +74,6 @@ public record ExecutionPlan(
         }
         String agents = params.get(PARAM_AGENT_IDS);
         return StringUtils.hasText(agents) ? csvToList(agents) : List.of();
-    }
-
-    /** 本轮候选 skill 集（可空；candidate < 置信 ≤ trigger，仅目录提权 + 可动态加载，不进 overlay） */
-    public List<String> candidateSkillIds() {
-        if (params == null) {
-            return List.of();
-        }
-        String candidates = params.get(PARAM_CANDIDATE_SKILL_IDS);
-        return StringUtils.hasText(candidates) ? csvToList(candidates) : List.of();
     }
 
     /**

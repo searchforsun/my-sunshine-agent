@@ -118,10 +118,10 @@ public class AgentExecutionProperties {
         }
 
         /**
-         * S-C 双阈值采纳 / 候选动态加载（skill-sticky v3.8）。
-         * skill：conf &gt; trigger → 直接触发 ≤1（相对差距 delta 校验）；
-         * candidate &lt; conf ≤ trigger → 候选（目录提权 + 模型经 sunshine_search_skills 显式加载升级 triggered）。
+         * S-C 双阈值采纳（skill-sticky v3.8）。
+         * skill：conf &gt; trigger → 直接触发 ≤1（相对差距 delta 校验）。
          * agent：conf ≥ candidate → 可调度池 Top-K（只可调度不自动委派）。
+         * 未触发技能不落 Prompt 中间态，由模型经目录 + sunshine_search_skills 按需加载。
          * 默认关闭——主路径仍 L0 + sticky；关闭时 L3 收集行为与 v3.8 前一致。
          */
         @Data
@@ -129,14 +129,12 @@ public class AgentExecutionProperties {
             private boolean enabled = false;
             /** 直接触发阈值：conf 严格大于该值才触发（默认高，倾向不触发） */
             private double trigger = 0.85;
-            /** 候选阈值：conf 严格大于该值进候选（skill）/ ≥ 该值进可调度池（agent） */
+            /** 可调度池阈值：agent conf ≥ 该值进池 */
             private double candidate = 0.5;
             /** 相对差距 δ：(最高-次高)/最高 ≥ delta 方可触发；未达标即使过 trigger 也不触发 */
             private double delta = 0.2;
             /** 可调度 agent 池 Top-K */
             private int agentTopK = 5;
-            /** 候选 skill 提权上限（目录置顶 + 动态加载） */
-            private int candidateTopK = 3;
         }
 
         /**

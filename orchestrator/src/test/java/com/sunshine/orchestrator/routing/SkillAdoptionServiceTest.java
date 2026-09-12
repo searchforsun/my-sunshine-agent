@@ -20,7 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 /**
- * S-C 双阈值采纳（skill-sticky v3.8）：trigger/candidate/δ/Top-K/可见性/剥离契约。
+ * S-C 双阈值采纳（skill-sticky v3.8）：trigger 阈值 + δ + 可调度池 Top-K/可见性/剥离契约。
+ * 候选中间档不落 Prompt（前缀稳定不变量）：未触发技能由模型经目录 + sunshine_search_skills 按需加载。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -70,36 +71,34 @@ class SkillAdoptionServiceTest {
     void highConfidenceWithDelta_triggersSingleSkillAndDropsScores() {
         ExecutionPlan result = service.apply(plan("s1=0.95,s2=0.3", ""), "default", "chat");
         assertThat(result.triggeredSkillIds()).containsExactly("s1");
-        assertThat(result.candidateSkillIds()).isEmpty();
         assertThat(result.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES)
                 .doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);
         assertThat(result.routingTraces()).extracting(RoutingTrace::layer).contains("L3");
     }
 
     @Test
-    void highConfidenceWithoutDelta_doesNotTrigger_lowConfStillCandidate() {
-        // (0.9-0.85)/0.9 ≈ 0.056 < δ=0.2 → 不触发；但置信未过 trigger 的项仍在 (candidate, trigger] 区间
-        // → s2=0.85 进候选（spec v3.8：candidate < 置信 ≤ trigger 仅进 discoverable 候选）
+    void highConfidenceWithoutDelta_doesNotTrigger() {
+        // (0.9-0.85)/0.9 ≈ 0.056 < δ=0.2 → 不触发；未触发技能由模型经目录按需加载
         ExecutionPlan result = service.apply(plan("s1=0.9,s2=0.85", ""), "default", "chat");
         assertThat(result.triggeredSkillIds()).isEmpty();
-        assertThat(result.candidateSkillIds()).containsExactly("s2");
         assertThat(result.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES);
     }
 
     @Test
-    void midConfidence_goesToCandidatesWithTopKLimit() {
-        // s1 触发；s2=0.7/s3=0.6/s4=0.55 均在 (candidate, trigger] 区间 → 候选按分排序，取 Top-3
+    void midConfidence_belowTrigger_notAdopted() {
+        // s1 触发；s2/s3/s4 未过 trigger 且不落 Prompt 中间态，仅剥离分数
         ExecutionPlan result = service.apply(plan("s1=0.95,s2=0.7,s3=0.6,s4=0.55", "s9=0.2"),
                 "default", "chat");
         assertThat(result.triggeredSkillIds()).containsExactly("s1");
-        assertThat(result.candidateSkillIds()).containsExactly("s2", "s3", "s4");
+        assertThat(result.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES)
+                .doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);
     }
 
     @Test
     void lowConfidenceBelowCandidate_excludedFromBoth() {
         ExecutionPlan result = service.apply(plan("s1=0.4", ""), "default", "chat");
         assertThat(result.triggeredSkillIds()).isEmpty();
-        assertThat(result.candidateSkillIds()).isEmpty();
+        assertThat(result.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES);
     }
 
     @Test
@@ -108,7 +107,6 @@ class SkillAdoptionServiceTest {
         inbound.params().put(ExecutionPlan.PARAM_SKILL_IDS, "s1");
         ExecutionPlan result = service.apply(inbound, "default", "chat");
         assertThat(result.triggeredSkillIds()).containsExactly("s1");
-        assertThat(result.candidateSkillIds()).containsExactly("s2");
     }
 
     @Test
@@ -133,7 +131,6 @@ class SkillAdoptionServiceTest {
                 "s1", "私有技能", "跨租户不可见", 1, true, null, "all", null, "acme")));
         ExecutionPlan result = service.apply(plan("s1=0.95", ""), "default", "chat");
         assertThat(result.triggeredSkillIds()).isEmpty();
-        assertThat(result.candidateSkillIds()).isEmpty();
         assertThat(result.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES);
     }
 
@@ -150,7 +147,6 @@ class SkillAdoptionServiceTest {
         properties.getReact().getSkillAdoption().setEnabled(false);
         ExecutionPlan result = service.apply(plan("s1=0.95", "a1=0.9"), "default", "chat");
         assertThat(result.triggeredSkillIds()).isEmpty();
-        assertThat(result.candidateSkillIds()).isEmpty();
         assertThat(result.schedulableAgentIds()).isEmpty();
         assertThat(result.params()).doesNotContainKey(ExecutionPlan.PARAM_SKILL_SCORES)
                 .doesNotContainKey(ExecutionPlan.PARAM_AGENT_SCORES);

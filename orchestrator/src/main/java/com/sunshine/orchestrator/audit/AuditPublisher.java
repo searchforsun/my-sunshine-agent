@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.core.RocketMQClientTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -16,6 +17,10 @@ public class AuditPublisher {
     private final AuditPersistService auditPersistService;
     private final ObjectMapper objectMapper;
 
+    /** MQ 降级开关（与消费者装配同源）：false 时直接落库，不触发 producer 懒建连的 3s 超时 */
+    @Value("${rocketmq.enabled:true}")
+    private boolean mqEnabled;
+
     @Autowired(required = false)
     private RocketMQClientTemplate rocketMQClientTemplate;
 
@@ -23,7 +28,7 @@ public class AuditPublisher {
         if (!properties.isEnabled()) {
             return;
         }
-        if (rocketMQClientTemplate != null) {
+        if (mqEnabled && rocketMQClientTemplate != null) {
             try {
                 String json = objectMapper.writeValueAsString(event);
                 rocketMQClientTemplate.syncSendNormalMessage(properties.getTopic(), json);

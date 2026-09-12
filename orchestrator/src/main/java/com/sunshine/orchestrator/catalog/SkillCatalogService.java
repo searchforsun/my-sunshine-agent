@@ -87,8 +87,7 @@ public class SkillCatalogService {
      * 目录是 Prompt 前缀稳定区，与触发集解耦——不剔除、不标注已触发项，否则触发集变化会
      * 位移前缀字节、击穿 KV 缓存（skill-sticky C1）。已触发正文由尾部 <skills_referenced> 信封承载。
      */
-    public List<SkillCatalogIndexEntry> discoverableForPrompt(
-            String sessionKind, List<String> triggeredSkillIds, String tenantId) {
+    public List<SkillCatalogIndexEntry> discoverableForPrompt(String sessionKind, String tenantId) {
         String effectiveTenant = TenantVisibility.normalize(tenantId);
         return indexEntries().stream()
                 .filter(SkillCatalogIndexEntry::enabled)
@@ -99,33 +98,24 @@ public class SkillCatalogService {
 
     /**
      * 可发现目录渲染（名+描述，不灌正文）：模板占位 {skills}，Top-N 上限防前缀膨胀。
-     * 候选集（S-C）提权置顶并标记「可动态加载」；无候选时退化为原渲染。
+     * 输出仅由 (kind, tenant, 技能目录本身) 决定——轮间字节稳定是 C1 前缀稳定不变量，
+     * 任何逐消息变化的内容（候选集提权等）不得进入目录。
      * 超过上限时给出「更多经 / 或检索」提示，对齐 spec §8 目录过长对策。
      */
-    public String renderDiscoverableForPrompt(
-            String sessionKind, List<String> triggeredSkillIds, int topN, String tenantId) {
-        return renderDiscoverableForPrompt(sessionKind, triggeredSkillIds, List.of(), topN, tenantId);
-    }
-
-    public String renderDiscoverableForPrompt(
-            String sessionKind, List<String> triggeredSkillIds, List<String> candidateSkillIds,
-            int topN, String tenantId) {
-        List<SkillCatalogIndexEntry> entries = discoverableForPrompt(sessionKind, triggeredSkillIds, tenantId);
-        List<SkillCatalogIndexEntry> ordered = promoteCandidates(entries, candidateSkillIds);
-        if (ordered.isEmpty()) {
+    public String renderDiscoverableForPrompt(String sessionKind, int topN, String tenantId) {
+        List<SkillCatalogIndexEntry> entries = discoverableForPrompt(sessionKind, tenantId);
+        if (entries.isEmpty()) {
             return "";
         }
-        java.util.Set<String> candidates = candidateSkillIds != null
-                ? new java.util.LinkedHashSet<>(candidateSkillIds) : java.util.Set.of();
         int limit = Math.max(1, topN);
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < ordered.size(); i++) {
+        for (int i = 0; i < entries.size(); i++) {
             if (i >= limit) {
-                sb.append("- …还有 ").append(ordered.size() - limit)
+                sb.append("- …还有 ").append(entries.size() - limit)
                         .append(" 项：输入 /技能名 或描述需求以加载\n");
                 break;
             }
-            SkillCatalogIndexEntry e = ordered.get(i);
+            SkillCatalogIndexEntry e = entries.get(i);
             sb.append("- **").append(e.id()).append("**");
             if (StringUtils.hasText(e.displayName())) {
                 sb.append(" ").append(e.displayName().strip());
@@ -133,38 +123,9 @@ public class SkillCatalogService {
             if (StringUtils.hasText(e.description())) {
                 sb.append(" — ").append(e.description().strip());
             }
-            if (candidates.contains(e.id())) {
-                sb.append("（可动态加载）");
-            }
             sb.append('\n');
         }
         return sb.toString().strip();
-    }
-
-    /** 候选 skill 提权置顶（保持相对顺序），其余按原顺序跟随；仅存在于可见集内的候选生效 */
-    private static List<SkillCatalogIndexEntry> promoteCandidates(
-            List<SkillCatalogIndexEntry> entries, List<String> candidateSkillIds) {
-        if (candidateSkillIds == null || candidateSkillIds.isEmpty() || entries.isEmpty()) {
-            return entries;
-        }
-        java.util.Map<String, SkillCatalogIndexEntry> byId = new java.util.LinkedHashMap<>();
-        for (SkillCatalogIndexEntry e : entries) {
-            byId.put(e.id(), e);
-        }
-        List<SkillCatalogIndexEntry> ordered = new java.util.ArrayList<>();
-        java.util.Set<String> added = new java.util.LinkedHashSet<>();
-        for (String id : candidateSkillIds) {
-            SkillCatalogIndexEntry e = byId.get(id);
-            if (e != null && added.add(id)) {
-                ordered.add(e);
-            }
-        }
-        for (SkillCatalogIndexEntry e : entries) {
-            if (added.add(e.id())) {
-                ordered.add(e);
-            }
-        }
-        return ordered;
     }
 
     /** L3 意图分类器 — Skill 目录（含 sandbox 能力），按会话 kind + 租户过滤（保留 all + 同 kind） */

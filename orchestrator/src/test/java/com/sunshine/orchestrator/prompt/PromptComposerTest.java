@@ -159,7 +159,7 @@ class PromptComposerTest {
 
         List<Msg> inputs = composer.composeReactInputs(new PromptComposeRequest(
                 PromptMode.REACT, ctx, "当前提问正文", null, "finance-analysis", "node-prompt-text",
-                List.of("injected-ctx"), null, true, null, null, null, null, null, null, null, null), "").inputs();
+                List.of("injected-ctx"), null, true, null, null, null, null, null, null, null), "").inputs();
 
         // 主断言：无任何 SYSTEM 角色
         assertThat(inputs).isNotEmpty();
@@ -327,7 +327,7 @@ class PromptComposerTest {
     void composeReactInputs_injectsSkillDirectory_neverFullOverlayForUntriggered() {
         // S-D：可发现层只注入名+描述目录，不灌未触发 skill 全文
         when(skillBodyRenderer.renderById(eq("skill-a"), any(), any())).thenReturn("OVERLAY-A");
-        when(skillCatalogService.renderDiscoverableForPrompt("chat", List.of("skill-a"), List.of(), 20, "default"))
+        when(skillCatalogService.renderDiscoverableForPrompt("chat", 20, "default"))
                 .thenReturn("- **policy-qa** 制度问答 — 制度查询");
         replaceCatalogTexts(Map.of(
                 "context.layer-prompt", "",

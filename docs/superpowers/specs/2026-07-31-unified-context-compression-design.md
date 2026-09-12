@@ -45,6 +45,8 @@
 > **v27.1（2026-08-27 · 时间指代归一化）**：`context.memory.extract` 提示词加硬规则——value 中的相对时间指代（今天/明天/下周/最近/上个月/周三 等）必须换算为绝对日期 `YYYY-MM-DD`，当前日期经 `{today}` 占位注入（`L2ExtractService.buildSystemPrompt` 替换为 `LocalDate.now()`）；无法确定具体日期的禁止臆造、改为近似表述。防止跨会话召回读到漂移指代（L2 TTL 7~365 天）。
 >
 > **v28（2026-08-27 · L3 摘要化与 L2 对账）**：解决 L3 语义层与 L2 重复、以及 body 原文零散 chunk（user/assistant 一条一条）无摘要价值的问题。契约：**chat 场景 L3 只保留 semantic 摘要层**（body 原文层退役），task 保留 body+process（`session_search` 深挖原文依赖）。三处落地——① **语义提取摘要化（方案1）**：Catalog `context.l3.semantic-extract` v4，每段为摘要形式（合并同主题连续对话、保留 ID/数字/时间关键细节、每轮 ≤2 段）+ 排除 L2 已结构化覆盖内容；② **L2 写入对账（方案2）**：`LLMSemanticExtractor` 写 semantic 前读该用户 active L2 `stateValue`，语义段整段包含某条 L2 值 → abstain（强命中，查询失败保守不拦截）；③ **chat 召回/展示收敛**：`L3RecallService` layers body+semantic→仅 semantic，`listL3Entries` 面板仅 semantic 且 role 统一「Chunk」，Milvus `listByConv` 透出 layer。详见 §7.4 / §13.4.1。
+>
+> **v29（2026-09-12 · L2 后置到历史轮次之后，收敛失效半径）**：L2（KV Memory 块）原与静态 layer-prompt/usage-rules 合并为一条消息置于 Far/Mid/Near 之前（§5.5.3 图中 Tier 1 位）——L2 是幂等 upsert（真变才失效）但**失效半径 = 其后全部消息**：每轮写路径更新（含 TTL 到期被动消失）都会击穿其后全部历史轮次的前缀缓存。**修正**：`l2SystemBlock` 独立成消息后置到 TaskListRestore 之后、L3 之前（尾部动态段）；layer-prompt/usage-rules 静态文本留原位。顺序契约见 §5.5.3 v29 注记。落点：`ContextMessageBuilder.appendAll`。
 
 ---
 
@@ -649,6 +651,8 @@ Tier 2 · 动态段（每轮 append / 每轮变，物理隔离）
 > **v6 注记（tools 分层注入，对齐 [phase5 §5.5](./phase5-operation-openness-design.md)）**：工具规模膨胀（>50）时 naive 全量 schema 进 Tier 0 会推高 token；若改为每轮按 query 检索 Top-K 注入，则 `tools` 块每轮变化 → **Tier 0 失效 → 全量 miss**。折中：**Tier 0 只放「全量工具名列表」**（确定性序列化、字节稳定）+ **Tier 2 尾部放 Top-K 工具完整 schema**（随 query 动态）。工具规模 ≤ 阈值（默认 20）时仍用全量 schema 进 Tier 0（`full` 模式），二选一由 Nacos `agent.tool.inject` 切换。
 >
 > **v24 注记（skill 动态工具 sticky）**：主 agent 绑 skill 时并入 skill 声明工具，必须按路由 **triggered 集**单调并集（[skill-sticky v3.2](./2026-08-12-skill-sticky-process-chain-design.md)）——**禁止**每轮按最新 skillId 自由并集，否则 Tier 0 `tools` 逐轮变化全量 miss（正是本注记警告的场景）。SUB/Worker 即时并集不受限（子会话无前缀包袱，task-scene §7.4）。
+
+> **v29 注记（2026-09-12 · L2 后置到历史轮次之后）**：L2（KV Memory 块）虽设计为「content-hash 幂等 upsert，真变才失效」（Tier 1），但**失效半径 = 其后全部消息**——`ContextMessageBuilder` 原把 `l2SystemBlock` 与静态 layer-prompt/usage-rules 合并为一条消息置于 Far/Mid/Near 之前，每轮写路径的 L2 更新（含 TTL 到期被动消失、语义 merge 改写）都会击穿其后全部历史轮次的前缀缓存。**修正**：`l2SystemBlock` 独立成消息**后置**到 TaskListRestore 之后、L3 之前（尾部动态段，与「低频但会变」的任务板恢复块同级）；layer-prompt/usage-rules 是静态文本，留在原位（前缀稳定区）。语义上 L2 是「用户状态参考」而非强指令，后置不影响效果。落点：`ContextMessageBuilder.appendAll`；顺序契约由 `ContextMessageBuilderTest` 固化（LayerPrompt → Far → Mid → Near → TaskList → L2 → L3）。
 
 #### 5.5.4 五条优化建议
 

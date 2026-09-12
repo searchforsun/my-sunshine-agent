@@ -93,9 +93,9 @@ agent:
         enabled: true
         # scope=workspace 跨会话检索的会话数上限（防 convId 列表膨胀；仅最近活跃会话）
         workspace-max-convs: 20
-      # S-C 双阈值采纳 / 候选动态加载（skill-sticky v3.8）：
+      # S-C 双阈值采纳（skill-sticky v3.8）：
       # skillScores/agentScores 逐项置信 → conf>trigger 且 δ 达标触发；
-      # conf>candidate 进候选（目录提权 + 可动态加载）；agent 可调度池取 Top-K。
+      # agent 可调度池取 Top-K。未触发技能由模型经目录 + sunshine_search_skills 按需加载。
       # 默认关闭：分类器提示词契约（skillScores 输出）升级后再开。
       skill-adoption:
         enabled: false
@@ -103,7 +103,6 @@ agent:
         candidate: 0.5
         delta: 0.2
         agent-top-k: 5
-        candidate-top-k: 3
       # 4.7.7 L2 目标对齐（GoalAlignmentMiddleware）：周期性把原始问题+任务进度摆回模型面前，
       # 防 compaction 后漂移。MAIN-only；默认关灰度（Live 验收后改回 false）。
       goal-check:
@@ -537,7 +536,10 @@ sunshine:
         input-per-1m: 0.8
         output-per-1m: 2.0
 
+# MQ 可降级（enabled=false 时不装配 producer/consumer）：审计发送降级为 MySQL 直写，
+# 用量统计暂停 MQ 消费（llm-gateway 侧发送同理降级）。本地/无 MQ 环境置 false。
 rocketmq:
+  enabled: false
   producer:
     endpoints: ecs4c16g:8081
     topic: sunshine-audit

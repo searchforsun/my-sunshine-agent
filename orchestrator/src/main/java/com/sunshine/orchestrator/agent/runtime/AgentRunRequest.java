@@ -44,8 +44,6 @@ public record AgentRunRequest(
         String conversationKind,
         /** 本轮已触发 skill 集（仅 MAIN；skill-sticky S-T，SUB/Worker 用单数 skillId） */
         List<String> triggeredSkillIds,
-        /** 本轮候选 skill 集（仅 MAIN；S-C：目录提权 + dynamicLoadable，可经 sunshine_search_skills 升级触发） */
-        List<String> candidateSkillIds,
         /** 本轮聊天图片 URL（仅 MAIN ReAct 当前用户消息多模态下发；SUB/WORKER/PLANNER 恒空） */
         List<String> imageUrls
 ) {
@@ -54,7 +52,6 @@ public record AgentRunRequest(
         injectedBlocks = injectedBlocks != null ? List.copyOf(injectedBlocks) : List.of();
         toolWhitelist = toolWhitelist != null ? List.copyOf(toolWhitelist) : null;
         triggeredSkillIds = triggeredSkillIds != null ? List.copyOf(triggeredSkillIds) : List.of();
-        candidateSkillIds = candidateSkillIds != null ? List.copyOf(candidateSkillIds) : List.of();
         imageUrls = imageUrls != null ? List.copyOf(imageUrls) : List.of();
     }
 
@@ -64,7 +61,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 
     /** 透传会话思考深度（仅 MAIN；空则走注册表 request_extras 缺省） */
@@ -74,7 +71,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 
     /** 透传会话 kind（装默认工具集）；不查库 */
@@ -84,7 +81,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 
     /** 本轮已触发 skill 集（MAIN；skill-sticky S-T） */
@@ -94,17 +91,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
-    }
-
-    /** 本轮候选 skill 集（MAIN；skill-sticky S-C） */
-    public AgentRunRequest withCandidateSkillIds(List<String> candidateSkillIds) {
-        return new AgentRunRequest(
-                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
-                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
-                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
-                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 
     /** 本轮聊天图片 URL（仅 MAIN；组装时经 ChatImageDeliveryResolver 转换为多模态块） */
@@ -114,7 +101,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 
     /** Planner-Executor harness overlay（机制层）；仅 PLANNER 使用 */
@@ -124,7 +111,7 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 
     /** MAIN 每 run 独立 main-{runId}；SUB/WORKER 用角色前缀（SSE 经 bindHitlBridge 映射 assistantMessageId） */
@@ -234,7 +221,6 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
-                null,
                 null);
     }
 
@@ -279,7 +265,6 @@ public record AgentRunRequest(
                 null,
                 null,
                 triggeredSkillIds,
-                null,
                 null);
     }
 
@@ -388,7 +373,6 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
-                null,
                 null);
     }
 
@@ -429,7 +413,6 @@ public record AgentRunRequest(
                 HARNESS_PROMPT_ID,
                 conversationId,
                 0,
-                null,
                 null,
                 null,
                 null,
@@ -498,7 +481,6 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
-                null,
                 null);
     }
 
@@ -509,6 +491,6 @@ public record AgentRunRequest(
                 assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
                 reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
                 kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
-                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+                conversationKind, triggeredSkillIds, imageUrls);
     }
 }

@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ContextMessageBuilderTest {
 
     @Test
-    void append_ordersL2_Far_Mid_Near_L3() {
+    void append_ordersLayerPrompt_Far_Mid_Near_TaskList_L2_L3() {
         var ctx = new AssembledContext(
                 "[用户状态 · L2]\n- preference: 简洁",
                 "[更早对话 · Far]\n曾讨论差旅",
@@ -23,7 +23,6 @@ class ContextMessageBuilderTest {
         ContextMessageBuilder.appendAll(msgs, ctx, "分层说明", "仅供指代");
 
         assertThat(msgs.get(0).get("role")).isEqualTo("system");
-        assertThat(msgs.get(0).get("content").toString()).contains("L2");
         assertThat(msgs.get(0).get("content").toString()).contains("分层说明");
         assertThat(msgs.get(0).get("content").toString()).contains("仅供指代");
 
@@ -36,8 +35,10 @@ class ContextMessageBuilderTest {
         assertThat(msgs.get(5)).containsEntry("role", "assistant").containsEntry("content", "A2全文");
 
         assertThat(msgs.get(6).get("role")).isEqualTo("system");
-        assertThat(msgs.get(6).get("content").toString()).contains("L3");
-        assertThat(msgs).hasSize(7);
+        assertThat(msgs.get(6).get("content").toString()).contains("L2");
+        assertThat(msgs.get(7).get("role")).isEqualTo("system");
+        assertThat(msgs.get(7).get("content").toString()).contains("L3");
+        assertThat(msgs).hasSize(8);
     }
 
     @Test

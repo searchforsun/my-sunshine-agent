@@ -8,7 +8,11 @@ import java.util.Map;
 
 /**
  * AssembledContext → Gateway messages。
- * 顺序：system(ProjectGuide) → system(L2 + layerPrompt/usage) → system(Far) → Mid → Near → system(TaskListRestore) → system(L3)。
+ * 顺序：system(ProjectGuide) → system(layerPrompt/usage) → system(Far) → Mid → Near
+ * → system(TaskListRestore) → system(L2) → system(L3)。
+ * L2 后置（紧邻 TaskListRestore，历史轮次之后）：L2 由每轮写路径静默更新、条目带 TTL，
+ * 内容会随轮次变化——置于历史之前会让任一次写入/过期击穿其后全部历史轮次的前缀缓存；
+ * 后置后击穿半径收敛到尾部动态段。layerPrompt/usageRules 是静态文本，留在前缀稳定区。
  */
 public final class ContextMessageBuilder {
 
@@ -25,11 +29,12 @@ public final class ContextMessageBuilder {
         }
         AssembledContext context = ctx != null ? ctx : AssembledContext.empty();
         addSystemIfText(messages, context.projectGuideBlock());
-        addSystemIfText(messages, joinNonBlank(layerPrompt, usageRules, context.l2SystemBlock()));
+        addSystemIfText(messages, joinNonBlank(layerPrompt, usageRules));
         addSystemIfText(messages, context.farSummaryBlock());
         appendTurns(messages, context.midTurns());
         appendTurns(messages, context.nearTurns());
         addSystemIfText(messages, context.taskListRestoreBlock());
+        addSystemIfText(messages, context.l2SystemBlock());
         addSystemIfText(messages, context.l3MaterialBlock());
     }
 

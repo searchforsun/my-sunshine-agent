@@ -52,7 +52,6 @@ public class ReactExecutor {
 
     private static final String PARAM_AGENT_IDS = "agentIds";
     private static final String PARAM_SKILL_IDS = "skillIds";
-    private static final String PARAM_CANDIDATE_SKILL_IDS = "candidateSkillIds";
 
     public Flux<StreamToken> execute(ExecutionStreamContext ctx) {
         Map<String, String> params = ctx.plan() != null && ctx.plan().params() != null
@@ -61,9 +60,8 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         List<String> triggeredSkillIds = resolveTriggeredSkillIds(params);
-        List<String> candidateSkillIds = resolveCandidateSkillIds(params);
         String skillId = triggeredSkillIds.isEmpty() ? null : triggeredSkillIds.get(0);
-        return executeWithInjected(ctx, List.of(), query, skillId, triggeredSkillIds, candidateSkillIds);
+        return executeWithInjected(ctx, List.of(), query, skillId, triggeredSkillIds);
     }
 
     /** 节点失败降级 ReAct - 注入已成功节点上下文 */
@@ -74,9 +72,8 @@ public class ReactExecutor {
                 ? params.get(SkillBindingOutcome.PARAM_EFFECTIVE_QUERY).strip()
                 : ctx.userContent();
         List<String> triggeredSkillIds = resolveTriggeredSkillIds(params);
-        List<String> candidateSkillIds = resolveCandidateSkillIds(params);
         String skillId = triggeredSkillIds.isEmpty() ? null : triggeredSkillIds.get(0);
-        return executeWithInjected(ctx, injectedBlocks, query, skillId, triggeredSkillIds, candidateSkillIds);
+        return executeWithInjected(ctx, injectedBlocks, query, skillId, triggeredSkillIds);
     }
 
     /**
@@ -99,26 +96,12 @@ public class ReactExecutor {
         return skillId != null ? List.of(skillId) : List.of();
     }
 
-    /** 本轮候选 skill 集（S-C）：目录提权 + dynamicLoadable，可经 sunshine_search_skills 升级触发 */
-    private static List<String> resolveCandidateSkillIds(Map<String, String> params) {
-        String raw = params.get(PARAM_CANDIDATE_SKILL_IDS);
-        if (!StringUtils.hasText(raw)) {
-            return List.of();
-        }
-        return java.util.Arrays.stream(raw.split(","))
-                .map(String::strip)
-                .filter(StringUtils::hasText)
-                .distinct()
-                .toList();
-    }
-
     private Flux<StreamToken> executeWithInjected(
             ExecutionStreamContext ctx,
             List<String> injectedBlocks,
             String query,
             String skillId,
-            List<String> triggeredSkillIds,
-            List<String> candidateSkillIds) {
+            List<String> triggeredSkillIds) {
         if (ctx.assistantMsgId() != null) {
             StepEventBridge.bindToolAudit(ctx.assistantMsgId(), new StepEventBridge.ToolAuditContext(
                     ctx.conversationId(),
@@ -198,18 +181,12 @@ public class ReactExecutor {
         if (ctx.reactRestart() && StringUtils.hasText(ctx.assistantMsgId()) && !resumeSteps.isEmpty()) {
             DecisionResumeSteps.bind(ctx.assistantMsgId(), resumeSteps);
         }
-        // S-C：候选集消息级承载——目录「可动态加载」提权标记（sunshine_search_skills 已放开为任意 enabled 技能）
-        if (StringUtils.hasText(ctx.assistantMsgId()) && !candidateSkillIds.isEmpty()) {
-            com.sunshine.orchestrator.routing.SkillCandidateRegistry.bind(
-                    ctx.assistantMsgId(), candidateSkillIds);
-        }
         return agentRuntime.run(AgentRunRequest.main(
                         memory, query, ctx.userId(), ctx.tenantId(), ctx.assistantMsgId(),
                         blocks, skillId, ctx.reactRestart(),
                         ctx.conversationId(), checkpointThinkIteration,
                         resolveMaxItersByKind(ctx), triggeredSkillIds)
                 .withConversationKind(ctx.conversationKind())
-                .withCandidateSkillIds(candidateSkillIds)
                 .withModelOverride(ctx.modelOverride())
                 .withReasoningEffort(ctx.reasoningEffort())
                 .withImageUrls(ctx.imageUrls()));

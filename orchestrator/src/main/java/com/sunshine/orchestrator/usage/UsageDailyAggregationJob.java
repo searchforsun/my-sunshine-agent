@@ -14,7 +14,6 @@ import java.math.RoundingMode;
 import java.sql.Date;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 
 /** llm_usage_record → llm_usage_daily 日聚合（phase5 5.2.3）：删除重建保证幂等，est_cost 按模型单价估算。 */
@@ -31,15 +30,13 @@ public class UsageDailyAggregationJob {
             initialDelay = 60_000)
     @Transactional
     public void aggregate() {
+        // 日期窗口即分区键：聚合按 DATE(request_at) 分组，删除窗口必须与分组口径一致，否则窗口外分组会撞历史残留行
         LocalDate today = LocalDate.now();
         LocalDate since = today.minusDays(Math.max(1, properties.getAggregateLookbackDays()));
         LocalDate until = today.plusDays(1);
-        ZoneId zone = ZoneId.systemDefault();
-        Instant from = since.atStartOfDay(zone).toInstant();
-        Instant to = until.atStartOfDay(zone).toInstant();
 
         dailyRepository.deleteRange(since, until);
-        List<LlmUsageRecordRepository.DailyAggView> rows = recordRepository.aggregateDaily(from, to);
+        List<LlmUsageRecordRepository.DailyAggView> rows = recordRepository.aggregateDaily(since, until);
         for (LlmUsageRecordRepository.DailyAggView row : rows) {
             LlmUsageDailyEntity entity = new LlmUsageDailyEntity();
             Date statDate = row.getStatDate();

@@ -80,7 +80,7 @@ public class PromptComposer {
         addGatewaySystem(messages, resolveWorkspaceCheckoutOverlay(request.workspaceCheckout()));
         addGatewaySystem(messages, resolveModeOverlay(request.mode(), request.workflowId()));
         addGatewaySystem(messages, resolveSkillOverlays(request.skillId(), request.triggeredSkillIds(), request.tenantId(), request.kind()));
-        addGatewaySystem(messages, resolveSkillDirectory(request.kind(), request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId()));
+        addGatewaySystem(messages, resolveSkillDirectory(request.kind(), request.tenantId()));
         // Tier 定序（§5.5.3 ⑥）：scope 边界是静态文本，前置进稳定前缀；
         // nodePrompt 按节点变化（高频）留在上下文层之后的尾部。
         addGatewaySystem(messages, catalogText("scope-prompt"));
@@ -109,7 +109,7 @@ public class PromptComposer {
         String restartOverlay = resolveReactRestartOverlay(request);
         String hitlOverlay = resolveHitlOverlay(request.mode());
         String skillOverlay = resolveSkillOverlays(request.skillId(), request.triggeredSkillIds(), request.tenantId(), request.kind());
-        String skillDirectory = resolveSkillDirectory(request.kind(), request.triggeredSkillIds(), request.candidateSkillIds(), request.tenantId());
+        String skillDirectory = resolveSkillDirectory(request.kind(), request.tenantId());
         // 场景覆盖层：根据 kind 注入专属上下文（chat / task）
         String sceneOverlay = resolveSceneOverlay(request.kind());
         // 工作区 checkout 目录：让 AI 明确当前工作目录，避免误用 main checkout
@@ -369,18 +369,18 @@ public class PromptComposer {
 
     /**
      * 可发现目录层（名+描述，不灌正文）：enabled + 会话 kind 匹配的 skill 目录，
-     * 与触发集解耦——不剔除已触发项、不加会随触发集变化的标记，保证前缀区字节稳定（守 C1）；
-     * 候选集（S-C）提权置顶并标「可动态加载」；模板在 Catalog（context.skill-directory），
-     * {skills} 运行时替换。目录过长按 Top-N 截断并提示「更多经 / 或检索」（skill-sticky S-D/S-C）。
+     * 与触发集解耦——不剔除已触发项、不注入任何逐消息变化的内容（如候选集提权），
+     * 保证前缀区字节稳定（守 C1）；已触发正文由尾部 <skill_information> 信封承载。
+     * 模板在 Catalog（context.skill-directory），{skills} 运行时替换。
+     * 目录过长按 Top-N 截断并提示「更多经 / 或检索」（skill-sticky S-D/S-C）。
      */
-    private String resolveSkillDirectory(
-            String kind, List<String> triggeredSkillIds, List<String> candidateSkillIds, String tenantId) {
+    private String resolveSkillDirectory(String kind, String tenantId) {
         String template = catalogText("context.skill-directory");
         if (!StringUtils.hasText(template)) {
             return "";
         }
         String skills = skillCatalogService.renderDiscoverableForPrompt(
-                kind, triggeredSkillIds, candidateSkillIds, SKILL_DIRECTORY_TOP_N, tenantId);
+                kind, SKILL_DIRECTORY_TOP_N, tenantId);
         if (!StringUtils.hasText(skills)) {
             return "";
         }
