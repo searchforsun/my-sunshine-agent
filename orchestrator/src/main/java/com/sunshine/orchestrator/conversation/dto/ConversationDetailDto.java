@@ -25,13 +25,17 @@ public class ConversationDetailDto {
     private String executionPreference;
     private String kbId;
     private String modelName;
+    private String reasoningEffort;
     /** chat / task；与库表 SSOT 一致，勿在详情响应中省略 */
     private String kind;
     private String workspaceId;
     private String checkoutPath;
     private List<MessageDto> messages;
+    /** 是否仍有更早历史：详情只含最近消息窗口，更早历史由前端经 /messages 游标分页拉取 */
+    private boolean hasMore;
 
-    public static ConversationDetailDto from(ChatConversationEntity conv, List<ChatMessageEntity> messages) {
+    /** DTO 列表版：分页查询结果直接组装（MessagePageDto 已持有 MessageDto） */
+    public static ConversationDetailDto of(ChatConversationEntity conv, List<MessageDto> messages, boolean hasMore) {
         return ConversationDetailDto.builder()
                 .id(conv.getId())
                 .title(conv.getTitle())
@@ -40,11 +44,17 @@ public class ConversationDetailDto {
                 .executionPreference(ExecutionMode.toStoredWire(conv.getExecutionPreference()))
                 .kbId(conv.getKbId())
                 .modelName(conv.getModelName())
+                .reasoningEffort(conv.getReasoningEffort())
                 .kind(conv.getKind())
                 .workspaceId(conv.getWorkspaceId())
                 .checkoutPath(conv.getCheckoutPath())
-                .messages(messages.stream().map(MessageDto::from).toList())
+                .messages(messages)
+                .hasMore(hasMore)
                 .build();
+    }
+
+    public static ConversationDetailDto from(ChatConversationEntity conv, List<ChatMessageEntity> messages, boolean hasMore) {
+        return of(conv, messages.stream().map(MessageDto::from).toList(), hasMore);
     }
 
     @Data

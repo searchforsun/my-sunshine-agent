@@ -49,7 +49,8 @@ public class ModelRouter {
 
     /**
      * 模型解析（phase5 5.3）：显式指定 model 直路由；
-     * model=auto 或缺省时按请求 call_site 查路由策略表选首个可用模型。
+     * model=auto 或缺省时按请求 call_site 查路由策略表选首个可用模型，
+     * 池空/全不可用时以 session_model（会话所选模型）兜底。
      * 生效模型回写请求体：用量计量（5.2）按实际生效模型落库，语义缓存 key 亦以生效模型隔离。
      */
     private String resolveEffectiveModel(ChatCompletionRequest request) {
@@ -58,9 +59,12 @@ public class ModelRouter {
             return model.strip();
         }
         String effective = registryCache.routeModelFor(request.getCallSite())
+                .or(() -> registryCache.findDefinition(request.getSessionModel())
+                        .filter(ModelDefinitionView::isEnabled)
+                        .map(ModelDefinitionView::getModelName))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "model=auto 但调用点无可用路由策略: callSite=" + request.getCallSite()
-                                + "（请在模型注册表配置 model_route_policy 或显式指定 model）"));
+                                + "（请在模型注册表配置 model_route_policy、携带可用 session_model 或显式指定 model）"));
         request.setModel(effective);
         return effective;
     }
@@ -92,8 +96,8 @@ public class ModelRouter {
 
     private Mono<ChatCompletionResponse> tryFallbackChat(
             String model, ChatCompletionRequest request, Set<String> tried, Throwable cause) {
-        String fallback = resolveFallback(request, model);
-        if (fallback == null || tried.contains(fallback) || fallback.equals(model)) {
+        String fallback = nextFallbackCandidate(request, model, tried);
+        if (fallback == null) {
             return Mono.error(cause);
         }
         tried.add(model);
@@ -136,8 +140,8 @@ public class ModelRouter {
 
     private Flux<ServerSentEvent<String>> tryFallbackStream(
             String model, ChatCompletionRequest request, Set<String> tried, Throwable cause) {
-        String fallback = resolveFallback(request, model);
-        if (fallback == null || tried.contains(fallback) || fallback.equals(model)) {
+        String fallback = nextFallbackCandidate(request, model, tried);
+        if (fallback == null) {
             return Flux.error(cause);
         }
         tried.add(model);
@@ -152,11 +156,38 @@ public class ModelRouter {
         normalizeFilter.validateRequest(request, definition);
     }
 
-    private String resolveFallback(ChatCompletionRequest request, String model) {
+    /**
+     * 运行时降级链：显式 fallback_model → 场景绑定 fallback → session_model（尾位兜底）。
+     * 逐级返回首个未尝试且不等于当前模型的候选；链耗尽返回 null，由调用方上抛原错误。
+     */
+    private String nextFallbackCandidate(ChatCompletionRequest request, String model, Set<String> tried) {
         if (request.getFallbackModel() != null && !request.getFallbackModel().isBlank()) {
-            return request.getFallbackModel().strip();
+            String candidate = request.getFallbackModel().strip();
+            if (!candidate.equals(model) && !tried.contains(candidate)) {
+                return candidate;
+            }
         }
-        return registryCache.fallbackForModel(model).orElse(null);
+        String sceneFallback = registryCache.fallbackForModel(model).orElse(null);
+        if (sceneFallback != null && !sceneFallback.equals(model) && !tried.contains(sceneFallback)) {
+            return sceneFallback;
+        }
+        String sessionFallback = normalizeSessionFallback(request);
+        if (sessionFallback != null && !sessionFallback.equals(model) && !tried.contains(sessionFallback)) {
+            return sessionFallback;
+        }
+        return null;
+    }
+
+    /** session_model 兜底：须为注册表 enabled 模型 */
+    private String normalizeSessionFallback(ChatCompletionRequest request) {
+        String sessionModel = request.getSessionModel();
+        if (sessionModel == null || sessionModel.isBlank()) {
+            return null;
+        }
+        return registryCache.findDefinition(sessionModel.strip())
+                .filter(ModelDefinitionView::isEnabled)
+                .map(ModelDefinitionView::getModelName)
+                .orElse(null);
     }
 
     private ServerSentEvent<String> mapStreamEvent(

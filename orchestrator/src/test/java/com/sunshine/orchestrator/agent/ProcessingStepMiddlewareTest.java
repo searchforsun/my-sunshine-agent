@@ -491,6 +491,118 @@ class ProcessingStepMiddlewareTest {
     }
 
     @Test
+    void onActingSandboxWriteEditRunsParallelWithReadTools_notSerialized() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+        when(executionProperties.getReact()).thenReturn(null);
+
+        String readTool = "finance__list_expenses";
+        String writeTool = "sandbox__write";
+        String editTool = "sandbox__edit";
+
+        // sandbox 工具不进 Catalog（find 返回 empty），不应被当作业务写工具串行
+        when(toolCatalogService.find(readTool)).thenReturn(Optional.empty());
+        when(toolCatalogService.find(writeTool)).thenReturn(Optional.empty());
+        when(toolCatalogService.find(editTool)).thenReturn(Optional.empty());
+        when(toolCatalogService.timelineStepId(any())).thenReturn("tool-x");
+        when(toolCatalogService.timelinePhase(any())).thenReturn("tool");
+        when(toolCatalogService.displayName(any())).thenReturn("工具");
+        when(toolCatalogService.isRagTool(any())).thenReturn(false);
+        when(toolCatalogService.timelineSummary(any(), any())).thenReturn("done");
+        when(sandboxTimelineLabels.isSandboxTool(any())).thenReturn(false);
+        when(cancellableToolRunRegistry.isCancellableTool(any())).thenReturn(false);
+        when(session.beginToolStep(any(), any())).thenReturn("step-x");
+
+        ToolUseBlock read = mock(ToolUseBlock.class);
+        when(read.getName()).thenReturn(readTool);
+        when(read.getId()).thenReturn("tu-read");
+        when(read.getInput()).thenReturn(Map.of());
+        ToolUseBlock write = mock(ToolUseBlock.class);
+        when(write.getName()).thenReturn(writeTool);
+        when(write.getId()).thenReturn("tu-write");
+        when(write.getInput()).thenReturn(Map.of());
+        ToolUseBlock edit = mock(ToolUseBlock.class);
+        when(edit.getName()).thenReturn(editTool);
+        when(edit.getId()).thenReturn("tu-edit");
+        when(edit.getInput()).thenReturn(Map.of());
+
+        AtomicInteger nextCallCount = new AtomicInteger(0);
+        Function<ActingInput, Flux<AgentEvent>> next = in -> {
+            nextCallCount.incrementAndGet();
+            List<AgentEvent> events = new java.util.ArrayList<>();
+            for (ToolUseBlock tu : in.toolCalls()) {
+                events.add(new ToolResultEndEvent(
+                        "e-" + tu.getId(), null, "r-" + tu.getId(), tu.getId(), tu.getName(), ToolResultState.SUCCESS));
+            }
+            return Flux.fromIterable(events);
+        };
+
+        ProcessingStepMiddleware mw = newMiddleware();
+        ActingInput input = new ActingInput(List.of(read, write, edit));
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
+                .collectList().block();
+
+        // sandbox__write / sandbox__edit 视为非业务写工具 -> 与读工具同批并行 = 单批
+        assertThat(nextCallCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void onActingBusinessWriteStillSerialized_whileSandboxWriteParallel() {
+        StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
+        when(executionProperties.getReact()).thenReturn(null);
+
+        String sandboxWrite = "sandbox__write";
+        String sandboxRead = "sandbox__read";
+        String bizWrite = "finance__submit_expense";
+
+        ToolCatalogEntry bizWriteEntry = new ToolCatalogEntry(
+                bizWrite, "提交报销", "", "sdk", "finance", null, "", "", Map.of(), "write", true, true, true, null);
+        when(toolCatalogService.find(sandboxWrite)).thenReturn(Optional.empty());
+        when(toolCatalogService.find(sandboxRead)).thenReturn(Optional.empty());
+        when(toolCatalogService.find(bizWrite)).thenReturn(Optional.of(bizWriteEntry));
+        when(toolCatalogService.timelineStepId(any())).thenReturn("tool-x");
+        when(toolCatalogService.timelinePhase(any())).thenReturn("tool");
+        when(toolCatalogService.displayName(any())).thenReturn("工具");
+        when(toolCatalogService.isRagTool(any())).thenReturn(false);
+        when(toolCatalogService.timelineSummary(any(), any())).thenReturn("done");
+        when(sandboxTimelineLabels.isSandboxTool(any())).thenReturn(false);
+        when(cancellableToolRunRegistry.isCancellableTool(any())).thenReturn(false);
+        when(session.beginToolStep(any(), any())).thenReturn("step-x");
+
+        ToolUseBlock sw = mock(ToolUseBlock.class);
+        when(sw.getName()).thenReturn(sandboxWrite);
+        when(sw.getId()).thenReturn("tu-sw");
+        when(sw.getInput()).thenReturn(Map.of());
+        ToolUseBlock sr = mock(ToolUseBlock.class);
+        when(sr.getName()).thenReturn(sandboxRead);
+        when(sr.getId()).thenReturn("tu-sr");
+        when(sr.getInput()).thenReturn(Map.of());
+        ToolUseBlock bw = mock(ToolUseBlock.class);
+        when(bw.getName()).thenReturn(bizWrite);
+        when(bw.getId()).thenReturn("tu-bw");
+        when(bw.getInput()).thenReturn(Map.of());
+
+        AtomicInteger nextCallCount = new AtomicInteger(0);
+        Function<ActingInput, Flux<AgentEvent>> next = in -> {
+            nextCallCount.incrementAndGet();
+            List<AgentEvent> events = new java.util.ArrayList<>();
+            for (ToolUseBlock tu : in.toolCalls()) {
+                events.add(new ToolResultEndEvent(
+                        "e-" + tu.getId(), null, "r-" + tu.getId(), tu.getId(), tu.getName(), ToolResultState.SUCCESS));
+            }
+            return Flux.fromIterable(events);
+        };
+
+        ProcessingStepMiddleware mw = newMiddleware();
+        ActingInput input = new ActingInput(List.of(sw, sr, bw));
+        mw.onActing(mock(Agent.class), ctxWithBridge(), input, next)
+                .collectList().block();
+
+        // 沙箱写与沙箱读同批并行；业务写单独成批 -> 共 2 批
+        assertThat(nextCallCount.get()).isEqualTo(2);
+    }
+
+
+    @Test
     void onModelCallRepairsOrphanToolCalls() {
         StepEventBridge.bind(bridgeId, session, new ConcurrentLinkedQueue<>());
 

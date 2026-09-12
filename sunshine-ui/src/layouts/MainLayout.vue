@@ -3,7 +3,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { NLayout, NLayoutSider, NLayoutContent, NMenu, NDropdown, NIcon, NInput, useDialog, NButton, useMessage, NModal, NTabs, NTabPane, type MenuOption, type DropdownOption } from 'naive-ui'
 import { BookOutline, StatsChartOutline, SettingsOutline, LogOutOutline, EllipsisHorizontal, SparklesOutline, AppsOutline, HardwareChipOutline, ConstructOutline, CubeOutline, CodeSlashOutline, GitNetworkOutline, ChevronDownOutline, CreateOutline, TrashOutline, DocumentTextOutline, BriefcaseOutline, AlbumsOutline, AddOutline, ChatbubblesOutline, FolderOutline, FolderOpenOutline, SearchOutline, LayersOutline, PulseOutline } from '@vicons/ionicons5'
 import WorkspaceAddIcon from '../components/icons/WorkspaceAddIcon.vue'
-import { h, type Component, computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { h, type Component, computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useTheme } from '../composables/useTheme'
 import { useSidebar, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../composables/useSidebar'
 import { useChatStore, isTaskConversation } from '../stores/chatStore'
@@ -17,6 +17,7 @@ import type { WorkspaceVO } from '../api/workspaces'
 import BrandMark from '../components/BrandMark.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import UserSettingsModal from '../components/UserSettingsModal.vue'
+import { useViewportMode } from '../composables/useViewportMode'
 import ProjectGuideModal from '../components/sandbox/ProjectGuideModal.vue'
 import ConversationSidebarList from '../components/ConversationSidebarList.vue'
 import ConversationSearchModal from '../components/ConversationSearchModal.vue'
@@ -174,7 +175,8 @@ const activeKey = computed(() => {
 })
 
 const { theme, toggle: toggleTheme } = useTheme()
-const { sidebarVisible, sidebarWidth } = useSidebar()
+const { sidebarVisible, sidebarWidth, toggleSidebar, hideSidebar } = useSidebar()
+const { viewportWidth } = useViewportMode()
 
 const sidebarResizing = ref(false)
 
@@ -382,7 +384,15 @@ const { resolveIndicator } = useConversationSidebarIndicator()
 const nowTick = ref(Date.now())
 let nowTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { nowTimer = setInterval(() => { nowTick.value = Date.now() }, 60_000) })
-onUnmounted(() => { if (nowTimer) clearInterval(nowTimer) })
+onUnmounted(() => {
+  if (nowTimer) clearInterval(nowTimer)
+  window.removeEventListener('pointerdown', onWsGlobalDismiss, true)
+  window.removeEventListener('scroll', onWsGlobalDismiss, true)
+  window.removeEventListener('resize', onWsGlobalDismiss, true)
+})
+window.addEventListener('pointerdown', onWsGlobalDismiss, true)
+window.addEventListener('scroll', onWsGlobalDismiss, true)
+window.addEventListener('resize', onWsGlobalDismiss, true)
 
 /** 按工作区聚合任务会话，并按天分组 */
 const chatSidebarConversations = computed(() =>
@@ -435,6 +445,9 @@ function onTaskItemLeave() {
 const wsHover = ref<WorkspaceVO | null>(null)
 const wsHoverAnchor = ref<HTMLElement | null>(null)
 const wsHoverVisible = ref(false)
+const wsHoverCardRef = ref<HTMLElement | null>(null)
+const wsHoverTop = ref(0)
+const wsHoverLeft = ref(0)
 let wsHoverTimer: ReturnType<typeof setTimeout> | null = null
 
 function onWsNameEnter(ws: WorkspaceVO, e: MouseEvent) {
@@ -442,6 +455,7 @@ function onWsNameEnter(ws: WorkspaceVO, e: MouseEvent) {
   wsHoverAnchor.value = e.currentTarget as HTMLElement
   if (wsHoverTimer) clearTimeout(wsHoverTimer)
   wsHoverTimer = setTimeout(() => {
+    positionWsHoverCard()
     wsHoverVisible.value = true
   }, 350)
 }
@@ -451,6 +465,42 @@ function onWsNameLeave() {
   wsHoverVisible.value = false
   wsHover.value = null
   wsHoverAnchor.value = null
+}
+
+/** 定位到触发项右侧浮出；渲染后按实际尺寸钳制回视口内（窄屏全屏侧栏时收进屏幕） */
+function positionWsHoverCard() {
+  const anchor = wsHoverAnchor.value
+  if (!anchor) return
+  const rect = anchor.getBoundingClientRect()
+  wsHoverTop.value = rect.top
+  wsHoverLeft.value = rect.right + 8
+  void nextTick(() => {
+    const el = wsHoverCardRef.value
+    if (!el) return
+    const cardRect = el.getBoundingClientRect()
+    const margin = 8
+    wsHoverLeft.value = Math.min(wsHoverLeft.value, Math.max(window.innerWidth - cardRect.width - margin, margin))
+    wsHoverTop.value = Math.min(Math.max(wsHoverTop.value, margin), Math.max(window.innerHeight - cardRect.height - margin, margin))
+  })
+}
+
+/** 移动端无 hover：点按工作区名直接显示详情卡（桌面 hover 路径不受影响）；断点与 CSS @media 同源 */
+function onWsNameClick(ws: WorkspaceVO, e: MouseEvent) {
+  if (viewportWidth.value > 768) return
+  e.stopPropagation()
+  wsHover.value = ws
+  wsHoverAnchor.value = e.currentTarget as HTMLElement
+  if (wsHoverTimer) clearTimeout(wsHoverTimer)
+  positionWsHoverCard()
+  wsHoverVisible.value = true
+}
+
+/** 点按其他区域 / 滚动 / 旋转时关闭详情卡（窄屏无 mouseleave） */
+function onWsGlobalDismiss(e: Event) {
+  if (!wsHoverVisible.value) return
+  const target = e.target as Node | null
+  if (wsHoverAnchor.value && target && wsHoverAnchor.value.contains(target)) return
+  wsHoverVisible.value = false
 }
 
 function taskItemTime(conv: Conversation) {
@@ -692,8 +742,9 @@ onMounted(() => {
       :width="sidebarWidth"
       class="sidebar"
     >
-      <!-- Brand -->
+      <!-- Brand（窄屏：与页头同款 [|] 侧栏开关，点击收起菜单；纯 CSS 断点控制显隐） -->
       <div class="brand">
+        <SidebarToggle class="brand-toggle" />
         <BrandMark class="brand-mark" />
         <span class="brand-name">Sunshine<span class="brand-ai"> AI</span></span>
         <button
@@ -860,6 +911,7 @@ onMounted(() => {
                     class="ws-group-name"
                     @mouseenter="onWsNameEnter(ws, $event)"
                     @mouseleave="onWsNameLeave"
+                    @click="onWsNameClick(ws, $event)"
                   >{{ ws.name }}</span>
                   <div class="ws-group-menu-wrap" @click.stop>
                     <NDropdown
@@ -991,12 +1043,13 @@ onMounted(() => {
       :anchor="taskHoverAnchor"
       :workspace-name="workspaceNameOf(taskHoverConv.workspaceId)"
     />
-    <!-- 工作区 hover 详情卡（Teleport，对齐会话 hover 卡） -->
+    <!-- 工作区 hover 详情卡（Teleport，对齐会话 hover 卡；坐标经视口钳制） -->
     <Teleport to="body">
       <div
         v-if="wsHoverVisible && wsHover && wsHoverAnchor"
+        ref="wsHoverCardRef"
         class="ws-hover-card"
-        :style="{ top: wsHoverAnchor.getBoundingClientRect().top + 'px', left: (wsHoverAnchor.getBoundingClientRect().right + 8) + 'px' }"
+        :style="{ top: wsHoverTop + 'px', left: wsHoverLeft + 'px' }"
         role="tooltip"
       >
         <div class="ws-hover-title">{{ wsHover.name }}</div>
@@ -1053,6 +1106,8 @@ onMounted(() => {
     </NModal>
 
     <NLayoutContent class="content-area" :class="{ 'content-area--fill': contentFill }">
+      <!-- 窄屏：侧栏为全屏覆盖层，点遮罩关闭（显隐随侧栏，窄屏形态由纯 CSS 断点决定） -->
+      <div v-if="sidebarVisible" class="sidebar-backdrop" @click="hideSidebar" />
       <SidebarToggle v-if="!sidebarVisible && !hideSidebarFab" variant="fab" />
       <router-view />
     </NLayoutContent>
@@ -1070,8 +1125,7 @@ onMounted(() => {
 
 /* --- Layout --- */
 .app-shell {
-  height: 100vh;
-  min-height: 100vh;
+  height: var(--sun-app-height);
 }
 
 .app-shell :deep(.n-layout-scroll-container) {
@@ -1084,7 +1138,58 @@ onMounted(() => {
   border-right: 1px solid var(--sun-border) !important;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+}
+
+/* 窄屏堆栈由纯 CSS 断点驱动（≤768px）：菜单为一屏，全屏覆盖正文；
+   桌面档 .brand-toggle（[|] 开关）常驻隐藏，窄屏显示 */
+.brand-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 300;
+    /* !important 压过 NLayoutSider 内联 width/max-width，否则被钉在拖拽记忆宽度 */
+    width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
+  }
+
+  .brand-toggle {
+    display: inline-flex;
+  }
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 290;
+    background: rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* 窄屏品牌行内的侧栏开关（与页头同款图标） */
+.brand .sidebar-toggle {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin-right: 2px;
+  border-radius: 8px;
 }
 
 /* 拖拽中禁用 NLayoutSider 自带动画，实现即时跟随 */
@@ -1101,7 +1206,6 @@ onMounted(() => {
 .sidebar :deep(.n-layout-sider-scroll-container) {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
   height: 100%;
 }
 
@@ -1113,6 +1217,13 @@ onMounted(() => {
   width: 6px;
   cursor: col-resize;
   z-index: 10;
+}
+
+/* 窄屏全屏覆盖，无拖拽调宽 */
+@media (max-width: 768px) {
+  .sidebar .sidebar-resize-handle {
+    display: none;
+  }
 }
 
 .sidebar-resize-handle::after {
@@ -1613,7 +1724,7 @@ onMounted(() => {
   position: fixed;
   z-index: 1000;
   min-width: 220px;
-  max-width: 340px;
+  max-width: min(340px, calc(100vw - 16px));
   padding: 10px 12px;
   background: var(--sun-black);
   border: 1px solid var(--sun-border);
@@ -1878,7 +1989,7 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
 }
 
 .content-area--fill :deep(> *) {

@@ -11,7 +11,9 @@ class AgentExecutionPropertiesSubagentTest {
         AgentExecutionProperties.React.Subagent sub = new AgentExecutionProperties.React.Subagent();
         assertThat(sub.isEnabled()).isTrue();
         assertThat(sub.getMaxIters()).isEqualTo(30);
-        assertThat(sub.getTimeoutMs()).isEqualTo(180_000L);
+        assertThat(sub.getTimeoutMs()).isEqualTo(300_000L);
+        assertThat(sub.getTaskMaxIters()).isEqualTo(60);
+        assertThat(sub.getTaskTimeoutMs()).isEqualTo(600_000L);
     }
 
     @Test

@@ -41,9 +41,12 @@ public class OpenAiCompatibleAdapter implements LlmAdapter {
     /**
      * SSE 数据事件静默超时：上游持续发心跳注释（非 data 行）会重置 Netty 读空闲定时器，
      * 无法用字节级 ReadTimeoutHandler 实现「两次 data 之间静默即降级」，须在此按 data 行间隔判定。
+     * 阈值须覆盖上游模型的大上下文 prefill（并行工具批次后下一轮上下文骤增，
+     * 首 token 前可能超过 1 分钟无 data 产出）。与 llm.webclient.response-timeout
+     * （字节级读空闲，心跳注释重置）相互独立，本判定为数据静默的权威降级点。
      */
-    @Value("${llm.webclient.read-idle-timeout:60s}")
-    private Duration readIdleTimeout = Duration.ofSeconds(60);
+    @Value("${llm.webclient.read-idle-timeout:180s}")
+    private Duration readIdleTimeout = Duration.ofSeconds(180);
 
     @Override
     public boolean supports(String model) {

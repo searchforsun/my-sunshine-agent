@@ -206,7 +206,8 @@ public class AgentNodeHandler implements StreamingNodeHandler {
                 streamCtx.persistedPlanId(),
                 kbId,
                 null, null, null,
-                streamCtx.conversationKind()));
+                streamCtx.conversationKind(),
+                streamCtx.modelOverride()));
     }
 
     private static String resolveAgentKbId(NodeSpec spec, ExecutionStreamContext streamCtx) {

@@ -72,8 +72,14 @@ public class AgentExecutionProperties {
         @Data
         public static class Subagent {
             private boolean enabled = true;
+            /** chat 档：单 run 轮数上限 */
             private int maxIters = 30;
-            private long timeoutMs = 180_000L;
+            /** chat 档：单 run 墙钟 */
+            private long timeoutMs = 300_000L;
+            /** task 档：重活（沙箱编码/多步调研）轮数翻倍 */
+            private int taskMaxIters = 60;
+            /** task 档：墙钟翻倍 */
+            private long taskTimeoutMs = 600_000L;
         }
 
         @Data

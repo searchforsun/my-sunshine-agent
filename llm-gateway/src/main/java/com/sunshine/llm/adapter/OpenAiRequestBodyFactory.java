@@ -45,6 +45,8 @@ public class OpenAiRequestBodyFactory {
         body.remove("skip_cache");
         body.remove("fallback_model");
         body.remove("fallbackModel");
+        body.remove("session_model");
+        body.remove("sessionModel");
         String model = request != null ? request.getModel() : null;
         mergeRequestExtras(body, model);
         normalizeAndClampOutputTokens(body, model);
@@ -88,7 +90,13 @@ public class OpenAiRequestBodyFactory {
         }
     }
 
-    /** 输出上限 SSOT = max_completion_tokens（注册表 max_output_tokens）；超出则钳制。 */
+    /**
+     * 输出上限 SSOT = 注册表 {@code max_output_tokens}。
+     * <p>调用方可能只写 {@code max_tokens}（AgentScope streaming）或 {@code max_completion_tokens}
+     * （内部辅助补全），部分上游只认其中一键；两键同值下发，避免上游取到较小的一键而截断正文。
+     * <p>调用方未声明时用注册表值兜底——禁止在代码里留隐式小默认，否则思考型模型会把预算全花在
+     * reasoning 上、content 为空。
+     */
     private void normalizeAndClampOutputTokens(Map<String, Object> body, String model) {
         if (model == null || model.isBlank() || registryCache == null) {
             return;
@@ -98,13 +106,22 @@ public class OpenAiRequestBodyFactory {
             return;
         }
         int cap = def.getMaxOutputTokens();
-        Object completion = body.get("max_completion_tokens");
-        if (completion instanceof Number n) {
-            int requested = n.intValue();
-            if (requested > cap) {
-                log.info("[LLM-GW] clamp max_completion_tokens {} → {} for model={}", requested, cap, model);
-                body.put("max_completion_tokens", cap);
-            }
+        Integer requested = minNumber(body.get("max_completion_tokens"), body.get("max_tokens"));
+        if (requested != null && requested > cap) {
+            log.info("[LLM-GW] clamp max output tokens {} → {} for model={}", requested, cap, model);
         }
+        int budget = requested != null ? Math.min(requested, cap) : cap;
+        body.put("max_completion_tokens", budget);
+        body.put("max_tokens", budget);
+    }
+
+    /** 取两键中较小的已声明预算（未声明为 null） */
+    private static Integer minNumber(Object primary, Object secondary) {
+        Integer left = primary instanceof Number n ? n.intValue() : null;
+        Integer right = secondary instanceof Number n ? n.intValue() : null;
+        if (left == null) {
+            return right;
+        }
+        return right == null ? left : Math.min(left, right);
     }
 }

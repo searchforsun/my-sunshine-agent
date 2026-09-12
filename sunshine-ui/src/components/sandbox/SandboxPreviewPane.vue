@@ -32,6 +32,8 @@ const props = defineProps<{
   focusLineEnd?: number
   /** 显示路径转换（工作区模式去掉项目根前缀）；缺省原样展示 */
   displayPath?: (path: string) => string
+  /** 窄屏堆栈：返回文件树按钮可见（存在已打开文件时） */
+  mobileBackVisible?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -40,6 +42,8 @@ const emit = defineEmits<{
   toggleMdRawMode: []
   copyPreview: []
   addSelection: [payload: { start: number; end: number }]
+  /** 窄屏堆栈：返回文件树 */
+  mobileBack: []
 }>()
 
 const tabbarRef = defineModel<HTMLElement | null>('tabbarRef', { default: null })
@@ -160,6 +164,18 @@ watch(
 
 <template>
   <div class="file-preview-pane">
+    <button
+      v-if="mobileBackVisible"
+      type="button"
+      class="preview-back-btn"
+      title="返回文件树"
+      aria-label="返回文件树"
+      @click="emit('mobileBack')"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+      </svg>
+    </button>
     <div v-if="openTabs.length" ref="tabbarRef" class="editor-tabbar">
       <button
         v-for="tab in openTabs"
@@ -269,6 +285,32 @@ watch(
   min-width: 0;
   overflow: hidden;
   flex: 1 1 auto;
+  position: relative;
+}
+
+/* 窄屏堆栈：返回文件树（悬浮于面包屑行首） */
+.preview-back-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 5;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--sun-border);
+  border-radius: 8px;
+  background: var(--sun-black);
+  color: var(--sun-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.preview-back-btn:hover {
+  border-color: var(--sun-border-light);
+  color: var(--sun-text);
 }
 
 .editor-tabbar {

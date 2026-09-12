@@ -1,8 +1,9 @@
 # orchestrator 完全无状态 + Activity 调度（三高）设计
 
-> **日期**：2026-08-03 · **修订**：2026-08-12（v2：从「generation 粘连可续跑」升级为「Activity 任意实例调度」）  
+> **日期**：2026-08-03 · **修订**：2026-08-12（v2：从「generation 粘连可续跑」升级为「Activity 任意实例调度」）· **2026-09-04 复核**  
 > **状态**：📋 设计评审中 · **类型**：架构重构 · **编排层唯一 SSOT（无状态 / 扩缩）**  
-> **对齐**：[planner-executor-rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./archive/2026-07-29-unified-routing-design.md) · [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md)
+> **现状**：物理仍为单实例 `sunshine-orchestrator`(:8200)；核心（Activity 调度、router/worker/context 三层拆分、执行态 Redis 化）**未落地**；仅 PlanNotebook 落 Redis、SSE 写 Redis Stream 已对齐。  
+> **对齐**（**均已归档**）：[planner-executor-rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md) · [unified-routing v6](./archive/2026-07-29-unified-routing-design.md) · [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md)
 
 ---
 
@@ -34,6 +35,24 @@
 | 将子 Agent 内部每个 think/tool 拆成 Activity | 过碎；整次 spawn = 一个 `AGENT_SUB` |
 | 第一波就上 Temporal | 先 Redis 自研调度；`ActivityScheduler` 接口可替换 |
 | 恢复 PlanApproval | 已由 [rebuild D5](./archive/2026-08-05-planner-executor-rebuild-design.md) 废弃 |
+
+### 0.3.5 可行性评估（2026-09-04 代码复核）
+
+**结论：方案整体可行，代码库已具备一部分地基，但落地依赖一个关键前提——必须彻底把「内存 Future / 内存句柄」改为「Redis 可跨实例唤醒」。**
+
+按成功判据 S1–S5 对照当前代码（`orchestrator` 仍为单实例 :8200）：
+
+| 判据 | 现状地基 | 结论 |
+|------|----------|------|
+| S1 SIGKILL 换机 | StateStore(TTL7d) + `GenerationJob` checkpoint + PlanNotebook(Redis) | 部分成立——仅「整段 ReAct」路径；节点/任务级 checkpoint 未 Activity 化 |
+| S2 相邻节点不同 workerId | `WorkflowExecutor` 单次 `Flux` 串行遍历节点，节点间无调度边界 | ❌ 需重构为「节点入队 + 领取」 |
+| S3 非执行实例可取消 | `HitlTokenRegistry` 内存 `CompletableFuture` + Redis token；跨实例只删 tok、**唤醒不了** | ❌ 核心缺口（§6.2） |
+| S4 router 被杀不影响 | router 只读 `GenerationStreamService`(Redis Stream) | ✅ 基本具备 |
+| S5 SSE 读 Stream 无亲和 | `subscribeToEnd` 已从 Redis Stream 读取 | ✅ 已具备 |
+
+**三个技术难点**：① 跨实例唤醒（最硬，见 §6.2 BLPOP）；② 粒度收敛 —— `WorkflowExecutor`/`PlannerHarnessExecutor` 把「进程内嵌循环推进」改成「判依赖 + enqueue + 屏障聚合」；③ 幂等与双写（§7，节点/task 级幂等键 + 版本号）。
+
+**投入产出排序**：波次 A（内存外置）是 S1–S5 公共前置 → 波次 B1 `WF_NODE`（叶节点）→ B2 `AGENT_WORKER`+`AGENT_SUB` → B3 `PLAN_ROUND` → C/D 物理拆分与 `REACT_TURN`。
 
 ### 0.4 与 v1（2026-08-03）的差异
 
@@ -119,24 +138,32 @@
 | `REACT_TURN` | 普通 ReAct 一轮（可选） | StateStore checkpoint | 更新 checkpoint / 终态 | **P3** |
 
 > **粒度红线**：`AGENT_SUB` = 一次 spawn 全过程，**禁止**把子 Agent 内 think/tool 再拆 Activity。`REACT_TURN` 未就绪前，fast 模式可暂保留「单 Activity 包整段 ReAct」（仍外置状态，崩溃换机续跑），但不阻塞 P0–P2。
+>
+> **`WF_NODE` 粒度限定（2026-09-04 复核）**：`WF_NODE` **只覆盖叶子执行节点**（`llm`/`agent`/`tool`/`answer`），把 `loop`（do-while）、`parallel`/`gateway`、`exclusive gateway`（互斥门）的**调度判断**继续留在 `WorkflowScheduler`——在 `complete` 时算后继、批量 `enqueue`，**不对 `FOR_ITERATION` 这类伪节点单独立 Activity**。否则每个 loop 迭代都被拆成独立 lease，调度开销与乱序风险不成比例（当前 `WorkflowExecutor` 为单次 `Flux` 内串行遍历节点，节点间本就无调度边界，须重构为「节点入队 + 领取」）。
 
 ### 3.3 调度接口（实现可 Redis，可日后 Temporal）
 
 ```java
 public interface ActivityScheduler {
     String enqueue(ActivitySpec spec);
+    /** 批量入队（一对多：WF 并行分支 / Harness 波次派发）。单条 enqueue 保留。 */
+    List<String> enqueueBatch(List<ActivitySpec> specs);
     Optional<ActivityLease> claim(String workerId, Duration lease, Set<String> types);
     void heartbeat(String activityId, String workerId);
     void complete(String activityId, ActivityResult result);
     void fail(String activityId, ActivityError error);
+    /** 依赖就绪判定 —— 由调度器算 ready 集，而非 Worker 硬编码等待。 */
+    void onCompleted(String activityId, String dependsOn, Runnable ready);
 }
 ```
 
+**屏障语义（2026-09-04 复核）**：原接口只有 `enqueue/claim/complete/fail`，无法表达正文 §4.3 反复出现的「波次屏障」「父 Activity 等子结果」「dependsOn 波次」。补 `enqueueBatch` + `onCompleted`（`dependsOn` 依赖键），**ready 集就绪判定收敛到调度器**，否则「屏障聚合」会退化为在 Worker 里硬编码等待，重回粘连。
+
 **后继怎么来**：
 
-- `WF_NODE` complete → `WorkflowScheduler` 根据拓扑算 ready 节点，批量 `enqueue`（网关后可并行多 Activity）。
-- `PLAN_ROUND` complete → 按 H1 taskQueue enqueue 多个 `AGENT_WORKER`；全部完成后由屏障（Redis 计数 / 父 Activity 等待）触发下一 `PLAN_ROUND`。
-- 父 Activity 需要子结果时：**enqueue 子 Activity + 等待完成通知**（Redis key / pub/sub），禁止本进程同步嵌套长跑导致粘连（HITL 等待除外，见 §6）。
+- `WF_NODE` complete → `WorkflowScheduler` 根据拓扑算 ready 节点，`enqueueBatch`（网关后可并行多 Activity）。
+- `PLAN_ROUND` complete → 按 H1 taskQueue `enqueueBatch` 多个 `AGENT_WORKER`；全部完成后由屏障（Redis 计数 / `onCompleted` 聚合）触发下一 `PLAN_ROUND`。
+- 父 Activity 需要子结果时：**enqueue 子 Activity + `onCompleted` 等待**，禁止本进程同步嵌套长跑导致粘连（HITL 等待除外，见 §6）。
 
 ### 3.4 Redis 键（最小集）
 
@@ -187,7 +214,7 @@ claim WF_NODE → 读 ckpt → 执行单节点 → 写结果/推进 schedule
   → enqueue 下一波 ready 节点 → complete
 ```
 
-暂停 / 节点 Recovery / HITL：节点边界落 Redis；resume = 再 enqueue（对齐现有 pause Hash，键迁到 run/plan 维度）。
+暂停 / 节点 Recovery / HITL：节点边界落 Redis；resume = 再 enqueue（现为内存 `WorkflowPauseService`，波次 A 迁到 run/plan 维度 Redis Hash）。
 
 **验收**：node-1 在 Worker-A，node-2 在 Worker-B；杀 A 不影响已入队的 node-2，进行中 node 回队后换机。
 
@@ -211,11 +238,14 @@ H1 PlanNotebook **仅 Redis**（rebuild S2）；handoff 双写规则不变，但
 - **目标态**：可选 `REACT_TURN` 细切。
 - **过渡态**：一个 Activity 跑完整段 ReAct + 既有 StateStore checkpoint；崩溃 = lease 过期换机续跑（等同 v1 generation 续跑，但已纳入调度器）。
 
+> **REACT_TURN 明确推迟（2026-09-04 复核）**：`fast` 为单任务短耗时场景，切 `REACT_TURN` 需把 StateStore checkpoint 精确到 turn，成本高、收益仅有「fast 跨机」。**锁死**：`fast` 保持「单 Activity 包整段 ReAct」（方案 §4.4 过渡态），只外置状态、不细切，精力留给 P0–P2。`REACT_TURN` 仅作波次 D 可选灰度。
+
 ### 4.5 子 Agent（`AGENT_SUB`）
 
 - **是**：整次 spawn = 一个 Activity。
 - **否**：不拆内部 think/tool。
 - 父（`AGENT_WORKER` 或过渡期 ReAct）`enqueue` + await；取消写 `activity:{id}:cancel`（吸收现 `SpawnRunRegistry` 语义）。
+- **取消语义重构（2026-09-04 复核）**：现 `SpawnRunRegistry` 靠 `bindAgent`→`agent.interrupt()` **持有进程内 Agent 对象**跨机（`SpawnRunRegistry`/`HitlTokenRegistry`/`AsyncToolRunRegistry` 均为「内存对象 + Redis 状态」骈合体，confirm/resolve 打在非执行实例上是哑的）。跨实例后新 Worker **未必持有该 Agent 引用**。改为：**丢弃 `agentRef`**，取消 = 该 `AGENT_SUB` Activity 哨兵检测 `activity:{id}:cancel` 标记 → 结束本 Activity 并 `fail(cancelled)`；终态 SSE 由「`SpawnRunRegistry.cancel` 直写 GenerationJob」改为「经 Activity 结果回写 Stream」。
 - 深度与预算：沿用 `max-sub-agents` / 沙箱同族预算。
 
 ---
@@ -277,9 +307,13 @@ sunshine:activity:{activityId}:cancel
 - Run 取消：级联标记所有未完成子 Activity。
 - 沙箱取消：句柄在 Redis，任意机直接调 sandbox-service（无需哨兵）。
 
+> **AGENT_SUB 取消路径（接 §4.5）**：run 级联标记所有子 Activity 时，`AGENT_SUB` 走**哨兵检测取消标记 → 结束本 Activity 并 `fail(cancelled)`**，不再 `agent.interrupt()`（跨实例后无进程内 Agent 引用）。
+
 ### 6.2 HITL / Decision / Recovery
 
-`RedisBlockingNotifier`：执行机 await channel；confirm/resolve 任意机 `publish` + 结果 key 双写防丢。`request_decision`（含未来 Planner D12）复用同一模式。~~PlanApproval~~ 不恢复。
+**定向阻塞唤醒（2026-09-04 复核）**：HITL / Decision / 子 Agent 等待的本质是 **1:1 定向阻塞**（一个执行机在等，某个特定 resolve 唤醒它），**不是广播**。故**舍弃 pub/sub**（多实例会同时唤醒全部等待 Worker → 惊群），改用 Redis **`BLPOP`/`BRPOP` 到 `activity:{activityId}:gate` 队列**：执行机 `BRPOP` 阻塞，confirm/resolve 方 `LPUSH` 唤醒 + 结果 key 双写防丢。天然 1:1、可跨实例、无惊群。`request_decision`（含已实现的 Planner D12）复用同一模式。~~PlanApproval~~ 不恢复。
+
+> **跨实例唤醒可行性（2026-09-04 复核）**：现 `HitlTokenRegistry` 为「**内存 `CompletableFuture` + Redis token**」，`confirm` 命中本地 waiter 才 `complete`，跨实例只要删 Redis token、**唤醒不了执行机**（日志 `无本地 waiter（可能已超时或其它实例）`）。这是 S3 的核心缺口，`RedisBlockingNotifier` 正是为此设计——须把执行机 await 渠道从内存 Future 换成 Redis 阻塞读。
 
 ### 6.3 锁与暂停
 
@@ -290,6 +324,8 @@ sunshine:activity:{activityId}:cancel
 
 禁止跨请求单例驻留。**per-Activity**（或 per-Run 但存 Redis）上下文；跨 Activity 只共享 Redis 中的 timeline/seq 约定，不共享堆内 Map。
 
+> **seq 跨机乱序（2026-09-04 复核）**：现 `GenerationJob` 的 SSE seq 依赖**本机单调递增假设**（注释「要求写入单调递增；并发 XADD 会触发 Redis equal-or-smaller」）。跨实例后多 Worker 并发写同一 run Stream，**seq 分配改为 Redis `INCR`（`sunshine:run:{runId}:seq`）**，禁止本机单调假设（呼应 §12「seq 分配改 Redis INCR」）。
+
 ### 6.5 心跳
 
 | 级别 | 用途 |
@@ -297,6 +333,8 @@ sunshine:activity:{activityId}:cancel
 | Activity lease TTL | **调度正确性**（过期回队） |
 | Run heartbeat（可选） | 前端「仍在跑」与孤儿检测 |
 | SSE orphan | Stream 侧超时 → 可标 INTERRUPTED；自动续跑由调度器回队完成时可不依赖用户点击（WF/Harness 默认） |
+
+> **回队提示（2026-09-04 复核）**：lease 过期回队 ≠ 换机重跑。**回队时应在 `run:{runId}:stream` 写 `step_delta(activity-requeued)` 或复用 running 状态心跳**，否则前端已在 SSE `completed` 后又见 `activity pending`，出现「已结束又活过来」二义。与 §12「lease 回队要写 Stream 提示」呼应。
 
 ---
 
@@ -412,6 +450,8 @@ Notebook 键：`sunshine:plan:notebook:{sessionId}`（与 rebuild §5.1 v7 一�
 | at-least-once 双写业务副作用 | 节点/task 级幂等；工具侧尽量自然幂等或幂等键 |
 | SSE 与执行脱节导致「假死」 | Run 级聚合状态 + 队列积压指标；lease 回队要写 Stream 提示 |
 | Bridge/Timeline seq 跨机乱序 | seq 分配改 Redis INCR；禁止本机单调假设 |
+| **跨实例唤醒失效（S3）** | 弃内存 `CompletableFuture`；执行机 `BRPOP activity:{id}:gate` 定向阻塞，resolve 方 `LPUSH`（见 §6.2，勿用 pub/sub） |
+| **WF_NODE 节点过碎** | 仅叶节点切 Activity；loop/parallel/gateway 调度逻辑留 `WorkflowScheduler`（见 §3.2 粒度红线） |
 | 过早物理拆分 | 波次 C 必须在 B1 验收后 |
 
 ---
@@ -436,7 +476,6 @@ Notebook 键：`sunshine:plan:notebook:{sessionId}`（与 rebuild §5.1 v7 一�
 | [planner-executor-rebuild](./archive/2026-08-05-planner-executor-rebuild-design.md) | 逻辑 Planner/Worker/H1；本文提供物理 Activity 映射 |
 | [unified-routing v6](./archive/2026-07-29-unified-routing-design.md) | router 侧 fast/pro/workflow；本文负责投递哪种首 Activity |
 | [request-decision D12](archive/2026-08-12-react-request-decision-planner-d12.md) | Planner HITL；阻塞走 §6.2 |
-| 本文 v1 段落 | 控制面细节（cancel/HITL/sandbox）并入 §6；generation 粘连模型废弃 |
 
 ---
 

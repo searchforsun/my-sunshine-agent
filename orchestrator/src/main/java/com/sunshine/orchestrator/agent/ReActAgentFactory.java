@@ -13,6 +13,7 @@ import com.sunshine.orchestrator.registry.ResolvedModelScene;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.state.AgentStateStore;
+import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
@@ -72,6 +73,11 @@ public class ReActAgentFactory {
                 .model(model)
                 .toolkit(toolkit)
                 .maxIters(maxIters)
+                // 工具执行配置：AS 2.0 静态默认给每个工具调用 5min 超时 + 失败重试 3 次，
+                // 会在 300s 整点中断 spawn/沙箱长命令等长工具且表象为「已取消」。
+                // 工具墙钟由项目分层持有（spawn subagent.timeout-ms、async-tool.exec-wall-timeout-sec、
+                // harness.worker.timeout-ms），重试语义由各工具/客户端自持，故此处置空整层。
+                .toolExecutionConfig(ExecutionConfig.builder().build())
                 .stateStore(stateStore)
                 .enablePendingToolRecovery(true)
                 .middlewares(middlewareFactory.sharedChain());
@@ -111,7 +117,9 @@ public class ReActAgentFactory {
                 log.warn("[ReActAgentFactory] modelConfigJson 解析失败: {}", e.getMessage());
             }
         }
-        if (resolved.extras() != null && resolved.extras().get("max_tokens") instanceof Number n) {
+        // 注册表 request_extras SSOT 键 = max_completion_tokens（OpenAIChatModel 上游契约），
+        // 思考型模型经此声明各自的输出预算（如 glm-5.3-flash 128000），不依赖全局 max-tokens
+        if (resolved.extras() != null && resolved.extras().get("max_completion_tokens") instanceof Number n) {
             resolvedMaxTokens = n.intValue();
         }
         // 按注册表模型上限钳制（如 qwen-max 仅允许 ≤8192）
@@ -120,17 +128,25 @@ public class ReActAgentFactory {
                     resolvedMaxTokens, resolved.maxOutputTokens(), resolved.effectiveModel());
             resolvedMaxTokens = resolved.maxOutputTokens();
         }
-        // 每个 Agent 运行独立 transport：按角色注入 call_site（phase5 5.3 用量/路由维度）
+        // 每个 Agent 运行独立 transport：按角色注入 call_site（5.3 用量/路由维度）；
+        // session_model 兜底仅在 agent 未显式配置模型时携带（配置模型优先于会话选择，不传递混淆信号）
         String callSite = resolveCallSite(request);
+        String sessionModel = request != null
+                && (request.modelConfigJson() == null || request.modelConfigJson().isBlank()
+                || "{}".equals(request.modelConfigJson()))
+                ? request.modelOverride()
+                : null;
         LoadBalancedWebClientTransport roleTransport =
-                new LoadBalancedWebClientTransport(webClientBuilder, "http://sunshine-llm-gateway", callSite);
+                new LoadBalancedWebClientTransport(webClientBuilder, "http://sunshine-llm-gateway",
+                        callSite, sessionModel);
         return OpenAIChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(resolved.effectiveModel())
                 .baseUrl(overriddenBaseUrl)
                 .httpTransport(roleTransport)
                 .contextWindowSize(resolved.contextWindow())
-                .generateOptions(GenerateOptions.builder().maxTokens(resolvedMaxTokens).build())
+                .generateOptions(buildGenerateOptions(
+                        resolvedMaxTokens, request != null ? request.reasoningEffort() : null))
                 .stream(true)
                 .build();
     }
@@ -149,26 +165,35 @@ public class ReActAgentFactory {
     }
 
     /**
-     * D10：modelConfigJson.model &gt; modelOverride &gt; scene（MAIN=chat / SUB=subagent / PLANNER=planner）。
+     * 会话思考深度（仅 MAIN 传入；空/空白则不设该键），
+     * 由 AgentScope formatter 写入上游 {@code reasoning_effort}；
+     * 缺省时由 llm-gateway 用注册表 request_extras 补齐。
+     */
+    static GenerateOptions buildGenerateOptions(int maxTokens, String reasoningEffort) {
+        GenerateOptions.Builder options = GenerateOptions.builder().maxTokens(maxTokens);
+        if (StringUtils.hasText(reasoningEffort)) {
+            options.reasoningEffort(reasoningEffort.strip());
+        }
+        return options.build();
+    }
+
+    /**
+     * 解析链：modelConfigJson.model（agent 配置，最高位）→ 会话所选模型 → scene primary/fallback →
+     * fail-fast；场景按 role 选择（MAIN=chat / SUB、WORKER=subagent / PLANNER=planner）。
      */
     ResolvedModelScene resolveModel(AgentRunRequest request) {
         String fromConfig = extractModelFromConfigJson(request != null ? request.modelConfigJson() : null);
-        String override = StringUtils.hasText(fromConfig)
-                ? fromConfig
-                : (request != null ? request.modelOverride() : null);
+        String sessionModel = request != null ? request.modelOverride() : null;
         AgentRole role = request != null ? request.role() : AgentRole.MAIN;
         if (role == AgentRole.MAIN) {
-            // MAIN chat：无效会话模型需 warning 标记
-            if (StringUtils.hasText(fromConfig)) {
-                return modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), fromConfig);
-            }
-            return modelSceneResolver.resolveChat(override);
+            // MAIN chat：会话模型无效时保留 warning 标记
+            return modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), fromConfig, sessionModel);
         }
         if (role == AgentRole.SUB || role == AgentRole.WORKER) {
             // WORKER 暂复用 subagent scene（无独立 worker scene）；避免落入 planner
-            return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), override);
+            return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), fromConfig, sessionModel);
         }
-        return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), override);
+        return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), fromConfig, sessionModel);
     }
 
     /** 供 ReActAgentRuntime.resolveModelName 复用，保证 usage 帧模型名与 factory 实际执行模型一致 */

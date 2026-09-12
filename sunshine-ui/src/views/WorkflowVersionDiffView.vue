@@ -679,7 +679,7 @@ watch([fromVersion, toVersion], () => {
 .diff-split {
   flex: 1;
   min-height: 280px;
-  max-height: calc(100vh - 280px);
+  max-height: calc(var(--sun-app-height) - 280px);
   overflow: auto;
   font-family: var(--sun-font-mono);
   font-size: 12px;

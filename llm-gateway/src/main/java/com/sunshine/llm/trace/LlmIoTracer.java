@@ -41,8 +41,9 @@ public class LlmIoTracer {
         int messageCount = request.getMessages() != null ? request.getMessages().size() : 0;
         int toolCount = request.getTools() != null ? request.getTools().size() : 0;
         String lastUser = lastUserPreview(request);
-        log.info("[LLM-IO] request model={} stream={} messages={} tools={} lastUser={}",
-                request.getModel(), request.getStream(), messageCount, toolCount, lastUser);
+        log.info("[LLM-IO] request model={} stream={} messages={} tools={} sessionModel={} lastUser={}",
+                request.getModel(), request.getStream(), messageCount, toolCount,
+                request.getSessionModel(), lastUser);
     }
 
     public Flux<ServerSentEvent<String>> traceStream(String model, Flux<ServerSentEvent<String>> upstream) {

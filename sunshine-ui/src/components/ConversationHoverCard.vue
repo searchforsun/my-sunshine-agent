@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { Conversation } from '../stores/chatStore'
 import { formatConversationTime } from '../utils/conversationTime'
 import { listCheckouts } from '../api/workspaceGit'
@@ -20,6 +20,7 @@ const props = defineProps<{
 const visible = ref(false)
 const top = ref(0)
 const left = ref(0)
+const cardRef = ref<HTMLElement | null>(null)
 let showTimer: ReturnType<typeof setTimeout> | null = null
 
 /** 反查 checkoutId 对应的真实分支名；未就绪返回空串 */
@@ -68,7 +69,21 @@ function show() {
     top.value = rect.top
     left.value = rect.right + 8
     visible.value = true
+    // 渲染后按实际卡片尺寸钳制到视口内：窄屏侧栏全屏时右侧无空间，卡片回贴屏幕内
+    void nextTick(() => clampIntoViewport())
   }, 350)
+}
+
+/** 卡片超出视口右/下缘时平移回收；窄屏直接贴屏幕内边距显示 */
+function clampIntoViewport() {
+  const el = cardRef.value
+  if (!el) return
+  const cardRect = el.getBoundingClientRect()
+  const margin = 8
+  const maxLeft = window.innerWidth - cardRect.width - margin
+  const maxTop = window.innerHeight - cardRect.height - margin
+  left.value = Math.min(left.value, Math.max(maxLeft, margin))
+  top.value = Math.min(Math.max(top.value, margin), Math.max(maxTop, margin))
 }
 
 function hide() {
@@ -77,8 +92,26 @@ function hide() {
   visible.value = false
 }
 
+/** 移动端无 mouseleave：点按任意处 / 列表滚动 / 旋转窗口时关闭卡片 */
+function onGlobalDismiss(e: Event) {
+  if (!visible.value) return
+  const target = e.target as Node | null
+  if (props.anchor && target && props.anchor.contains(target)) return
+  hide()
+}
+function onScrollDismiss() {
+  hide()
+}
+
+window.addEventListener('pointerdown', onGlobalDismiss, true)
+window.addEventListener('scroll', onScrollDismiss, true)
+window.addEventListener('resize', onScrollDismiss)
+
 onBeforeUnmount(() => {
   if (showTimer) clearTimeout(showTimer)
+  window.removeEventListener('pointerdown', onGlobalDismiss, true)
+  window.removeEventListener('scroll', onScrollDismiss, true)
+  window.removeEventListener('resize', onScrollDismiss)
 })
 
 defineExpose({ show, hide })
@@ -88,6 +121,7 @@ defineExpose({ show, hide })
   <Teleport to="body">
     <div
       v-if="visible"
+      ref="cardRef"
       class="conv-hover-card"
       :style="{ top: `${top}px`, left: `${left}px` }"
       role="tooltip"
@@ -153,5 +187,13 @@ defineExpose({ show, hide })
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 窄屏：点按（非 hover）场景的详情卡，贴屏幕内边距展示（纯 CSS 断点） */
+@media (max-width: 768px) {
+  .conv-hover-card {
+    min-width: 0;
+    max-width: calc(100vw - 16px);
+  }
 }
 </style>

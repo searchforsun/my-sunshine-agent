@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { NIcon, NPopover, NTooltip } from 'naive-ui'
+import { computed, h, ref } from 'vue'
+import { NDropdown, NIcon, NPopover, NTooltip } from 'naive-ui'
 import { CheckmarkOutline, ChevronDownOutline, CubeOutline } from '@vicons/ionicons5'
 import type { ModelCapabilities } from '../../api/models'
+import type { ReasoningEffort } from '../../composables/useModelPreference'
 
 export interface ChatModelOption {
   label: string
@@ -15,19 +16,54 @@ export interface ChatModelOption {
 
 const props = defineProps<{
   modelValue: string | null
+  reasoningEffort?: ReasoningEffort | null
   options: ChatModelOption[]
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
+  'update:reasoningEffort': [value: ReasoningEffort | null]
 }>()
 
 const showMenu = ref(false)
 
+/** 思考深度档位（OpenAI reasoning_effort）；选中推理模型未显式选择时默认 high */
+const effortChoices: Array<{ label: string; value: ReasoningEffort }> = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' },
+]
+
+/** 档位 wire 值 → 展示标签 */
+const EFFORT_LABELS = new Map<string, string>([
+  ['minimal', '极简'],
+  ['low', '低'],
+  ['medium', '中'],
+  ['high', '高'],
+])
+
+/** 行内档位触发标签：选中该模型用已选值，未选中按缺省「高」展示 */
+function effortLabelFor(opt: ChatModelOption): string {
+  const effort = props.modelValue === opt.value ? (props.reasoningEffort ?? 'high') : 'high'
+  return EFFORT_LABELS.get(effort) ?? '高'
+}
+
+/** 二级下拉 options（Naive UI Dropdown)；当前档位打勾 */
+function effortDropdownOptions(opt: ChatModelOption) {
+  const active = props.modelValue === opt.value ? (props.reasoningEffort ?? 'high') : 'high'
+  return effortChoices.map((c) => ({
+    label: c.label,
+    key: c.value,
+    icon: () =>
+      h(NIcon, { size: 14, color: c.value === active ? 'var(--sun-text, #ececec)' : 'transparent' },
+        { default: () => h(CheckmarkOutline) }),
+  }))
+}
+
 const current = computed(() => {
   if (!props.modelValue) {
-    return { label: '默认', value: null as string | null }
+    return { label: 'Auto', value: null as string | null }
   }
   const hit = props.options.find((o) => o.value === props.modelValue)
   return hit
@@ -35,9 +71,24 @@ const current = computed(() => {
     : { label: props.modelValue, value: props.modelValue }
 })
 
-function select(value: string | null, disabled?: boolean) {
-  if (disabled) return
-  emit('update:modelValue', value)
+/** 触发按钮的档位徽标：仅推理模型展示（未显式选择按缺省「高」） */
+const currentEffortLabel = computed(() => {
+  if (!props.modelValue) return ''
+  const hit = props.options.find((o) => o.value === props.modelValue)
+  if (!hit || !hit.capabilities.reasoning) return ''
+  return EFFORT_LABELS.get(props.reasoningEffort ?? 'high') ?? '高'
+})
+
+function selectModel(opt: ChatModelOption | null) {
+  emit('update:modelValue', opt ? opt.value : null)
+  // 推理模型选中即默认高深度；Auto/非推理模型清除
+  emit('update:reasoningEffort', opt && opt.capabilities.reasoning ? 'high' : null)
+  showMenu.value = false
+}
+
+function selectEffort(opt: ChatModelOption, value: ReasoningEffort) {
+  emit('update:modelValue', opt.value)
+  emit('update:reasoningEffort', value)
   showMenu.value = false
 }
 
@@ -69,6 +120,7 @@ function onShowUpdate(next: boolean) {
         >
           <NIcon class="model-icon" :component="CubeOutline" :size="14" />
           <span class="model-label">{{ current.label }}</span>
+          <span v-if="currentEffortLabel" class="model-effort-badge">{{ currentEffortLabel }}</span>
           <NIcon class="model-chevron" :component="ChevronDownOutline" :size="12" />
         </button>
       </template>
@@ -80,9 +132,9 @@ function onShowUpdate(next: boolean) {
           class="model-menu-item"
           :class="{ 'is-selected': modelValue == null }"
           :aria-selected="modelValue == null"
-          @click="select(null)"
+          @click="selectModel(null)"
         >
-          <span class="model-menu-title">默认</span>
+          <span class="model-menu-title">Auto</span>
           <span class="model-menu-check-slot" aria-hidden="true">
             <NIcon
               v-if="modelValue == null"
@@ -107,25 +159,40 @@ function onShowUpdate(next: boolean) {
             </template>
             {{ opt.disabledReason || '当前消息含图片，该模型不支持多模态' }}
           </NTooltip>
-          <button
-            v-else
-            type="button"
-            role="option"
-            class="model-menu-item"
-            :class="{ 'is-selected': modelValue === opt.value }"
-            :aria-selected="modelValue === opt.value"
-            @click="select(opt.value)"
-          >
-            <span class="model-menu-title">{{ opt.label }}</span>
-            <span class="model-menu-check-slot" aria-hidden="true">
-              <NIcon
-                v-if="modelValue === opt.value"
-                class="model-menu-check"
-                :component="CheckmarkOutline"
-                :size="18"
-              />
-            </span>
-          </button>
+          <div v-else class="model-menu-entry">
+            <button
+              type="button"
+              role="option"
+              class="model-menu-item"
+              :class="{ 'is-selected': modelValue === opt.value }"
+              :aria-selected="modelValue === opt.value"
+              @click="selectModel(opt)"
+            >
+              <span class="model-menu-title">{{ opt.label }}</span>
+              <NDropdown
+                v-if="opt.capabilities.reasoning"
+                trigger="click"
+                placement="right-start"
+                :show-arrow="false"
+                :options="effortDropdownOptions(opt)"
+                @select="(value: string | number) => selectEffort(opt, value as ReasoningEffort)"
+                @click.stop
+              >
+                <span class="model-effort-trigger" @click.stop>
+                  {{ effortLabelFor(opt) }}
+                  <NIcon class="model-effort-chevron" :component="ChevronDownOutline" :size="10" />
+                </span>
+              </NDropdown>
+              <span class="model-menu-check-slot" aria-hidden="true">
+                <NIcon
+                  v-if="modelValue === opt.value"
+                  class="model-menu-check"
+                  :component="CheckmarkOutline"
+                  :size="18"
+                />
+              </span>
+            </button>
+          </div>
         </template>
       </div>
     </NPopover>
@@ -235,6 +302,42 @@ function onShowUpdate(next: boolean) {
 
 .model-menu-check {
   color: var(--sun-text, #ececec);
+}
+
+.model-menu-entry {
+  display: flex;
+  flex-direction: column;
+}
+
+.model-effort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--sun-text-secondary, #999);
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 1.3;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.model-effort-trigger:hover {
+  color: var(--sun-text, #ececec);
+  background: var(--sun-row-hover, rgba(0, 0, 0, 0.04));
+}
+
+.model-effort-chevron {
+  opacity: 0.6;
+}
+
+.model-effort-badge {
+  flex-shrink: 0;
+  padding: 0 1px;
+  color: var(--sun-text-secondary, #999);
+  font-size: var(--sun-font-sm, 12px);
+  line-height: 16px;
 }
 </style>
 

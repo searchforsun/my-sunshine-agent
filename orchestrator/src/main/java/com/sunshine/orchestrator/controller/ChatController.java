@@ -110,6 +110,10 @@ public class ChatController {
 
         return ReactiveBlocking.call(() -> streamContextFactory.prepareNewMessage(msg, userId, tenantId))
                 .flatMapMany(ctx -> {
+                    log.info("[Chat] 新消息 writeHitlMode 请求体='{}' 解析={} conv={} msgId={}",
+                            msg.getWriteHitlMode(),
+                            com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode.from(msg.getWriteHitlMode()),
+                            ctx.conversationId(), ctx.assistantMsgId());
                     StepEventBridge.bindWriteHitlMode(
                             ctx.assistantMsgId(),
                             com.sunshine.orchestrator.sandbox.SandboxWriteHitlMode.from(msg.getWriteHitlMode()));
@@ -238,7 +242,14 @@ public class ChatController {
         Flux<ServerSentEvent<String>> done = Flux.defer(() -> Flux.just(
                 sse(flushScheduler.metaMessage(ctx.assistantMsgId(), resolveFinalStatus(generationId), false))));
 
-        return Flux.merge(Flux.concat(meta, historical, live, done), titleService.titleEventSse(ctx))
+        // 心跳与业务流并轨：await 长等待期无业务事件时，注释行重置 Gateway 读空闲计时，
+        // 防止 spawn/worker 观察窗口（600s/1200s）超过 360s/720s 超时档被强制断连。
+        // takeUntilOther 随主业务流终态同步终止心跳（merge 等待所有源完成，无限心跳流
+        // 不能直接并入，否则 done 快照下发后连接不关闭、前端 loading 卡死）
+        return Flux.merge(
+                Flux.concat(meta, historical, live, done)
+                        .takeUntilOther(streamService.heartbeatTerminated()),
+                titleService.titleEventSse(ctx))
                 .doOnSubscribe(s -> job.onSubscriberAttached())
                 .doOnCancel(job::onSubscriberGone)
                 .doOnComplete(() -> log.info("[Orchestrator] 流式完成 conv={} gen={}",

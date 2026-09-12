@@ -22,8 +22,9 @@ public class ChatCompletionRequest {
 
     private Double temperature = 0.7;
 
+    /** 输出上限：仅调用方显式声明时下发；缺省交由模型注册表 request_extras 补齐 */
     @JsonProperty("max_tokens")
-    private Integer maxTokens = 2048;
+    private Integer maxTokens;
 
     private Boolean stream = false;
 
@@ -49,6 +50,10 @@ public class ChatCompletionRequest {
     @JsonProperty("call_site")
     private String callSite;
 
+    /** 会话所选模型（尾位兜底）：路由策略池耗尽及运行时降级链耗尽后的最终兜底；缺省不参与 */
+    @JsonProperty("session_model")
+    private String sessionModel;
+
     /** 降级链切换模型时保留 tools / fallback 等字段 */
     public ChatCompletionRequest copyWithModel(String model) {
         ChatCompletionRequest copy = new ChatCompletionRequest();
@@ -63,6 +68,7 @@ public class ChatCompletionRequest {
         copy.setFallbackModel(this.fallbackModel);
         copy.setStreamOptions(this.streamOptions);
         copy.setCallSite(this.callSite);
+        copy.setSessionModel(this.sessionModel);
         return copy;
     }
 

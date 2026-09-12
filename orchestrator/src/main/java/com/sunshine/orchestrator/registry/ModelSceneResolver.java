@@ -64,35 +64,48 @@ public class ModelSceneResolver {
     }
 
     /**
-     * D10：modelOverride（非空且 enabled）→ scene primary/fallback → default → fail-fast。
+     * 解析链：agent 配置模型（非空且 enabled）→ 会话所选模型（非空且 enabled）→
+     * scene primary/fallback → default → fail-fast。
+     * 会话模型无效/停用时回落场景链，并标记 overrideInvalid 供时间线 warning。
      */
-    public ResolvedModelScene resolve(String sceneKey, String modelOverride) {
-        if (StringUtils.hasText(modelOverride)) {
-            Optional<ModelCatalogDefinition> overrideDef = findEnabledDefinition(modelOverride.strip());
-            if (overrideDef.isPresent()) {
-                ModelCatalogScene scene = findEnabledScene(sceneKey).orElse(null);
-                String fallback = scene != null ? blankToNull(scene.fallbackModel()) : null;
-                return toResolved(overrideDef.get(), fallback, sceneExtras(scene), false);
+    public ResolvedModelScene resolve(String sceneKey, String agentConfigModel, String sessionModel) {
+        if (StringUtils.hasText(agentConfigModel)) {
+            Optional<ModelCatalogDefinition> agentDef = findEnabledDefinition(agentConfigModel.strip());
+            if (agentDef.isPresent()) {
+                return toResolvedWithScene(agentDef.get(), sceneKey, false);
             }
+        }
+        String sessionCandidate = StringUtils.hasText(sessionModel) ? sessionModel.strip() : null;
+        if (sessionCandidate != null) {
+            Optional<ModelCatalogDefinition> sessionDef = findEnabledDefinition(sessionCandidate);
+            if (sessionDef.isPresent()) {
+                return toResolvedWithScene(sessionDef.get(), sceneKey, false);
+            }
+            log.warn("[ModelSceneResolver] session model='{}' invalid/disabled, fallback to scene chain",
+                    sessionCandidate);
+            return resolveSceneChain(sceneKey).withOverrideInvalid(true);
         }
         return resolveSceneChain(sceneKey);
     }
 
+    /** 显式模型（agent 配置 / 会话所选）生效时，携带所属场景的 fallback 与 extras */
+    private ResolvedModelScene toResolvedWithScene(
+            ModelCatalogDefinition def, String sceneKey, boolean overrideInvalid) {
+        ModelCatalogScene scene = findEnabledScene(sceneKey).orElse(null);
+        String fallback = scene != null ? blankToNull(scene.fallbackModel()) : null;
+        return toResolved(def, fallback, sceneExtras(scene), overrideInvalid);
+    }
+
+    /** 无会话模型的调用面（intent/summarize 等内部辅助） */
+    public ResolvedModelScene resolve(String sceneKey, String agentConfigModel) {
+        return resolve(sceneKey, agentConfigModel, null);
+    }
+
     /**
-     * Chat 会话 override：无效/停用时回落 chat→default，并标记 overrideInvalid 供时间线 warning。
+     * Chat 会话模型：有效即生效；无效/停用时回落 chat/default，并标记 overrideInvalid 供时间线 warning。
      */
     public ResolvedModelScene resolveChat(String conversationModel) {
-        if (!StringUtils.hasText(conversationModel)) {
-            return resolve(ModelSceneKey.CHAT.key(), null);
-        }
-        String override = conversationModel.strip();
-        Optional<ModelCatalogDefinition> def = findEnabledDefinition(override);
-        if (def.isPresent()) {
-            return resolve(ModelSceneKey.CHAT.key(), override);
-        }
-        log.warn("[ModelSceneResolver] chat override invalid/disabled model='{}', fallback to chat/default scene",
-                override);
-        return resolve(ModelSceneKey.CHAT.key(), null).withOverrideInvalid(true);
+        return resolve(ModelSceneKey.CHAT.key(), null, conversationModel);
     }
 
     public Optional<ModelCatalogDefinition> findDefinition(String modelName) {
@@ -132,18 +145,25 @@ public class ModelSceneResolver {
     private ResolvedModelScene resolveSceneChain(String sceneKey) {
         Optional<ModelCatalogScene> scene = findEnabledScene(sceneKey);
         if (scene.isPresent()) {
-            return resolvePrimaryOrFallback(scene.get());
+            ResolvedModelScene resolved = resolvePrimaryOrFallback(scene.get());
+            if (resolved != null) {
+                return resolved;
+            }
         }
         if (!ModelSceneKey.DEFAULT.key().equals(sceneKey)) {
             Optional<ModelCatalogScene> defaults = findEnabledScene(ModelSceneKey.DEFAULT.key());
             if (defaults.isPresent()) {
-                return resolvePrimaryOrFallback(defaults.get());
+                ResolvedModelScene resolved = resolvePrimaryOrFallback(defaults.get());
+                if (resolved != null) {
+                    return resolved;
+                }
             }
         }
         throw new IllegalStateException(
                 "no enabled model scene for key='" + sceneKey + "' (and default missing); refuse Nacos fallback");
     }
 
+    /** 场景内解析：primary → fallback；均不可用返回 null 交由上级链 */
     private ResolvedModelScene resolvePrimaryOrFallback(ModelCatalogScene scene) {
         Optional<ModelCatalogDefinition> primary = findEnabledDefinition(scene.primaryModel());
         if (primary.isPresent()) {
@@ -158,17 +178,13 @@ public class ModelSceneResolver {
                 return toResolved(fb.get(), null, sceneExtras(scene), false);
             }
         }
-        if (!ModelSceneKey.DEFAULT.key().equals(scene.sceneKey())) {
-            return resolveSceneChain(ModelSceneKey.DEFAULT.key());
-        }
-        throw new IllegalStateException(
-                "scene '" + scene.sceneKey() + "' primary/fallback unavailable; refuse Nacos fallback");
+        return null;
     }
 
     private ResolvedModelScene toResolved(
             ModelCatalogDefinition def,
             String fallbackModel,
-            Map<String, Object> extras,
+            Map<String, Object> sceneExtras,
             boolean overrideInvalid) {
         ModelCapabilities caps = def.capabilities() != null ? def.capabilities() : ModelCapabilities.defaults();
         String fb = fallbackModel;
@@ -178,8 +194,27 @@ public class ModelSceneResolver {
         if (fb != null && findEnabledDefinition(fb).isEmpty()) {
             fb = null;
         }
-        return new ResolvedModelScene(def.modelName(), fb, extras, def.contextWindow(),
-                def.maxOutputTokens() > 0 ? def.maxOutputTokens() : 0, caps, overrideInvalid);
+        return new ResolvedModelScene(def.modelName(), fb, mergeExtras(def.requestExtras(), sceneExtras),
+                def.contextWindow(), def.maxOutputTokens() > 0 ? def.maxOutputTokens() : 0, caps, overrideInvalid);
+    }
+
+    /**
+     * extras 装配：模型级 {@code request_extras} 为基准，场景 extras 覆盖同名键。
+     * 思考型模型的输出预算（{@code max_completion_tokens}）声明在模型级，场景级只做单点覆盖
+     * （如 intent 的 temperature）；漏掉模型级会让 ReAct 退回全局 max-tokens 导致正文被截断。
+     */
+    private static Map<String, Object> mergeExtras(Map<String, Object> modelExtras, Map<String, Object> sceneExtras) {
+        if ((modelExtras == null || modelExtras.isEmpty()) && (sceneExtras == null || sceneExtras.isEmpty())) {
+            return Map.of();
+        }
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (modelExtras != null) {
+            merged.putAll(modelExtras);
+        }
+        if (sceneExtras != null) {
+            merged.putAll(sceneExtras);
+        }
+        return Map.copyOf(merged);
     }
 
     private Optional<ModelCatalogDefinition> findEnabledDefinition(String modelName) {

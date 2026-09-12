@@ -393,9 +393,9 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     }
 
     /**
-     * 同轮多 tool_calls 读写分区调度：连续只读工具一批（框架并行），写工具单独串行。
-     * 避免并发写操作导致的状态竞争（如两个写工具同时改同一资源）。
-     * 单工具或全读时直接整批执行，无额外开销。
+     * 同轮多 tool_calls 读写分区调度：连续非写工具一批（框架并行），业务写工具单独串行。
+     * sandbox 写/exec 均视为非写（并行），仅 catalog sideEffect=write 的业务工具串行，
+     * 避免并发业务写操作导致的状态竞争（如两个业务写工具同时改同一资源）。
      */
     private void applyThinkSummary(String bridgeId, ToolUseBlock tu) {
         Object raw = tu.getInput() != null ? tu.getInput().get("summary") : null;
@@ -421,8 +421,8 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
     }
 
     /**
-     * 按 sideEffect 将 toolCalls 切成连续批次：连续只读工具归一批，写工具单独成批。
-     * 元工具（request_decision / spawn_subagent / await_tool_run / todo_write / think_summary）视为只读（不竞争外部状态）。
+     * 按是否业务写工具将 toolCalls 切成连续批次：连续非业务写工具归一批，业务写工具单独成批。
+     * 元工具（request_decision / spawn_subagent / await_tool_run / todo_write / think_summary）与 sandbox 工具均视为非写（不竞争业务外部状态）。
      */
     private List<List<ToolUseBlock>> partitionByReadWrite(List<ToolUseBlock> toolCalls) {
         List<List<ToolUseBlock>> batches = new ArrayList<>();
@@ -444,16 +444,16 @@ public class ProcessingStepMiddleware implements MiddlewareBase {
         return batches;
     }
 
-    /** 写工具判定：catalog sideEffect=write 或沙箱写文件工具（sandbox__write/edit）；exec 不加锁避免长任务阻塞会话 */
+    /** 写工具判定：仅业务 catalog sideEffect=write 需要串行。
+     * 沙箱写文件工具（sandbox__write/edit）与 exec 均不串行——sandbox 调度并发写入不同资源，
+     * 并行执行由框架同批调度，避免长任务/文件写入阻塞会话；exec 不加锁避免长命令阻塞。 */
     private boolean isWriteTool(String toolName) {
         if (AwaitToolRunTool.NAME.equals(toolName)) {
             return false;
         }
-        if (SandboxIds.WRITE.equals(toolName) || SandboxIds.EDIT.equals(toolName)) {
-            return true;
-        }
         return toolCatalogService.find(toolName)
-                .map(e -> "write".equals(e.sideEffect()))
+                .map(e -> "write".equals(e.sideEffect())
+                        && !SandboxIds.ALL.contains(toolName))
                 .orElse(false);
     }
 

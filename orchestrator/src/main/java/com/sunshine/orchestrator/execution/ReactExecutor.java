@@ -128,7 +128,8 @@ public class ReactExecutor {
                     ctx.persistedPlanId(),
                     ctx.kbId(),
                     null, null, null,
-                    ctx.conversationKind()));
+                    ctx.conversationKind(),
+                    ctx.modelOverride()));
         }
         int checkpointThinkIteration = resolveCheckpointThinkIteration(ctx);
         List<ProcessingStep> resumeSteps = resolveResumeSteps(ctx);
@@ -210,6 +211,7 @@ public class ReactExecutor {
                 .withConversationKind(ctx.conversationKind())
                 .withCandidateSkillIds(candidateSkillIds)
                 .withModelOverride(ctx.modelOverride())
+                .withReasoningEffort(ctx.reasoningEffort())
                 .withImageUrls(ctx.imageUrls()));
     }
 

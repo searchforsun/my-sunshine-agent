@@ -1,10 +1,13 @@
 /**
- * 会话消息 localStorage 缓存 — 后端不可用或 reasoning 未落库时的恢复来源
+ * 会话消息 localStorage 缓存 — 后端不可用或 reasoning 未落库时的恢复来源。
+ * 单会话缓存体积有上限（MAX_CACHE_BYTES），超限从最旧消息开始裁剪；
+ * 站点配额耗尽时按最旧会话淘汰腾位，保证写入不因配额静默丢失。
  */
 import type { ChatMessage } from './chat'
 import type { ContentBlock } from './contentInterleave'
 import { joinedContentBlocks, normalizeRestoredInterleavedContent } from './contentInterleave'
 import { stepsHaveAwaitingHitl, getPendingHitlConfirmations } from './hitlSteps'
+import { messageTimestamp } from './timelineMessageClock'
 import type { ProcessingStep } from './processingSteps'
 
 function countPlanNodeSteps(steps?: ProcessingStep[]): number {
@@ -25,6 +28,24 @@ function pickRicherSteps(api?: ProcessingStep[], cached?: ProcessingStep[], forc
 
 const INDEX_KEY = 'sunshine-conv-index'
 const messagesKey = (id: string) => `sunshine-conv-msgs:${id}`
+/** 单会话缓存体积上限：JSON 字符节数（UTF-8）。localStorage 站点配额约 5MB（按 UTF-16 单位计，
+ * 中文按字节统计偏保守），单会话 4MB 为配额内可靠上限，余量留给索引等其余键 */
+export const MAX_CACHE_BYTES = 4 * 1024 * 1024
+
+/** 序列化体积（UTF-8 字节）：含 steps 的 task 消息单条可达百 KB 级，按字节而非条数控制 */
+function serializedBytes(messages: ChatMessage[]): number {
+  return new TextEncoder().encode(JSON.stringify(messages)).length
+}
+
+/** 超限裁剪最旧消息，至少保留最新 1 条；返回裁剪后的列表 */
+function trimToLimit(messages: ChatMessage[]): ChatMessage[] {
+  if (serializedBytes(messages) <= MAX_CACHE_BYTES) return messages
+  let kept = messages
+  while (kept.length > 1 && serializedBytes(kept) > MAX_CACHE_BYTES) {
+    kept = kept.slice(1)
+  }
+  return kept
+}
 
 export interface CachedConversationMeta {
   id: string
@@ -77,7 +98,7 @@ export function removeCachedIndex(id: string): void {
 export function cacheMessages(convId: string, messages: ChatMessage[], meta?: Partial<CachedConversationMeta>): void {
   if (!convId || messages.length === 0) return
   try {
-    localStorage.setItem(messagesKey(convId), JSON.stringify(messages))
+    localStorage.setItem(messagesKey(convId), JSON.stringify(trimToLimit(messages)))
     upsertCachedIndex({
       id: convId,
       title: meta?.title ?? '新对话',
@@ -86,7 +107,37 @@ export function cacheMessages(convId: string, messages: ChatMessage[], meta?: Pa
       kind: meta?.kind,
       workspaceId: meta?.workspaceId,
     })
-  } catch { /* quota */ }
+  } catch {
+    // 配额耗尽：按 updated_at 最旧优先淘汰其他会话的消息缓存腾位后重试一次
+    if (evictOldestConversations(convId)) {
+      try {
+        localStorage.setItem(messagesKey(convId), JSON.stringify(trimToLimit(messages)))
+        upsertCachedIndex({
+          id: convId,
+          title: meta?.title ?? '新对话',
+          createdAt: meta?.createdAt ?? Date.now(),
+          updatedAt: meta?.updatedAt ?? Date.now(),
+          kind: meta?.kind,
+          workspaceId: meta?.workspaceId,
+        })
+        return
+      } catch { /* 仍超配额则放弃本次缓存 */ }
+    }
+  }
+}
+
+/** 按 updated_at 最旧优先淘汰其他会话的消息缓存（不动索引键），返回是否淘汰过 */
+function evictOldestConversations(keepConvId: string): boolean {
+  const candidates = loadCachedIndex()
+    .filter(c => c.id !== keepConvId)
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+  if (candidates.length === 0) return false
+  for (const meta of candidates) {
+    try {
+      localStorage.removeItem(messagesKey(meta.id))
+    } catch { /* ignore */ }
+  }
+  return true
 }
 
 export function loadCachedMessages(convId: string): ChatMessage[] | null {
@@ -147,17 +198,23 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
       merged.push(a)
       continue
     }
+    const status = pickPreferredStatus(a.status, c.status)
+    // 终态（completed/failed）是权威落库结果：缓存里带出的 pending 与 awaiting 工具步属过期残留，
+    // 不再背回，避免「后端已不确认但前端仍显示写操作确认」。仅在消息未终态时保留缓存确认态供续处理。
+    const isFinal = status === 'completed' || status === 'failed'
     const cachedHasHitl = stepsHaveAwaitingHitl(c.steps) || getPendingHitlConfirmations(c).length > 0
-    const mergedPending = getPendingHitlConfirmations(a).length
+    const mergedPending = isFinal
       ? getPendingHitlConfirmations(a)
-      : getPendingHitlConfirmations(c)
+      : (getPendingHitlConfirmations(a).length
+          ? getPendingHitlConfirmations(a)
+          : getPendingHitlConfirmations(c))
     const mergedMsg: ChatMessage = {
       ...a,
       content: pickLongerContent(a.content, c.content),
       reasoning: a.reasoning?.trim() ? a.reasoning : c.reasoning,
-      steps: pickRicherSteps(a.steps, c.steps, cachedHasHitl),
+      steps: pickRicherSteps(a.steps, c.steps, !isFinal && cachedHasHitl),
       contentBlocks: pickContentBlocks(a.contentBlocks, c.contentBlocks),
-      status: pickPreferredStatus(a.status, c.status),
+      status,
       executionPlanId: a.executionPlanId ?? c.executionPlanId,
       executionPreference: a.executionPreference ?? c.executionPreference,
       pendingHitlConfirmations: mergedPending.length ? mergedPending : undefined,
@@ -172,8 +229,9 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
     if (a.id) byId.delete(a.id)
   }
 
-  // 本地缓存可能比 API 多出「后端尚未落库的最新消息」：按 seq 增量追加尾部。
+  // 本地缓存可能比 API 多出「后端尚未落库的最新消息」。
   // 不能按 cached.slice(api.length) 追加——分页场景下 API 只返回最近窗口，会与缓存窗口重复。
+  // 分页去重：seq <= apiMaxSeq 的缓存消息属于更早历史窗口（由 loadHistory 负责），在此不再背回。
   const apiMaxSeq = api.reduce((max, m) => Math.max(max, m.seq ?? 0), 0)
   const mergedIds = new Set(merged.filter(m => m.id).map(m => m.id!))
   for (const c of cached) {
@@ -185,5 +243,10 @@ export function mergeRestoredMessages(api: ChatMessage[], cached: ChatMessage[] 
     merged.push(c)
   }
 
-  return merged
+  // 跨轮次顺序以「创建时间」为唯一权威：合并自 API + 缓存的每条消息都已带 createdAt
+  // （流式见 stampTimelineStarted 兜底、历史见 API Instant），按此升序归位，
+  // 保证发生在窗口中间的中断轮次不会被后续已完成消息挤到后面。
+  return merged.slice().sort((a, b) => messageTimestamp(a) - messageTimestamp(b))
 }
+
+

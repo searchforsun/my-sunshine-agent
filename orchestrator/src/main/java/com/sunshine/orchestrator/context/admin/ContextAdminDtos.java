@@ -25,7 +25,9 @@ public final class ContextAdminDtos {
             Instant updatedAt,
             String scope,
             String workspaceId,
-            String background) {
+            String background,
+            String bizSceneScope,
+            String confirmStatus) {
     }
 
     public record L2UpdateRequest(String stateValue, Double confidence, String status) {

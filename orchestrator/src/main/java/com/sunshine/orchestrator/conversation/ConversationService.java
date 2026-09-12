@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -254,8 +255,21 @@ public class ConversationService {
                 .build();
     }
 
+    /**
+     * 会话详情 = 元数据 + 最近消息窗口（task 5 / chat 10，与前端首屏 pageSize 对齐）。
+     * 恢复链路对详情接口的调用量有界，更早历史由前端经 /messages 游标分页按需拉取。
+     */
+    @Transactional(readOnly = true)
+    public ConversationDetailDto getConversationDetail(String id, String userId, String tenantId) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        int window = "task".equals(conv.getKind()) ? 5 : 10;
+        MessagePageDto page = getMessagesPage(id, userId, tenantId, 0, window);
+        return ConversationDetailDto.of(conv, page.getMessages(), page.isHasMore());
+    }
+
     public static final String DEFAULT_TITLE = "新对话";
-    public static final int AUTO_TITLE_MAX_LEN = 15;
+    /** chat_conversation.title 列宽（VARCHAR 512），兜底标题超宽截断的边界 */
+    public static final int TITLE_COLUMN_MAX_LEN = 512;
 
     @Transactional
     public ChatConversationEntity updateTitle(String id, String userId, String tenantId, String title) {
@@ -274,7 +288,7 @@ public class ConversationService {
         return conversationRepo.save(conv);
     }
 
-    /** 首条 user 消息后立即从正文推导标题（仍为默认「新对话」时），避免流式过程中 loadDetail 回退 */
+    /** 首条 user 消息后立即取正文首行为标题（仍为默认「新对话」时），避免流式过程中 loadDetail 回退 */
     @Transactional
     public ChatConversationEntity autoTitleIfDefault(String id, String userId, String tenantId, String userContent) {
         if (userContent == null || userContent.isBlank()) {
@@ -284,14 +298,25 @@ public class ConversationService {
         if (!DEFAULT_TITLE.equals(conv.getTitle())) {
             return conv;
         }
-        return updateTitle(id, userId, tenantId, deriveAutoTitle(userContent));
+        return updateTitle(id, userId, tenantId, deriveFallbackTitle(userContent));
     }
 
-    public static String deriveAutoTitle(String userContent) {
-        String trimmed = userContent.strip();
-        return trimmed.length() > AUTO_TITLE_MAX_LEN
-                ? trimmed.substring(0, AUTO_TITLE_MAX_LEN)
-                : trimmed;
+    /**
+     * LLM 标题生成完成前的过渡标题：取首行、去 markdown 标记，超宽则截断到列宽上限。
+     * 截断对象是用户输入而非生成标题，仅作落库安全兜底。
+     */
+    public static String deriveFallbackTitle(String userContent) {
+        String firstLine = userContent.strip().replaceAll("^[#*`>\\-\\s]+", "");
+        int newlineIdx = firstLine.indexOf('\n');
+        if (newlineIdx >= 0) {
+            firstLine = firstLine.substring(0, newlineIdx).strip();
+        }
+        if (firstLine.isEmpty()) {
+            firstLine = userContent.strip();
+        }
+        return firstLine.length() > TITLE_COLUMN_MAX_LEN
+                ? firstLine.substring(0, TITLE_COLUMN_MAX_LEN)
+                : firstLine;
     }
 
     /** 记录本会话最近一次用户指定的执行模式（列名 execution_preference；取值 fast|pro|workflow） */
@@ -317,6 +342,22 @@ public class ConversationService {
     public void updateModelName(String id, String userId, String tenantId, String modelName) {
         ChatConversationEntity conv = getOwned(id, userId, tenantId);
         conv.setModelName(StringUtils.hasText(modelName) ? modelName.strip() : null);
+        conv.setUpdatedAt(Instant.now());
+        conversationRepo.save(conv);
+    }
+
+    /** 思考深度值域（OpenAI reasoning_effort；null=跟随注册表 request_extras 缺省） */
+    private static final Set<String> REASONING_EFFORT_VALUES = Set.of("minimal", "low", "medium", "high");
+
+    /** 记录本会话思考深度；非法值拒绝（防脏数据落库），空串视为清除 */
+    @Transactional
+    public void updateReasoningEffort(String id, String userId, String tenantId, String reasoningEffort) {
+        ChatConversationEntity conv = getOwned(id, userId, tenantId);
+        String normalized = StringUtils.hasText(reasoningEffort) ? reasoningEffort.strip() : null;
+        if (normalized != null && !REASONING_EFFORT_VALUES.contains(normalized)) {
+            throw new BizException(OrchestratorErrorCode.INVALID_CHAT_REQUEST);
+        }
+        conv.setReasoningEffort(normalized);
         conv.setUpdatedAt(Instant.now());
         conversationRepo.save(conv);
     }

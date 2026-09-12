@@ -42,7 +42,7 @@
 | 粒度 | **对话级**（轻量，skills 脚本场景）；**工作区级**完全体沙箱见 [task-workspace-codex](../superpowers/specs/archive/2026-07-28-task-workspace-codex-design.md)（强制绑 repo · 出网 · 硬件档位 · 读并发/写串行 · 手动销毁） |
 | PathJail | `/workspace` 可写；`/skills/{id}/` 只读挂载 |
 | write | **拒覆盖**已存在文件（须 edit / 换路径） |
-| exec | `SandboxExecGuard` 硬拒破坏性命令；只读白名单免 HITL |
+| exec | `SandboxExecGuard` 硬拒自杀式删除（`rm -rf /`、`rm -rf ~`、git 裸库）；`/workspace` 内 rm 正常放行 |
 | HITL 默认 | write/edit 确认；危险 exec 确认；读类免确认 |
 | 工作区跳过 | 会话 `writeHitlMode`：`never` / `always` / `smart`；**用户默认**见账号设置（auth） |
 | 工作区抽屉 | 多 tab 预览；与 Plan 节点抽屉**可同时开**（`Chat \| 节点 \| 沙箱`，保留执行计划/DAG）；树可独立调宽；激活 tab 自动滚入可视区；**代码预览左侧绝对行号**（1…N，空文件 / `.md` 美化模式无 gutter）；代码不换行+横向滚动；**.md 美化/原始切换**；树节点拖入 Composer 为路径芯片 |

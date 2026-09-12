@@ -91,7 +91,8 @@ export function extractSandboxExecCommand(step: {
       return detail
     }
     // HITL 等待确认（running 未完成）：command 经 HITL expandDetail 写入 detail，
-    // 此时主行须展示命令便于用户决策；done 态 detail 为 stdout 输出，不能当命令
+    // 此时主行须展示命令便于用户决策；done 态 detail 为 stdout 输出，不能当命令。
+    // 判断依据是 detail 是否被 HITL 占位（等待确认文案），而非步骤状态。
     if (step.lifecycle === 'running' && !detail.includes('等待用户确认')) {
       return detail
     }
@@ -688,33 +689,46 @@ export function formatTimelineSummaryText(prefix: string, clock: string): string
   return c ? `${prefix} ${c}` : prefix
 }
 
-/** 卡片运行中「当前子步正文」：subagent/worker 卡 running 时，任务名后跟内部正在执行步骤的正文内容。
- * think/rag→reasoning 思考正文、tool→detail 输出；generate（最后正文）阶段固定显示「正在收尾回复」，
- * 不再滚动最终答复；跳过 tasks/intent/skill/decision/plan 脚手架步（其 label 如「任务清单」非实时活动）；
- * 正文为空回退子步 label / 阶段标题。卡片未运行或暂无 running 子步返回空。 */
-const SCAFFOLD_CHILD_PHASES = new Set(['tasks', 'intent', 'skill', 'decision', 'plan'])
+/** 卡片「最新阶段正文」：标题（任务名）后展示抽屉正文段的最新一行，流式逐行跟随。
+ * 正文 SSOT = 卡片 contentBlocks 末段（子 agent/worker 阶段正文穿插于此，与抽屉同源）
+ * → step.result（plain content / 终态终稿）。没有正文不显示，不做任何阶段占位；
+ * 已有正文持续展示到下一个正文出现（末段为空时回退上一非空段）。
+ * 卡片终态（done）时 contentBlocks 末段即最终答复、result 即终稿 → 固定显示「总结并回答」；
+ * 运行中末段与中间段锚点同构（后端 contentAnchorAfterStepId 不区分收尾），维持最新一行不猜阶段。 */
 const CHILD_BODY_PREVIEW_MAX = 90
+const ANSWER_PHASE_TEXT = '总结并回答'
 
-export function resolveRunningChildStepBody(step: ProcessingStep): string {
-  if (!step.subSteps?.length) return ''
-  const running = step.subSteps.find(
-    s => stepLifecycle(s) === 'running' && !SCAFFOLD_CHILD_PHASES.has((s.phase ?? '').split('-')[0]),
-  )
-  if (!running) return ''
-  const phase = (running.phase ?? '').split('-')[0]
-  if (phase === 'generate' || phase.startsWith('generate')) return '正在收尾回复'
-  const body = childStepBodyText(running)
-  if (body) return body
-  const label = formatStepLabel(running).trim()
-  if (label && label !== running.id) return label
-  if (phase === 'think' || phase.startsWith('think')) return '深度思考'
-  if (phase === 'tool' || phase.startsWith('tool')) return '执行命令'
-  if (phase === 'rag') return '知识检索'
+export function resolveLatestChildStepBody(step: ProcessingStep): string {
+  if (stepLifecycle(step) === 'done') {
+    const blockText = lastNonEmptyContentBlockText(step)
+    if (blockText) return ANSWER_PHASE_TEXT
+    if (step.result?.trim()) return ANSWER_PHASE_TEXT
+    return ''
+  }
+  const blockText = lastNonEmptyContentBlockText(step)
+  if (blockText) return blockText
   return ''
 }
 
-function childStepBodyText(step: ProcessingStep): string {
-  const raw = step.reasoning?.trim() || step.output?.trim() || step.detail?.trim() || ''
-  if (!raw) return ''
-  return truncateStepPreview(raw.replace(/\s+/g, ' ').trim(), CHILD_BODY_PREVIEW_MAX)
+/** 最新一行预览：取末尾非空行做尾部截断（流式正文头部不变，仅尾部逐行更新） */
+function latestLinePreview(text: string, max: number): string {
+  const lines = text.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim()
+    if (!line) continue
+    return truncateStepPreview(line, max)
+  }
+  return ''
+}
+
+/** 末段非空正文：contentBlocks 末段非空文本的最新一行；无内容返回空 */
+function lastNonEmptyContentBlockText(step: ProcessingStep): string {
+  const blocks = step.contentBlocks
+  if (!blocks?.length) return ''
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const raw = blocks[i].text?.trim()
+    if (!raw) continue
+    return latestLinePreview(raw, CHILD_BODY_PREVIEW_MAX)
+  }
+  return ''
 }

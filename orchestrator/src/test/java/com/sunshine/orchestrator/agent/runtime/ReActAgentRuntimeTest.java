@@ -94,6 +94,8 @@ class ReActAgentRuntimeTest {
     private ModelSceneResolver modelSceneResolver;
     @Mock
     private ChatMessageRepository messageRepo;
+    @Mock
+    private com.sunshine.orchestrator.agent.state.AgentStateTtlSupport agentStateTtlSupport;
 
     private ReActAgentRuntime runtime;
     private AgentExecutionProperties executionProperties;
@@ -115,7 +117,7 @@ class ReActAgentRuntimeTest {
                 taskBoardService, executionProperties, sandboxSessionLifecycle,
                 conversationRepo, spawnRunRegistry, decisionResumeSupport, writeEditPlaceholder,
                 systemPromptResolver, modelWindowCache, modelSceneResolver, messageRepo,
-                Mockito.mock(ToolRetrievalService.class));
+                Mockito.mock(ToolRetrievalService.class), agentStateTtlSupport);
     }
 
     @Test
@@ -135,32 +137,9 @@ class ReActAgentRuntimeTest {
     @Test
     void run_plannerRoleRejected() {
         AgentRunRequest planner = new AgentRunRequest(
-                AgentRole.PLANNER,
-                "run-p",
-                null,
-                AssembledContext.empty(),
-                "plan",
-                List.of(),
-                "u1",
-                "default",
-                null,
-                null,
-                null,
-                null,
-                1,
-                TimelineBinding.PLANNER_ONLY,
-                false,
-                null,
-                null,
-                0,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+                AgentRole.PLANNER, "run-p", null, AssembledContext.empty(), "plan",
+                List.of(), "u1", "default", null, null, null, null, 1,
+                TimelineBinding.PLANNER_ONLY, false, null, null, 0, null, null, null, null, null, null, null, null, null,
                 null);
         assertThatThrownBy(() -> runtime.run(planner).collectList().block())
                 .isInstanceOf(UnsupportedOperationException.class)
@@ -513,6 +492,6 @@ class ReActAgentRuntimeTest {
         StreamToken usageToken = tokens.stream()
                 .filter(StreamToken::isUsage).findFirst().orElse(null);
         assertThat(usageToken).isNotNull();
-        verify(modelSceneResolver).resolve(ModelSceneKey.SUBAGENT.key(), "spawn-model");
+        verify(modelSceneResolver).resolve(ModelSceneKey.SUBAGENT.key(), "spawn-model", null);
     }
 }

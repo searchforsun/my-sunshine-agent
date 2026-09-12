@@ -42,7 +42,7 @@ final class WorkflowLlmStreamSupport {
             String answerOverlay) {
         PromptComposeRequest request = buildRequest(spec, ctx, streamCtx, terminalAnswer, answerOverlay);
         String stepId = WorkflowNodeTimeline.stepId(nodeId);
-        return llmGateway.streamComposed(request)
+        return llmGateway.streamComposed(request, streamCtx.modelOverride())
                 .concatMap(token -> mapStreamToken(token, stepId, terminalAnswer));
     }
 

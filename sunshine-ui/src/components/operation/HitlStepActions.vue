@@ -12,7 +12,6 @@ import {
   parseHitlParamsSummary,
   formatHitlParamsSummary,
   resolveStepForHitlDisplay,
-  isHitlToolStep,
   type HitlConfirmationPayload,
   type HitlDecision,
 } from '../../api/hitlSteps'
@@ -64,16 +63,13 @@ const isResolved = computed(() =>
   !!localDecision.value || displayStatus.value === 'approved' || displayStatus.value === 'denied',
 )
 
-/** metadata / summary 等待 / pending confirmation 任一满足即展示 */
+/** metadata / pending confirmation 任一满足即展示（仅硬条件，不靠 summary 文案） */
 const showPanel = computed(() => {
   if (localDecision.value) return true
   if (hasHitlPanel(displayStep.value)) return true
   if (isHitlSummaryAwaiting(props.step)) return true
   if (hitlConfirmationForStep(props.step, props.pendingConfirmation)) return true
-  const active = props.step.summary?.active?.trim() ?? ''
-  return (isHitlToolStep(props.step) || props.step.id.startsWith('node-'))
-    && active.includes('等待')
-    && active.includes('确认')
+  return false
 })
 
 const toolName = computed(() => resolveHitlToolName(displayStep.value))

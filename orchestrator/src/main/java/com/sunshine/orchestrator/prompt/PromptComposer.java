@@ -369,9 +369,9 @@ public class PromptComposer {
 
     /**
      * 可发现目录层（名+描述，不灌正文）：enabled + 会话 kind 匹配的 skill 目录，
-     * 剔除已触发项；候选集（S-C）提权置顶并标「可动态加载」；模板在 Catalog
-     * （context.skill-directory），{skills} 运行时替换。目录过长按 Top-N 截断并提示
-     * 「更多经 / 或检索」（skill-sticky S-D/S-C）。
+     * 与触发集解耦——不剔除已触发项、不加会随触发集变化的标记，保证前缀区字节稳定（守 C1）；
+     * 候选集（S-C）提权置顶并标「可动态加载」；模板在 Catalog（context.skill-directory），
+     * {skills} 运行时替换。目录过长按 Top-N 截断并提示「更多经 / 或检索」（skill-sticky S-D/S-C）。
      */
     private String resolveSkillDirectory(
             String kind, List<String> triggeredSkillIds, List<String> candidateSkillIds, String tenantId) {

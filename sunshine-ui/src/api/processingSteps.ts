@@ -59,7 +59,7 @@ export {
   summarizeSteps,
   isWorkflowAnswerStep,
   formatElapsedClock,
-  resolveRunningChildStepBody,
+  resolveLatestChildStepBody,
   resolveTimelineElapsedMs,
   resolveTimelineSummaryPrefix,
   formatTimelineSummaryText,
@@ -613,9 +613,10 @@ export function hasActiveStep(steps: ProcessingStep[] | undefined): boolean {
  * （liveElapsedMs = now - clientStartedAt）在消息已完成场景下持续增长，表现为「带✓/已完成消息
  * 的耗时还在实时走表」。
  *
- * <p>消息级 completed 是权威终态信号：消息已终止，任何步都不可能再合法 running。此处以
+ * <p>消息级 completed / failed 是权威终态信号：消息已终止，任何步都不可能再合法 running。此处以
  * settledAt 作为 endedAt 统一收口，并清掉 clientStartedAt 解除 live 计时锚点。
- * 已带显式 endedAt / durationMs 的步保持原值，interrupted/failed 等非 completed 终态不调用。
+ * 已带显式 endedAt / durationMs 的步保持原值；interrupted 不在此收口（用户主动停止，
+ * running 步由 stopMutation 统一标 paused）。
  */
 export function settleRunningSteps(steps: ProcessingStep[] | undefined, settledAt: number): ProcessingStep[] | undefined {
   if (steps == null) return undefined

@@ -124,6 +124,12 @@ public class ContextAssembler {
                 ? new AssembledContext.L3Anchor(nearMidIds, farIds, farSummaryNonEmpty)
                 : AssembledContext.L3Anchor.EMPTY;
 
+        // 前兆告警（数据正确性哨兵）：P 标记了已退役轮次但 far_summary 为空——
+        // 意味着折叠从未成功（空结果被静默接受的历史数据），这些轮次对模型不可见
+        if (compressionPoint && pointIds != null && !pointIds.isEmpty() && !StringUtils.hasText(farBlock)) {
+            log.warn("[Context] assemble 退役轮无 Far 摘要 conv={} folded={}，中断/折叠失败历史数据待回补",
+                    request.conversationId(), pointIds.size());
+        }
         AssembledContext assembled = new AssembledContext(
                 l2Block != null ? l2Block : "",
                 farBlock,

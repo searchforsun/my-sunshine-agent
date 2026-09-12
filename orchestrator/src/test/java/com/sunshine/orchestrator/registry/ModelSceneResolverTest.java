@@ -81,9 +81,20 @@ class ModelSceneResolverTest {
 
     @Test
     void resolveChat_usesValidOverride() {
+        // 会话所选模型有效即生效，优先于场景主模型
         ResolvedModelScene r = resolver.resolveChat("deepseek-v4-flash");
         assertThat(r.effectiveModel()).isEqualTo("deepseek-v4-flash");
+        assertThat(r.fallbackModel()).isEqualTo("qwen-plus");
         assertThat(r.overrideInvalid()).isFalse();
+    }
+
+    @Test
+    void resolve_chatOverrideBeatsScenePrimary_agentConfigStillWins() {
+        ResolvedModelScene sessionWins = resolver.resolve("chat", null, "deepseek-v4-flash");
+        assertThat(sessionWins.effectiveModel()).isEqualTo("deepseek-v4-flash");
+
+        ResolvedModelScene agentWins = resolver.resolve("chat", "qwen-plus", "deepseek-v4-flash");
+        assertThat(agentWins.effectiveModel()).isEqualTo("qwen-plus");
     }
 
     @Test
@@ -96,10 +107,33 @@ class ModelSceneResolverTest {
                 .hasMessageContaining("refuse Nacos fallback");
     }
 
+    @Test
+    void resolve_surfacesModelRequestExtrasAndLetsSceneOverride() {
+        resolver.replaceSnapshotForTest(
+                List.of(
+                        defWithExtras("deepseek-v4-pro", 500000, Map.of("max_completion_tokens", 128000, "temperature", 0.3)),
+                        defWithExtras("qwen-plus", 131072, Map.of())),
+                List.of(new ModelCatalogScene("chat", "deepseek-v4-pro", "qwen-plus",
+                        Map.of("temperature", 0.9), true)));
+
+        ResolvedModelScene r = resolver.resolve("chat", null);
+
+        // 模型级输出预算必须透出，否则 ReAct 退回全局 max-tokens 会把正文截断成空
+        assertThat(r.extras()).containsEntry("max_completion_tokens", 128000);
+        // 场景 extras 覆盖同名键
+        assertThat(r.extras()).containsEntry("temperature", 0.9);
+    }
+
     private static ModelCatalogDefinition def(String name, int window, boolean enabled) {
         return new ModelCatalogDefinition(
                 name, "p", name, window, 8192, "cl100k_base",
                 ModelCapabilities.defaults(), null, true, enabled, 0);
+    }
+
+    private static ModelCatalogDefinition defWithExtras(String name, int window, Map<String, Object> requestExtras) {
+        return new ModelCatalogDefinition(
+                name, "p", name, window, 8192, "cl100k_base",
+                ModelCapabilities.defaults(), requestExtras, true, true, 0);
     }
 
     private static ModelCatalogScene scene(String key, String primary, String fallback) {

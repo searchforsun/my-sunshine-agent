@@ -58,3 +58,24 @@ export function l3RoleLabel(_role?: string) {
   // v28：对话 L3 面板仅展示 semantic 摘要层，原文 user/assistant 角色已无意义，统一标记为 Chunk
   return 'Chunk'
 }
+
+/** L2 作用域展示：user=用户级 / workspace=工作区级。 */
+export function scopeLabel(scope?: string | null) {
+  if (scope === 'workspace') return '工作区级'
+  if (scope === 'user') return '用户级'
+  return scope || '—'
+}
+
+/** L2 业务场景作用域展示：* = 全局，其余原样（具体业务场景 ID）。 */
+export function bizSceneLabel(bizSceneScope?: string | null) {
+  const v = (bizSceneScope || '').trim()
+  if (!v || v === '*') return '全局'
+  return v
+}
+
+/** L2 偏好确认态展示：confirmed=已确认（默认装载）/ inferred=推断（默认不装载）。 */
+export function confirmStatusLabel(confirmStatus?: string | null) {
+  if (confirmStatus === 'inferred') return '推断'
+  if (confirmStatus === 'confirmed') return '已确认'
+  return confirmStatus || '—'
+}

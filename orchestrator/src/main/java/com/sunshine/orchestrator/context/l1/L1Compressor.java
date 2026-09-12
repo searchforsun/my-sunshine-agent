@@ -288,6 +288,17 @@ public class L1Compressor {
             String folded = foldFar(farSummary, toFold, l2Block);
             if (StringUtils.hasText(folded)) {
                 farSummary = folded.strip();
+            } else {
+                // 折叠空结果（LLM 异常/空正文）：仅退役（推 P）不标 S，轮次保持「间隙」态，
+                // 下次压缩自动重试折叠；标记 S 会让这些轮次永久退出上下文（信息不可逆丢失）。
+                log.warn("[ContextL1] far-fold 空结果 conv={} 待重试轮消息数={}",
+                        convId, toFold.size());
+                for (SessionTurn turn : toFold) {
+                    foldedIds.add(turn.messageId());
+                }
+                l1Store.upsert(userId, tenantId, convId, midAnswers, farSummary,
+                        foldedIds, summarizedIds, nearKeep, midKeep);
+                return;
             }
             for (SessionTurn turn : toFold) {
                 foldedIds.add(turn.messageId());
@@ -709,7 +720,8 @@ public class L1Compressor {
 
     /**
      * 仅折叠 newFarTurns（已有摘要作前缀）；附带现行 L2，冲突以 L2 为准。
-     * 调用方保证不含已折叠轮次。
+     * 调用方保证不含已折叠轮次。空结果重试一次：上游偶发空正文（choices 空/异常吞并）时，
+     * 二次调用成功即可避免轮次滞留「间隙」态。
      */
     private String foldFar(String previousFarSummary, List<SessionTurn> newFarTurns, String l2Block) {
         String system = catalogHolder.requireText(FAR_FOLD_PROMPT);
@@ -717,6 +729,19 @@ public class L1Compressor {
             log.warn("[ContextL1] missing catalog {}", FAR_FOLD_PROMPT);
             return previousFarSummary != null ? previousFarSummary : "";
         }
+        StringBuilder user = buildFoldUserPrompt(previousFarSummary, newFarTurns, l2Block);
+        String folded = llmGatewayClient.complete(system, user.toString());
+        if (StringUtils.hasText(folded)) {
+            return folded.strip();
+        }
+        log.warn("[ContextL1] far-fold 空结果，重试一次 conv_turns={} chars={}",
+                newFarTurns.size(), user.length());
+        folded = llmGatewayClient.complete(system, user.toString());
+        return StringUtils.hasText(folded) ? folded.strip() : "";
+    }
+
+    private StringBuilder buildFoldUserPrompt(
+            String previousFarSummary, List<SessionTurn> newFarTurns, String l2Block) {
         StringBuilder user = new StringBuilder();
         if (StringUtils.hasText(l2Block)) {
             user.append("【现行 L2 用户状态 · 权威】\n").append(l2Block.strip()).append("\n\n");
@@ -730,12 +755,7 @@ public class L1Compressor {
         for (SessionTurn turn : newFarTurns) {
             user.append(turn.role()).append(": ").append(turn.content()).append('\n');
         }
-        try {
-            return llmGatewayClient.complete(system, user.toString());
-        } catch (Exception e) {
-            log.warn("[ContextL1] far-fold LLM 失败: {}", e.getMessage());
-            return previousFarSummary != null ? previousFarSummary : "";
-        }
+        return user;
     }
 
     public record WindowBands(List<SessionTurn> far, List<SessionTurn> mid, List<SessionTurn> near) {

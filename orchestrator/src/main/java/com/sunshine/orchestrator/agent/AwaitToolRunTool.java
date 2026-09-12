@@ -40,8 +40,13 @@ public class AwaitToolRunTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "等待 background 工具 / 子任务 / Worker 派发的 run 结束，或在观察窗口到期后返回当前状态快照；"
-                + "runIds 数组一次批量等待同轮多个 run（共享观察窗口）。已派发的 run 先查 async_status 再决定是否等待。";
+        return "等待 background 工具 / 子任务 / Worker 派发的 run 结束，或在观察窗口到期后返回当前状态快照。"
+                + "已派发的 run 先查 async_status 再决定是否等待；同轮派发的多个 runId 用数组一次批量等待（共享观察窗口）。"
+                + "观察窗口按 run 类型分档：exec 默认约 30s、单次≤120s、最多 3 次；spawn 默认约 600s、单次≤600s、最多 3 次"
+                + "（一次可等满子 Agent 30min 墙钟）；worker 默认约 1200s、单次≤1200s、最多 3 次（一次可等满 Worker 1h 墙钟）。"
+                + "返回 budget_exhausted 表示等待预算用尽（run 可能仍在运行）：向用户说明进展并收束或换方案，禁止空转重试同一 await；"
+                + "可改用 async_status 轮询。终态（done/error/cancelled/wall_timeout）后再次 await 不计预算；"
+                + "有 running run 时禁止假装已完成。";
     }
 
     @Override
@@ -54,7 +59,7 @@ public class AwaitToolRunTool implements AgentTool {
                 "description", "待等待的异步 run 句柄列表（同轮派发的多个 runId 一次批量等待，共享观察窗口；与 runId 二选一）"));
         props.put("timeout_sec", Map.of(
                 "type", "number",
-                "description", "可选观察窗口秒数；exec 默认 30/上限 120，spawn 默认 120/上限 200，worker 默认 120/上限 600（按 run 类型夹紧）"));
+                "description", "可选观察窗口秒数（按 run 类型夹紧到上限）"));
         return Map.of(
                 "type", "object",
                 "properties", props);

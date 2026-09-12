@@ -55,6 +55,14 @@ public class ContextAdminController {
         return ReactiveBlocking.call(() -> R.ok(contextAdminService.listL2(userId, tenantId)));
     }
 
+    /** workspace 作用域 L2 列表（task 会话写路径产物）。 */
+    @GetMapping("/workspace/{workspaceId}/l2")
+    public Mono<R<List<L2StateView>>> listL2Workspace(
+            @PathVariable String workspaceId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return ReactiveBlocking.call(() -> R.ok(contextAdminService.listL2Workspace(workspaceId, tenantId)));
+    }
+
     @PutMapping("/l2/{id}")
     public Mono<R<L2StateView>> updateL2(
             @PathVariable String id,

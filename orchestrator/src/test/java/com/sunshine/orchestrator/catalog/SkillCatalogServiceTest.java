@@ -89,7 +89,7 @@ class SkillCatalogServiceTest {
     }
 
     @Test
-    void discoverableForPrompt_filtersEnabledAndKind_excludesTriggered() {
+    void discoverableForPrompt_filtersEnabledAndKind_keepsTriggeredForStablePrefix() {
         when(catalogClient.fetchCatalogIndex(null)).thenReturn(List.of(
                 new SkillCatalogIndexEntry("finance-analysis", "财务合规分析", "财务规则", 1, true, "none", "all", null, "default"),
                 new SkillCatalogIndexEntry("policy-qa", "制度问答", "制度查询", 1, true, "none", "chat", null, "default"),
@@ -97,9 +97,10 @@ class SkillCatalogServiceTest {
                 new SkillCatalogIndexEntry("disabled-skill", "禁用", "x", 1, false, "none", "all", null, "default")));
         service.refresh();
 
+        // C1 前缀稳定：目录不剔除已触发项，触发集变化不再位移前缀字节（已加载态由尾部 <skills_referenced> 承载）
         List<SkillCatalogIndexEntry> chat = service.discoverableForPrompt("chat", List.of("finance-analysis"), "default");
         assertThat(chat.stream().map(SkillCatalogIndexEntry::id))
-                .containsExactly("policy-qa");
+                .containsExactly("finance-analysis", "policy-qa");
 
         List<SkillCatalogIndexEntry> task = service.discoverableForPrompt("task", List.of(), "default");
         assertThat(task.stream().map(SkillCatalogIndexEntry::id))

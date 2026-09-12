@@ -6,6 +6,15 @@ function msg(id: string, role: 'user' | 'assistant', content: string, seq?: numb
   return { id, role, content, seq }
 }
 
+function tmsg(id: string, role: 'user' | 'assistant', content: string, atMs: number, seq?: number, status?: string): ChatMessage {
+  return {
+    id, role, content, seq,
+    status: status as ChatMessage['status'],
+    timelineStartedAt: atMs,
+    createdAt: atMs,
+  } as ChatMessage
+}
+
 describe('mergeRestoredMessages', () => {
   it('保留后端尚未落库的最新缓存消息（seq 缺失时不得丢弃）', () => {
     // 刷新窗口：后端 commitFinal 尚未完成，API 只返回旧窗口（seq 1-4），
@@ -75,5 +84,38 @@ describe('mergeRestoredMessages', () => {
     const api = [msg('m1', 'user', '一', 1)]
     const merged = mergeRestoredMessages(api, null)
     expect(merged).toEqual(api)
+  })
+
+  it('中断轮次按发送时间戳归位，不被挤到后续已完成轮次之后', () => {
+    // API 仅返回最近窗口 C3,C4（时间 3000/4000）；缓存含发生在时间轴中间的中断回答 B（2500，无 seq）。
+    // 重构后每条消息都有发送时间戳，排序以时间戳为唯一权威，B 应排在 C 之前。
+    const api = [
+      tmsg('c3', 'user', '问题C', 3000, 3),
+      tmsg('c4', 'assistant', '回答C', 4000, 4),
+    ]
+    const cached = [
+      tmsg('a1', 'user', '问题A', 1000, 1),
+      tmsg('a2', 'assistant', '回答A', 2000, 2),
+      tmsg('b_interrupt', 'assistant', '回答B(中断)', 2500, undefined, 'interrupted'),
+      ...api,
+    ]
+    const merged = mergeRestoredMessages(api, cached)
+    const ids = merged.map(m => m.id)
+    expect(ids.indexOf('b_interrupt')).toBeLessThan(ids.indexOf('c3'))
+    const times = merged.map(m => m.timelineStartedAt as number)
+    for (let i = 1; i < times.length; i++) {
+      expect(times[i]).toBeGreaterThanOrEqual(times[i - 1])
+    }
+  })
+
+  it('最新未落库流式消息（时间戳最晚）排尾部', () => {
+    const api = [tmsg('a1', 'user', '问题1', 1000, 1), tmsg('a2', 'assistant', '回答1', 2000, 2)]
+    const cached = [
+      ...api,
+      tmsg('b1', 'user', '新问题', 3000),
+      tmsg('b2', 'assistant', '新回答', 4000),
+    ]
+    const merged = mergeRestoredMessages(api, cached)
+    expect(merged.map(m => m.id)).toEqual(['a1', 'a2', 'b1', 'b2'])
   })
 })

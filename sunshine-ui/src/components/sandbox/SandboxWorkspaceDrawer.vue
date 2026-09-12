@@ -16,6 +16,7 @@ import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
 import SandboxFileTreePane from './SandboxFileTreePane.vue'
 import SandboxPreviewPane from './SandboxPreviewPane.vue'
 import SandboxDiffPanel from './SandboxDiffPanel.vue'
+import { useViewportMode } from '../../composables/useViewportMode'
 
 const props = defineProps<{
   workspaceId?: string | null
@@ -38,7 +39,11 @@ const {
   canResizeTree,
   onResizePointerDown,
   onTreeResizePointerDown,
+  overlayMode,
+  zIndex,
 } = useSandboxWorkspaceDrawer()
+
+const { isNarrowViewport } = useViewportMode()
 
 const diffPanelRef = ref<{ refresh: () => void } | null>(null)
 
@@ -106,6 +111,30 @@ const {
 })
 openFile = previewOpenFile
 
+/** 当前处于「改动」diff 视图（消息卡片点击 / 头部 tab 进入） */
+const diffMode = computed(() => state.tab === 'diff')
+
+/** 改动视图展示条件：v-show 保持组件挂载实现懒加载（切换 tab 不销毁、不重复加载） */
+const showDiffView = computed(() =>
+  diffMode.value && isTaskWorkspace.value && !!props.workspaceId && !!props.checkoutId,
+)
+
+/** 窄屏二级堆栈：预览开启盖住文件树；diff 视图同样视为已打开的一屏 */
+const mobileFileOpen = computed(() =>
+  isNarrowViewport.value && (!!selectedPath.value || showDiffView.value),
+)
+
+/** 窄屏预览返回文件树（仅清选中，标签保留，再点文件可回预览） */
+const mobileBackToFileTree = ref(false)
+watch(mobileFileOpen, (open) => {
+  if (!open) mobileBackToFileTree.value = false
+})
+const mobilePreviewHidden = computed(() => mobileBackToFileTree.value && !showDiffView.value)
+
+function backToFileTree() {
+  mobileBackToFileTree.value = true
+}
+
 /** 显示路径转换：工作区模式去掉 /workspace/{checkoutId} 前缀 */
 function displayPath(path: string): string {
   return stripWorkspaceRootPath(path, props.checkoutId ? `/workspace/${props.checkoutId}` : null)
@@ -167,14 +196,6 @@ watch(() => props.checkoutId, () => {
   clearCache()
   void loadRoots()
 })
-
-/** 当前处于「改动」diff 视图（消息卡片点击 / 头部 tab 进入） */
-const diffMode = computed(() => state.tab === 'diff')
-
-/** 改动视图展示条件：v-show 保持组件挂载实现懒加载（切换 tab 不销毁、不重复加载） */
-const showDiffView = computed(() =>
-  diffMode.value && isTaskWorkspace.value && !!props.workspaceId && !!props.checkoutId,
-)
 
 /** 改动视图点击文件名 -> 跳转文件区定位该文件（git 相对路径需拼 checkout 根） */
 function openFileFromDiffTab(path: string) {
@@ -299,9 +320,10 @@ watch(
   <aside
     v-if="state.open"
     class="sandbox-drawer"
+    :class="{ 'sandbox-drawer--overlay': overlayMode }"
     role="complementary"
     aria-label="工作区"
-    :style="{ width: `${drawerWidth}px` }"
+    :style="overlayMode ? { zIndex } : { width: `${drawerWidth}px` }"
   >
     <div
       v-if="canResizeDrawer"
@@ -389,10 +411,10 @@ watch(
       @open-file="openFileFromDiffTab"
     />
 
-    <div v-show="!showDiffView" class="explorer">
+    <div v-show="!showDiffView" class="explorer" :class="{ 'explorer--stacked-tree': mobilePreviewHidden }">
       <SandboxFileTreePane
         :tree-width="treeWidth"
-        :can-resize-tree="canResizeTree"
+        :can-resize-tree="canResizeTree && !isNarrowViewport"
         :tree-loading="treeLoading"
         :tree-data="treeData"
         :expanded-keys="expandedKeys"
@@ -407,6 +429,7 @@ watch(
       />
       <SandboxPreviewPane
         v-model:tabbar-ref="tabbarRef"
+        v-show="!mobilePreviewHidden"
         :open-tabs="openTabs"
         :selected-path="selectedPath"
         :preview="preview"
@@ -423,6 +446,8 @@ watch(
         :focus-line="focusLine"
         :focus-line-end="focusLineEnd"
         :display-path="displayPath"
+        :mobile-back-visible="mobileFileOpen"
+        @mobile-back="backToFileTree"
         @activate-tab="activateTab"
         @close-tab="closeTab"
         @toggle-md-raw-mode="toggleMdRawMode"
@@ -444,6 +469,39 @@ watch(
   border-left: 1px solid var(--sun-border);
   background: var(--sun-black);
   color: var(--sun-text);
+}
+
+/* 浮层档（紧凑 769–1260 / 窄屏 ≤768）：覆盖正文与节点抽屉，不参与 flex 挤占；
+   窄屏全屏，紧凑档定宽贴右缘 */
+.sandbox-drawer--overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 210;
+  width: 100% !important;
+  max-width: 100%;
+  border-left: none;
+}
+
+@media (min-width: 769px) {
+  .sandbox-drawer--overlay {
+    left: auto;
+    width: min(480px, 66vw) !important;
+    border-left: 1px solid var(--sun-border);
+    box-shadow: -8px 0 24px color-mix(in srgb, black 24%, transparent);
+  }
+}
+
+.sandbox-drawer--overlay .drawer-resize-handle {
+  display: none;
+}
+
+@media (min-width: 769px) and (max-width: 1260px) {
+  .sandbox-drawer--overlay .drawer-resize-handle {
+    display: block;
+  }
 }
 
 .drawer-resize-handle {
@@ -639,5 +697,11 @@ watch(
   flex-direction: row;
   overflow: hidden;
   position: relative;
+}
+
+/* 窄屏二级堆栈「查看文件树」态：预览隐藏，树撑满 */
+.explorer--stacked-tree .file-tree-pane {
+  width: 100% !important;
+  max-width: 100%;
 }
 </style>

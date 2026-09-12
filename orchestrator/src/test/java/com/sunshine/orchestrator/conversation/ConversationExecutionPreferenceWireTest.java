@@ -51,7 +51,7 @@ class ConversationExecutionPreferenceWireTest {
         ConversationSummaryDto summary = ConversationSummaryDto.from(conv);
         assertThat(summary.getExecutionPreference()).isEqualTo("pro");
 
-        ConversationDetailDto detail = ConversationDetailDto.from(conv, List.of(user));
+        ConversationDetailDto detail = ConversationDetailDto.from(conv, List.of(user), false);
         assertThat(detail.getExecutionPreference()).isEqualTo("pro");
         assertThat(detail.getMessages()).hasSize(1);
         assertThat(detail.getMessages().get(0).getExecutionPreference()).isEqualTo("fast");

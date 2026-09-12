@@ -41,6 +41,9 @@ public class ChatMessage {
     /** 会话绑定模型（注册表 model_name）；空则走 chat/default scene */
     private String modelName;
 
+    /** 会话思考深度（minimal|low|medium|high）；空/null 则走注册表 request_extras 缺省 */
+    private String reasoningEffort;
+
     /** 聊天图片 URL（多模态，≤4 张；仅当前消息下发模型，历史回放忽略） */
     private java.util.List<String> imageUrls;
 }

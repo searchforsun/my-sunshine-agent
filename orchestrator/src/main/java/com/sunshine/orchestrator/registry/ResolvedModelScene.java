@@ -3,8 +3,8 @@ package com.sunshine.orchestrator.registry;
 import java.util.Map;
 
 /**
- * 场景解析结果。{@code overrideInvalid} 仅 {@link ModelSceneResolver#resolveChat} 在
- * 会话模型停用/缺失并回落 chat/default 时为 true（供时间线 warning）。
+ * 场景解析结果。{@code overrideInvalid} 在会话所选模型无效/停用并回落场景链时为 true（供时间线 warning）。
+ * <p>{@code extras} = 模型级 {@code request_extras} 叠加场景 extras（场景覆盖同名键）。
  */
 public record ResolvedModelScene(
         String effectiveModel,

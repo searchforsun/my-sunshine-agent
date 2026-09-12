@@ -3,6 +3,8 @@ import type { PlanGraph } from '../api/executionPlans'
 import type { ProcessingStep } from '../api/processingSteps'
 import type { DagNodeView } from '../utils/planGraph'
 import { sandboxDrawerLayout } from './sandboxDrawerBridge'
+import { useViewportMode } from './useViewportMode'
+import { pushRightDrawer, removeRightDrawer, registerRightDrawerClose, rightDrawerZIndex } from './rightDrawerStack'
 
 export interface PlanNodeDrawerPayload {
   planId: string
@@ -21,6 +23,8 @@ export const DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
 export const PLAN_COMPARE_MIN = PANE_MIN_WIDTH
 export const CHAT_CONTENT_MIN_WIDTH = PANE_MIN_WIDTH
 export const SANDBOX_DRAWER_MIN_WIDTH = PANE_MIN_WIDTH
+/** 紧凑档浮层宽度下限（可拖窄，松手不持久化到并排偏好） */
+export const OVERLAY_DRAWER_MIN_WIDTH = 360
 const STORAGE_KEY = 'sunshine-plan-drawer-width'
 
 const state = reactive({
@@ -33,8 +37,9 @@ const state = reactive({
 })
 
 /**
- * 层级栈：抽屉内嵌套卡（worker 抽屉 → 子 agent 卡）open 时入栈，
+ * 层级栈：抽屉内嵌套卡（worker 抽屉 → 子 agent 卡 → 子子 agent）open 时入栈，
  * 右上角关闭按钮逐层返回，最顶层才真正关闭抽屉。
+ * 多级下钻是同一面板，不占右侧堆栈栈位。
  */
 const history = [] as PlanNodeDrawerPayload[]
 /** 层级深度：>1 时右上角「返回上级」，=1 时「收起」（history 为普通数组，显式维护响应式深度） */
@@ -62,12 +67,8 @@ function close() {
   state.node = null
   state.step = undefined
   state.graph = null
+  removeRightDrawer('plan')
 }
-
-const savedWidth = ref(loadSavedWidth())
-const chatBodyWidth = ref(0)
-let chatBodyEl: HTMLElement | null = null
-let bodyObserver: ResizeObserver | null = null
 
 function loadSavedWidth(): number {
   try {
@@ -122,12 +123,22 @@ const drawerMaxWidth = computed(() =>
   ),
 )
 
+const savedWidth = ref(loadSavedWidth())
+const chatBodyWidth = ref(0)
+let chatBodyEl: HTMLElement | null = null
+let bodyObserver: ResizeObserver | null = null
+const { isNarrowViewport, isCompactViewport } = useViewportMode()
+/** 并排挤占仅在「四面板最小宽放得下」的宽敞档成立；其余宽度抽屉浮层化 */
+const overlayMode = computed(() => isNarrowViewport.value || isCompactViewport.value)
+
 const drawerWidth = computed(() => {
+  if (overlayMode.value) return 0
   const max = drawerMaxWidth.value
   return Math.min(Math.max(savedWidth.value, DRAWER_MIN_WIDTH), max)
 })
 
 const canResizeDrawer = computed(() => {
+  if (overlayMode.value) return !isNarrowViewport.value
   // 双开时左缘：只要还能从 Chat 再挤一点，或右侧预算仍大于两倍 min（可与沙箱对挤）
   if (sandboxDrawerLayout.open) {
     const rightBudget = drawerWidth.value + sandboxDrawerLayout.width
@@ -155,12 +166,36 @@ function registerChatBody(el: HTMLElement | null) {
 }
 
 function onResizePointerDown(e: PointerEvent) {
-  if (!chatBodyEl || !canResizeDrawer.value) return
+  if (!canResizeDrawer.value) return
+  if (!overlayMode.value && !chatBodyEl) return
   e.preventDefault()
   const handle = e.currentTarget as HTMLElement
   handle.setPointerCapture(e.pointerId)
   document.body.classList.add('plan-drawer-resizing')
   const aside = handle.closest('aside')
+
+  if (overlayMode.value) {
+    // 浮层：拖的是自身绝对宽度，与布局预算无关
+    const startX = e.clientX
+    const startW = (aside?.getBoundingClientRect().width) || DRAWER_MIN_WIDTH
+    const onMove = (ev: PointerEvent) => {
+      savedWidth.value = Math.min(
+        Math.max(startW + (startX - ev.clientX), OVERLAY_DRAWER_MIN_WIDTH),
+        Math.max(OVERLAY_DRAWER_MIN_WIDTH, Math.round(window.innerWidth * 0.66)),
+      )
+    }
+    const onUp = (ev: PointerEvent) => {
+      document.body.classList.remove('plan-drawer-resizing')
+      handle.releasePointerCapture(ev.pointerId)
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
+    return
+  }
 
   const onMove = (ev: PointerEvent) => {
     if (!chatBodyEl) return
@@ -188,9 +223,11 @@ function onResizePointerDown(e: PointerEvent) {
   handle.addEventListener('pointercancel', onUp)
 }
 
+registerRightDrawerClose('plan', close)
+
 export function usePlanNodeDrawer() {
   /**
-   * @param options.push 抽屉内嵌套卡下钻（worker 抽屉 → 子 agent 卡）入栈；
+   * @param options.push 抽屉内嵌套卡下钻（worker 抽屉 → 子 agent 卡 → 子子 agent）入栈；
    * 主时间线 / DAG 画布平级打开重置为单层（新浏览上下文）。
    */
   function open(payload: PlanNodeDrawerPayload, options: { push?: boolean } = {}) {
@@ -208,6 +245,11 @@ export function usePlanNodeDrawer() {
     }
     syncDepth()
     applyHistoryEntry(payload)
+    // 浮层档：面板入右侧堆栈（容量 2，超额 FIFO 淘汰最早面板并触发其关闭）；并排档不占栈
+    if (overlayMode.value) {
+      removeRightDrawer('plan')
+      pushRightDrawer('plan')
+    }
   }
 
   /** 有父层则返回上一层；最顶层直接关闭抽屉 */
@@ -248,5 +290,7 @@ export function usePlanNodeDrawer() {
     onResizePointerDown,
     setWidth,
     persistCurrentWidth,
+    overlayMode,
+    zIndex: computed(() => rightDrawerZIndex('plan')),
   }
 }

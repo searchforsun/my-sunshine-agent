@@ -119,6 +119,11 @@ public class ContextProperties {
         private boolean processLayerEnabled = true;
         /** process 层每条 result 截断字符数。 */
         private int processResultMaxChars = 200;
+        /**
+         * process 层轮内内容去重（Set 精确匹配）：同一 assistant 消息内相同步骤 result 只写一条向量。
+         * task 会话反复读同一文件等操作在各轮产生同内容步骤，跨轮去重靠检索侧 dedupeHits 兜底。
+         */
+        private boolean processDedupeEnabled = true;
     }
 
     @Getter

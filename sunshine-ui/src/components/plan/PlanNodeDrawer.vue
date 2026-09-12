@@ -18,6 +18,7 @@ import {
 } from '../../api/processingSteps'
 import { formatPlanNodeType } from '../../api/executionPlans'
 import type { DagNodeStatus } from '../../utils/planGraph'
+import { useViewportMode } from '../../composables/useViewportMode'
 import type { PlanNodeAttempt } from '../../api/executionPlans'
 import PlanNodeIcon from './PlanNodeIcon.vue'
 import DrawerCollapseIcon from '../icons/DrawerCollapseIcon.vue'
@@ -36,7 +37,7 @@ import { resolveExclusiveBranches } from '../../utils/exclusiveBranchDisplay'
 import { resolveLoopContinueRows } from '../../utils/loopContinueDisplay'
 import { groupLoopBodySubStepsByRound } from '../../utils/loopBodyRoundGroups'
 
-const { state, close, goBack, depth, drawerWidth, canResizeDrawer, onResizePointerDown } = usePlanNodeDrawer()
+const { state, close, goBack, depth, drawerWidth, canResizeDrawer, onResizePointerDown, overlayMode, zIndex } = usePlanNodeDrawer()
 const { isAnyExpanded: planDagExpanded } = usePlanDagExpand()
 /** 抽屉内嵌套卡（worker 抽屉 → 子 agent 卡）点击时 open 走 { push: true } 入栈，右上角逐层返回 */
 provide('planNodeDrawerNested', true)
@@ -599,10 +600,10 @@ watch(
   <aside
     v-if="state.open && node"
     class="plan-drawer"
-    :class="{ 'is-over-expand': planDagExpanded }"
+    :class="{ 'is-over-expand': planDagExpanded, 'plan-drawer--overlay': overlayMode }"
     role="complementary"
     aria-label="节点详情"
-    :style="{ width: `${drawerWidth}px` }"
+    :style="overlayMode ? { zIndex } : { width: `${drawerWidth}px` }"
   >
     <div
       v-if="canResizeDrawer"
@@ -849,6 +850,42 @@ watch(
   border-left: 1px solid var(--sun-border);
   background: var(--sun-bg);
   box-shadow: -8px 0 24px color-mix(in srgb, black 8%, transparent);
+}
+
+/* 浮层档（紧凑 769–1260 / 窄屏 ≤768）：覆盖正文，不参与 flex 挤占；
+   窄屏全屏，紧凑档定宽贴右缘 */
+.plan-drawer--overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 200;
+  width: 100% !important;
+  max-width: 100%;
+  border-left: none;
+  box-shadow: none;
+}
+
+/* 紧凑档浮层：定宽贴右缘，可拖宽；窄屏全屏不可拖 */
+/* 紧凑档浮层：与工作区抽屉同宽（堆叠时完全重合，不露底层边条），可拖宽 */
+@media (min-width: 769px) {
+  .plan-drawer--overlay {
+    left: auto;
+    width: min(480px, 66vw) !important;
+    border-left: 1px solid var(--sun-border);
+    box-shadow: -8px 0 24px color-mix(in srgb, black 24%, transparent);
+  }
+}
+
+.plan-drawer--overlay .drawer-resize-handle {
+  display: none;
+}
+
+@media (min-width: 769px) and (max-width: 1260px) {
+  .plan-drawer--overlay .drawer-resize-handle {
+    display: block;
+  }
 }
 
 .plan-drawer.is-over-expand {

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { settleRunningSteps, type ProcessingStep } from './processingSteps'
 
 /**
- * 回归：消息级 completed 兜底收口。后端 done 快照在途丢失时，残余 running 工具步
- * 会永续 live 计时（liveElapsedMs = now - clientStartedAt），表现为已完成消息的耗时仍实时增长。
+ * 回归：消息级 completed / failed 兜底收口。后端终态快照在途丢失时，残余 running 工具步
+ * 会永续 live 计时（liveElapsedMs = now - clientStartedAt），表现为已终止消息的耗时仍实时增长。
  * settleRunningSteps 以消息级终态为权威信号，统一把残余 running 收为 done。
  */
 describe('settleRunningSteps 消息级终态收口', () => {

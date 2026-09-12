@@ -187,6 +187,6 @@ class TrackRoutingTest {
 
     private static RoutingContext ctx(
             ExecutionMode preference, String query, String workflowId, String kind) {
-        return new RoutingContext(query, null, preference, workflowId, null, null, null, kind, null, null);
+        return new RoutingContext(query, null, preference, workflowId, null, null, null, kind, null, null, null);
     }
 }

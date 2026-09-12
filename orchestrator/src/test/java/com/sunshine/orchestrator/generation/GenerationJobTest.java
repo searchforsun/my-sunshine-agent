@@ -95,7 +95,12 @@ class GenerationJobTest {
         when(flushScheduler.metaContentEnd(anyString(), org.mockito.ArgumentMatchers.nullable(String.class)))
                 .thenAnswer(inv -> "{\"type\":\"content_end\",\"segmentId\":\"" + inv.getArgument(0) + "\"}");
         when(flushScheduler.metaStep(org.mockito.ArgumentMatchers.any()))
-                .thenReturn("{\"type\":\"step\"}");
+                .thenAnswer(inv -> {
+                    ProcessingStep s = inv.getArgument(0);
+                    return "{\"type\":\"step\",\"id\":\"" + s.id() + "\",\"lifecycle\":\"" + s.lifecycle() + "\"}";
+                });
+        when(flushScheduler.metaError(anyString()))
+                .thenAnswer(inv -> "{\"type\":\"error\",\"text\":\"" + inv.getArgument(0) + "\"}");
         when(flushScheduler.metaStepDelta(anyString(), anyString(), anyString()))
                 .thenAnswer(inv -> "{\"type\":\"step_delta\",\"stepId\":\"" + inv.getArgument(0)
                         + "\",\"channel\":\"" + inv.getArgument(1)
@@ -355,5 +360,52 @@ class GenerationJobTest {
         String stepsJson = stepsCaptor.getValue();
         assertThat(stepsJson).contains("识别意图").contains("简单对话");
         assertThat(stepsJson).contains("lifecycle").contains("summary");
+    }
+
+    @Test
+    @DisplayName("失败终态：running 工具步标 paused 并经 Redis 下发终态快照")
+    void start_errorEmitsPausedStepSnapshots() throws Exception {
+        String generationId = streamService.createGeneration(
+                CONVERSATION_ID, MESSAGE_ID, USER_ID, TENANT_ID, INTENT);
+
+        GenerationJob job = newJob(generationId);
+
+        StringBuilder buffer = new StringBuilder();
+        CountDownLatch errorLatch = new CountDownLatch(1);
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+
+        var session = com.sunshine.orchestrator.processing.ProcessingTimelineSupport.newSession();
+        session.pending("tool-sandbox__read", "tool");
+        session.start("tool-sandbox__read", "tool");
+        ProcessingStep toolRunning = session.snapshot().get(0);
+
+        job.start(
+                Flux.concat(
+                        Flux.just(StreamToken.step(toolRunning)),
+                                Flux.error(new IllegalStateException("upstream burst"))),
+                buffer,
+                content -> { },
+                () -> { },
+                error -> {
+                    errorRef.set(error);
+                    errorLatch.countDown();
+                }
+        );
+
+        // 失败路径走 onError（onComplete 不触发）；Redis 写入在 handleError 内同步完成
+        assertThat(errorLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(errorRef.get()).isInstanceOf(IllegalStateException.class);
+
+        // stepsBuffer 落库快照中该步已 paused
+        ArgumentCaptor<String> stepsCaptor = ArgumentCaptor.forClass(String.class);
+        verify(flushScheduler).commitFinal(
+                eq(MESSAGE_ID), org.mockito.ArgumentMatchers.contains("upstream burst"),
+                eq(""), eq(MessageStatus.FAILED), stepsCaptor.capture(), isNull(), isNull());
+        assertThat(stepsCaptor.getValue()).contains("\"lifecycle\":\"paused\"");
+
+        // Redis 流中有该 stepId 的 paused 终态帧（前端据此即时落终态）
+        List<StreamEvent> events = streamService.readFrom(generationId, 0, 50);
+        assertThat(events.stream().anyMatch(e -> e.text().contains("tool-sandbox__read")
+                && e.text().contains("\"lifecycle\":\"paused\""))).isTrue();
     }
 }

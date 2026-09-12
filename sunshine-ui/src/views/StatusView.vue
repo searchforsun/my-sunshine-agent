@@ -3,6 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import { NButton } from 'naive-ui'
 import { resolveHealthProbeUrl } from '../api/config'
 import StatusServiceNode from '../status/StatusServiceNode.vue'
+import ServerInfoPanel from '../status/ServerInfoPanel.vue'
 import {
   INFRA_ITEMS,
   SERVICE_DEFS,
@@ -128,6 +129,8 @@ onMounted(() => {
         </div>
       </div>
 
+      <ServerInfoPanel />
+
       <section class="arch">
         <div class="lane-label">L0 客户端</div>
         <article class="node node--browser">
@@ -200,7 +203,7 @@ onMounted(() => {
 
 <style scoped>
 .status-root {
-  height: 100vh;
+  height: var(--sun-app-height);
   background: var(--sun-black);
 }
 
@@ -264,6 +267,7 @@ onMounted(() => {
   border-radius: var(--radius-lg);
   padding: 16px;
   background: var(--sun-black);
+  margin-top: 20px;
 }
 
 .lane-label {

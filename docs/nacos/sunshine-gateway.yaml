@@ -40,7 +40,7 @@ spring:
         locator:
           enabled: true
           lower-case-service-id: true
-      # 工作区创建需同步 clone（最长约 5min）；过短会掐断 POST /api/agent-workspaces
+      # 全局读空闲默认档（chat 等）：流式思考期无数据时由该超时掐断连接
       httpclient:
         connect-timeout: 10000
         response-timeout: 360s
@@ -114,6 +114,16 @@ spring:
           uri: lb://sunshine-rag
           predicates:
             - Path=/api/rag/**
+        # 会话流式读空闲分档：task 会话（前端流式请求带 X-Conversation-Kind: task）放宽到 720s，
+        # 其余 /api/** 维持全局 360s。metadata response-timeout 单位为毫秒（RouteMetadataUtils），
+        # 仅覆盖 NettyRoutingFilter 响应超时，SSE 事件间隔不受影响
+        - id: sunshine-bff-api-task
+          uri: lb://sunshine-bff
+          predicates:
+            - Path=/api/**
+            - Header=X-Conversation-Kind, task
+          metadata:
+            response-timeout: 720000
         - id: sunshine-bff-api
           uri: lb://sunshine-bff
           predicates:

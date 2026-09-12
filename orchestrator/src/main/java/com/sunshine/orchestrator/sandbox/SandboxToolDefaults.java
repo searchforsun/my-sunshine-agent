@@ -85,9 +85,9 @@ public final class SandboxToolDefaults {
     private static AgentSandboxProperties.ToolDef exec() {
         AgentSandboxProperties.ToolDef def = base(
                 "执行命令",
-                "在沙箱容器内执行 shell（破坏性命令会被拒绝；只读命令通常免 HITL）");
+                "在沙箱容器内执行 shell（删除根目录/家目录等自杀式命令会被拒绝；只读命令通常免 HITL）");
         def.getProperties().put("command", param("string",
-                "shell 命令；禁止 rm -rf /、管道下载执行、mkfs 等破坏性操作"));
+                "shell 命令；/workspace 与 /workspace/wt-* 内可正常 rm/rm -rf 清理文件，仅禁止 rm -rf /、rm -rf ~ 等自杀式删除及管道下载执行、mkfs"));
         def.getProperties().put("cwd", param("string",
                 "工作目录（可选，默认 /workspace；须在 /skills/{skillId}/... 或 /workspace）"));
         def.getProperties().put("timeout_sec", param("integer", "超时秒数（可选，默认 30）"));

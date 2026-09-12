@@ -18,6 +18,7 @@ public class ConversationSummaryDto {
     private String executionPreference;
     private String kbId;
     private String modelName;
+    private String reasoningEffort;
     private String kind;
     private String workspaceId;
     private String checkoutPath;
@@ -31,6 +32,7 @@ public class ConversationSummaryDto {
                 .executionPreference(ExecutionMode.toStoredWire(conv.getExecutionPreference()))
                 .kbId(conv.getKbId())
                 .modelName(conv.getModelName())
+                .reasoningEffort(conv.getReasoningEffort())
                 .kind(conv.getKind())
                 .workspaceId(conv.getWorkspaceId())
                 .checkoutPath(conv.getCheckoutPath())

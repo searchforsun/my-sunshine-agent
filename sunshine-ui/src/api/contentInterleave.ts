@@ -458,7 +458,8 @@ export function stripPlanDrawerLeakFromMessage(
     if (!step.id.startsWith('node-') || step.id === 'node-answer') continue
     const label = formatStepLabel(step)
     const active = step.summary?.active?.trim()
-    if (!active?.includes('等待用户确认')) continue
+    // 以 metadata.hitlStatus 硬条件判定 HITL 等待态，勿依赖 active 文案
+    if (step.metadata?.hitlStatus !== 'awaiting') continue
     const leak = `${label} ${active}`
     if (content === leak || content.startsWith(leak)) {
       content = content.slice(leak.length).trimStart()

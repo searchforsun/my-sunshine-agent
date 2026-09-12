@@ -1,6 +1,7 @@
 package com.sunshine.orchestrator.agent;
 
 import com.sunshine.orchestrator.agent.runtime.AgentRuntime;
+import com.sunshine.orchestrator.agent.runtime.AgentRunRequest;
 import com.sunshine.orchestrator.catalog.ToolSetResolver;
 import com.sunshine.orchestrator.client.StreamToken;
 import com.sunshine.orchestrator.config.AgentExecutionProperties;
@@ -30,6 +31,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -135,6 +137,10 @@ class SpawnSubagentToolTest {
         String out = tool.spawnSubagent("请完成子任务", null, "制度检索");
 
         assertThat(out).isEqualTo("hello");
+        // chat 档（kind 缺省）：取夹具 maxIters=8
+        ArgumentCaptor<AgentRunRequest> chatReqCaptor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentExecutorRouter).dispatch(isNull(), chatReqCaptor.capture(), any(), any());
+        assertThat(chatReqCaptor.getValue().maxIters()).isEqualTo(8);
         ArgumentCaptor<String> runIdCaptor = ArgumentCaptor.forClass(String.class);
         verify(timelineSupport).begin(
                 eq(BRIDGE),
@@ -143,6 +149,28 @@ class SpawnSubagentToolTest {
                 eq("请完成子任务"));
         assertThat(runIdCaptor.getValue()).isNotBlank();
         verify(timelineSupport).complete(eq(BRIDGE), any(SpawnSubagentTimelineBridge.class), eq("hello"));
+    }
+
+    @Test
+    void taskKind_usesTaskTierDefaults() {
+        ProcessingTimelineSession session = new ProcessingTimelineSession();
+        registry.bind(BRIDGE, session, new ConcurrentLinkedQueue<>());
+        StepEventBridge.bindHitlBridge(BRIDGE, MSG, true);
+        StepEventBridge.registerMainRun(MSG, BRIDGE);
+        // 第 10 参 conversationKind=task → task 档（夹具未设 task 值，落类默认 60 轮）
+        StepEventBridge.bindToolAudit(MSG, new StepEventBridge.ToolAuditContext(
+                "conv-1", MSG, "user-1", "default", null, null, null, null, null, "task"));
+
+        when(agentExecutorRouter.dispatch(any(), any(), any(), any()))
+                .thenReturn(Flux.just(StreamToken.content("hello")));
+
+        String out = tool.spawnSubagent("请完成子任务", null, "沙箱编码");
+
+        assertThat(out).isEqualTo("hello");
+        ArgumentCaptor<AgentRunRequest> reqCaptor = ArgumentCaptor.forClass(AgentRunRequest.class);
+        verify(agentExecutorRouter).dispatch(isNull(), reqCaptor.capture(), any(), any());
+        assertThat(reqCaptor.getValue().maxIters()).isEqualTo(60);
+        assertThat(reqCaptor.getValue().conversationKind()).isEqualTo("task");
     }
 
     @Test

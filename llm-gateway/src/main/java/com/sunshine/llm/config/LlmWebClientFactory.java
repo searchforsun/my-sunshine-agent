@@ -30,8 +30,8 @@ public class LlmWebClientFactory {
     @Value("${llm.webclient.connect-timeout:10s}")
     private Duration connectTimeout = Duration.ofSeconds(10);
 
-    @Value("${llm.webclient.response-timeout:120s}")
-    private Duration responseTimeout = Duration.ofSeconds(120);
+    @Value("${llm.webclient.response-timeout:180s}")
+    private Duration responseTimeout = Duration.ofSeconds(180);
 
     private final Map<String, WebClient> cacheByBaseUrl = new ConcurrentHashMap<>();
 

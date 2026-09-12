@@ -354,6 +354,18 @@ public class OrchestratorClient {
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
     }
 
+    /** workspace 作用域 L2 列表（task 会话写路径产物）。 */
+    public Mono<Map<String, Object>> listContextL2Workspace(String workspaceId, String tenantId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/admin/context/workspace/{workspaceId}/l2")
+                        .queryParam("tenantId", tenantId != null ? tenantId : "default")
+                        .build(workspaceId))
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, this::toStatusException)
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     public Mono<Map<String, Object>> updateContextL2(String id, Map<String, Object> body) {
         return webClient.put()
                 .uri("/api/admin/context/l2/{id}", id)

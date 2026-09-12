@@ -22,6 +22,8 @@ interface ChatStoreLike {
 export function useChatSessionHydration(options: {
   chatStore: ChatStoreLike
   loading: Ref<boolean>
+  /** 按会话 id 直查运行态（含后台队列发送/后台续连，不依赖当前激活会话） */
+  getSessionLoading: (cid: string) => boolean
   getMessages: (id: string) => ChatMessage[]
   setMessages: (id: string, msgs: ChatMessage[]) => void
   reconnectStream: (generationId: string, afterSeq: number, convId: string) => Promise<void>
@@ -37,6 +39,7 @@ export function useChatSessionHydration(options: {
   const {
     chatStore,
     loading,
+    getSessionLoading,
     getMessages,
     setMessages,
     reconnectStream,
@@ -175,6 +178,10 @@ export function useChatSessionHydration(options: {
   }
 
   async function hydrateSessionFromStore(cid: string, opts?: { skipApiLoad?: boolean; deferScroll?: boolean }) {
+    // 会话仍在流式（后台队列发送/后台续连中）：内存 live 数组是唯一 SSOT，
+    // 停止 hydrate——store 快照存在 ≤400ms debounce 滞后，整体替换会冲掉在途轮次的消息，
+    // SSE 增量继续写进残缺数组，完成时 flushPersist 落盘残缺数据（表现为切回后消息/队列消失）
+    if (getSessionLoading(cid)) return
     const skipApi = opts?.skipApiLoad ?? loading.value
     if (!skipApi) {
       await chatStore.loadDetail(cid)

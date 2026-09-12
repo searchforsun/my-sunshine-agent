@@ -86,8 +86,13 @@ public class SpawnSubagentTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "创建隔离子 Agent：可指定预定义智能体 agentId（使用该智能体的系统提示词/工具/配置），"
-                + "或仅传 prompt 创建临时子 Agent；返回子任务最终文本。";
+        return "创建隔离子 Agent 执行独立子工作；≥2 个相互独立、可并行或需隔离上下文的子工作应同轮多次并行调用，"
+                + "勿把大任务全串在单 run。两种用法：①仅传 prompt → 临时子 Agent（沿用主 Agent 工具集）；"
+                + "②传 agent_id → 使用该预定义智能体的系统提示词/工具/配置，ID 只能用本轮上下文已列出的可用智能体。"
+                + "子 Agent 看不到主上下文：prompt 必须自包含（目标、关键事实、路径、中间产物、约束、验收），"
+                + "禁止「如上所述」类指代。返回子任务最终文本；取消时返回「用户已取消子任务」"
+                + "（此后主 Agent 自行完成该任务，禁止再 spawn 同一任务）；"
+                + "agent_id 未命中时返回「未找到智能体」（改为仅传 prompt 或换已列出的 ID，禁止反复猜）。";
     }
 
     @Override
@@ -181,8 +186,14 @@ public class SpawnSubagentTool implements AgentTool {
 
         String promptText = prompt.strip();
         String displayLabel = StringUtils.hasText(label) ? label.strip() : SpawnSubagentLabels.label();
-        int maxIters = subCfg.getMaxIters() > 0 ? subCfg.getMaxIters() : 8;
-        long timeoutMs = subCfg.getTimeoutMs() > 0 ? subCfg.getTimeoutMs() : 180_000L;
+        // 轮数/墙钟按会话 kind 取档：chat=30轮/5min，task=60轮/10min（缺省按 chat）
+        boolean isTaskKind = "task".equals(audit.conversationKind());
+        int maxIters = isTaskKind
+                ? (subCfg.getTaskMaxIters() > 0 ? subCfg.getTaskMaxIters() : 60)
+                : (subCfg.getMaxIters() > 0 ? subCfg.getMaxIters() : 30);
+        long timeoutMs = isTaskKind
+                ? (subCfg.getTaskTimeoutMs() > 0 ? subCfg.getTaskTimeoutMs() : 600_000L)
+                : (subCfg.getTimeoutMs() > 0 ? subCfg.getTimeoutMs() : 300_000L);
         List<String> sameToolsAsMain = toolSetResolver.resolveDefaultTools(
                 audit.tenantId(), audit.conversationKind());
         String systemOverlay = resolveSubagentOverlay();
@@ -255,7 +266,10 @@ public class SpawnSubagentTool implements AgentTool {
                 agentEntry != null ? agentEntry.dataScopeJson() : null,
                 resolvedPermissionsJson,
                 resolvedModelConfigJson)
-                .withConversationKind(audit.conversationKind());
+                .withConversationKind(audit.conversationKind())
+                // 会话模型作尾位兜底；预定义 agent 配置了专用模型时不传递（配置优先，避免混淆信号）
+                .withModelOverride(StringUtils.hasText(resolvedModelConfigJson)
+                        && !"{}".equals(resolvedModelConfigJson.strip()) ? null : audit.sessionModel());
         String runId = request.runId();
         String subBridgeId = request.resolveBridgeId();
         SpawnSubagentTimelineBridge subTimeline =

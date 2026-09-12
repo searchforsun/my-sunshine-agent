@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -256,8 +257,9 @@ public class L3IngestService {
             return;
         }
         int maxChars = Math.max(50, l3.getProcessResultMaxChars());
-        int idx = 0;
-        for (ProcessingStep step : steps) {
+        boolean dedupeInTurn = l3.isProcessDedupeEnabled();
+        Set<String> seenLines = dedupeInTurn ? new java.util.HashSet<>() : null;
+        int idx = 0;        for (ProcessingStep step : steps) {
             if (step == null || !StringUtils.hasText(step.result())) {
                 continue;
             }
@@ -267,6 +269,10 @@ public class L3IngestService {
             }
             String label = StringUtils.hasText(step.label()) ? step.label() : step.phase();
             String line = (StringUtils.hasText(label) ? label + ": " : "") + result;
+            // 轮内去重：同一消息内重复步骤 result（如多轮循环读同一文件）只落一条向量
+            if (seenLines != null && !seenLines.add(line)) {
+                continue;
+            }
             // 合成 msgId 与 body 层隔离（body 用真实 assistantMsgId）；process 层独立管理
             String procMsgId = assistantMsgId + "#proc:" + idx++;
             historyRagClient.upsert(

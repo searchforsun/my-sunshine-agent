@@ -196,7 +196,8 @@ class L1CompressorCompressionPointTest {
         when(store.find("c1")).thenReturn(Optional.of(entity));
         when(store.parseFarFoldedMsgIds(any())).thenReturn(Set.of("u0", "a0"));
         when(store.farSummaryOf(any())).thenReturn("旧远窗");
-        when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
+        lenient().when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
+        when(llm.complete(eq("far-system"), anyString())).thenReturn("折叠远窗");
 
         // 5 轮；r0 已折叠 → 活跃 4 轮 > 4 不成立？turnBackstop=4 → 4>4 false，改 6 轮
         compressor.compress("u", "default", "c1", rounds(6));
@@ -347,7 +348,8 @@ class L1CompressorCompressionPointTest {
         // task 有 ≤10k 硬预算：同超预算场景 Near 被激进折叠（保底 1 轮），与 chat 对照差异
         when(tokenEstimator.count(anyString())).thenReturn(5000);
         when(conversationRepo.findById("c1")).thenReturn(Optional.of(taskConv("fast")));
-        when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
+        lenient().when(llm.complete(eq("mid-system"), anyString())).thenReturn("摘要");
+        when(llm.complete(eq("far-system"), anyString())).thenReturn("折叠远窗");
 
         compressor.compress("u", "default", "c1", rounds(10));
 

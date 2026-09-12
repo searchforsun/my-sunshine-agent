@@ -19,6 +19,11 @@ export interface L2StateEntry {
   sourceMsgId?: string | null
   createdAt?: string
   updatedAt?: string
+  scope?: string
+  workspaceId?: string | null
+  background?: string | null
+  bizSceneScope?: string
+  confirmStatus?: string
 }
 
 export interface L2UpdatePayload {
@@ -169,6 +174,15 @@ export async function listContextConversations(
 export async function listContextL2(userId: string, tenantId = 'default'): Promise<L2StateEntry[]> {
   const q = new URLSearchParams({ userId, tenantId })
   const res = await fetch(apiUrl(`/api/admin/context/l2?${q}`), { headers: apiHeaders() })
+  return parseApiResponse<L2StateEntry[]>(res)
+}
+
+/** workspace 作用域 L2 列表（task 会话写路径产物）。 */
+export async function listContextL2Workspace(workspaceId: string, tenantId = 'default'): Promise<L2StateEntry[]> {
+  const q = new URLSearchParams({ tenantId })
+  const res = await fetch(apiUrl(`/api/admin/context/workspace/${encodeURIComponent(workspaceId)}/l2?${q}`), {
+    headers: apiHeaders(),
+  })
   return parseApiResponse<L2StateEntry[]>(res)
 }
 

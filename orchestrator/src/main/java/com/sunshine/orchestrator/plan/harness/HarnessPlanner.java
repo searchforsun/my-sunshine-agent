@@ -122,7 +122,8 @@ public class HarnessPlanner {
                         ctx.assistantMsgId(),
                         ctx.conversationId(),
                         maxIters)
-                .withConversationKind(resolveConversationKind(notebook, ctx));
+                .withConversationKind(resolveConversationKind(notebook, ctx))
+                .withModelOverride(ctx.modelOverride());
     }
 
     private AssembledContext resolveMemory(ExecutionStreamContext ctx) {
@@ -164,7 +165,8 @@ public class HarnessPlanner {
                 parentRunId,
                 0,
                 resolveConversationKind(notebook, ctx),
-                skillId);
+                skillId,
+                ctx != null ? ctx.modelOverride() : null);
         WorkerDispatchTool.bindSession(session);
         return session;
     }

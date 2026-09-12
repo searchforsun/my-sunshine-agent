@@ -40,7 +40,8 @@ public class AsyncStatusTool implements AgentTool {
     @Override
     public String getDescription() {
         return "查询后台异步 run 的当前状态元数据（background exec / spawn_subagent / dispatch_worker 派发的 run）；"
-                + "立即返回不等待，不消耗 await 预算；await 超时或怀疑异常时先查本工具再决定继续等、重派或收束。";
+                + "立即返回不等待，不消耗 await 等待预算。await 超时（status=running）或怀疑异常时先查本工具，"
+                + "再决定继续等、重派或收束；也可替代 await 用于长间隔轮询。";
     }
 
     @Override

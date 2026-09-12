@@ -2,11 +2,11 @@ import { useRoute, useRouter } from 'vue-router'
 
 export type ContextTab = 'l1' | 'l2' | 'l3'
 export type ContextKindTab = 'chat' | 'task'
-/** 任务分层上下文 tab（W0 工作区 / T0 任务进度 / H1 计划笔记本 / L3 任务检索） */
-export type ContextTaskTab = 'w0' | 't0' | 'h1' | 'l3'
+/** 任务分层上下文 tab（W0 工作区 / L1 会话快照 / L2 工作区状态 / T0 任务进度 / H1 计划笔记本 / L3 任务检索） */
+export type ContextTaskTab = 'w0' | 'l1' | 'l2' | 't0' | 'h1' | 'l3'
 
 const VALID_TABS = new Set<string>(['l1', 'l2', 'l3'])
-const VALID_TASK_TABS = new Set<string>(['w0', 't0', 'h1', 'l3'])
+const VALID_TASK_TABS = new Set<string>(['w0', 'l1', 'l2', 't0', 'h1', 'l3'])
 
 function queryString(value: unknown): string | null {
   if (typeof value !== 'string') return null

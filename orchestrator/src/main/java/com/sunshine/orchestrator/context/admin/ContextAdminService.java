@@ -63,6 +63,15 @@ public class ContextAdminService {
                 .toList();
     }
 
+    /** workspace 作用域 L2（task 会话写路径产物），按 workspace 维度全量列出。 */
+    public List<L2StateView> listL2Workspace(String workspaceId, String tenantId) {
+        requireText(workspaceId, "workspaceId");
+        String tid = normalizeTenant(tenantId);
+        return l2Repository.findByWorkspaceIdAndTenantIdOrderByUpdatedAtDesc(workspaceId, tid).stream()
+                .map(ContextAdminService::toL2View)
+                .toList();
+    }
+
     public List<ConversationSummaryView> listConversations(String userId, String tenantId) {
         requireText(userId, "userId");
         String tid = normalizeTenant(tenantId);
@@ -296,7 +305,9 @@ public class ContextAdminService {
                 e.getUpdatedAt(),
                 e.getScope(),
                 e.getWorkspaceId(),
-                e.getBackground());
+                e.getBackground(),
+                e.getBizSceneScope(),
+                e.getConfirmStatus());
     }
 
     private static String normalizeTenant(String tenantId) {

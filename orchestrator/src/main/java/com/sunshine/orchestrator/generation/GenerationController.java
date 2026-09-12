@@ -270,7 +270,11 @@ public class GenerationController {
             body = Flux.concat(historical, doneMeta(meta.messageId(), generationId));
         }
 
-        return body
+        // 心跳同 chat 主链路：续连场景同样存在 await 长等待静默期；takeUntilOther 保证
+        // 业务体（含终态 done 快照）终止后连接随即关闭，心跳不悬挂 merge
+        return Flux.merge(
+                body.takeUntilOther(streamService.heartbeatTerminated()),
+                streamService.heartbeat())
                 .doOnSubscribe(s -> registry.get(generationId).ifPresent(GenerationJob::onSubscriberAttached))
                 .doOnCancel(() -> registry.get(generationId).ifPresent(GenerationJob::onSubscriberGone));
     }

@@ -38,6 +38,8 @@ public record AgentRunRequest(
         String modelConfigJson,
         /** 会话级模型 override（仅 MAIN chat / Planner 主对话；intent/rewrite/title 忽略） */
         String modelOverride,
+        /** 会话思考深度（minimal|low|medium|high；仅 MAIN；空则走注册表 request_extras 缺省） */
+        String reasoningEffort,
         /** 会话 kind（chat|task）；装默认工具集透传，缺省按 chat */
         String conversationKind,
         /** 本轮已触发 skill 集（仅 MAIN；skill-sticky S-T，SUB/Worker 用单数 skillId） */
@@ -58,193 +60,71 @@ public record AgentRunRequest(
 
     public AgentRunRequest withModelOverride(String modelOverride) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
+    }
+
+    /** 透传会话思考深度（仅 MAIN；空则走注册表 request_extras 缺省） */
+    public AgentRunRequest withReasoningEffort(String reasoningEffort) {
+        return new AgentRunRequest(
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 
     /** 透传会话 kind（装默认工具集）；不查库 */
     public AgentRunRequest withConversationKind(String conversationKind) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 
     /** 本轮已触发 skill 集（MAIN；skill-sticky S-T） */
     public AgentRunRequest withTriggeredSkillIds(List<String> triggeredSkillIds) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 
     /** 本轮候选 skill 集（MAIN；skill-sticky S-C） */
     public AgentRunRequest withCandidateSkillIds(List<String> candidateSkillIds) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 
     /** 本轮聊天图片 URL（仅 MAIN；组装时经 ChatImageDeliveryResolver 转换为多模态块） */
     public AgentRunRequest withImageUrls(List<String> imageUrls) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 
     /** Planner-Executor harness overlay（机制层）；仅 PLANNER 使用 */
     public AgentRunRequest withHarnessPromptId(String harnessPromptId) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 
     /** MAIN 每 run 独立 main-{runId}；SUB/WORKER 用角色前缀（SSE 经 bindHitlBridge 映射 assistantMessageId） */
@@ -354,6 +234,7 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -390,6 +271,7 @@ public record AgentRunRequest(
                 null,
                 conversationId,
                 checkpointThinkIteration,
+                null,
                 null,
                 null,
                 null,
@@ -506,6 +388,7 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -546,6 +429,7 @@ public record AgentRunRequest(
                 HARNESS_PROMPT_ID,
                 conversationId,
                 0,
+                null,
                 null,
                 null,
                 null,
@@ -614,38 +498,17 @@ public record AgentRunRequest(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
     /** 替换 Worker skillId（Planner 会话/任务指定技能；现状默认 null） */
     public AgentRunRequest withSkillId(String skillId) {
         return new AgentRunRequest(
-                role,
-                runId,
-                parentRunId,
-                memory,
-                query,
-                injectedBlocks,
-                userId,
-                tenantId,
-                assistantMessageId,
-                skillId,
-                toolWhitelist,
-                systemOverlay,
-                maxIters,
-                timeline,
-                reactRestart,
-                harnessPromptId,
-                conversationId,
-                checkpointThinkIteration,
-                kbScope,
-                dataScopeJson,
-                permissionsJson,
-                modelConfigJson,
-                modelOverride,
-                conversationKind,
-                triggeredSkillIds,
-                candidateSkillIds,
-                imageUrls);
+                role, runId, parentRunId, memory, query, injectedBlocks, userId, tenantId,
+                assistantMessageId, skillId, toolWhitelist, systemOverlay, maxIters, timeline,
+                reactRestart, harnessPromptId, conversationId, checkpointThinkIteration,
+                kbScope, dataScopeJson, permissionsJson, modelConfigJson, modelOverride, reasoningEffort,
+                conversationKind, triggeredSkillIds, candidateSkillIds, imageUrls);
     }
 }

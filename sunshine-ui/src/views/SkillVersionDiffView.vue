@@ -264,7 +264,7 @@ onMounted(() => {
 
 <style scoped>
 .skill-diff-root {
-  height: 100vh;
+  height: var(--sun-app-height);
   display: flex;
   flex-direction: column;
   padding: 20px 24px;

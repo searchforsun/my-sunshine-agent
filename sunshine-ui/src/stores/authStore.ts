@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '../api/auth'
+import { ApiError } from '../api/apiError'
 import { syncTenantFromAuth } from '../composables/useTenantPreference'
 import { syncKbDefaultFromAuth } from '../composables/useKbPreference'
 import { syncWriteHitlDefaultFromAuth } from '../composables/useWriteHitlMode'
@@ -74,8 +75,12 @@ export const useAuthStore = defineStore('auth', () => {
       applyUser(await authApi.me())
       initialized.value = true
       return true
-    } catch {
-      clearAuth()
+    } catch (e) {
+      // 仅后端明确判 401（登录态真失效）才清凭证；网络抖动/服务重启/超时不清登录态，
+      // 否则长任务期间一次请求失败就会把用户踢回登录页并中断在途轮次
+      if (e instanceof ApiError && (e.code === 401 || e.httpStatus === 401)) {
+        clearAuth()
+      }
       initialized.value = true
       return false
     }

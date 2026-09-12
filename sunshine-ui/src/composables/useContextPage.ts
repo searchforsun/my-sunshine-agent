@@ -9,6 +9,7 @@ import {
   getTaskBoardSnapshot,
   listContextConversations,
   listContextL2,
+  listContextL2Workspace,
   listContextL3Entries,
   reingestContextL3,
   runContextL3Gc,
@@ -36,10 +37,13 @@ import {
 } from './useContextRouteState'
 import {
   KIND_META,
+  bizSceneLabel,
+  confirmStatusLabel,
   formatTime,
   kindMeta,
   l3RoleLabel,
   rowTag,
+  scopeLabel,
   statusLabel,
   statusType,
 } from '../components/context/contextLabels'
@@ -56,7 +60,7 @@ export function useContextPage() {
     (routeState.readTenant() || auth.user?.tenantId || 'default') as TenantId,
   )
   const filterUserId = ref(routeState.readUser() || auth.user?.userId || '')
-  /** 上侧 kind Tab：对话 | 任务（对齐智能体管理页；任务上下文非 L1/L2/L3） */
+  /** 上侧 kind Tab：对话 | 任务（对齐智能体管理页；任务分层含 W0/L1/L2/T0/H1/L3） */
   const kindTab = ref<ContextKindTab>(routeState.readKind())
   const activeTab = ref<ContextTab>(routeState.readTab())
   /** 任务分层上下文 tab（对齐对话 L1/L2/L3 分层结构） */
@@ -80,6 +84,8 @@ export function useContextPage() {
 
   const entries = ref<L2StateEntry[]>([])
   const selectedL2Id = ref<string | null>(null)
+  /** L2 面板作用域：chat tab 查 user 维度；task tab 查选中会话的 workspace 维度 */
+  const l2Scope = computed<'user' | 'workspace'>(() => (kindTab.value === 'task' ? 'workspace' : 'user'))
   const l1Snapshot = ref<L1Snapshot | null>(null)
   const l3Status = ref<L3Status | null>(null)
   const l3Entries = ref<L3Entry[]>([])
@@ -313,6 +319,34 @@ export function useContextPage() {
       selectedL2Id.value = null
       return
     }
+    // 任务 tab：L2 写在 workspace 作用域，按选中会话的 workspaceId 查
+    if (l2Scope.value === 'workspace') {
+      const wsId = selectedConvId.value
+        ? conversations.value.find(c => c.id === selectedConvId.value)?.workspaceId || ''
+        : ''
+      if (!wsId) {
+        entries.value = []
+        selectedL2Id.value = null
+        return
+      }
+      loading.value = true
+      try {
+        entries.value = await listContextL2Workspace(wsId, filterTenantId.value || 'default')
+        if (selectedL2Id.value && !entries.value.some(e => e.id === selectedL2Id.value)) {
+          selectedL2Id.value = null
+        }
+        ensureL2Selection()
+        if (selectedL2Id.value) {
+          syncEditForm(selectedL2.value)
+        }
+      } catch (e) {
+        entries.value = []
+        message.error(e instanceof Error ? e.message : '加载 L2 失败')
+      } finally {
+        loading.value = false
+      }
+      return
+    }
     loading.value = true
     try {
       entries.value = await listContextL2(userId, filterTenantId.value || 'default')
@@ -458,7 +492,10 @@ export function useContextPage() {
   }
 
   async function refreshAll() {
-    await Promise.all([loadConversations(), loadL2(), loadL3()])
+    // 先加载会话列表（内部自动选中第一条）；任务 tab 的 L2 按选中会话的
+    // workspaceId 查 workspace 作用域，必须晚于会话就绪
+    await loadConversations()
+    await Promise.all([loadL2(), loadL3()])
     if (selectedConvId.value) {
       await Promise.all([
         loadL1(selectedConvId.value),
@@ -478,12 +515,12 @@ export function useContextPage() {
     taskHistoryQuery.value = ''
     taskHistoryHits.value = []
     expandedTaskHistoryKey.value = null
-    await Promise.all([
-      loadL1(id),
-      loadL3Entries(id),
-      loadTaskBoard(id),
-      loadH1(id),
-    ])
+    // 任务 tab 的 L2 按会话维度取 workspace 作用域，随会话切换重载
+    if (kindTab.value === 'task') {
+      await Promise.all([loadL2(), loadL1(id), loadL3Entries(id), loadTaskBoard(id), loadH1(id)])
+    } else {
+      await Promise.all([loadL1(id), loadL3Entries(id), loadTaskBoard(id), loadH1(id)])
+    }
   }
 
   async function handleSave() {
@@ -648,6 +685,7 @@ export function useContextPage() {
     runningGc,
     reingesting,
     entries,
+    l2Scope,
     selectedL2Id,
     l1Snapshot,
     l3Status,
@@ -681,6 +719,9 @@ export function useContextPage() {
     statusLabel,
     statusType,
     rowTag,
+    scopeLabel,
+    bizSceneLabel,
+    confirmStatusLabel,
     l1RowKey,
     toggleL1Expand,
     formatTime,

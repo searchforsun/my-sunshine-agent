@@ -20,10 +20,12 @@ public record RoutingContext(
         /** 上轮 RoutingResult seed（S-1 轻 sticky；可空） */
         RoutingSeed seed,
         /** 会话租户（A-2：skill 目录按租户过滤；default 全局共享，空视为 default） */
-        String tenantId) {
+        String tenantId,
+        /** 会话所选模型（尾位兜底；intent 分类请求注入 session_model，空不参与） */
+        String sessionModel) {
 
     public RoutingContext(String userMessage, String traceMessageId) {
-        this(userMessage, traceMessageId, ExecutionMode.FAST, null, null, null, null, null, null, null);
+        this(userMessage, traceMessageId, ExecutionMode.FAST, null, null, null, null, null, null, null, null);
     }
 
     public RoutingContext(
@@ -32,7 +34,7 @@ public record RoutingContext(
             ExecutionMode preference,
             String forcedWorkflowId,
             String clientSkillId) {
-        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, null, null, null, null, null);
+        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, null, null, null, null, null, null);
     }
 
     public RoutingContext(
@@ -42,33 +44,33 @@ public record RoutingContext(
             String forcedWorkflowId,
             String clientSkillId,
             AssembledContext memory) {
-        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, null, null, null, null);
+        this(userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, null, null, null, null, null);
     }
 
     public RoutingContext withLockedMode(ExecutionMode mode) {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, mode, kind, seed, tenantId);
+                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, mode, kind, seed, tenantId, sessionModel);
     }
 
     public RoutingContext withUserMessage(String message) {
         return new RoutingContext(
-                message, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId);
+                message, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId, sessionModel);
     }
 
     public RoutingContext withForcedWorkflowId(String workflowId) {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, workflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId);
+                userMessage, traceMessageId, preference, workflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId, sessionModel);
     }
 
     public RoutingContext withoutClientSkill() {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, forcedWorkflowId, null, memory, lockedMode, kind, seed, tenantId);
+                userMessage, traceMessageId, preference, forcedWorkflowId, null, memory, lockedMode, kind, seed, tenantId, sessionModel);
     }
 
     /** S-1：携带上轮轻 sticky seed */
     public RoutingContext withSeed(RoutingSeed seed) {
         return new RoutingContext(
-                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId);
+                userMessage, traceMessageId, preference, forcedWorkflowId, clientSkillId, memory, lockedMode, kind, seed, tenantId, sessionModel);
     }
 
     /** A-2：会话租户；缺省 default（全局共享） */

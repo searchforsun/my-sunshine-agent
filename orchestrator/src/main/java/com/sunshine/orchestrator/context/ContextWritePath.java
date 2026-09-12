@@ -46,13 +46,7 @@ public class ContextWritePath {
             // 写路径场景回退链（authority §5.5）：routing → embedding → auto-create；
             // 得到 scene 后作为 biz_scene_scope 注入偏好抽取
             String bizScene = sceneWriteResolver.resolve(userId, tenantId, convId, messages).orElse(null);
-            List<SessionTurn> history = messages.stream()
-                    .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
-                    .filter(m -> "user".equals(m.getRole()) || "assistant".equals(m.getRole()))
-                    .map(m -> SessionTurn.fromMessage(m.getId(), m.getRole(), MessageBodyText.resolve(m), m.getSteps(),
-                            conv != null ? conv.getKind() : null))
-                    .filter(t -> StringUtils.hasText(t.content()))
-                    .toList();
+            List<SessionTurn> history = toHistory(messages, conv);
             Instant msgAt = assistant.getCreatedAt() != null ? assistant.getCreatedAt() : Instant.now();
             ContextWritePolicy.WriteDecision decision = writePolicy.route(conv);
             log.info("[Context] writePath 路由决策 conv={} kind={} reason={} → l2={} l3={} scope={} bizScene={}",
@@ -74,6 +68,36 @@ public class ContextWritePath {
         } catch (Exception e) {
             log.warn("[Context] writePath 失败 msg={}: {}", messageId, e.getMessage());
         }
+    }
+
+    /**
+     * 中断/失败轮的折叠补偿（仅 L1 补折叠，不跑 L2/L3）：
+     * 压缩点同步推进退役的间隙轮（已推 P 未折叠进 far_summary）依赖轮末写路径补折叠，
+     * 只挂 COMPLETED 会让「推进后即中断」的会话间隙轮滞留、对模型不可见。
+     * 折叠为异步执行，不影响取消/失败终态的响应路径。
+     */
+    @Async
+    public void runFoldOnlyAsync(String messageId, String userId, String tenantId) {
+        try {
+            ChatMessageEntity assistant = conversationService.getMessageOwned(messageId, userId, tenantId);
+            String convId = assistant.getConversationId();
+            ChatConversationEntity conv = conversationService.getOwned(convId, userId, tenantId);
+            List<ChatMessageEntity> messages = conversationService.getMessages(convId, userId, tenantId);
+            l1Compressor.compress(userId, tenantId, convId, toHistory(messages, conv));
+            log.info("[Context] fold-only writePath 完成 conv={} msg={}", convId, messageId);
+        } catch (Exception e) {
+            log.warn("[Context] fold-only writePath 失败 msg={}: {}", messageId, e.getMessage());
+        }
+    }
+
+    private List<SessionTurn> toHistory(List<ChatMessageEntity> messages, ChatConversationEntity conv) {
+        return messages.stream()
+                .filter(m -> !MessageStatus.STREAMING.equals(m.getStatus()))
+                .filter(m -> "user".equals(m.getRole()) || "assistant".equals(m.getRole()))
+                .map(m -> SessionTurn.fromMessage(m.getId(), m.getRole(), MessageBodyText.resolve(m), m.getSteps(),
+                        conv != null ? conv.getKind() : null))
+                .filter(t -> StringUtils.hasText(t.content()))
+                .toList();
     }
 
     private void ingestTurnPair(

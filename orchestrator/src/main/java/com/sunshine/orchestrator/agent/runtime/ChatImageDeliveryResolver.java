@@ -7,6 +7,7 @@ import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.URLSource;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,7 @@ public class ChatImageDeliveryResolver {
     private final String allowedHostPort;
     private final WebClient fetchClient;
 
+    @Autowired
     public ChatImageDeliveryResolver(
             @Value("${chat-image.delivery-mode:base64}") String deliveryMode,
             @Value("${chat-image.allowed-url-prefix:}") String allowedPrefix) {

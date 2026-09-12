@@ -99,6 +99,14 @@ provide(CONTEXT_PAGE_KEY, contextPage)
             <ContextTaskW0Panel />
           </NTabPane>
 
+          <NTabPane name="l1" tab="L1 会话快照">
+            <ContextL1Panel />
+          </NTabPane>
+
+          <NTabPane name="l2" tab="L2 工作区状态">
+            <ContextL2Panel />
+          </NTabPane>
+
           <NTabPane name="t0" tab="T0 任务进度">
             <ContextTaskT0Panel />
           </NTabPane>

@@ -65,6 +65,7 @@ import WriteHitlModeSelector from '../components/sandbox/WriteHitlModeSelector.v
 import ComposerSkillInput from '../components/chat/ComposerSkillInput.vue'
 import VoiceInputButton from '../components/chat/VoiceInputButton.vue'
 import UserMessageContent from '../components/chat/UserMessageContent.vue'
+import ImgSrcLightbox from '../components/chat/ImgSrcLightbox.vue'
 import SidebarToggle from '../components/SidebarToggle.vue'
 import { useExecutionMode } from '../composables/useExecutionMode'
 import { useKbPreference } from '../composables/useKbPreference'
@@ -85,6 +86,7 @@ import { useConversationAttention } from '../composables/useConversationAttentio
 import { useConversationSidebarIndicator } from '../composables/useConversationSidebarIndicator'
 import { useChatViewport } from '../composables/useChatViewport'
 import { useMessageQueue } from '../api/messageQueue'
+import { useKeyboardInset } from '../composables/useKeyboardInset'
 
 const sessionHydrating = ref(true)
 const hljs = registerHljsLanguages()
@@ -102,6 +104,8 @@ const router = useRouter()
 const { theme, toggle: toggleTheme } = useTheme()
 const isDark = computed(() => theme.value === 'dark')
 const { sidebarVisible } = useSidebar()
+/** 键盘压缩视口的抬升量：iOS 键盘不收缩布局视口，须主动上移贴底输入区 */
+const { keyboardInset } = useKeyboardInset()
 const { isSupported: voiceSupported, isListening: voiceListening, displayText: voiceDisplayText, stop: voiceStop } = useSpeechRecognition()
 const { close: closePlanDrawer, registerChatBody } = usePlanNodeDrawer()
 const {
@@ -110,7 +114,6 @@ const {
   close: closeSandboxDrawer,
   updateConversationId,
   registerChatBody: registerSandboxChatBody,
-  compareMode: drawerBothOpen,
 } = useSandboxWorkspaceDrawer()
 const sandboxWorkspaceActive = ref(false)
 const sandboxDrawerOpen = computed(() => sandboxState.open)
@@ -164,11 +167,11 @@ const {
 } = useChatViewport()
 
 const {
-  messages, streamRevision, loading, send, resume, reconnectStream, stop,
+  messages, streamRevision, loading, send, sendInBackground, resume, reconnectStream, stop,
   cancelSpawnSubagent,
   cancelCancellableTool,
   generationId,
-  ensureActive, getMessages, setMessages, migrateSession, destroySession, clearActive,
+  ensureActive, getMessages, setMessages, migrateSession, destroySession, clearActive, getOrCreate,
   applyHitlDecision,
   applyRecoveryDecision,
 } = useChatSessions(
@@ -185,6 +188,8 @@ const {
   (id: string) => {
     hydrationBridge.flushPersist(id)
     chatStore.syncMessages(id, getMessages(id))
+    // 任意会话一轮结束：驱动该会话队列自动出队（覆盖后台会话完成时用户在其它会话的场景）
+    void pumpQueueForSession(id)
   },
   (sessionId: string) => {
     // 流式中勿每条 SSE 同步 JSON.stringify→localStorage；合并到 schedulePersist
@@ -217,6 +222,7 @@ const {
   onChatWheelCapture,
   scrollToBottom,
   settleScrollToBottom,
+  scrollToBottomOnKeyboard,
   pinScrollForSend,
   forwardWheelToChatScroll,
 } = useChatScroll(loading)
@@ -422,6 +428,7 @@ const {
 } = useChatSessionHydration({
   chatStore,
   loading,
+  getSessionLoading,
   getMessages,
   setMessages,
   reconnectStream,
@@ -507,6 +514,7 @@ const {
   setActiveConversation: setActiveQueueConversation,
   enqueue: enqueueQueuedMessage,
   dequeue: dequeueQueuedMessage,
+  peekQueue: peekQueuedMessage,
   removeItem: removeQueuedItem,
   updateItemText: updateQueuedItemText,
   moveItemTo: moveQueuedItemTo,
@@ -586,8 +594,10 @@ function pickImages() { imageInputRef.value?.click() }
 
 function onImageInputChange(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) void addImageFiles(input.files)
+  // 同步快照：input.value 重置会清空 live FileList，异步上传链将读到空列表
+  const files = Array.from(input.files ?? [])
   input.value = ''
+  if (files.length) void addImageFiles(files)
 }
 
 function onComposerPaste(e: ClipboardEvent) {
@@ -639,6 +649,14 @@ const composerCentered = computed(
     !chatStore.initializing &&
     !sessionHydrating.value,
 )
+
+/** 键盘避让 transform：贴地态整体上移 keyboardInset；居中态在其 -50% 基础上叠加位移 */
+const composerTransform = computed(() => {
+  if (keyboardInset.value <= 0) return undefined
+  return composerCentered.value
+    ? `translateY(calc(-50% - ${keyboardInset.value}px))`
+    : `translateY(-${keyboardInset.value}px)`
+})
 
 /** 会话头右上角当前执行模式徽标（替换原「正在回复」状态文案） */
 const headerModeLabel = computed(() => findExecutionModeOption(preference.value).label)
@@ -1092,8 +1110,8 @@ const diffCardRefreshTick = ref(0)
 watch(loading, (now, prev) => {
   if (prev === true && now === false) {
     diffCardRefreshTick.value++
-    // 当前轮结束（完成/失败/手动停止）：自动出队队首队列消息
-    void autoDispatchNextQueued()
+    // 当前会话一轮结束（完成/失败/手动停止）：驱动本会话队列自动出队
+    void pumpQueueForSession(chatStore.currentId ?? '')
   }
 })
 
@@ -1306,8 +1324,10 @@ async function performSend(text: string, convId: string) {
   chatStore.touchConversation(convId)
   // 新一轮发送即「继续执行」：清空上一次发送失败的提示（气泡），避免残留
   sendFailedError.value = ''
-  // 图片快照但延迟清空：直发成功（SSE 已建立、乐观气泡已带图）才消费，失败路径回滚，避免丢图
+  // 图片快照后立即清空：发送区在点击发送时即腾空（乐观气泡已带图快照）；
+  // 本轮失败时用快照回滚到发送区，便于直接重发，避免丢图
   const sendImageUrls = pendingImages.value.length ? [...pendingImages.value] : undefined
+  pendingImages.value = []
   if (messages.value.length === 0) chatStore.updateTitle(convId, text || (sendImageUrls?.length ? '[图片]' : ''))
   // 本轮改动基线：记录发送瞬间工作区已有改动，供完成后 diff 卡片做差集（只显示本轮新增）
   if (currentWorkspaceId.value && taskCheckoutId.value) {
@@ -1331,7 +1351,7 @@ async function performSend(text: string, convId: string) {
     requestSandboxWorkspaceRefresh(convId, 'skills', true)
   }
   try {
-    await dispatchSend(convId, text, {
+    await dispatchSend(text, convId, {
       executionPreference: preference.value,
       skillId: skillBinding.skillId,
       workflowId: workflowBinding.workflowId,
@@ -1342,21 +1362,24 @@ async function performSend(text: string, convId: string) {
       writeHitlMode: getWriteHitlMode(convId),
     })
     // send() 内部吞掉流错误不重抛：POST 被拒/流硬失败以尾消息 failed 呈现，
-    // 此时图片未被消费（或本轮可整轮重试），回滚 chips；completed/interrupted 视为已消费
+    // 此时回滚图片到发送区供重发；completed/interrupted 均视为已消费
     const tail = messages.value[messages.value.length - 1]
-    if (!(tail?.role === 'assistant' && tail.status === 'failed')) pendingImages.value = []
+    if (tail?.role === 'assistant' && tail.status === 'failed' && sendImageUrls?.length) {
+      pendingImages.value = sendImageUrls
+    }
   } catch (e) {
     if (sendImageUrls?.length) pendingImages.value = sendImageUrls
     throw e
   }
 }
 
-/** 实际发起一轮发送：落本地会话元数据、发起 SSE、发送后失败气泡检测 */
-async function dispatchSend(convId: string, text: string, options: SendOptions) {
-  const sendPromise = send(text, convId, options)
-  chatStore.updateExecutionPreferenceLocal(convId, options.executionPreference ?? 'fast')
-  if (options.kbId) chatStore.updateKbIdLocal(convId, options.kbId)
-  chatStore.updateModelNameLocal(convId, options.modelName ?? null)
+/** 实际发起一轮发送：落本地会话元数据、发起 SSE、发送后失败气泡检测。
+ * 参数顺序与 send/sendInBackground 一致（text 在前），避免 convId/text 换位误调 */
+async function dispatchSend(rawContent: string, conversationId: string, options: SendOptions) {
+  const sendPromise = send(rawContent, conversationId, options)
+  chatStore.updateExecutionPreferenceLocal(conversationId, options.executionPreference ?? 'fast')
+  if (options.kbId) chatStore.updateKbIdLocal(conversationId, options.kbId)
+  chatStore.updateModelNameLocal(conversationId, options.modelName ?? null)
   await nextTick()
   scrollToBottom(true)
   await ensureStreamRenderer()
@@ -1373,60 +1396,74 @@ async function dispatchSend(convId: string, text: string, options: SendOptions) 
   }
 }
 
-/** 队列发送进行中守卫：同一时刻仅允许一条队列发送在途，防止 loading 翻转竞态重复触发 */
-let dispatchingQueued = false
 /**
- * 当前轮结束后自动出队队首消息：按入队快照原样发出。
- * loading true→false（完成/失败/手动停止）统一触发；出队失败回插队首。
+ * 会话级队列泵守卫：每个会话同一时刻至多一条队列发送在途，
+ * 防止 onSessionEnd / watch / 切会话多个驱动源叠加导致重复出队。
  */
-async function autoDispatchNextQueued() {
-  const convId = chatStore.currentId
-  if (!convId || dispatchingQueued || loading.value) return
-  const head: QueuedMessage | undefined = activeQueue.value[0]
-  if (!head || dequeueQueuedMessage(convId)?.id !== head.id) return
-  dispatchingQueued = true
+const pumpingSessions = new Set<string>()
+/**
+ * 指定会话的队列泵：会话空闲且队列非空时出队队首发送。
+ * 当前正在浏览该会话 → 走 dispatchSend（前台：滚动跟随 + 渲染同步）；
+ * 正在看其它会话 → 走 sendInBackground（后台：不抢占视图）。
+ * 出队失败回插队首；发送完成后链式续泵，直至队列清空或会话又开始流式。
+ */
+async function pumpQueueForSession(convId: string) {
+  if (!convId || pumpingSessions.has(convId)) return
+  if (convId === chatStore.currentId ? loading.value : getSessionLoading(convId)) return
+  const head = peekQueuedMessage(convId)
+  if (!head) return
+  if (dequeueQueuedMessage(convId)?.id !== head.id) return
+  pumpingSessions.add(convId)
   let dispatched = false
   try {
-    ensureActive(convId)
-    pinScrollForSend()
-    setScrollPinned(true)
-    await dispatchSend(convId, head.text, head.sendOptions)
+    const isForeground = convId === chatStore.currentId
+    if (isForeground) {
+      pinScrollForSend()
+      setScrollPinned(true)
+      await dispatchSend(head.text, convId, head.sendOptions)
+    } else {
+      await sendInBackground(head.text, convId, head.sendOptions)
+    }
     dispatched = true
   } catch (e) {
     console.error('[ChatView] 队列消息发送失败', e)
     restoreQueuedFront(convId, head)
   } finally {
-    dispatchingQueued = false
+    pumpingSessions.delete(convId)
   }
-  // 链式出队：本条发送的一轮已结束，继续下一条（发送期间 watch 触发被守卫跳过，此处补上）
-  if (dispatched && !loading.value) void autoDispatchNextQueued()
+  // 链式续泵：本条一轮已结束，继续下一条（发送期间 onSessionEnd 之前的状态翻转不会重复触发）
+  if (dispatched) void pumpQueueForSession(convId)
+}
+
+/** 任意会话的 SessionState.loading（后台会话无法用 computed loading，需按 id 直查） */
+function getSessionLoading(convId: string): boolean {
+  return getOrCreate(convId)?.loading === true
 }
 
 /** 「直接发出」：停止当前轮后立即发送该队列项，剩余队列由链式出队接管 */
 async function sendQueuedItemNow(id: string) {
   const convId = chatStore.currentId
-  if (!convId || dispatchingQueued) return
+  if (!convId || pumpingSessions.has(convId)) return
   const item = activeQueue.value.find(q => q.id === id)
   if (!item) return
-  dispatchingQueued = true
+  pumpingSessions.add(convId)
   let dispatched = false
   try {
     if (loading.value) await stop()
     await nextTick()
     if (loading.value) return
     removeQueuedItem(convId, id)
-    ensureActive(convId)
     pinScrollForSend()
     setScrollPinned(true)
-    await dispatchSend(convId, item.text, item.sendOptions)
+    await dispatchSend(item.text, convId, item.sendOptions)
     dispatched = true
   } catch (e) {
     console.error('[ChatView] 队列项直接发送失败', e)
     inputText.value = item.text
   } finally {
-    dispatchingQueued = false
+    pumpingSessions.delete(convId)
   }
-  if (dispatched && !loading.value) void autoDispatchNextQueued()
+  if (dispatched) void pumpQueueForSession(convId)
 }
 
 /** 开始行内编辑队列项：草稿初始化为当前文本与图片快照 */
@@ -1458,8 +1495,10 @@ async function addQueueEditImages(files: FileList | File[]) {
 
 function onQueueEditImageInputChange(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) void addQueueEditImages(input.files)
+  // 同步快照：input.value 重置会清空 live FileList，异步上传链将读到空列表
+  const files = Array.from(input.files ?? [])
   input.value = ''
+  if (files.length) void addQueueEditImages(files)
 }
 
 function onQueueEditPaste(e: ClipboardEvent) {
@@ -1895,18 +1934,22 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   closeSandboxDrawer()
   closePlanDagExpand()
   sandboxWorkspaceActive.value = false
-  // 切换会话前，把旧会话的状态落盘
-  if (oldId) {
-    chatStore.syncMessages(oldId, getMessages(oldId))
-    cacheSettledHtmlForConversation(oldId)
-    // 切换到 null（新任务模式）或旧会话被删除时，彻底清理
-    if (!isValidConversationId(newId) || !chatStore.conversations.some(c => c.id === oldId)) {
-      destroySession(oldId)
-      sessionSettledHtml.delete(oldId)
-      // 会话已删除：同步清理其持久化队列
-      dropQueuedQueue(oldId)
+    // 切换会话前，把旧会话的状态落盘
+    if (oldId) {
+      chatStore.syncMessages(oldId, getMessages(oldId))
+      cacheSettledHtmlForConversation(oldId)
+      // 旧会话已从列表删除：彻底清理会话与其持久化队列
+      if (!chatStore.conversations.some(c => c.id === oldId)) {
+        destroySession(oldId)
+        sessionSettledHtml.delete(oldId)
+        dropQueuedQueue(oldId)
+      } else if (!isValidConversationId(newId)) {
+        // 切到新对话/新任务模式（会话仍存在）：清理会话 DOM 状态；
+        // 队列保留在 localStorage，切回时按会话重建视图
+        destroySession(oldId)
+        sessionSettledHtml.delete(oldId)
+      }
     }
-  }
   clearStreamRenderer()
   settledHtml.value = ''
   // 切换为 null（如新任务模式）：额外调用 clearActive 确保 session 和 DOM 彻底清空
@@ -1932,11 +1975,12 @@ watch(() => chatStore.currentId, async (newId, oldId) => {
   })()
   // 缓存消息立即贴底，避免用户看到旧滚动位置的残留
   if (messages.value.length) settleScrollToBottom()
-  // DB 后台对齐：有更新则 setMessages 触发响应式重渲染，settle 持续跟随
-  // 显式传 skipApiLoad: false：当前 loading 属于旧会话，不能阻止新会话的 DB 查询
-  void hydrateSessionFromStore(newId, { skipApiLoad: false })
-  // 切入空闲会话且队列有待发消息（如后台会话完成于本会话不可见期间）：补一次自动出队
-  if (!loading.value) void autoDispatchNextQueued()
+  // DB 后台对齐：有更新则 setMessages 触发响应式重渲染，settle 持续跟随。
+  // 目标会话仍在流式（后台队列发送中）：跳过 DB 快照替换，否则在途轮次被快照冲掉，
+  // 用户切回看到的是「半截旧内容 + loading 卡死」；流结束由 onSessionEnd 落盘补齐
+  void hydrateSessionFromStore(newId, { skipApiLoad: getSessionLoading(newId) || loading.value })
+  // 切入空闲会话且队列有待发消息（如后台会话完成于本会话不可见期间）：补一次队列泵
+  if (!loading.value) void pumpQueueForSession(newId)
 }, { flush: 'post' })
 
 watch(
@@ -1960,6 +2004,11 @@ watch(
     scrollToBottom(false)
   },
 )
+
+// 键盘弹起：贴底状态下消息区同步上滚，末条消息不被键盘遮住
+watch(keyboardInset, (val, prev) => {
+  if (val > prev) scrollToBottomOnKeyboard()
+})
 </script>
 <template>
   <div class="chat-page">
@@ -2001,7 +2050,6 @@ watch(
     <div
       ref="chatBodyRef"
       class="chat-body"
-      :class="{ 'chat-body--both-drawers': drawerBothOpen }"
     >
       <div
         class="chat-main"
@@ -2132,11 +2180,12 @@ watch(
       @close="closePlanDagExpand"
     />
 
-    <!-- 悬浮输入区 -->
+    <!-- 悬浮输入区；键盘弹起时按 keyboardInset 上移避让（iOS 键盘不收缩布局视口） -->
     <footer
       v-show="!planDagExpanded"
       class="chat-composer"
       :class="{ 'composer--centered': composerCentered }"
+      :style="composerTransform ? { transform: composerTransform } : undefined"
       @wheel="forwardWheelToChatScroll"
     >
       <div class="composer-inner">
@@ -2274,33 +2323,47 @@ watch(
                   @blur="commitQueueItemEdit"
                   @paste="onQueueEditPaste"
                 />
-                <div v-if="queueEditingImages?.length" class="pending-images message-queue-images">
-                  <div v-for="(url, imgIdx) in queueEditingImages" :key="`${url}-${imgIdx}`" class="pending-image-chip">
-                    <n-image
-                      :src="toMinioDisplayUrl(url)"
-                      :width="40" :height="40"
-                      object-fit="cover"
-                      class="pending-image-thumb"
-                    />
+                <div class="message-queue-edit-footer">
+                  <div class="pending-images message-queue-images">
+                    <template v-if="queueEditingImages?.length">
+                      <div v-for="(url, imgIdx) in queueEditingImages" :key="`${url}-${imgIdx}`" class="pending-image-chip">
+                        <img-src-lightbox
+                          :src="toMinioDisplayUrl(url)"
+                          :raw-url="url"
+                          :width="40" :height="40"
+                        />
+                        <button
+                          type="button"
+                          class="pending-image-remove"
+                          title="移除图片"
+                          @mousedown.prevent
+                          @click="removeQueueEditImage(imgIdx)"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                        </button>
+                      </div>
+                    </template>
                     <button
                       type="button"
-                      class="pending-image-remove"
-                      title="移除图片"
+                      class="message-queue-btn message-queue-add-image"
+                      :disabled="uploadingImages || (queueEditingImages?.length ?? 0) >= MAX_PENDING_IMAGES"
+                      title="添加图片"
                       @mousedown.prevent
-                      @click="removeQueueEditImage(imgIdx)"
+                      @click="queueImageInputRef?.click()"
                     >
-                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </button>
                   </div>
+                  <span v-if="uploadingImages" class="message-queue-edit-hint">图片上传中…</span>
                   <button
                     type="button"
-                    class="message-queue-btn message-queue-add-image"
-                    :disabled="uploadingImages || (queueEditingImages?.length ?? 0) >= MAX_PENDING_IMAGES"
-                    title="添加图片"
+                    class="message-queue-save-btn"
+                    :disabled="uploadingImages"
+                    title="保存（Esc 取消）"
                     @mousedown.prevent
-                    @click="queueImageInputRef?.click()"
+                    @click="commitQueueItemEdit"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5L6 12 2.5 8.5" /></svg>
                   </button>
                 </div>
               </div>
@@ -2383,11 +2446,10 @@ watch(
           >
           <div v-if="pendingImages.length" class="pending-images">
             <div v-for="(url, idx) in pendingImages" :key="`${url}-${idx}`" class="pending-image-chip">
-              <n-image
+              <img-src-lightbox
                 :src="toMinioDisplayUrl(url)"
+                :raw-url="url"
                 :width="56" :height="56"
-                object-fit="cover"
-                class="pending-image-thumb"
               />
               <button
                 type="button"
@@ -2737,13 +2799,9 @@ watch(
   display: flex;
   flex-direction: row;
   position: relative;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
-
-/* 双开：三栏各 min 420 */
-.chat-body--both-drawers {
-  min-width: 1260px;
-}
+/* 占位注释锚点 */
 
 .chat-attention-bubble.is-completed {
   border-color: color-mix(in srgb, #ef4444 40%, var(--sun-border));
@@ -2810,7 +2868,7 @@ watch(
 
 .chat-main {
   flex: 1;
-  /* 与 CHAT_CONTENT_MIN_WIDTH 一致：底栏四控件单行 */
+  /* 宽敞档并排时底栏四控件单行的下限；紧凑/窄屏由浮层契约解除 */
   min-width: 420px;
   min-height: 0;
   display: flex;
@@ -2981,12 +3039,14 @@ watch(
   white-space: nowrap;
 }
 
-/* ---- 输入框任务队列：流式期间发送的消息排队横条（边框样式对齐 TaskBoard 卡片） ---- */
+/* ---- 输入框任务队列：流式期间发送的消息排队横条（边框样式对齐输入框上方悬浮 TaskBoard 卡片） ---- */
 .message-queue {
   align-self: stretch;
+  margin-bottom: 8px;
   border: 1px solid var(--sun-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: 20px;
   background: var(--sun-black);
+  box-shadow: var(--composer-shadow);
 }
 
 .message-queue-head {
@@ -3130,6 +3190,51 @@ watch(
 }
 
 .message-queue-add-image:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 编辑区底部操作行：左图片组（缩略图+加号）右保存，同一行 */
+.message-queue-edit-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message-queue-edit-footer .message-queue-images {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.message-queue-edit-hint {
+  font-size: 11px;
+  color: var(--sun-text-secondary);
+}
+
+.message-queue-save-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sun-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.message-queue-save-btn:hover {
+  color: var(--sun-text);
+  background: var(--sun-row-hover, rgba(255, 255, 255, 0.08));
+}
+
+.message-queue-save-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -4266,6 +4371,33 @@ watch(
   box-shadow: 0 2px 12px rgba(255, 255, 255, 0.12);
 }
 
+/* ── 紧凑桌面（769–1260px）：抽屉浮层化后正文回到全宽，解除最小宽 ── */
+@media (min-width: 769px) and (max-width: 1260px) {
+  .chat-main {
+    min-width: 0;
+  }
+}
+
+/* ── 窄屏（手机/平板竖屏）：堆栈式布局由组件契约控制，此处解除最小宽与行高约束 ── */
+@media (max-width: 768px) {
+  .chat-main {
+    min-width: 0;
+  }
+
+  .chat-composer {
+    padding: 0 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-inner {
+    padding: 16px 12px calc(var(--chat-composer-gap) + 28px);
+  }
+
+  /* 底栏四控件：窄屏换行，避免横向溢出 */
+  .composer-toolbar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
 </style>
 
 <style>

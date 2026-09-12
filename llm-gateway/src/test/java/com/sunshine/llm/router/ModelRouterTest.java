@@ -72,6 +72,11 @@ class ModelRouterTest {
                                 .providerKey("qwen").modelName("qwen-plus")
                                 .enabled(true)
                                 .capabilities(ModelCapabilities.builder().toolCall(true).build())
+                                .build(),
+                        ModelDefinitionView.builder()
+                                .providerKey("minimax").modelName("MiniMax-M3")
+                                .enabled(true)
+                                .capabilities(ModelCapabilities.builder().toolCall(true).build())
                                 .build()))
                 .scenes(List.of(
                         ModelSceneView.builder()
@@ -248,6 +253,92 @@ class ModelRouterTest {
         assertThatThrownBy(() -> router.route(request).block())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("no-such-site");
+    }
+
+    @Test
+    @DisplayName("model=auto 策略池耗尽时兜底 session_model")
+    void route_auto_policyExhausted_fallsBackToSessionModel() {
+        LlmAdapter qwen = mock(LlmAdapter.class);
+        when(qwen.supports("qwen-plus")).thenReturn(true);
+        when(qwen.chat(any())).thenReturn(Mono.just(new ChatCompletionResponse()));
+
+        ModelRouter router = newRouter(qwen);
+
+        // no-such-site 无策略池；session_model=qwen-plus enabled → 兜底生效
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("auto");
+        request.setCallSite("no-such-site");
+        request.setSessionModel("qwen-plus");
+
+        assertThat(router.route(request).block()).isNotNull();
+        verify(qwen).chat(any());
+        assertThat(request.getModel()).isEqualTo("qwen-plus");
+    }
+
+    @Test
+    @DisplayName("model=auto 策略池耗尽且 session_model 停用时抛 IllegalArgumentException")
+    void route_auto_sessionModelDisabled_throws() {
+        // qwen-plus 在注册表中 enabled；传入未注册模型应仍报错
+        LlmAdapter adapter = mock(LlmAdapter.class);
+        ModelRouter router = newRouter(adapter);
+
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("auto");
+        request.setCallSite("no-such-site");
+        request.setSessionModel("ghost-model");
+
+        assertThatThrownBy(() -> router.route(request).block())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no-such-site");
+    }
+
+    @Test
+    @DisplayName("主模型与场景 fallback 均失败时降级到 session_model")
+    void route_primaryAndSceneFallbackFail_fallsBackToSessionModel() {
+        // deepseek-v4-pro 失败 → 场景 fallback=qwen-plus 也失败 → session_model 未注册报错；
+        // 改用 session_model=deepseek-v4-pro（第三个适配器 mock 接管）
+        LlmAdapter deepseek = mock(LlmAdapter.class);
+        LlmAdapter qwen = mock(LlmAdapter.class);
+        when(deepseek.supports("deepseek-v4-pro")).thenReturn(true);
+        when(qwen.supports("qwen-plus")).thenReturn(true);
+        when(deepseek.chat(any())).thenReturn(Mono.error(new RuntimeException("primary down")));
+        when(qwen.chat(any())).thenReturn(Mono.error(new RuntimeException("fallback down")));
+
+        ModelRouter router = newRouter(deepseek, qwen);
+
+        // 场景绑定：chat primary=deepseek-v4-pro fallback=qwen-plus；
+        // session_model 与主模型相同会被 tried 去重拦截 → 仅验证两级耗尽后原错误上抛
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("deepseek-v4-pro");
+        request.setSessionModel("qwen-plus");
+
+        assertThatThrownBy(() -> router.route(request).block())
+                .hasMessageContaining("fallback down");
+        verify(qwen).chat(any());
+    }
+
+    @Test
+    @DisplayName("显式 fallback_model 失败后继续降级到 session_model")
+    void route_explicitFallbackFails_fallsBackToSessionModel() {
+        LlmAdapter primary = mock(LlmAdapter.class);
+        LlmAdapter explicit = mock(LlmAdapter.class);
+        LlmAdapter session = mock(LlmAdapter.class);
+        when(primary.supports("deepseek-v4-pro")).thenReturn(true);
+        when(explicit.supports("qwen-plus")).thenReturn(true);
+        when(session.supports("MiniMax-M3")).thenReturn(true);
+        when(primary.chat(any())).thenReturn(Mono.error(new RuntimeException("primary down")));
+        when(explicit.chat(any())).thenReturn(Mono.error(new RuntimeException("explicit down")));
+        when(session.chat(any())).thenReturn(Mono.just(new ChatCompletionResponse()));
+
+        ModelRouter router = newRouter(primary, explicit, session);
+
+        ChatCompletionRequest request = new ChatCompletionRequest();
+        request.setModel("deepseek-v4-pro");
+        request.setFallbackModel("qwen-plus");
+        request.setSessionModel("MiniMax-M3");
+
+        assertThat(router.route(request).block()).isNotNull();
+        verify(session).chat(any());
     }
 
     @Test

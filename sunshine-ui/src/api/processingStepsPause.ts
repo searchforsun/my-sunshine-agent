@@ -114,17 +114,19 @@ function toPendingResumeStep(step: ProcessingStep): ProcessingStep {
   }
 }
 
-/** HITL / Recovery 暂停续跑：恢复 running 并保留 metadata，供后端 checkpoint re-await */
+/** HITL / Recovery 暂停续跑：恢复 running 并保留 metadata，供后端 checkpoint re-await。
+ * active 统一写回等待文案（用户在 re-await 期间看到的是确认态），不依赖旧 active 是否含“暂停”。 */
 function reactivateAwaitingPausedStep(step: ProcessingStep): ProcessingStep {
   const recovery = isRecoveryAwaiting(step)
   const defaultActive = recovery ? '发生错误' : '等待用户确认执行写操作'
-  const active = step.summary?.active?.includes('暂停')
-    ? defaultActive
-    : (step.summary?.active?.trim() || defaultActive)
   return {
     ...step,
     lifecycle: 'running',
-    summary: { ...step.summary, active, after: undefined },
+    summary: {
+      ...step.summary,
+      active: defaultActive,
+      after: undefined,
+    },
     endedAt: undefined,
     durationMs: undefined,
   }

@@ -158,19 +158,30 @@ public class ChatStreamExecutor {
                     }
                     // 异常中断：running 步（含 rag/tool/think 等）标 paused 再落库，避免残留 running
                     ProcessingStepLifecycleOps.pauseRunningReactSteps(stepsBuffer);
-                    Mono.fromRunnable(() ->
-                                    flushScheduler.commitFinal(
-                                            ctx.assistantMsgId(),
-                                            buffer.toString(),
-                                            reasoningBuffer.toString(),
-                                            MessageStatus.FAILED,
-                                            ProcessingStepSerde.toJson(stepsBuffer)))
+                    Mono.fromRunnable(() -> {
+                                flushScheduler.commitFinal(
+                                        ctx.assistantMsgId(),
+                                        buffer.toString(),
+                                        reasoningBuffer.toString(),
+                                        MessageStatus.FAILED,
+                                        ProcessingStepSerde.toJson(stepsBuffer));
+                                // 失败终态的折叠补偿：补折叠间隙轮，防续跑时上下文缺失
+                                contextLifecycle.onTurnCompleted(
+                                        ctx.assistantMsgId(), ctx.userId(), ctx.tenantId(), MessageStatus.FAILED);
+                            })
                             .subscribeOn(VirtualThreadExecutors.scheduler())
                             .subscribe();
-                    return Flux.just(
-                            sse(flushScheduler.metaError(errMsg)),
-                            sse(flushScheduler.metaMessage(
-                                    ctx.assistantMsgId(), MessageStatus.FAILED, resume)));
+                    // 失败终态：paused 步快照随错误帧一并下发，前端工具卡即时落终态而非停在执行中
+                    java.util.List<ServerSentEvent<String>> pausedStepFrames = new java.util.ArrayList<>();
+                    for (ProcessingStep step : stepsBuffer) {
+                        if ("paused".equals(step.lifecycle())) {
+                            pausedStepFrames.add(sse(flushScheduler.metaStep(step)));
+                        }
+                    }
+                    pausedStepFrames.add(sse(flushScheduler.metaError(errMsg)));
+                    pausedStepFrames.add(sse(flushScheduler.metaMessage(
+                            ctx.assistantMsgId(), MessageStatus.FAILED, resume)));
+                    return Flux.fromIterable(pausedStepFrames);
                 })
                 .doOnCancel(() -> Mono.fromRunnable(() -> {
                                 // 用户中断：running 步（含 rag/tool/think 等）标 paused 再落库，避免残留 running
@@ -232,7 +243,8 @@ public class ChatStreamExecutor {
                         null,
                         StringUtils.hasText(ctx.conversationKind()) ? ctx.conversationKind() : "chat",
                         ctx.routingSeed(),
-                        ctx.tenantId()))
+                        ctx.tenantId(),
+                        ctx.modelOverride()))
                         .flatMapMany(plan -> {
                             executionMode.set(plan.mode());
                             Mono<Void> savePlan = Mono.fromRunnable(() ->
@@ -308,6 +320,7 @@ public class ChatStreamExecutor {
                 ctx.personalRules(),
                 ctx.conversationKind(),
                 ctx.modelOverride(),
+                ctx.reasoningEffort(),
                 ctx.imageUrls());
     }
 

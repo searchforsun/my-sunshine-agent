@@ -8,6 +8,7 @@ import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -155,6 +156,33 @@ public class GenerationStreamService {
         return pollOnce
                 .repeatWhen(completed -> completed.delayElements(pollInterval))
                 .takeUntilOther(terminalSignal.asMono());
+    }
+
+    /**
+     * SSE 心跳：SSE 规范注释行（": " 前缀），非 data 行，浏览器 EventSource 与项目
+     * 自研解析（sseParse.ts 只认 data:/id:）天然忽略。长异步等待（spawn/worker/exec
+     * 的 await 观察窗口）期间无任何业务事件，读空闲超时（Gateway response-timeout 为
+     * 「信号间空闲」语义）会强制断开连接 → 前端消息误标失败/中断、触发孤儿取消链路。
+     * 周期注释行重置上游计时器，与业务事件 merge 后下发。
+     *
+     * <p>主业务流经 {@code takeUntilOther(heartbeatTerminated())} 联动：merge 等待所有
+     * 源完成，无限心跳流若直接并入会导致终态 done 快照下发后连接不关闭（前端 loading
+     * 卡死、会话队列不能出队）。用法：
+     * <pre>{@code
+     * Flux.merge(business.takeUntilOther(streamService.heartbeatTerminated()),
+     *            streamService.heartbeat())
+     * }</pre>
+     * 业务流终止即取消心跳订阅；若仅心跳侧出现订阅泄漏，interval 流随连接断开由
+     * doOnCancel/doOnError 链路回收。
+     */
+    public Flux<ServerSentEvent<String>> heartbeat() {
+        return Flux.interval(Duration.ofMillis(properties.heartbeatInterval()))
+                .map(tick -> ServerSentEvent.<String>builder().comment("keep-alive").build());
+    }
+
+    /** 心跳维持期发出的空信号：主业务流 takeUntilOther 的终止源（见 {@link #heartbeat()}） */
+    public Mono<Void> heartbeatTerminated() {
+        return heartbeat().then();
     }
 
     private static boolean isTerminal(GenerationStatus status) {

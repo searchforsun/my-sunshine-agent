@@ -30,7 +30,25 @@ public final class StepEventBridge {
             String dataScopeJson,
             String permissionsJson,
             /** 会话 kind（chat|task）；装默认工具集用，缺省按 chat */
-            String conversationKind) {
+            String conversationKind,
+            /** 会话所选模型（尾位兜底；spawn/worker 派发时继承给子 AgentRunRequest） */
+            String sessionModel) {
+
+        /** 兼容旧 10 参调用：会话模型不参与 */
+        public ToolAuditContext(
+                String conversationId,
+                String messageId,
+                String userId,
+                String tenantId,
+                String planId,
+                String kbId,
+                List<String> kbScope,
+                String dataScopeJson,
+                String permissionsJson,
+                String conversationKind) {
+            this(conversationId, messageId, userId, tenantId, planId, kbId, kbScope,
+                    dataScopeJson, permissionsJson, conversationKind, null);
+        }
     }
 
     private StepEventBridge() {

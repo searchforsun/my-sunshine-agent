@@ -12,6 +12,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -53,7 +54,7 @@ public class ChatHistoryRetrievalService {
         String tid = tenantId != null ? tenantId : "default";
         int k = Math.max(1, topK);
         return embeddingService.embed(query)
-                .map(vector -> milvusService.search(userId, tid, convId, scene, layers, vector, k))
+                .map(vector -> dedupeHits(milvusService.search(userId, tid, convId, scene, layers, vector, k)))
                 .doOnSuccess(h -> log.info("[ChatHistory] 召回 user={} conv={} scene={} layers={} hits={}",
                         userId, convId != null ? convId : "-", scene != null ? scene : "-",
                         layers != null ? layers : "-", h.size()))
@@ -79,7 +80,7 @@ public class ChatHistoryRetrievalService {
         String tid = tenantId != null ? tenantId : "default";
         int k = Math.max(1, topK);
         return embeddingService.embed(query)
-                .map(vector -> milvusService.search(userId, tid, convIds, scene, layers, vector, k))
+                .map(vector -> dedupeHits(milvusService.search(userId, tid, convIds, scene, layers, vector, k)))
                 .doOnSuccess(h -> log.info("[ChatHistory] 召回 user={} convs={} scene={} layers={} hits={}",
                         userId, convIds.size(), scene != null ? scene : "-",
                         layers != null ? layers : "-", h.size()))
@@ -87,6 +88,28 @@ public class ChatHistoryRetrievalService {
                     log.warn("[ChatHistory] search(convs) 失败: {}", e.getMessage());
                     return Mono.just(List.of());
                 });
+    }
+
+    /**
+     * 命中内容去重（保留最高分）：task process 层对重复操作（反复读同一文件等）会写入
+     * 内容相同/高相似的步骤向量，不同 msgId 各自成条——不去重会占满 topK 挤掉其他命中。
+     * 以归一化全文为键（process 单 chunk 即全文；body/semantic 分块跨块前缀不合并）。
+     */
+    static List<ChatHistoryMilvusService.ChatHistoryHit> dedupeHits(
+            List<ChatHistoryMilvusService.ChatHistoryHit> hits) {
+        if (hits == null || hits.size() < 2) {
+            return hits == null ? List.of() : hits;
+        }
+        Map<String, ChatHistoryMilvusService.ChatHistoryHit> merged = new LinkedHashMap<>();
+        for (ChatHistoryMilvusService.ChatHistoryHit hit : hits) {
+            if (hit == null) {
+                continue;
+            }
+            String key = hit.content() == null ? "" : hit.content().strip();
+            merged.merge(key, hit,
+                    (a, b) -> a.score() >= b.score() ? a : b);
+        }
+        return List.copyOf(merged.values());
     }
 
     public Mono<Void> upsert(

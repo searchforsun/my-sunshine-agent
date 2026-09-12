@@ -37,7 +37,8 @@ final class AgentNodeRequestAssembler {
                 blankToNull(readParamString(params, "systemOverlay", null)),
                 maxIters,
                 streamCtx.conversationId())
-                .withConversationKind(streamCtx.conversationKind());
+                .withConversationKind(streamCtx.conversationKind())
+                .withModelOverride(streamCtx.modelOverride());
     }
 
     private static String readParamString(Map<String, Object> params, String key, String defaultValue) {

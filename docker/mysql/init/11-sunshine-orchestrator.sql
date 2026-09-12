@@ -6,7 +6,7 @@ CREATE TABLE chat_conversation (
     id          VARCHAR(64)  NOT NULL PRIMARY KEY,
     user_id     VARCHAR(64)  NOT NULL,
     tenant_id   VARCHAR(64)  NOT NULL DEFAULT 'default',
-    title       VARCHAR(128) NOT NULL DEFAULT '新对话',
+    title       VARCHAR(512) NOT NULL DEFAULT '新对话',
     created_at  DATETIME(3)  NOT NULL,
     updated_at  DATETIME(3)  NOT NULL,
     execution_preference VARCHAR(32) NULL COMMENT 'fast|pro|workflow',
@@ -15,6 +15,7 @@ CREATE TABLE chat_conversation (
     workspace_id  VARCHAR(64)  NULL COMMENT 'kind=task 时必填',
     checkout_path VARCHAR(256) NULL COMMENT '用户选定的 checkout',
     model_name  VARCHAR(128) NULL COMMENT '会话绑定模型（注册表 model_name；空则走 chat/default scene）',
+    reasoning_effort VARCHAR(16) NULL COMMENT '会话思考深度（minimal|low|medium|high；空则用注册表 request_extras 缺省）',
     INDEX idx_user_tenant_updated (user_id, tenant_id, updated_at)
 );
 

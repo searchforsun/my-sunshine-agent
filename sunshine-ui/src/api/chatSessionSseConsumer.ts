@@ -158,6 +158,11 @@ export async function consumeChatSseStream(
             last.status = 'failed'
             stampTimelineEnded(last)
             hydrateStreamError(last)
+            // 失败终态兜底收口：与 completed 同理，消息已终止则不可能再有合法 running 步；
+            // 后端 paused 快照若在途丢失，避免工具卡永续「执行中」走表。
+            if (last.steps?.length && hasActiveStep(last.steps)) {
+              last.steps = settleRunningSteps(last.steps, last.timelineEndedAt ?? Date.now())
+            }
             if (!last.streamError) {
               last.streamError = '可点击下方继续生成重试'
             }

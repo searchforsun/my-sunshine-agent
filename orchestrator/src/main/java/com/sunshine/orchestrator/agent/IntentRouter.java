@@ -58,7 +58,7 @@ public class IntentRouter {
         }
         String userContent = buildClassifierUserMessage(ctx);
 
-        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.INTENT.key(), null);
+        ResolvedModelScene model = modelSceneResolver.resolve(ModelSceneKey.INTENT.key(), null, ctx.sessionModel());
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", model.effectiveModel());
         request.put("messages", List.of(
@@ -68,6 +68,9 @@ public class IntentRouter {
         request.put("max_tokens", 256);
         request.put("temperature", 0);
         request.put("call_site", LlmGatewayClient.CALL_SITE_REWRITE);
+        if (StringUtils.hasText(ctx.sessionModel())) {
+            request.put("session_model", ctx.sessionModel().strip());
+        }
         if (StringUtils.hasText(model.fallbackModel())) {
             request.put("fallback_model", model.fallbackModel());
         }

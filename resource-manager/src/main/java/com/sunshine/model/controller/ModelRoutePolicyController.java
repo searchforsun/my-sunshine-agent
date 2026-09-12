@@ -2,6 +2,7 @@ package com.sunshine.model.controller;
 
 import com.sunshine.common.core.result.R;
 import com.sunshine.common.model.CallSiteKey;
+import com.sunshine.model.dto.ModelRouteKeyMeta;
 import com.sunshine.model.dto.ModelRouteResponse;
 import com.sunshine.model.dto.ModelRouteUpsertRequest;
 import com.sunshine.model.service.ModelRoutePolicyService;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -26,8 +28,10 @@ public class ModelRoutePolicyController {
 
     /** 调用点枚举清单（只读）；前端下拉与描述 SSOT */
     @GetMapping("/keys")
-    public R<List<CallSiteKey>> keys() {
-        return R.ok(List.of(CallSiteKey.values()));
+    public R<List<ModelRouteKeyMeta>> keys() {
+        return R.ok(Arrays.stream(CallSiteKey.values())
+                .map(k -> new ModelRouteKeyMeta(k.key(), k.label(), k.description()))
+                .toList());
     }
 
     @GetMapping

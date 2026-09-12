@@ -120,6 +120,15 @@ const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
               :autosize="{ minRows: 3, maxRows: 10 }"
             />
           </NFormItem>
+          <NFormItem v-if="page.selectedL2.background" label="背景 / 事实来源">
+            <NInput
+              :value="page.selectedL2.background"
+              class="sun-field sun-field-grow"
+              type="textarea"
+              readonly
+              :autosize="{ minRows: 2, maxRows: 6 }"
+            />
+          </NFormItem>
           <div class="form-grid">
             <NFormItem label="置信度">
               <NInputNumber
@@ -140,6 +149,32 @@ const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
           </div>
         </NForm>
         <div class="meta-block">
+          <div class="meta-row">
+            <span class="meta-label">作用域</span>
+            <span class="meta-text">{{ page.scopeLabel(page.selectedL2.scope) }}</span>
+          </div>
+          <div v-if="page.selectedL2.scope === 'workspace' && page.selectedL2.workspaceId" class="meta-row">
+            <span class="meta-label">工作区</span>
+            <div class="meta-value-row">
+              <code class="meta-id">{{ page.selectedL2.workspaceId }}</code>
+              <button
+                type="button"
+                class="copy-btn smd-toolbtn"
+                :title="page.copiedL2Key === 'workspace' ? '已复制' : '复制'"
+                @click="page.copyL2Field('workspace', page.selectedL2.workspaceId)"
+              >
+                <CopyToggleIcon :copied="page.copiedL2Key === 'workspace'" />
+              </button>
+            </div>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">业务场景</span>
+            <span class="meta-text">{{ page.bizSceneLabel(page.selectedL2.bizSceneScope) }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">确认态</span>
+            <span class="meta-text">{{ page.confirmStatusLabel(page.selectedL2.confirmStatus) }}</span>
+          </div>
           <div class="meta-row">
             <span class="meta-label">条目 ID</span>
             <div class="meta-value-row">
@@ -172,6 +207,10 @@ const page = inject(CONTEXT_PAGE_KEY) as ContextPageApi
           <div class="meta-row">
             <span class="meta-label">过期时间</span>
             <span class="meta-text">{{ page.formatTime(page.selectedL2.expiresAt) }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">创建时间</span>
+            <span class="meta-text">{{ page.formatTime(page.selectedL2.createdAt) }}</span>
           </div>
           <div class="meta-row">
             <span class="meta-label">更新时间</span>

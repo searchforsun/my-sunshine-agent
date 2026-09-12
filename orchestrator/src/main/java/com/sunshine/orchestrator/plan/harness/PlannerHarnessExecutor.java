@@ -46,7 +46,8 @@ public class PlannerHarnessExecutor {
                     ctx.persistedPlanId(),
                     ctx.kbId(),
                     null, null, null,
-                    ctx.conversationKind()));
+                    ctx.conversationKind(),
+                    ctx.modelOverride()));
         }
         String sessionId = resolveSessionId(ctx);
         PlanNotebook notebook = store.load(sessionId).orElseGet(() -> createNotebook(ctx, sessionId));

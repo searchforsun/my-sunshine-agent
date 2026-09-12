@@ -23,6 +23,8 @@ public record ChatResumePreparation(
         String kbId,
         String conversationKind,
         String modelOverride,
+        /** 会话思考深度（minimal|low|medium|high；仅 MAIN；空则走注册表 request_extras 缺省） */
+        String reasoningEffort,
         /** 该消息已存 RoutingResult（S-0 续跑复用，不重跑收集） */
         RoutingSeed routingSeed) {
 
@@ -49,6 +51,7 @@ public record ChatResumePreparation(
                 null,
                 conversationKind,
                 modelOverride,
+                reasoningEffort,
                 // 续跑仅继续既有 assistant 生成：本轮图片已随原 user 消息消费，不重注入
                 List.of(),
                 routingSeed);

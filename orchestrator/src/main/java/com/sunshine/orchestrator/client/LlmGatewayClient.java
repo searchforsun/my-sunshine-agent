@@ -75,7 +75,12 @@ public class LlmGatewayClient {
 
     /** 流式补全 — PromptComposer 拼装后的 messages（workflow llm 等） */
     public Flux<StreamToken> streamComposed(PromptComposeRequest request) {
-        return doStream(promptComposer.composeGatewayMessages(request), CALL_SITE_CHAT);
+        return streamComposed(request, null);
+    }
+
+    /** 会话所选模型：参与解析链（优先于场景链）+ 作为 session_model 注入请求体供网关降级兜底 */
+    public Flux<StreamToken> streamComposed(PromptComposeRequest request, String sessionModel) {
+        return doStream(promptComposer.composeGatewayMessages(request), CALL_SITE_CHAT, sessionModel);
     }
 
     // ==================== 非流式补全 ====================
@@ -94,18 +99,31 @@ public class LlmGatewayClient {
                 systemPrompt, userContent, callSite);
     }
 
+    /** 非流式补全 — 显式调用点 + 会话所选模型（title 等有会话上下文的辅助调用） */
+    public String completeWithSessionModel(
+            String systemPrompt, String userContent, String callSite, String sessionModel) {
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.TITLE.key(), null, sessionModel);
+        return complete(resolved.effectiveModel(), resolved.fallbackModel(), sessionModel,
+                systemPrompt, userContent, callSite);
+    }
+
     public String complete(String model, String fallbackModel, String systemPrompt, String userContent) {
         return complete(model, fallbackModel, systemPrompt, userContent, CALL_SITE_SUMMARIZE);
     }
 
     public String complete(String model, String fallbackModel, String systemPrompt,
                            String userContent, String callSite) {
+        return complete(model, fallbackModel, null, systemPrompt, userContent, callSite);
+    }
+
+    public String complete(String model, String fallbackModel, String sessionModel,
+                           String systemPrompt, String userContent, String callSite) {
         List<Map<String, Object>> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(Map.of("role", "system", "content", systemPrompt.strip()));
         }
         messages.add(Map.of("role", "user", "content", userContent != null ? userContent : ""));
-        return completeMessages(model, fallbackModel, messages, callSite).contentOrEmpty();
+        return completeMessages(model, fallbackModel, sessionModel, messages, callSite).contentOrEmpty();
     }
 
     // ==================== 公共底层 API（供内部调用方） ====================
@@ -129,6 +147,11 @@ public class LlmGatewayClient {
 
     private LlmCompletion completeMessages(String model, String fallbackModel,
                                            List<Map<String, Object>> messages, String callSite) {
+        return completeMessages(model, fallbackModel, null, messages, callSite);
+    }
+
+    private LlmCompletion completeMessages(String model, String fallbackModel, String sessionModel,
+                                           List<Map<String, Object>> messages, String callSite) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", model);
         request.put("messages", messages);
@@ -138,6 +161,9 @@ public class LlmGatewayClient {
         }
         if (StringUtils.hasText(fallbackModel)) {
             request.put("fallback_model", fallbackModel.strip());
+        }
+        if (StringUtils.hasText(sessionModel)) {
+            request.put("session_model", sessionModel.strip());
         }
         try {
             Map<String, Object> response = webClient.post()
@@ -149,26 +175,38 @@ public class LlmGatewayClient {
                     .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                     .block();
             if (response == null) {
+                log.warn("[LlmGatewayClient] complete 空响应 model={} callSite={}", model, callSite);
                 return new LlmCompletion("", "");
             }
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
             if (choices == null || choices.isEmpty()) {
+                log.warn("[LlmGatewayClient] complete choices 为空 model={} callSite={} respKeys={}",
+                        model, callSite, response.keySet());
                 return new LlmCompletion("", "");
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
             if (message == null) {
+                log.warn("[LlmGatewayClient] complete message 缺失 model={} callSite={}", model, callSite);
                 return new LlmCompletion("", "");
             }
             String content = stringField(message.get("content"));
             String reasoning = stringField(message.get("reasoning_content"));
-            if (reasoning == null || reasoning.isBlank()) {
+            if (!StringUtils.hasText(reasoning)) {
                 reasoning = stringField(message.get("reasoning"));
+            }
+            if (!StringUtils.hasText(content)) {
+                // 空正文（常见于 reasoning 模型把 token 耗尽在思考链 / 上游内容过滤）：
+                // 记录 finish_reason 与 reasoning 长度供定位，返回空交由调用方重试
+                log.warn("[LlmGatewayClient] complete 空正文 model={} callSite={} finishReason={} reasoningChars={}",
+                        model, callSite, choices.get(0).get("finish_reason"),
+                        reasoning != null ? reasoning.length() : 0);
             }
             return new LlmCompletion(content, reasoning);
         } catch (Exception e) {
-            log.warn("[LlmGatewayClient] complete 失败: {}", e.getMessage());
+            log.warn("[LlmGatewayClient] complete 失败 model={} callSite={}: {}",
+                    model, callSite, e.getMessage());
             return new LlmCompletion("", "");
         }
     }
@@ -181,7 +219,12 @@ public class LlmGatewayClient {
     }
 
     private Flux<StreamToken> doStream(List<Map<String, Object>> messages, String callSite) {
-        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), null);
+        return doStream(messages, callSite, null);
+    }
+
+    /** sessionModel 非空时注入 session_model：路由策略/场景链耗尽后由网关兜底到会话所选模型 */
+    private Flux<StreamToken> doStream(List<Map<String, Object>> messages, String callSite, String sessionModel) {
+        ResolvedModelScene resolved = modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), null, sessionModel);
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", resolved.effectiveModel());
         request.put("messages", messages);
@@ -191,6 +234,9 @@ public class LlmGatewayClient {
         }
         if (StringUtils.hasText(resolved.fallbackModel())) {
             request.put("fallback_model", resolved.fallbackModel());
+        }
+        if (StringUtils.hasText(sessionModel)) {
+            request.put("session_model", sessionModel.strip());
         }
         return webClient.post()
                 .uri("/chat/completions")

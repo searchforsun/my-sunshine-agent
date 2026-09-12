@@ -34,6 +34,14 @@ public class ContextAdminController {
         return orchestratorClient.listContextL2(userId, tenantId);
     }
 
+    /** workspace 作用域 L2 列表（透传 orchestrator，task 会话写路径产物）。 */
+    @GetMapping("/api/admin/context/workspace/{workspaceId}/l2")
+    public Mono<Map<String, Object>> listL2Workspace(
+            @PathVariable String workspaceId,
+            @RequestParam(required = false, defaultValue = "default") String tenantId) {
+        return orchestratorClient.listContextL2Workspace(workspaceId, tenantId);
+    }
+
     @PutMapping("/api/admin/context/l2/{id}")
     public Mono<Map<String, Object>> updateL2(
             @PathVariable String id,

@@ -109,9 +109,19 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 应用高度 SSOT：dvh 随移动端地址栏/键盘动态收缩，100vh 会被地址栏遮挡 */
+:root {
+  --sun-app-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --sun-app-height: 100dvh;
+  }
+}
+
 #app {
   height: 100%;
-  min-height: 100vh;
 }
 
 html[data-theme='dark'] {
@@ -131,7 +141,7 @@ html.theme-switching *::after {
 }
 
 .auth-page {
-  min-height: 100vh;
+  min-height: var(--sun-app-height);
   display: flex;
   align-items: center;
   justify-content: center;

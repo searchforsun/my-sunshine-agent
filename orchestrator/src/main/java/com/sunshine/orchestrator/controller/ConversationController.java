@@ -73,10 +73,7 @@ public class ConversationController {
             @PathVariable("id") String id,
             @RequestHeader("x-user-id") String userId,
             @RequestHeader(value = "x-tenant-id", defaultValue = "default") String tenantId) {
-        return ReactiveBlocking.call(() -> {
-            ChatConversationEntity conv = conversationService.getOwned(id, userId, tenantId);
-            return ConversationDetailDto.from(conv, conversationService.getMessages(id, userId, tenantId));
-        });
+        return ReactiveBlocking.call(() -> conversationService.getConversationDetail(id, userId, tenantId));
     }
 
     @GetMapping("/conversations/{id}/messages")

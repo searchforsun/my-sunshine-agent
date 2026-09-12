@@ -61,6 +61,9 @@ const mentionContext = computed<ComposerMentionContext>(() => ({
 
 const isEditorEmpty = computed(() => !props.modelValue.trim())
 
+/** 编辑器滚动上限，与 CSS max-height 保持一致 */
+const MAX_EDITOR_HEIGHT = 144
+
 function normalizeEmptyEditor(el: HTMLDivElement) {
   if (!plainTextFromEditor(el).trim() && el.childNodes.length > 0) {
     el.replaceChildren()
@@ -69,7 +72,14 @@ function normalizeEmptyEditor(el: HTMLDivElement) {
 
 function resizeEditor(el: HTMLDivElement) {
   el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
+  // 仅在内容真正超过上限时锁定高度并启用滚动；短内容自适应，避免固定像素高度下的空滚动条
+  if (el.scrollHeight > MAX_EDITOR_HEIGHT) {
+    el.classList.add('is-overflow')
+    el.style.height = `${el.scrollHeight}px`
+  } else {
+    el.classList.remove('is-overflow')
+    el.style.height = ''
+  }
 }
 
 function syncChipEditor(plain: string, caret?: number) {
@@ -293,8 +303,7 @@ onMounted(() => {
   width: 100%;
   min-width: 0;
   min-height: 28px;
-  max-height: 144px;
-  overflow-y: auto;
+  overflow-y: hidden;
   padding: 4px 2px;
   border: none;
   outline: none;
@@ -307,6 +316,12 @@ onMounted(() => {
   white-space: pre-wrap;
   word-break: break-word;
   display: block;
+}
+
+/* 内容超过上限时才启用滚动与高度钳制（JS 同步 is-overflow） */
+.composer-editor.is-overflow {
+  max-height: 144px;
+  overflow-y: auto;
 }
 
 .composer-editor.is-empty::before {

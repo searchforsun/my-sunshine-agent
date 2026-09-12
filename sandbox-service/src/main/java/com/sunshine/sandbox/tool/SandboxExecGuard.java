@@ -10,8 +10,9 @@ import java.util.regex.Pattern;
  * <p>安全策略按场景分级：
  * <ul>
  *   <li><b>Chat 模式</b>：全量规则（黑名单），用户日常办公场景，严格限制</li>
- *   <li><b>Task 模式</b>：仅保留 fork bomb + pipe-sh（远程脚本管道执行），
- *       其余由 Docker --cap-drop ALL / --read-only / UID 10001 兜底</li>
+ *   <li><b>Task 模式</b>：仅保留自杀式删除（根/家目录、git 裸库）+ fork bomb + pipe-sh
+ *       （远程脚本管道执行），其余由 Docker --cap-drop ALL / --read-only / UID 10001 兜底；
+ *       工作树 /workspace 与 /workspace/wt-* 内的 rm 正常放行</li>
  * </ul>
  */
 final class SandboxExecGuard {
@@ -19,10 +20,18 @@ final class SandboxExecGuard {
     private record DenyRule(Pattern pattern, String reason) {
     }
 
+    /**
+     * 自杀式 rm：仅当删除目标为根 / 家目录 ~ 或 git 裸库 /opt/git 时拒绝。
+     * 兼容长短选项任意组合（rm -fr / rm -rf / rm -r -f / rm --recursive --force）与多目标；
+     * /workspace（含 /workspace/wt-*）、/tmp 等项目内绝对路径正常放行。
+     */
+    private static final String RM_SUICIDE_REGEX =
+            "(?i).*\\brm\\s+(?:(?:-{1,2}[a-zA-Z-]+\\s+)*"
+                    + "(?:/|/\\*|/\\.\\.?|~|~/\\*|/opt/git(?:/\\*|/\\s|$))(?:\\s+|$))+.*";
+
     /** Chat 模式全量黑名单 */
     private static final List<DenyRule> CHAT_RULES = List.of(
-            rule("(?i).*\\brm\\s+(-[a-zA-Z]*f[a-zA-Z]*\\s+|--force\\s+)?(/\\s*(\\*|\\.\\.)?|/\\*|/~).*",
-                    "destructive recursive delete of root/home"),
+            rule(RM_SUICIDE_REGEX, "destructive delete of root/home/git-store"),
             rule("(?i).*\\bmkfs(\\.\\w+)?\\b.*", "filesystem format"),
             rule("(?i).*\\bdd\\b.*\\bof=/dev/.*", "raw disk write"),
             rule("(?i).*\\b(curl|wget)\\b.*\\|\\s*(ba)?sh\\b.*", "pipe remote script to shell"),
@@ -33,8 +42,9 @@ final class SandboxExecGuard {
             rule("(?i).*\\bdocker\\b.*", "nested docker"),
             rule("(?i).*\\bkubectl\\b.*", "cluster control"));
 
-    /** Task 模式精简黑名单 — 仅保留真正跨容器不安全的攻击向量 */
+    /** Task 模式精简黑名单 — 仅保留跨容器不安全的攻击向量（工作区内 rm 放行） */
     private static final List<DenyRule> TASK_RULES = List.of(
+            rule(RM_SUICIDE_REGEX, "destructive delete of root/home/git-store"),
             rule("(?i).*\\b(curl|wget)\\b.*\\|\\s*(ba)?sh\\b.*", "pipe remote script to shell"),
             rule("(?i).*:\\(\\)\\s*\\{\\s*:\\|:&\\s*\\}\\s*;\\s*:.*", "fork bomb"));
 

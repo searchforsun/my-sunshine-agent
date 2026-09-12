@@ -4,7 +4,7 @@ import type { ProcessingStep } from '../../api/processingSteps'
 import {
   formatDuration,
   formatStepLabel,
-  resolveRunningChildStepBody,
+  resolveLatestChildStepBody,
   resolveStepDurationMs,
   stepLifecycle,
 } from '../../api/processingSteps'
@@ -51,11 +51,8 @@ const taskId = computed(() => {
 })
 const label = computed(() => formatStepLabel(props.step) || '执行单元')
 const showShimmer = computed(() => isRunning.value && props.live)
-/** 运行中当前子步正文（思考文本/工具输出等；generate 阶段显示「正在收尾回复」），任务名后跟随展示 */
-const childStepBody = computed(() => {
-  if (!showShimmer.value) return ''
-  return resolveRunningChildStepBody(props.step)
-})
+/** 最新阶段正文（思考文本/工具输出等；generate 阶段显示「正在收尾回复」），任务名后常显，终态固定最后阶段 */
+const childStepBody = computed(() => resolveLatestChildStepBody(props.step))
 const workerRunId = computed(() => props.step.metadata?.workerRunId?.trim() || '')
 const canStop = computed(() => props.live && isRunning.value && !!workerRunId.value)
 

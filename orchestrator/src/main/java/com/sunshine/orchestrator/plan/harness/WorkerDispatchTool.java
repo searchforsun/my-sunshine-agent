@@ -81,9 +81,11 @@ public class WorkerDispatchTool implements AgentTool {
             String parentRunId,
             int maxIters,
             String conversationKind,
-            String skillId) {
+            String skillId,
+            /** 会话所选模型（尾位兜底；Worker 请求继承，网关路由耗尽后兜底） */
+            String sessionModel) {
 
-        /** 兼容旧 9 参调用：skillId 缺省 null */
+        /** 兼容旧 9 参调用：skillId 缺省 null，会话模型不参与 */
         public DispatchSession(
                 PlanNotebook notebook,
                 List<String> toolWhitelist,
@@ -95,7 +97,22 @@ public class WorkerDispatchTool implements AgentTool {
                 int maxIters,
                 String conversationKind) {
             this(notebook, toolWhitelist, userId, tenantId, assistantMessageId,
-                    conversationId, parentRunId, maxIters, conversationKind, null);
+                    conversationId, parentRunId, maxIters, conversationKind, null, null);
+        }
+
+        public DispatchSession(
+                PlanNotebook notebook,
+                List<String> toolWhitelist,
+                String userId,
+                String tenantId,
+                String assistantMessageId,
+                String conversationId,
+                String parentRunId,
+                int maxIters,
+                String conversationKind,
+                String skillId) {
+            this(notebook, toolWhitelist, userId, tenantId, assistantMessageId,
+                    conversationId, parentRunId, maxIters, conversationKind, skillId, null);
         }
 
         String plannerBridgeId() {
@@ -284,7 +301,8 @@ public class WorkerDispatchTool implements AgentTool {
                 maxIters,
                 session.parentRunId(),
                 session.skillId())
-                .withConversationKind(session.conversationKind());
+                .withConversationKind(session.conversationKind())
+                .withModelOverride(session.sessionModel());
         final String runId = request.runId();
         final long timeoutMs = harness.getWorker().getTimeoutMs() > 0
                 ? harness.getWorker().getTimeoutMs()

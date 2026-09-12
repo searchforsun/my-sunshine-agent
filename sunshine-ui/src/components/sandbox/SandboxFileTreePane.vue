@@ -168,6 +168,7 @@ function onLoad(option: TreeOption) {
       <NTree
         v-else-if="treeData.length"
         block-line
+        ellipsis
         expand-on-click
         :draggable="true"
         :allow-drop="denyTreeDrop"

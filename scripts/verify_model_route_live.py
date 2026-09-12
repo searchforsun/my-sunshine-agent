@@ -17,7 +17,9 @@
   R4  用量记录 call_site 透传落库（llm_usage_record）
   R5  策略 CRUD：list/keys/upsert/toggle/delete（BFF 透传）
   R6  策略变更热更新：upsert 换序 → llm-gateway 30s 内按新池路由
-  R7  语义缓存隔离：model=auto 请求不入缓存（同消息两次均真实路由），显式模型 key 含 call_site
+    R7  语义缓存隔离：model=auto 请求不入缓存（同消息两次均真实路由），显式模型 key 含 call_site
+  R8  model=auto 策略池耗尽 → 兜底 session_model（会话所选模型尾位）
+  R9  model=auto 策略池耗尽且 session_model 不可用 → 400 明确报错
 """
 from __future__ import annotations
 
@@ -70,10 +72,13 @@ def first_available(policy: dict, enabled: set) -> str:
     raise RuntimeError(f"策略 {policy.get('callSite')} 模型池全不可用: {policy.get('models')}")
 
 
-def llm(model: str, call_site: str, content: str, stream: bool = False) -> dict:
+def llm(model: str, call_site: str, content: str, stream: bool = False,
+        session_model: str | None = None) -> dict:
     body = {"model": model, "messages": [{"role": "user", "content": content}], "max_tokens": 8}
     if call_site is not None:
         body["call_site"] = call_site
+    if session_model is not None:
+        body["session_model"] = session_model
     body["stream"] = stream
     r = requests.post(f"{LLM_URL}/v1/chat/completions", json=body, timeout=TIMEOUT)
     try:
@@ -146,7 +151,8 @@ def gate_r5(catalog: dict) -> None:
     r = requests.get(f"{BFF_URL}/api/models/routes/keys", timeout=15)
     r.raise_for_status()
     keys = unwrap_r(r.json()) or []
-    if "REWRITE" not in keys or "PLAN" not in keys:
+    key_set = {item["key"] for item in keys}
+    if "rewrite" not in key_set or "plan" not in key_set:
         raise RuntimeError(f"R5 keys 缺失调用点枚举: {keys}")
     backup = {item["callSite"]: item for item in routes()}
     site = "tool-call"
@@ -227,6 +233,29 @@ def gate_r7() -> None:
     print(f"  [OK] R7 model=auto 同消息两次均真实路由 → {first.get('model')}")
 
 
+def gate_r8(catalog: dict) -> None:
+    """model=auto 策略池耗尽 → 兜底 session_model。"""
+    enabled = enabled_models(catalog)
+    # 任选一个 enabled 模型作会话兜底
+    session_model = next(iter(sorted(enabled)), None)
+    if session_model is None:
+        raise RuntimeError("R8 前置失败：注册表无 enabled 模型")
+    resp = llm("auto", "no-such-call-site", "会话模型兜底验证", session_model=session_model)
+    if resp.get("model") != session_model:
+        raise RuntimeError(
+            f"R8 失败：无策略时应兜底 session_model={session_model}，实际 {resp.get('model')} {resp.get('error')}")
+    print(f"  [OK] R8 auto 无策略 → 兜底 session_model={session_model}")
+
+
+def gate_r9() -> None:
+    """model=auto 策略池耗尽且 session_model 不可用 → 400。"""
+    resp = llm("auto", "no-such-call-site", "会话模型兜底失败验证",
+               session_model="ghost-not-registered")
+    if "error" not in resp or resp.get("_status") != 400:
+        raise RuntimeError(f"R9 失败：期望 400 明确报错，实际 {resp}")
+    print(f"  [OK] R9 auto 无策略且 session_model 不可用 → 400: {resp['error'].get('message', '')[:60]}")
+
+
 def main() -> int:
     global BFF_URL, RM_URL, LLM_URL, ORCH_URL
     parser = argparse.ArgumentParser(description="phase5 5.3 多模型场景路由 Live 验收")
@@ -250,6 +279,8 @@ def main() -> int:
     gate_r5(catalog)
     gate_r6(catalog)
     gate_r7()
+    gate_r8(catalog)
+    gate_r9()
     print("=== 5.3 多模型场景路由 Live 全部通过 ===")
     return 0
 

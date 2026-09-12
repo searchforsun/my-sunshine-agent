@@ -175,7 +175,8 @@ public class GenerationJob {
             emitPausedWorkflowSteps();
             disposeLlmSubscription();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
-            persistFinal(MessageStatus.INTERRUPTED, () -> { });
+            persistFinal(MessageStatus.INTERRUPTED,
+                    () -> refreshContextFoldOnly(MessageStatus.INTERRUPTED));
         });
     }
 
@@ -291,9 +292,9 @@ public class GenerationJob {
     }
 
     private void handleError(Throwable error, Consumer<Throwable> onError) {
-        if (finished.get()) {
-            return;
-        }
+        // finished CAS 由 subscribe 的 finishOnce 保证（cancel/complete/error 三路只走其一），
+        // 此处不可再以 finished.get() 作守卫——finishOnce 已先置 true，再检查必然 early-return，
+        // 会导致失败终态（metaError / FAILED / 步骤收口 / 落库 / onError 回调）整体成为死代码
         if (error instanceof HitlWaitInterruptedException
                 || (error.getCause() instanceof HitlWaitInterruptedException)) {
             cancelOrphanTimer();
@@ -302,13 +303,19 @@ public class GenerationJob {
             emitFinishSteps(true);
             emitPausedWorkflowSteps();
             streamService.updateStatus(generationId, GenerationStatus.INTERRUPTED);
-            persistFinal(MessageStatus.INTERRUPTED, () -> onError.accept(error));
+            persistFinal(MessageStatus.INTERRUPTED, () -> {
+                refreshContextFoldOnly(MessageStatus.INTERRUPTED);
+                onError.accept(error);
+            });
             return;
         }
         cancelOrphanTimer();
         disposeLlmSubscription();
         dropUnfinishedIntentStep();
         emitFinishSteps(true);
+        // 失败终态：与取消路径一致，running 的 think/tool 等步标 paused 并下发终态快照，
+        // 否则前端工具卡停在「执行中」直到消息级 failed 兜底（或无兜底时永续走表）
+        emitPausedWorkflowSteps();
         String errMsg = StreamErrorMessages.resolve(error);
         if (errMsg != null && !errMsg.isBlank()) {
             synchronized (streamAppendLock) {
@@ -324,7 +331,22 @@ public class GenerationJob {
             }
         }
         streamService.updateStatus(generationId, GenerationStatus.FAILED);
-        persistFinal(MessageStatus.FAILED, () -> onError.accept(error));
+        persistFinal(MessageStatus.FAILED, () -> {
+            refreshContextFoldOnly(MessageStatus.FAILED);
+            onError.accept(error);
+        });
+    }
+
+    /** 中断/失败终态的折叠补偿：补折叠间隙轮，防续跑时上下文缺失（COMPLETED 走 refreshContextAfterComplete） */
+    private void refreshContextFoldOnly(String status) {
+        if (contextLifecycle == null) {
+            return;
+        }
+        try {
+            contextLifecycle.onTurnCompleted(messageId, userId, tenantId, status);
+        } catch (Exception e) {
+            log.warn("[GenerationJob] Context fold-only 刷新失败 msg={}: {}", messageId, e.getMessage());
+        }
     }
 
     /** commitFinal 含脱敏 block 调用，须在虚拟线程执行，避免 reactor 线程 IllegalStateException */

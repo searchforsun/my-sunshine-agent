@@ -57,4 +57,8 @@ public class ChatConversationEntity {
     /** 会话绑定模型（注册表 model_name；空则走 chat/default scene） */
     @Column(name = "model_name", length = 128)
     private String modelName;
+
+    /** 会话思考深度（minimal|low|medium|high；空则用注册表 request_extras 缺省） */
+    @Column(name = "reasoning_effort", length = 16)
+    private String reasoningEffort;
 }

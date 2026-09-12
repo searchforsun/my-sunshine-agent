@@ -89,6 +89,7 @@ public class ReActAgentRuntime implements AgentRuntime {
     private final ModelSceneResolver modelSceneResolver;
     private final ChatMessageRepository messageRepo;
     private final ToolRetrievalService toolRetrievalService;
+    private final com.sunshine.orchestrator.agent.state.AgentStateTtlSupport agentStateTtlSupport;
 
     @Override
     public Flux<StreamToken> run(AgentRunRequest request) {
@@ -292,6 +293,9 @@ public class ReActAgentRuntime implements AgentRuntime {
                             try {
                                 if (agent.getDelegate() != null) {
                                     agent.getDelegate().saveAgentState(request.userId(), request.assistantMessageId());
+                                    // SDK save 无 TTL：保存后对该 slot 落 state-ttl-sec，防 checkpoint 永生挤占
+                                    agentStateTtlSupport.applyTtlAfterSave(
+                                            request.userId(), request.assistantMessageId());
                                     log.info("[AgentRuntime] checkpoint saved on {} userId={} msg={}",
                                             sig, request.userId(), request.assistantMessageId());
                                 }
@@ -532,21 +536,18 @@ public class ReActAgentRuntime implements AgentRuntime {
         return query.length() <= 40 ? query : query.substring(0, 40) + "...";
     }
 
-    /** 与 ReActAgentFactory.resolveModel 同语义：modelConfigJson.model > modelOverride > scene；解析失败不阻断主流程 */
+    /** 与 ReActAgentFactory.resolveModel 同语义：modelConfigJson.model → scene → 会话模型尾位兜底；解析失败不阻断主流程 */
     private String resolveModelName(AgentRunRequest request) {        try {
             String fromConfig = ReActAgentFactory.extractModelFromConfigJson(request.modelConfigJson());
-            String override = StringUtils.hasText(fromConfig) ? fromConfig : request.modelOverride();
+            String sessionModel = request.modelOverride();
             AgentRole role = request.role();
             if (role == AgentRole.MAIN) {
-                if (StringUtils.hasText(fromConfig)) {
-                    return modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), fromConfig).effectiveModel();
-                }
-                return modelSceneResolver.resolveChat(override).effectiveModel();
+                return modelSceneResolver.resolve(ModelSceneKey.CHAT.key(), fromConfig, sessionModel).effectiveModel();
             }
             if (role == AgentRole.SUB || role == AgentRole.WORKER) {
-                return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), override).effectiveModel();
+                return modelSceneResolver.resolve(ModelSceneKey.SUBAGENT.key(), fromConfig, sessionModel).effectiveModel();
             }
-            return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), override).effectiveModel();
+            return modelSceneResolver.resolve(ModelSceneKey.PLANNER.key(), fromConfig, sessionModel).effectiveModel();
         } catch (Exception e) {
             return null;
         }

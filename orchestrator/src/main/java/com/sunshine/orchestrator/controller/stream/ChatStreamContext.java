@@ -31,6 +31,8 @@ public record ChatStreamContext(
         String conversationKind,
         /** 会话绑定模型 override（MAIN chat）；intent/rewrite/title 忽略 */
         String modelOverride,
+        /** 会话思考深度（minimal|low|medium|high；仅 MAIN；空则走注册表 request_extras 缺省） */
+        String reasoningEffort,
         /** 本轮聊天图片 URL（仅新消息路径填充；续跑恒空） */
         List<String> imageUrls,
         /**

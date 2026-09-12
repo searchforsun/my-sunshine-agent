@@ -48,7 +48,11 @@ public class RequestDecisionTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "向用户出选择题并等待作答。需求歧义或下一步依赖用户偏好时使用。勿用于写工具 HITL 确认。";
+        return "向用户出选择题并等待作答（工具结果即用户选项），覆盖：方案/路径取舍、优先级、多选改进项、"
+                + "测验/问卷、口径或参数确认、是否采纳建议。多题一次问完（questions≥1，每题 options≥2，仅 id+label），"
+                + "可多选设 allowMultiple=true。返回 answered 按 answers 继续；skipped/timeout 基于已有信息收束，"
+                + "禁止立刻同参重调；含 __custom__ 视为用户自定义决策。勿用于写工具 HITL 确认（走平台确认框）；"
+                + "意图已唯一明确或无法预枚举选项的开放式追问不必调用。";
     }
 
     @Override

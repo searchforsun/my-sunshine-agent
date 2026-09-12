@@ -17,6 +17,7 @@ import {
   clearActiveGenerationIfMatch,
 } from '../composables/useActiveGeneration'
 import { resolveBffStreamBase } from './config'
+import { useChatStore } from '../stores/chatStore'
 import { isConversationNotFoundError, throwIfHttpError, throwIfNotEventStream } from './apiError'
 import {
   applyHitlDecision as applyHitlDecisionToSteps,
@@ -55,6 +56,19 @@ import { getWriteHitlMode } from '../composables/useWriteHitlMode'
 
 const API_BASE = () => resolveBffStreamBase()
 const sessions = getSessionRegistry()
+
+/**
+ * 流式请求头：Gateway 按 X-Conversation-Kind 分档读空闲超时（task=720s，其余全局 360s），
+ * 覆盖 task 会话长思考期（docs/nacos/sunshine-gateway.yaml sunshine-bff-api-task 路由）
+ */
+function streamHeaders(conversationId: string): Record<string, string> {
+  const headers = apiHeaders()
+  const kind = useChatStore().conversations.find(c => c.id === conversationId)?.kind
+  if (kind === 'task') {
+    headers['X-Conversation-Kind'] = 'task'
+  }
+  return headers
+}
 
 /** 图片-only 消息的占位正文：后端 ChatController.validateRequest 要求 content 与 resumeMessageId 二者必有其一 */
 const IMAGE_ONLY_PLACEHOLDER = '请查看图片'
@@ -133,14 +147,26 @@ export function useChatSessions(
   }
 
   async function send(rawContent: string, conversationId?: string | null, options?: SendOptions): Promise<void> {
+    ensureActive(conversationId ?? '')
+    await runSend(rawContent, conversationId, options)
+  }
+
+  /**
+   * 后台发送：不切换当前激活会话（用户视图不被抢占），SSE 在会话自身状态下后台运行。
+   * 流式增量写入会话消息数组（切回时 hydrate 对齐），结束后经 onSessionEnd 驱动该会话队列继续出队。
+   */
+  async function sendInBackground(rawContent: string, conversationId?: string | null, options?: SendOptions): Promise<void> {
+    await runSend(rawContent, conversationId, options)
+  }
+
+  async function runSend(rawContent: string, conversationId?: string | null, options?: SendOptions): Promise<void> {
     const convId = conversationId ?? activeId.value
     // 空文本 + 有图 = 图片-only 消息，放行；无图空文本仍拦截
     if (!convId || (!rawContent.trim() && !options?.imageUrls?.length)) return
     const content = rawContent.trim() ? rawContent : IMAGE_ONLY_PLACEHOLDER
 
-    ensureActive(convId)
-    const s = activeSession.value
-    if (!s || s.loading) return
+    const s = getOrCreateSession(convId)
+    if (s.loading) return
 
     const pref = options?.executionPreference ?? 'fast'
     // 乐观气泡显示原文（图片-only 为空，缩略图即内容）；占位正文仅用于过网关校验
@@ -190,7 +216,7 @@ export function useChatSessions(
 
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
-        headers: { ...apiHeaders(), Accept: 'text/event-stream' },
+        headers: { ...streamHeaders(convId), Accept: 'text/event-stream' },
         body: JSON.stringify(body),
         signal: s.abort.signal,
       })
@@ -419,7 +445,7 @@ export function useChatSessions(
       await cancelActiveGenerationForSession(s)
       const response = await fetch(`${API_BASE()}/api/chat/stream`, {
         method: 'POST',
-        headers: { ...apiHeaders(), Accept: 'text/event-stream' },
+        headers: { ...streamHeaders(conversationId), Accept: 'text/event-stream' },
         body: JSON.stringify({
           conversationId,
           resumeMessageId,
@@ -503,7 +529,7 @@ export function useChatSessions(
     try {
       const response = await fetch(
         `${API_BASE()}/api/chat/stream/${generationId}?afterSeq=${afterSeq}`,
-        { headers: { ...apiHeaders(), Accept: 'text/event-stream' }, signal: s.abort.signal },
+        { headers: { ...streamHeaders(conversationId), Accept: 'text/event-stream' }, signal: s.abort.signal },
       )
 
       if (response.status === 410) {
@@ -671,7 +697,7 @@ export function useChatSessions(
 
   return {
     messages, streamRevision, loading, activeContainer, generationId,
-    switchTo, clearActive, ensureActive, send, resume, reconnectStream, stop, clearSession,
+    switchTo, clearActive, ensureActive, send, sendInBackground, resume, reconnectStream, stop, clearSession,
     cancelSpawnSubagent,
     cancelCancellableTool,
     getMessages, setMessages, destroySession, migrateSession,

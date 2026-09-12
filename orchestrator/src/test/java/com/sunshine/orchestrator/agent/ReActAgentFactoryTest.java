@@ -14,6 +14,7 @@ import com.sunshine.orchestrator.registry.ModelCapabilities;
 import com.sunshine.orchestrator.registry.ModelCatalogDefinition;
 import com.sunshine.orchestrator.registry.ModelCatalogScene;
 import com.sunshine.orchestrator.registry.ModelSceneResolver;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.BeforeEach;
@@ -156,34 +157,28 @@ class ReActAgentFactoryTest {
     @Test
     void resolveMaxIters_prefersRequestValue() {
         AgentRunRequest req = new AgentRunRequest(
-                AgentRole.SUB,
-                "run-1",
-                null,
-                AssembledContext.empty(),
-                "q",
-                List.of(),
-                "u1",
-                "default",
-                null,
-                null,
-                List.of("sdk__sunshine-finance__list_my_expenses"),
-                null,
-                4,
-                TimelineBinding.SUB_COMPRESSED,
-                false,
-                null,
-                null,
-                0,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+                AgentRole.SUB, "run-1", null, AssembledContext.empty(), "q", List.of(),
+                "u1", "default", null, null, List.of("sdk__sunshine-finance__list_my_expenses"), null, 4,
+                TimelineBinding.SUB_COMPRESSED, false, null, null, 0, null, null, null, null, null, null, null, null, null,
                 null);
         assertThat(factory.resolveMaxIters(req)).isEqualTo(4);
+    }
+
+    @Test
+    void buildGenerateOptions_appliesReasoningEffortFromRequest() {
+        GenerateOptions options = ReActAgentFactory.buildGenerateOptions(4096, "low");
+        assertThat(options.getMaxTokens()).isEqualTo(4096);
+        assertThat(options.getReasoningEffort()).isEqualTo("low");
+        assertThat(ReActAgentFactory.buildGenerateOptions(4096, " high ").getReasoningEffort())
+                .isEqualTo("high");
+    }
+
+    @Test
+    void buildGenerateOptions_withoutReasoningEffort_leavesOptionUnset() {
+        GenerateOptions options = ReActAgentFactory.buildGenerateOptions(4096, null);
+        assertThat(options.getMaxTokens()).isEqualTo(4096);
+        assertThat(options.getReasoningEffort()).isNull();
+        assertThat(ReActAgentFactory.buildGenerateOptions(4096, "  ").getReasoningEffort()).isNull();
     }
 
     @Test
@@ -291,16 +286,7 @@ class ReActAgentFactoryTest {
                 TimelineBinding.SUB_COMPRESSED,
                 false,
                 null,
-                null,
-                0,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+                null, 0, null, null, null, null, null, null, null, null, null,
                 null);
     }
 }

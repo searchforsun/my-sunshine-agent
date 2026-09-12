@@ -83,18 +83,17 @@ public class SkillCatalogService {
     }
 
     /**
-     * 可发现目录（名+描述）：enabled + 按会话 kind 过滤（保留 all + 同 kind） + 租户可见，剔除已触发项。
-     * 仅用于 Prompt 目录摘要层，正文按触发注入（skill-sticky S-D）。
+     * 可发现目录（名+描述）：enabled + 按会话 kind 过滤（保留 all + 同 kind） + 租户可见。
+     * 目录是 Prompt 前缀稳定区，与触发集解耦——不剔除、不标注已触发项，否则触发集变化会
+     * 位移前缀字节、击穿 KV 缓存（skill-sticky C1）。已触发正文由尾部 <skills_referenced> 信封承载。
      */
     public List<SkillCatalogIndexEntry> discoverableForPrompt(
             String sessionKind, List<String> triggeredSkillIds, String tenantId) {
-        List<String> triggered = triggeredSkillIds != null ? triggeredSkillIds : List.of();
         String effectiveTenant = TenantVisibility.normalize(tenantId);
         return indexEntries().stream()
                 .filter(SkillCatalogIndexEntry::enabled)
                 .filter(e -> ResourceKindFilter.matches(e.kind(), sessionKind))
                 .filter(e -> TenantVisibility.visible(e.tenantId(), effectiveTenant))
-                .filter(e -> !triggered.contains(e.id()))
                 .toList();
     }
 

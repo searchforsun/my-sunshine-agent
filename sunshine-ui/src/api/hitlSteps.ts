@@ -78,14 +78,11 @@ function isHitlResolved(step: ProcessingStep): boolean {
   return status === 'approved' || status === 'denied'
 }
 
-/** 后端常先发 summary.active，metadata.hitl 与 confirmation 可能晚到 */
+/** HITL 等待态 — 仅以 metadata.hitlStatus 硬条件判定，不依赖 summary active/detail 文案。
+ * lifecycle 判定（running/paused）与文案（“等待用户确认”）不作为状态依据，避免只读工具步被误判。 */
 export function isHitlSummaryAwaiting(step: ProcessingStep): boolean {
   if (!isHitlCarrierStep(step)) return false
-  if (isHitlResolved(step)) return false
-  if (resolveHitlStatus(step) === 'awaiting') return true
-  const active = step.summary?.active?.trim() ?? ''
-  const detail = step.detail?.trim() ?? ''
-  return active.includes('等待用户确认') || detail.includes('等待用户确认')
+  return resolveHitlStatus(step) === 'awaiting'
 }
 
 export function isHitlAwaiting(step: ProcessingStep): boolean {
@@ -714,7 +711,8 @@ function isAgentOrLoopBodyNodeId(id: string): boolean {
   return id.startsWith('node-') || /^i\d+-node-/.test(id)
 }
 
-/** ReAct HITL 续跑：paused 工具步恢复 running，保留 metadata 供后端 re-await */
+/** ReAct HITL 续跑：paused 工具步恢复 running，保留 metadata 供后端 re-await。
+ * active 统一写回等待文案；是否 HITL 已由 isHitl* 硬条件判定，不依赖旧 active 含“暂停”。 */
 export function reactivatePausedReactHitlSteps(steps: ProcessingStep[] | undefined): ProcessingStep[] {
   if (!steps?.length) return steps ?? []
   return steps.map(step => {
@@ -726,9 +724,7 @@ export function reactivatePausedReactHitlSteps(steps: ProcessingStep[] | undefin
       lifecycle: 'running',
       summary: {
         ...step.summary,
-        active: step.summary?.active?.includes('暂停')
-          ? '等待用户确认执行写操作'
-          : (step.summary?.active ?? '等待用户确认执行写操作'),
+        active: '等待用户确认执行写操作',
         after: undefined,
       },
       endedAt: undefined,

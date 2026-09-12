@@ -102,6 +102,36 @@ def skywalking_java_opts(service_name: str) -> list[str]:
     ]
 
 
+# 按服务分级的内存配置：orchestrator 是核心编排（多智能体/Planner-Executor/上下文压缩），堆最大；
+# 其余服务按职责区分堆与直接内存，避免 JVM 默认 1/4 物理内存导致的 RSS 虚胖。
+# 键为 start.py SERVICES 中的服务名（service_name），未知服务兜底 1G。
+JVM_HEAP_BY_SERVICE: dict[str, str] = {
+    "orchestrator": "2G",
+    "rag": "1G",
+    "tool-service": "1G",
+    "llm-gateway": "1G",
+    "resource-manager": "768m",
+    "gateway": "768m",
+    "bff": "768m",
+    "auth": "768m",
+    "workflow-manager": "768m",
+    "sandbox-service": "768m",
+    "biz-simulator": "768m",
+}
+
+
+def jvm_memory_opts(service_name: str) -> list[str]:
+    """按服务名生成 JVM 堆/直接内存参数，显式限制堆上限防止默认预保留 1/4 物理内存。"""
+    heap = JVM_HEAP_BY_SERVICE.get(service_name, "1G")
+    return [
+        f"-Xms{heap}",
+        f"-Xmx{heap}",
+        "-XX:MaxMetaspaceSize=256m",
+        "-XX:MaxDirectMemorySize=512m",
+        "-XX:+UseG1GC",
+    ]
+
+
 def start_java_detached(
     module: str,
     artifact: str,
@@ -114,7 +144,7 @@ def start_java_detached(
     log_dir = ROOT / module / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     svc = service_name or module
-    args = [*skywalking_java_opts(svc), "-jar", str(jar)]
+    args = [*skywalking_java_opts(svc), *jvm_memory_opts(svc), "-jar", str(jar)]
     stdout = open(log_dir / "startup.log", "w", encoding="utf-8")
     stderr = open(log_dir / "startup.err.log", "w", encoding="utf-8")
     creationflags = 0

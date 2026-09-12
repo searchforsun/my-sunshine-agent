@@ -48,18 +48,21 @@ agent:
       # 泄漏进 content（乱码 + 工具时间线错乱）。50 轮 ≈ 50 次 think+工具对。
       max-iters: 50
       # task 会话（沙箱任务、coding 任务等长任务）的上限，高于 chat 值；
-      # task 会话经 ReactExecutor 显式注入 request.maxIters 生效。
-      task-max-iters: 100
+      # task 会话经 ReactExecutor 显式注入 request.maxIters 生效（harness Worker 缺省同此值）。
+      task-max-iters: 300
       # 软限额收束缓冲 = maxIters 的 20%（/5），上限 10 轮，按各档位自动计算：
-      # 50→10（约第 40 轮收束）、100→10（约第 90 轮）、30→6（约第 24 轮）；
+      # 50→10（约第 40 轮收束）、300→10（约第 290 轮收束）、30→6（约第 24 轮）；
       # 避免模型感知不到轮数上限、最后轮继续调工具 + 输出伪终稿后触发 AgentScope 总结轮。
       taskboard:
         enabled: true
       subagent:
         enabled: true
-        # 子 Agent 单 run 轮数上限：能拆就拆后子任务可能含多步工具调用（8 太紧），放宽到 30
+        # 子 Agent 轮数/墙钟按会话 kind 分档：chat=30轮/5min，task=90轮/30min（重活：沙箱编码/多步调研）；
+        # 预定义 agent 自带 maxIters 时仍优先于档位值
         max-iters: 30
-        timeout-ms: 180000
+        timeout-ms: 300000
+        task-max-iters: 90
+        task-timeout-ms: 1800000
         # cancel-result → Catalog id=react.subagent.cancel-result
       decision:
         # D21：默认关。Live：临时改 true → sync_nacos.py → restart orchestrator/bff；
@@ -73,15 +76,16 @@ agent:
         await-default-sec: 30
         await-max-sec: 120
         await-max-waits: 3
-        # spawn 观察窗口（3×200=600，对齐 task-timeout-ms）
-        spawn-await-default-sec: 120
-        spawn-await-max-sec: 200
+        # spawn 观察窗口（3×600=1800，对齐 task 子 Agent 墙钟 30min）
+        spawn-await-default-sec: 600
+        spawn-await-max-sec: 600
         spawn-await-max-waits: 3
-        # worker 观察窗口（6×600：pro 复杂任务允许多轮观测，适配长 Worker 与墙钟 1h）
-        worker-await-default-sec: 120
-        worker-await-max-sec: 600
-        worker-await-max-waits: 6
-        exec-wall-timeout-sec: 600
+        # worker 观察窗口（3×1200=3600，对齐 Worker 墙钟 1h）
+        worker-await-default-sec: 1200
+        worker-await-max-sec: 1200
+        worker-await-max-waits: 3
+        # exec 单命令墙钟对齐子 Agent task 档（长命令：构建/测试套件）
+        exec-wall-timeout-sec: 1800
         # 同消息并发派发上限：worker/spawn/exec 共享槽位，10 满足 pro 多路并发调研
         max-concurrent-per-message: 10
       # M3 session_search：task 会话 MAIN 注册 sunshine_session_search（chat/workflow 不注册）
@@ -125,16 +129,19 @@ agent:
       # true：pro → PlannerHarnessExecutor
       # false：专业模式不可用（显式失败）；禁止静默改 fast，禁止回落旧动态规划
       enabled: true
-      max-rounds: 12
-      max-total-tasks: 24
+      # 长任务适配：maxRounds=Planner 调度轮次上限；maxTotalTasks=任务板任务总数上限
+      # （重派同任务的新版本 taskId t1-2/t1-3 也计入）。Worker 轮次 300 ≈ 多任务/多轮重派预算。
+      max-rounds: 16
+      max-total-tasks: 32
       max-duration-ms: 14400000
       fallback-react:
         enabled: true
       planner:
         timeout-ms: 300000
-        # v17：Planner 一次性 ReAct run，maxIters 兜底；60 轮 ≈ plan_submit(1) + dispatch×10 + await/task_status×多轮 + self_assess(1) + 综合回答
+        # v17：Planner 一次性 ReAct run，maxIters 兜底；60 轮 ≈ plan_submit(1) + dispatch×16 + await/task_status×多轮 + self_assess(1) + 综合回答
         max-iters: 60
       worker:
+        # Worker 单元墙钟 1h（≥ 验收门 verify_planner_executor_live.py P8 的 3600000 下限）
         timeout-ms: 3600000
       notebook:
         redis-ttl-seconds: 604800
@@ -195,6 +202,7 @@ agent:
   # 对话级 Docker 沙箱（4.5 workspace 抽屉）
   # MAIN/SUB 常驻 sandbox__*；首次工具调用 / 抽屉 list 懒 create — docs/superpowers/specs/2026-07-16-conversation-sandbox-permanent-tools-design.md · SUB 默认见 2026-07-17-sub-agent-sandbox-default-design.md
   sandbox:
+    # 长任务执行间隔可能超 30min（构建/长命令），空闲停机 TTL 对齐子 Agent task 墙钟
     conversation-ttl-sec: 1800
     purge-ttl-sec: 604800
     workspace-content-max-chars: 200000
@@ -304,20 +312,20 @@ agent:
           - pattern
       sandbox__exec:
         display-name: 执行命令
-        description: 在沙箱容器内执行 shell（破坏性命令会被拒绝；只读命令通常免 HITL）
+        description: 在沙箱容器内执行 shell（删除根目录/家目录等自杀式命令会被拒绝；只读命令通常免 HITL）
         properties:
           command:
             type: string
-            description: shell 命令；禁止 rm -rf /、管道下载执行、mkfs 等破坏性操作
+            description: shell 命令；/workspace 与 /workspace/wt-* 内可正常 rm/rm -rf 清理文件，仅禁止 rm -rf /、rm -rf ~ 等自杀式删除及管道下载执行、mkfs
           cwd:
             type: string
             description: 工作目录（可选，默认 /workspace（含 /workspace/wt-xxx/...）；须在 /skills/{skillId}/... 或 /workspace）
           timeout_sec:
             type: integer
-            description: 超时秒数（可选；同步默认约 30；background=true 且未传时与墙钟对齐，约 600）
+            description: 超时秒数（可选；同步默认约 30；background=true 且未传时与墙钟对齐，约 1800）
           background:
             type: boolean
-            description: 可选；true=立即返回 runId，主 Agent 用 await_tool_run 收结果；默认 false
+            description: 可选；长命令（构建/测试套件等）传 true=立即返回 runId，勿同步空等，用 await_tool_run 收结果；默认 false
         required:
           - command
       sandbox__webfetch:
@@ -357,13 +365,18 @@ agent:
   history:
     max-messages: 20
   generation:
-    ttl-sec: 3600
-    orphan-timeout-sec: 120
+    # 长任务（30min 子 Agent / 1h Worker）期间 Redis 元数据/事件流须存活可续连
+    ttl-sec: 14400
+    # 订阅方全部断开后的孤儿宽限：覆盖 await 观察窗口（最长 900s）+ 浏览器重连间隙
+    orphan-timeout-sec: 1200
     max-buffer-chunks: 10000
     reconnect-block-ms: 5000
     flush-interval-ms: 500
     max-chunk-chars: 32
-    max-stream-len: 20000
+    # SSE 心跳间隔：await 长等待静默期周期下发注释行保活（须小于 Gateway 最短空闲超时档 360s）
+    heartbeat-interval-ms: 15000
+    # 长任务单轮 chunk 总量大（300 轮 think/tool 流），放宽裁剪上限防早裁丢续连段
+    max-stream-len: 60000
     lock:
       enabled: true
       ttl-sec: 30
@@ -387,7 +400,6 @@ agent:
 
   title:
     enabled: true
-    max-length: 15
     # model → scene=title；system-prompt → Catalog id=conversation.title
 
   context:

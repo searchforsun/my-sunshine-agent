@@ -7,6 +7,7 @@ import type { WorkflowCatalogEntry } from '../../api/workflows'
 import type { ExecutionMode } from '../../api/executionModes'
 import { allowsForPreference, segmentChatMentions } from '../../utils/chatMention'
 import { toMinioDisplayUrl } from '../../api/chatImages'
+import ImgSrcLightbox from './ImgSrcLightbox.vue'
 
 const props = defineProps<{
   content: string
@@ -121,9 +122,10 @@ onBeforeUnmount(() => {
       <span v-else>{{ content }}</span>
     </div>
     <div v-if="imageUrls?.length" class="msg-images">
-      <n-image
+      <img-src-lightbox
         v-for="(u, i) in imageUrls" :key="i" :src="toMinioDisplayUrl(u)"
-        :width="96" :height="96" object-fit="cover" lazy
+        :raw-url="u"
+        :width="96" :height="96"
         class="msg-image-thumb"
       />
     </div>

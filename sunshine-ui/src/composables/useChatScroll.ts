@@ -109,6 +109,14 @@ export function useChatScroll(_loading: Ref<boolean>) {
     syncScrollPinned()
   }
 
+  /** 键盘弹起压缩可视区：用户在底部时同步上滚，保持末条消息可见（未贴底不抢滚动） */
+  function scrollToBottomOnKeyboard(): void {
+    const el = scrollRef.value
+    if (!el) return
+    if (userTakenOver || !chatScrollPinned.value) return
+    applyScrollBottom()
+  }
+
   function applyScrollBottom(): void {
     const el = scrollRef.value
     if (!el) return
@@ -249,6 +257,7 @@ export function useChatScroll(_loading: Ref<boolean>) {
     onChatWheelCapture,
     scrollToBottom,
     settleScrollToBottom,
+    scrollToBottomOnKeyboard,
     pinScrollForSend,
     pinScrollForHitl,
     forwardWheelToChatScroll,

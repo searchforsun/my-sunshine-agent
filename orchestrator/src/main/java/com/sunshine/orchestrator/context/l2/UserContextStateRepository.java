@@ -24,6 +24,10 @@ public interface UserContextStateRepository extends JpaRepository<UserContextSta
     List<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndStatus(
             String workspaceId, String tenantId, String status);
 
+    /** Admin 运维列表：workspace 维度全量（含非 active），更新时间倒序。 */
+    List<UserContextStateEntity> findByWorkspaceIdAndTenantIdOrderByUpdatedAtDesc(
+            String workspaceId, String tenantId);
+
     Optional<UserContextStateEntity> findByWorkspaceIdAndTenantIdAndKindAndStateKeyAndStatus(
             String workspaceId, String tenantId, String kind, String stateKey, String status);
 

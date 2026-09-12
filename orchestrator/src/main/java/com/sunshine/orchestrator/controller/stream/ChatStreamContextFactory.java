@@ -91,6 +91,10 @@ public class ChatStreamContextFactory {
         if (msg.getModelName() != null) {
             conversationService.updateModelName(conv.getId(), userId, tenantId, modelOverride);
         }
+        String reasoningEffort = resolveSessionReasoningEffort(msg.getReasoningEffort(), conv.getReasoningEffort());
+        if (msg.getReasoningEffort() != null) {
+            conversationService.updateReasoningEffort(conv.getId(), userId, tenantId, reasoningEffort);
+        }
         String executionQuery = userContent;
         if (!preference.allowsSkillBinding()) {
             executionQuery = skillBindingParser.stripSlashMention(userContent);
@@ -135,6 +139,7 @@ public class ChatStreamContextFactory {
                 msg.getPersonalRules(),
                 conv.getKind(),
                 modelOverride,
+                reasoningEffort,
                 msg.getImageUrls(),
                 // S-1：上轮轻 sticky seed（无新触发时继承已触发 skill / 可调度 agent）
                 conversationService.loadRoutingSeed(conv.getId()));
@@ -204,6 +209,7 @@ public class ChatStreamContextFactory {
         return StringUtils.hasText(storedModelName) ? storedModelName.strip() : null;
     }
 
+    /** 请求显式传 reasoningEffort（含空串清除）优先；否则沿用会话已存值；非法值视为清除 */
     private static String resolveSessionReasoningEffort(String requestEffort, String storedEffort) {
         String fromRequest = requestEffort != null && StringUtils.hasText(requestEffort)
                 ? requestEffort.strip() : null;
@@ -304,6 +310,7 @@ public class ChatStreamContextFactory {
                 kbId,
                 conv.getKind(),
                 conv.getModelName(),
+                conv.getReasoningEffort(),
                 // S-0：续跑复用该消息已存 RoutingResult（不重跑收集、不重触发决策）
                 new RoutingSeed(csvToList(assistant.getRoutingSkillIds()), csvToList(assistant.getRoutingAgentIds())));
     }

@@ -34,6 +34,8 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
 
     private final WebClient webClient;
     private final String callSite;
+    /** 会话所选模型：注入 session_model 供网关路由策略耗尽后兜底；空不注入 */
+    private final String sessionModel;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -43,11 +45,19 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
      */
     public LoadBalancedWebClientTransport(
             WebClient.Builder loadBalancedBuilder, String serviceBaseUrl, String callSite) {
+        this(loadBalancedBuilder, serviceBaseUrl, callSite, null);
+    }
+
+    public LoadBalancedWebClientTransport(
+            WebClient.Builder loadBalancedBuilder, String serviceBaseUrl,
+            String callSite, String sessionModel) {
         this.webClient = loadBalancedBuilder
                 .baseUrl(serviceBaseUrl)
                 .build();
         this.callSite = callSite;
-        log.info("[LoadBalancedWebClientTransport] serviceBaseUrl={} callSite={}", serviceBaseUrl, callSite);
+        this.sessionModel = sessionModel;
+        log.info("[LoadBalancedWebClientTransport] serviceBaseUrl={} callSite={} sessionModel={}",
+                serviceBaseUrl, callSite, sessionModel);
     }
 
     @Override
@@ -64,7 +74,7 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
                     spec.header(k, v);
                 }
             });
-            Object body = withCallSite(request.getBody(), callSite);
+            Object body = withCallSite(request.getBody(), callSite, sessionModel);
             if (body != null) {
                 spec.bodyValue(body);
             }
@@ -112,7 +122,7 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
                     spec.header(k, v);
                 }
             });
-            Object body = withCallSite(request.getBody(), callSite);
+            Object body = withCallSite(request.getBody(), callSite, sessionModel);
             if (body != null) {
                 spec.bodyValue(body);
             }
@@ -144,22 +154,31 @@ public class LoadBalancedWebClientTransport implements HttpTransport {
         // WebClient 无显式 close，资源由 Reactor 回收
     }
 
-    /**
-     * 请求体 JSON 注入 {@code call_site}（AgentScope 请求体为 JSON 字符串）。
-     * 非 JSON 或解析失败时原样返回，保证不破坏既有链路。
-     */
-    static Object withCallSite(String body, String callSite) {
-        if (body == null || body.isBlank() || callSite == null || callSite.isBlank()) {
+    /** 统一注入 call_site + session_model（AgentScope 请求体为 JSON 字符串）；非 JSON 原样返回 */
+    static Object withCallSite(String body, String callSite, String sessionModel) {
+        if (body == null || body.isBlank()
+                || ((callSite == null || callSite.isBlank())
+                && (sessionModel == null || sessionModel.isBlank()))) {
             return body;
         }
         try {
             ObjectNode node = (ObjectNode) objectMapper.readTree(body);
-            node.put("call_site", callSite);
+            if (callSite != null && !callSite.isBlank()) {
+                node.put("call_site", callSite);
+            }
+            if (sessionModel != null && !sessionModel.isBlank()) {
+                node.put("session_model", sessionModel.strip());
+            }
             return objectMapper.writeValueAsString(node);
         } catch (Exception e) {
-            log.debug("[LoadBalancedWebClientTransport] call_site 注入跳过（非 JSON body）: {}", e.getMessage());
+            log.debug("[LoadBalancedWebClientTransport] call_site/session_model 注入跳过（非 JSON body）: {}",
+                    e.getMessage());
             return body;
         }
+    }
+
+    static Object withCallSite(String body, String callSite) {
+        return withCallSite(body, callSite, null);
     }
 
     /**

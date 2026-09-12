@@ -3,10 +3,13 @@ import {
   CHAT_CONTENT_MIN_WIDTH,
   DRAWER_MIN_WIDTH as PLAN_DRAWER_MIN,
   PANE_MIN_WIDTH,
+  OVERLAY_DRAWER_MIN_WIDTH,
   splitRightDrawerBudget,
   usePlanNodeDrawer,
 } from './usePlanNodeDrawer'
 import { setSandboxDrawerLayout } from './sandboxDrawerBridge'
+import { useViewportMode } from './useViewportMode'
+import { pushRightDrawer, removeRightDrawer, registerRightDrawerClose, rightDrawerZIndex } from './rightDrawerStack'
 
 export interface SandboxWorkspaceDrawerPayload {
   conversationId?: string
@@ -105,6 +108,9 @@ function persistTreeWidth(w: number) {
 
 export function useSandboxWorkspaceDrawer() {
   const planDrawer = usePlanNodeDrawer()
+  const { isNarrowViewport, isCompactViewport } = useViewportMode()
+  /** 并排挤占仅在宽敞档成立；紧凑/窄屏浮层化（窄屏全屏、紧凑右侧覆盖） */
+  const overlayMode = computed(() => isNarrowViewport.value || isCompactViewport.value)
 
   /** 节点 + 沙箱同时开（三栏：Chat | 节点 | 沙箱） */
   const compareMode = computed(
@@ -120,11 +126,13 @@ export function useSandboxWorkspaceDrawer() {
   )
 
   const drawerWidth = computed(() => {
+    if (overlayMode.value) return 0
     const max = drawerMaxWidth.value
     return Math.min(Math.max(savedWidth.value, DRAWER_MIN_WIDTH), max)
   })
 
   const canResizeDrawer = computed(() => {
+    if (overlayMode.value) return !isNarrowViewport.value
     // 双开：只要节点+沙箱总宽 > 两倍 min，就可以拖分界（不依赖 sandbox 是否已顶到「相对 Chat 的 max」）
     if (compareMode.value) {
       const budget = planDrawer.drawerWidth.value + drawerWidth.value
@@ -172,9 +180,38 @@ export function useSandboxWorkspaceDrawer() {
   }
 
   function onResizePointerDown(e: PointerEvent) {
-    if (!chatBodyEl) return
+    if (!canResizeDrawer.value) return
+    if (overlayMode.value) {
+      // 浮层：拖的是自身绝对宽度，与布局预算无关
+      e.preventDefault()
+      const handle = e.currentTarget as HTMLElement
+      handle.setPointerCapture(e.pointerId)
+      document.body.classList.add('sandbox-drawer-resizing')
+      const aside = handle.closest('aside')
+      const startX = e.clientX
+      const startW = aside?.getBoundingClientRect().width || DRAWER_MIN_WIDTH
+      const overlayMax = () => Math.max(OVERLAY_DRAWER_MIN_WIDTH, Math.round(window.innerWidth * 0.66))
+      const onMove = (ev: PointerEvent) => {
+        savedWidth.value = Math.min(
+          Math.max(startW + (startX - ev.clientX), OVERLAY_DRAWER_MIN_WIDTH),
+          overlayMax(),
+        )
+      }
+      const onUp = (ev: PointerEvent) => {
+        document.body.classList.remove('sandbox-drawer-resizing')
+        handle.releasePointerCapture(ev.pointerId)
+        handle.removeEventListener('pointermove', onMove)
+        handle.removeEventListener('pointerup', onUp)
+        handle.removeEventListener('pointercancel', onUp)
+      }
+      handle.addEventListener('pointermove', onMove)
+      handle.addEventListener('pointerup', onUp)
+      handle.addEventListener('pointercancel', onUp)
+      return
+    }
     const both = compareMode.value
     if (!both && !canResizeDrawer.value) return
+    if (!chatBodyEl) return
     if (both) {
       const budget = planDrawer.drawerWidth.value + drawerWidth.value
       if (budget <= PLAN_DRAWER_MIN + DRAWER_MIN_WIDTH) return
@@ -272,6 +309,11 @@ export function useSandboxWorkspaceDrawer() {
       state.focusLineEnd = 0
     }
     state.open = true
+    // 浮层档：面板入右侧堆栈（容量 2，超额 FIFO 淘汰最早面板并触发其关闭）；并排档不占栈
+    if (overlayMode.value) {
+      removeRightDrawer('sandbox')
+      pushRightDrawer('sandbox')
+    }
   }
 
   /** 切换任务工作区内容 tab：文件树 / 改动 */
@@ -298,6 +340,7 @@ export function useSandboxWorkspaceDrawer() {
     state.focusLineEnd = 0
     state.tab = 'files'
     state.diffPath = ''
+    removeRightDrawer('sandbox')
   }
 
   /** 退出「改动」diff 视图，回到文件树浏览 */
@@ -310,6 +353,8 @@ export function useSandboxWorkspaceDrawer() {
       state.conversationId = convId
     }
   }
+
+  registerRightDrawerClose('sandbox', close)
 
   return {
     state,
@@ -328,5 +373,7 @@ export function useSandboxWorkspaceDrawer() {
     registerChatBody,
     onResizePointerDown,
     onTreeResizePointerDown,
+    overlayMode,
+    zIndex: computed(() => rightDrawerZIndex('sandbox')),
   }
 }

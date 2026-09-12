@@ -12,7 +12,7 @@ import {
   isSandboxReadStep,
   isSandboxToolStep,
   parseSandboxPathList,
-  resolveRunningChildStepBody,
+  resolveLatestChildStepBody,
   resolveSandboxFocusPath,
   resolveSandboxReadLineRange,
   resolveStepExpandInner,
@@ -360,7 +360,7 @@ describe('sandboxToolKind 按用途细分（组文案决定）', () => {
   })
 })
 
-describe('resolveRunningChildStepBody · 运行中当前子步正文', () => {
+describe('resolveLatestChildStepBody · 卡片最新阶段正文', () => {
   function child(partial: Partial<ProcessingStep> & { id: string; phase: string }): ProcessingStep {
     return {
       lifecycle: 'done',
@@ -368,77 +368,106 @@ describe('resolveRunningChildStepBody · 运行中当前子步正文', () => {
     }
   }
 
-  it('无 subSteps 返回空', () => {
+  it('无正文载体返回空', () => {
     const step: ProcessingStep = { id: 'worker-t1-1', phase: 'worker', lifecycle: 'running' }
-    expect(resolveRunningChildStepBody(step)).toBe('')
+    expect(resolveLatestChildStepBody(step)).toBe('')
   })
 
-  it('running think 子步有 reasoning 时返回思考正文（单行截断）', () => {
+  it('运行中 contentBlocks 末段非空即展示其最新一行（流式跟随）', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think', text: '已确认关键词\n等待打开网页' },
+      ],
+    }
+    expect(resolveLatestChildStepBody(step)).toBe('等待打开网页')
+  })
+
+  it('只有思考 reasoning 无正文段时返回空（不占位不展示思考）', () => {
     const step: ProcessingStep = {
       id: 'worker-t1-1', phase: 'worker', lifecycle: 'running',
-      subSteps: [
-        child({ id: 'think-2', phase: 'think', lifecycle: 'running', reasoning: '先核对文档\n再比对配置项' }),
-      ],
+      subSteps: [child({ id: 'think-2', phase: 'think', lifecycle: 'running', reasoning: '内部推理' })],
     }
-    expect(resolveRunningChildStepBody(step)).toBe('先核对文档 再比对配置项')
+    expect(resolveLatestChildStepBody(step)).toBe('')
   })
 
-  it('running think 无正文回退「深度思考」', () => {
-    const step: ProcessingStep = {
-      id: 'worker-t1-1', phase: 'worker', lifecycle: 'running',
-      subSteps: [child({ id: 'think-2', phase: 'think', lifecycle: 'running' })],
-    }
-    expect(resolveRunningChildStepBody(step)).toBe('深度思考')
-  })
-
-  it('running sandbox exec 无正文回退「执行命令」', () => {
+  it('只有工具输出无正文段时返回空（不占位不展示工具内容）', () => {
     const step: ProcessingStep = {
       id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
       subSteps: [
-        child({ id: 'tool-sandbox__exec@1', phase: 'tool', label: '执行命令', lifecycle: 'running' }),
+        child({ id: 'tool-sandbox__exec@1', phase: 'tool', label: '执行命令', lifecycle: 'running', output: 'ls 输出' }),
       ],
     }
-    expect(resolveRunningChildStepBody(step)).toBe('执行命令')
+    expect(resolveLatestChildStepBody(step)).toBe('')
   })
 
-  it('generate（最后正文）阶段固定显示「正在收尾回复」', () => {
+  it('上一段正文持续展示，直到下一段正文出现（空段回退上一非空段）', () => {
     const step: ProcessingStep = {
       id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
-      subSteps: [
-        child({ id: 'think-3', phase: 'think', lifecycle: 'done', reasoning: '已完成调研' }),
-        child({ id: 'generate', phase: 'generate', lifecycle: 'running', reasoning: '正在撰写最终答复…' }),
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think', text: '开始检索资料' },
+        { segmentId: 'content-2', afterStepId: 'think-2', text: '' },
       ],
     }
-    expect(resolveRunningChildStepBody(step)).toBe('正在收尾回复')
+    expect(resolveLatestChildStepBody(step)).toBe('开始检索资料')
   })
 
-  it('跳过 tasks/intent/skill 脚手架步，取首个动态子步正文', () => {
+  it('终态卡（done）末段正文识别为最终答复，固定显示「总结并回答」', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'done',
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think-2', text: '第一段过程说明' },
+        { segmentId: 'content-2', afterStepId: 'think-3', text: 'X（原 Twitter）平台调研总结' },
+      ],
+    }
+    expect(resolveLatestChildStepBody(step)).toBe('总结并回答')
+  })
+
+  it('运行中即使已有正文段也显示最新一行（锚点不区分收尾段，不猜阶段）', () => {
     const step: ProcessingStep = {
       id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
-      subSteps: [
-        child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'running' }),
-        child({ id: 'think-1', phase: 'think', lifecycle: 'running', reasoning: '分析问题要点' }),
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think', text: '开始检索资料' },
+        { segmentId: 'content-2', afterStepId: 'think-2', text: 'X（原' },
       ],
     }
-    expect(resolveRunningChildStepBody(step)).toBe('分析问题要点')
+    expect(resolveLatestChildStepBody(step)).toBe('X（原')
   })
 
-  it('仅脚手架步 running 时返回空（不再显示「任务清单」）', () => {
+  it('中间阶段正文不受最终段影响，显示最新一行', () => {
     const step: ProcessingStep = {
       id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
-      subSteps: [
-        child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'running' }),
-        child({ id: 'intent', phase: 'intent', label: '意图理解', lifecycle: 'done' }),
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think', text: '已确认关键词\n等待打开网页' },
       ],
     }
-    expect(resolveRunningChildStepBody(step)).toBe('')
+    expect(resolveLatestChildStepBody(step)).toBe('等待打开网页')
   })
 
-  it('卡非 running（pending/done）返回空', () => {
+  it('中间段为空时回退上一非空段，持续展示到下一段正文出现', () => {
+    const step: ProcessingStep = {
+      id: 'subagent-abc', phase: 'subagent', lifecycle: 'running',
+      contentBlocks: [
+        { segmentId: 'content-1', afterStepId: 'think', text: '开始检索资料' },
+        { segmentId: 'content-2', afterStepId: 'think-2', text: '' },
+      ],
+    }
+    expect(resolveLatestChildStepBody(step)).toBe('开始检索资料')
+  })
+
+  it('终态无 contentBlocks 时回退 step.result（worker 终稿）显示「总结并回答」', () => {
     const step: ProcessingStep = {
       id: 'worker-t1-1', phase: 'worker', lifecycle: 'done',
-      subSteps: [child({ id: 'think', phase: 'think', label: '深度思考', lifecycle: 'done' })],
+      result: '接口定稿\n编辑 chain.ts 完成',
     }
-    expect(resolveRunningChildStepBody(step)).toBe('')
+    expect(resolveLatestChildStepBody(step)).toBe('总结并回答')
+  })
+
+  it('终态卡无任何正文时返回空', () => {
+    const step: ProcessingStep = {
+      id: 'worker-t1-1', phase: 'worker', lifecycle: 'done',
+      subSteps: [child({ id: 'tasks', phase: 'tasks', label: '任务清单', lifecycle: 'done' })],
+    }
+    expect(resolveLatestChildStepBody(step)).toBe('')
   })
 })
